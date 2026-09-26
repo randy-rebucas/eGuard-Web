@@ -246,6 +246,8 @@ model DeviceLocation {
   lng        Float?
   accuracyM  Float?
   placeLabel String?
+  /// when the coordinates were last reported (not when sharing state changed)
+  locatedAt  DateTime?
   updatedAt  DateTime @updatedAt
 }
 
