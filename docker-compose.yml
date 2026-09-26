@@ -1,0 +1,22 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: eguard-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: eguard
+      POSTGRES_PASSWORD: eguard_dev_password
+      POSTGRES_DB: eguard
+    # 5432 is owned by the native Windows Postgres service on this machine
+    ports:
+      - "55433:5432"
+    volumes:
+      - eguard-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eguard -d eguard"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  eguard-db:

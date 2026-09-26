@@ -1,0 +1,400 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Enums ----------
+
+enum Role {
+  FAMILY_ADMIN
+  PARENT
+}
+
+enum Platform {
+  ANDROID
+  IOS
+}
+
+enum DeviceKind {
+  PHONE
+  TABLET
+}
+
+/// Protection keys double as the 10 Configuration Health checks.
+enum ProtectionKey {
+  SCREEN_TIME
+  BEDTIME
+  APP_RESTRICTIONS
+  APP_APPROVAL
+  CONTENT
+  WEB
+  DOWNLOADS
+  LOCATION
+  NOTIFICATIONS
+  UNINSTALL_PROTECTION
+}
+
+enum CheckStatus {
+  PASS
+  WARNING
+  ACTION_REQUIRED
+  UNSUPPORTED
+  NOT_CONFIGURED
+}
+
+enum RequestMode {
+  APPLY   // eGuard applies it on the device directly
+  GUIDED  // parent performs steps on the device, eGuard verifies
+}
+
+enum RequestStatus {
+  PENDING          // waiting for the device to pick it up
+  AWAITING_PARENT  // guided setup: waiting for parent to finish steps
+  DELIVERED        // device received it / verification requested
+  VERIFIED         // device reported config matching the request
+  FAILED           // device reported a mismatch or an error
+  CANCELLED
+}
+
+enum AlertSeverity {
+  INFO
+  ATTENTION
+  ACTION_REQUIRED
+  CRITICAL
+}
+
+enum AlertCategory {
+  PROTECTION
+  DEVICES
+  APPS
+  SCREEN_TIME
+  LOCATION
+  SYSTEM
+}
+
+enum AppApproval {
+  ALLOWED
+  ALWAYS_ALLOWED
+  FILTERED
+  BLOCKED
+  PENDING
+}
+
+enum CheckRunStatus {
+  RUNNING
+  COMPLETED
+}
+
+// ---------- Account ----------
+
+model Family {
+  id            String   @id @default(cuid())
+  name          String
+  timezone      String   @default("Asia/Manila")
+  plan          String   @default("eGuard Plus")
+  deviceLimit   Int      @default(8)
+  renewsAt      DateTime?
+  // privacy & notification settings
+  keepLocationHistory Boolean @default(false)
+  shareAnalytics      Boolean @default(false)
+  retentionDays       Int     @default(90)
+  createdAt     DateTime @default(now())
+
+  users        User[]
+  children     Child[]
+  devices      Device[]
+  alerts       Alert[]
+  changes      ConfigChange[]
+  pairingCodes PairingCode[]
+  checkRuns    CheckRun[]
+  auditLogs    AuditLog[]
+}
+
+model User {
+  id           String   @id @default(cuid())
+  familyId     String
+  family       Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         Role     @default(PARENT)
+  // notification preferences
+  notifyPush     Boolean @default(true)
+  notifyEmail    Boolean @default(true)
+  notifyApproval Boolean @default(true)
+  weeklySummary  Boolean @default(true)
+  twoFactor      Boolean @default(false)
+  passwordChangedAt DateTime @default(now())
+  createdAt    DateTime @default(now())
+
+  sessions Session[]
+  readAlerts AlertRead[]
+}
+
+model Session {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String   @unique
+  userAgent  String?
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+  expiresAt  DateTime
+
+  @@index([userId])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  familyId  String
+  family    Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  actor     String
+  action    String
+  detail    String?
+  createdAt DateTime @default(now())
+
+  @@index([familyId, createdAt])
+}
+
+// ---------- Children & devices ----------
+
+model Child {
+  id         String   @id @default(cuid())
+  familyId   String
+  family     Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  name       String
+  birthYear  Int
+  hue        Int      @default(205)
+  dailyLimitMinutes   Int @default(180)
+  weekendLimitMinutes Int @default(240)
+  createdAt  DateTime @default(now())
+
+  devices    Device[]
+  policies   ChildPolicy[]
+  usage      ScreenTimeDaily[]
+  appUsage   AppUsageDaily[]
+  apps       ChildApp[]
+  changes    ConfigChange[]
+  requests   ConfigRequest[]
+  alerts     Alert[]
+}
+
+/// Desired configuration per child and protection (what the parent asked for).
+model ChildPolicy {
+  id        String        @id @default(cuid())
+  childId   String
+  child     Child         @relation(fields: [childId], references: [id], onDelete: Cascade)
+  key       ProtectionKey
+  config    Json
+  updatedAt DateTime      @updatedAt
+
+  @@unique([childId, key])
+}
+
+model Device {
+  id          String     @id @default(cuid())
+  familyId    String
+  family      Family     @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  childId     String
+  child       Child      @relation(fields: [childId], references: [id], onDelete: Cascade)
+  name        String
+  model       String
+  kind        DeviceKind @default(PHONE)
+  platform    Platform
+  osVersion   String
+  isPrimary   Boolean    @default(false)
+  battery     Int?
+  appVersion  String?
+  tokenHash   String?    @unique
+  lastSeenAt  DateTime?
+  checkRequestedAt DateTime?
+  /// Dev-only: device is driven by the built-in simulator
+  simulated   Boolean    @default(false)
+  simulatedOnline Boolean @default(true)
+  createdAt   DateTime   @default(now())
+
+  protections DeviceProtection[]
+  requests    ConfigRequest[]
+  location    DeviceLocation?
+  usage       ScreenTimeDaily[]
+  checkResults CheckRunResult[]
+}
+
+/// Verified state per device and protection (what the device reported).
+model DeviceProtection {
+  id             String        @id @default(cuid())
+  deviceId       String
+  device         Device        @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  key            ProtectionKey
+  status         CheckStatus
+  reported       Json?
+  message        String?
+  lastVerifiedAt DateTime?
+
+  @@unique([deviceId, key])
+}
+
+model DeviceLocation {
+  deviceId   String   @id
+  device     Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  sharing    Boolean  @default(true)
+  lat        Float?
+  lng        Float?
+  accuracyM  Float?
+  placeLabel String?
+  updatedAt  DateTime @updatedAt
+}
+
+model PairingCode {
+  id        String   @id @default(cuid())
+  familyId  String
+  family    Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  childId   String
+  code      String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+}
+
+// ---------- Activity ----------
+
+model ScreenTimeDaily {
+  id       String   @id @default(cuid())
+  childId  String
+  child    Child    @relation(fields: [childId], references: [id], onDelete: Cascade)
+  deviceId String
+  device   Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  date     DateTime @db.Date
+  minutes  Int
+
+  @@unique([deviceId, date])
+  @@index([childId, date])
+}
+
+model AppUsageDaily {
+  id      String   @id @default(cuid())
+  childId String
+  child   Child    @relation(fields: [childId], references: [id], onDelete: Cascade)
+  date    DateTime @db.Date
+  app     String
+  minutes Int
+
+  @@unique([childId, date, app])
+}
+
+model ChildApp {
+  id         String      @id @default(cuid())
+  childId    String
+  child      Child       @relation(fields: [childId], references: [id], onDelete: Cascade)
+  name       String
+  approval   AppApproval @default(ALLOWED)
+  dailyLimitMinutes Int?
+  installedAt DateTime   @default(now())
+
+  @@unique([childId, name])
+}
+
+// ---------- Configuration workflow ----------
+
+model ConfigRequest {
+  id          String        @id @default(cuid())
+  batchId     String
+  childId     String
+  child       Child         @relation(fields: [childId], references: [id], onDelete: Cascade)
+  deviceId    String
+  device      Device        @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  key         ProtectionKey
+  mode        RequestMode
+  desired     Json
+  previous    Json?
+  status      RequestStatus @default(PENDING)
+  failureReason String?
+  createdBy   String
+  createdAt   DateTime      @default(now())
+  deliveredAt DateTime?
+  verifiedAt  DateTime?
+
+  @@index([deviceId, status])
+  @@index([batchId])
+}
+
+/// Configuration history: only written for verified changes or on-device changes.
+model ConfigChange {
+  id        String        @id @default(cuid())
+  familyId  String
+  family    Family        @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  childId   String
+  child     Child         @relation(fields: [childId], references: [id], onDelete: Cascade)
+  key       ProtectionKey
+  title     String
+  actor     String
+  fromValue String?
+  toValue   String?
+  createdAt DateTime      @default(now())
+
+  @@index([familyId, createdAt])
+}
+
+model CheckRun {
+  id          String         @id @default(cuid())
+  familyId    String
+  family      Family         @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  status      CheckRunStatus @default(RUNNING)
+  createdAt   DateTime       @default(now())
+  completedAt DateTime?
+  results     CheckRunResult[]
+}
+
+model CheckRunResult {
+  id         String   @id @default(cuid())
+  runId      String
+  run        CheckRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  deviceId   String
+  device     Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  reachable  Boolean?
+  issues     Int?
+  reportedAt DateTime?
+
+  @@unique([runId, deviceId])
+}
+
+// ---------- Alerts ----------
+
+model Alert {
+  id         String        @id @default(cuid())
+  familyId   String
+  family     Family        @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  childId    String?
+  child      Child?        @relation(fields: [childId], references: [id], onDelete: Cascade)
+  deviceId   String?
+  severity   AlertSeverity
+  category   AlertCategory
+  icon       String
+  title      String
+  body       String
+  subject    String
+  fromValue  String?
+  toValue    String?
+  /// what resolves it, e.g. "BEDTIME:<deviceId>"
+  resolveKey String?
+  resolvedAt DateTime?
+  createdAt  DateTime      @default(now())
+
+  reads AlertRead[]
+
+  @@index([familyId, createdAt])
+}
+
+model AlertRead {
+  alertId String
+  alert   Alert  @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  userId  String
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  readAt  DateTime @default(now())
+
+  @@id([alertId, userId])
+}
