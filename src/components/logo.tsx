@@ -1,21 +1,32 @@
 import { useId } from "react";
 
+// Keep in sync with scripts/generate-brand.mjs, which renders the same mark into the app icons.
+const SHIELD = "M32 4C24.4 8 16.4 10.2 8.5 11.2V30c0 14.6 9.8 25.4 23.5 30 13.7-4.6 23.5-15.4 23.5-30V11.2C47.6 10.2 39.6 8 32 4Z";
+const inset = (s: number) => `translate(32 32) scale(${s}) translate(-32 -32)`;
+
 export function LogoMark({ size = 40 }: { size?: number }) {
   const id = useId();
   return (
-    <svg width={size} height={size} viewBox="0 0 40 40" aria-hidden="true" className="brand-mark" style={{ width: size, height: size }}>
+    <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden="true" className="brand-mark" style={{ width: size, height: size }}>
       <defs>
-        <linearGradient id={id} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#5BB8F7" />
-          <stop offset="1" stopColor="#1673C4" />
+        <linearGradient id={`${id}o`} x1="10" y1="6" x2="54" y2="58" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor="#4FD2FF" />
+          <stop offset=".55" stopColor="#2394F5" />
+          <stop offset="1" stopColor="#1560DB" />
+        </linearGradient>
+        <linearGradient id={`${id}i`} x1="18" y1="16" x2="46" y2="50" gradientUnits="userSpaceOnUse">
+          <stop offset="0" stopColor="#8BE0FF" />
+          <stop offset="1" stopColor="#2B8EF2" />
         </linearGradient>
       </defs>
-      <path d="M20 3.5 6.5 8.6v10.2c0 8.3 5.7 15.4 13.5 17.7 7.8-2.3 13.5-9.4 13.5-17.7V8.6L20 3.5Z" fill={`url(#${id})`} />
-      <path d="M20 3.5v33c7.8-2.3 13.5-9.4 13.5-17.7V8.6L20 3.5Z" fill="#0B2348" opacity=".18" />
-      <circle cx="15.2" cy="16.2" r="2.6" fill="#fff" />
-      <circle cx="24.8" cy="16.2" r="2.6" fill="#fff" />
-      <circle cx="20" cy="21.4" r="1.9" fill="#fff" opacity=".85" />
-      <path d="M11.4 26.2c1-3.1 2.4-4.8 3.8-4.8s2.2.8 2.7 1.7M28.6 26.2c-1-3.1-2.4-4.8-3.8-4.8s-2.2.8-2.7 1.7M16.6 28.2c.6-2 1.9-3.1 3.4-3.1s2.8 1.1 3.4 3.1" fill="none" stroke="#fff" strokeWidth="1.7" strokeLinecap="round" />
+      <path d={SHIELD} fill={`url(#${id}o)`} />
+      <path d={SHIELD} fill="#fff" transform={inset(0.76)} />
+      <path d={SHIELD} fill={`url(#${id}i)`} transform={inset(0.6)} />
+      <g strokeLinejoin="round" strokeWidth="1.2">
+        <path d="M32 22.5 40.2 27.2 32 31.9 23.8 27.2Z" fill="#C4F0FF" stroke="#C4F0FF" />
+        <path d="M23.8 27.2 32 31.9V41.3L23.8 36.6Z" fill="#1E9BF2" stroke="#1E9BF2" />
+        <path d="M40.2 27.2 32 31.9V41.3L40.2 36.6Z" fill="#0B5FD4" stroke="#0B5FD4" />
+      </g>
     </svg>
   );
 }
@@ -25,8 +36,8 @@ export function Brand({ tagline = true }: { tagline?: boolean }) {
     <div className="brand">
       <LogoMark />
       <div>
-        <div className="brand-name">e<b>Guard</b></div>
-        {tagline ? <div className="brand-tag">Digital Safety for Better Tomorrows</div> : null}
+        <div className="brand-name">eGuard</div>
+        {tagline ? <div className="brand-tag">Digital Safety for Brighter Tomorrows</div> : null}
       </div>
     </div>
   );

@@ -9,7 +9,7 @@ const sora = Sora({ variable: "--font-sora", subsets: ["latin"], weight: ["500",
 
 export const metadata: Metadata = {
   title: { default: "eGuard", template: "%s · eGuard" },
-  description: "Digital Safety for Better Tomorrows. Configure, manage and verify protections on your children's devices.",
+  description: "Digital Safety for Brighter Tomorrows. Configure, manage and verify protections on your children's devices.",
 };
 
 export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover" };
