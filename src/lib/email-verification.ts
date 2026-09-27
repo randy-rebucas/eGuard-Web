@@ -24,7 +24,7 @@ export async function requireVerifiedEmail(userId: string) {
 
 /**
  * Emails a fresh link, replacing earlier ones. `throttle` (parent-requested resends) allows one a minute.
- * Returns false if the email is already verified.
+ * Returns false if the email is already verified. Throws 503 `mail_failed` if SMTP rejects the send.
  */
 export async function sendVerificationEmail(userId: string, { throttle = false } = {}) {
   const user = await db.user.findUniqueOrThrow({ where: { id: userId } });
@@ -36,27 +36,37 @@ export async function sendVerificationEmail(userId: string, { throttle = false }
     }
   }
   const token = newToken();
-  await db.$transaction([
-    db.emailVerification.deleteMany({ where: { userId } }),
-    db.emailVerification.create({ data: { userId, email: user.email, tokenHash: sha256(token), expiresAt: new Date(Date.now() + LINK_HOURS * 36e5) } }),
-  ]);
+  const created = await db.emailVerification.create({
+    data: { userId, email: user.email, tokenHash: sha256(token), expiresAt: new Date(Date.now() + LINK_HOURS * 36e5) },
+  });
   const link = `${appUrl()}/verify-email?token=${token}`;
   const first = user.name.split(/\s+/)[0];
-  await sendMail({
-    to: user.email,
-    subject: "Verify your eGuard email",
-    text: `Hi ${first},\n\nConfirm this is your email so you can pair your children's devices with eGuard:\n\n${link}\n\nThe link works once and expires in ${LINK_HOURS} hours. If you didn't create an eGuard account, you can ignore this email.\n\n— eGuard`,
-    html: `<p>Hi ${escapeHtml(first)},</p><p>Confirm this is your email so you can pair your children's devices with eGuard.</p>`
-      + `<p><a href="${link}" style="display:inline-block;padding:12px 20px;border-radius:10px;background:#1a73e8;color:#fff;text-decoration:none;font-weight:600">Verify my email</a></p>`
-      + `<p style="color:#555;font-size:13px">Or paste this link into your browser:<br>${link}</p>`
-      + `<p style="color:#555;font-size:13px">The link works once and expires in ${LINK_HOURS} hours. If you didn't create an eGuard account, you can ignore this email.</p>`,
-  });
+  try {
+    await sendMail({
+      to: user.email,
+      subject: "Verify your eGuard email",
+      text: `Hi ${first},\n\nConfirm this is your email so you can pair your children's devices with eGuard:\n\n${link}\n\nThe link works once and expires in ${LINK_HOURS} hours. If you didn't create an eGuard account, you can ignore this email.\n\n— eGuard`,
+      html: `<p>Hi ${escapeHtml(first)},</p><p>Confirm this is your email so you can pair your children's devices with eGuard.</p>`
+        + `<p><a href="${link}" style="display:inline-block;padding:12px 20px;border-radius:10px;background:#1a73e8;color:#fff;text-decoration:none;font-weight:600">Verify my email</a></p>`
+        + `<p style="color:#555;font-size:13px">Or paste this link into your browser:<br>${link}</p>`
+        + `<p style="color:#555;font-size:13px">The link works once and expires in ${LINK_HOURS} hours. If you didn't create an eGuard account, you can ignore this email.</p>`,
+    });
+  } catch (e) {
+    // Drop the unsent link so it doesn't trip the resend throttle, and keep any earlier link working
+    await db.emailVerification.delete({ where: { id: created.id } }).catch(() => {});
+    console.error("[mail] verification email failed", e);
+    throw new ServiceError(503, "We couldn't send the email right now. Please try again in a few minutes.", "mail_failed");
+  }
+  // Only the newest link works once it has actually been sent
+  await db.emailVerification.deleteMany({ where: { userId, id: { not: created.id } } });
   return true;
 }
 
 /** For after(): a failed send mustn't fail sign-up, since the parent can ask for a new link. */
 export const sendVerificationEmailQuietly = (userId: string) =>
-  sendVerificationEmail(userId).catch((e) => console.error("[mail] verification email failed", e));
+  sendVerificationEmail(userId).catch((e) => {
+    if (!(e instanceof ServiceError && e.code === "mail_failed")) console.error("[mail] verification email failed", e);
+  });
 
 export type VerifyResult = "verified" | "expired" | "invalid";
 
