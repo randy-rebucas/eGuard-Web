@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { getUser } from "@/lib/auth";
 import { LogoMark } from "@/components/logo";
+import { PhoneDashboard, PhoneScreenTime } from "@/components/landing-phones";
 import "./landing.css";
 
 import heroBackground from "../../public/landing/hero-background.jpg";
@@ -14,8 +15,6 @@ import heroFamily from "../../public/landing/hero-family.jpg";
 import digitalHabits from "../../public/landing/digital-habits.jpg";
 import familySunset from "../../public/landing/family-sunset.jpg";
 import ctaFamily from "../../public/landing/cta-family.jpg";
-import phoneDashboard from "../../public/landing/phone-dashboard.png";
-import phoneScreentime from "../../public/landing/phone-screentime.png";
 import appStore from "../../public/landing/app-store.png";
 import googlePlay from "../../public/landing/google-play.png";
 import avatar1 from "../../public/landing/avatar-1.png";
@@ -278,9 +277,9 @@ export default async function Home() {
                 ))}
               </div>
             </div>
-            <div className="lp-phones">
-              <Image src={phoneDashboard} alt="eGuard app home screen showing a family protection score of 8 out of 10" sizes="250px" />
-              <Image src={phoneScreentime} alt="eGuard screen time view showing 2 hours 14 minutes used today" sizes="250px" />
+            <div className="lp-phones" role="region" aria-label="eGuard app screens" tabIndex={0}>
+              <PhoneDashboard />
+              <PhoneScreenTime />
             </div>
           </div>
         </section>

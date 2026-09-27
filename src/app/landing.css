@@ -67,14 +67,15 @@
 /* ---------- Hero ---------- */
 .lp-hero{position:relative; margin-top:-76px; padding-top:76px; isolation:isolate; overflow:hidden}
 .lp-hero-bg{position:absolute; inset:0; z-index:-3}
-.lp-hero-bg img{object-fit:cover; object-position:70% 40%}
+.lp-hero-bg img{object-fit:cover; object-position:60% 30%}
 .lp-hero::before{content:""; position:absolute; inset:0; z-index:-2; pointer-events:none;
   background:linear-gradient(90deg, rgba(246,250,255,.97) 0%, rgba(246,250,255,.9) 34%, rgba(246,250,255,.35) 58%, rgba(246,250,255,0) 78%),
              linear-gradient(0deg, rgba(246,250,255,1) 0%, rgba(246,250,255,0) 18%)}
-.lp-hero-family{position:absolute; right:0; bottom:0; width:min(60%, 980px); aspect-ratio:1.3; max-height:84%; z-index:-1;
+/* Aspect matches the photo (uncropped) so mother + daughter land in the gap left of the stat cards. */
+.lp-hero-family{position:absolute; right:0; bottom:0; width:min(60%, 980px); aspect-ratio:1.79; max-height:84%; z-index:-1;
   -webkit-mask-image:linear-gradient(90deg, transparent 0%, #000 24%), linear-gradient(180deg, transparent 0%, #000 16%, #000 86%, transparent 100%);
   -webkit-mask-composite:source-in; mask-image:linear-gradient(90deg, transparent 0%, #000 24%), linear-gradient(180deg, transparent 0%, #000 16%, #000 86%, transparent 100%); mask-composite:intersect}
-.lp-hero-family img{object-fit:cover; object-position:40% 40%}
+.lp-hero-family img{object-fit:cover; object-position:50% 50%}
 .lp-hero .lp-wrap{position:static; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:32px; padding-top:44px; padding-bottom:72px; min-height:760px}
 .lp-hero-copy{display:flex; flex-direction:column; align-items:flex-start; gap:22px; max-width:620px}
 .lp-hero h1{font-size:clamp(38px, 4.1vw, 58px); line-height:1.04; letter-spacing:-.035em}
@@ -142,16 +143,82 @@
 .lp-feature h3{font-size:16.5px; font-weight:600; letter-spacing:-.01em; line-height:1.3}
 .lp-feature p{font-size:14px; color:var(--ink-3); margin-top:8px; line-height:1.5}
 .lp-phones{position:relative; display:flex; justify-content:center; align-self:start; gap:0; margin-bottom:-170px; filter:drop-shadow(0 30px 40px rgba(15,60,130,.28))}
-.lp-phones img{width:min(50%, 224px); height:auto}
-.lp-phones img:first-child{position:relative; z-index:2; transform:translateY(10px)}
-.lp-phones img:last-child{margin-left:-10px; transform:translateY(-8px)}
+.lp-phones:focus-visible{outline:2px solid var(--blue); outline-offset:6px; border-radius:16px}
+.lp-phone{container-type:inline-size; flex:none; width:min(50%, 232px)}
+.lp-phone:first-child{position:relative; z-index:2; transform:translateY(10px)}
+.lp-phone:last-child{margin-left:-10px; transform:translateY(-8px)}
+
+/* Phone mockups (src/components/landing-phones.tsx). 1em = 1/20 of the phone's width. */
+.ph{font-size:5cqw; line-height:1.3; color:var(--ink); aspect-ratio:9/19.3; padding:.5em; border-radius:3.4em;
+  background:linear-gradient(145deg, #34435C, #0B1422 60%); box-shadow:inset 0 0 0 .12em #5A6982, inset 0 0 0 .32em #0B1422}
+:where(.ph) p{margin:0}
+.ph .lucide{width:1.4em; height:1.4em}
+.ph-screen{position:relative; height:100%; border-radius:2.95em; overflow:hidden; display:flex; flex-direction:column; background:#F7FAFE}
+.ph-screen:has(.ph-home){background:linear-gradient(180deg, #D5EAFF 0%, #EAF4FF 32%, #F7FBFF 58%)}
+.ph-screen::after{content:""; position:absolute; bottom:.55em; left:50%; translate:-50% 0; width:7em; height:.3em; border-radius:1em; background:#0B1422}
+.ph-status{position:relative; flex:none; display:flex; align-items:center; justify-content:space-between; height:3em; padding:0 1.6em 0 2.1em; font-size:.95em; font-weight:600}
+.ph-island{position:absolute; left:50%; top:.65em; translate:-50% 0; width:6.6em; height:1.9em; border-radius:1em; background:#0B1422}
+.ph-status-icons{display:flex; gap:.3em}
+.ph-status .lucide{width:1.15em; height:1.15em; stroke-width:2.4}
+.ph-body{flex:1; min-height:0; display:flex; flex-direction:column; padding:.3em 1.4em 0}
+.ph-top{display:flex; align-items:center; justify-content:space-between; margin-bottom:1em}
+.ph-logo{display:flex; align-items:center; gap:.3em; font-family:var(--display); font-size:1.25em; letter-spacing:-.02em}
+.ph-logo .brand-mark{width:1.5em !important; height:1.5em !important}
+.ph-me{width:2.4em; height:2.4em; border-radius:50%; display:grid; place-items:center; background:linear-gradient(135deg, #FFC99A, #EE8A6A); color:#fff; font-weight:700; border:.15em solid #fff; box-shadow:0 .2em .6em rgba(11,35,72,.15)}
+.ph-hello{font-size:1.2em; font-weight:600; color:var(--ink-2)}
+.ph-name{font-family:var(--display); font-size:2.1em; font-weight:700; letter-spacing:-.03em; line-height:1.1}
+.ph-lede{margin-top:.4em; color:var(--ink-3); max-width:15em}
+.ph-card{background:#fff; border:1px solid #EAF1FA; border-radius:1.2em; box-shadow:0 .1em .3em rgba(11,35,72,.05), 0 .8em 1.6em -1em rgba(20,80,160,.28)}
+.ph-score{margin-top:1.2em; padding:1.1em 1.1em 1em}
+.ph-score-row{display:flex; align-items:center; gap:1em}
+.ph-score svg{flex:none; width:3.3em; height:3.7em}
+.ph-score small{display:block; font-size:.9em; font-weight:600; color:var(--ink-2)}
+.ph-score b{display:block; font-family:var(--display); font-size:2em; letter-spacing:-.02em; line-height:1.15}
+.ph-score em{font-style:normal; font-size:.9em; font-weight:600; color:var(--ok)}
+.ph-meter{height:.55em; margin-top:.9em; border-radius:1em; background:#E3ECF6; overflow:hidden}
+.ph-meter span{display:block; width:80%; height:100%; border-radius:inherit; background:linear-gradient(90deg, #1FC47A, #14A866)}
+.ph-h{margin-top:1em; font-family:var(--display); font-size:1.2em; font-weight:700; letter-spacing:-.01em}
+.ph-kids{list-style:none; margin:.7em 0 0; padding:0; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.6em; text-align:center}
+.ph-kids img{display:block; width:4em; height:4em; margin:0 auto .4em; border-radius:50%; border:.2em solid #fff; box-shadow:0 .3em .8em -.2em rgba(11,35,72,.3)}
+.ph-kids b{display:block; font-weight:600}
+.ph-kids span{font-size:.85em; font-weight:600}
+.ph-kids .ok{color:var(--ok)}
+.ph-kids .warn{color:#EE8200}
+.ph-tabs{margin:auto -1.4em 0; display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); padding:.7em .3em 1.7em; background:rgba(255,255,255,.92); border-top:1px solid #E7EEF7}
+.ph-tabs span{display:flex; flex-direction:column; align-items:center; gap:.25em; font-size:.72em; font-weight:500; color:#8A9BB5}
+.ph-tabs .lucide{width:1.9em; height:1.9em}
+.ph-tabs .on{color:var(--blue-2)}
+.ph-bar-title{display:grid; grid-template-columns:2em 1fr 2em; align-items:center; margin-bottom:.9em; text-align:center}
+.ph-bar-title b{font-family:var(--display); font-size:1.2em}
+.ph-seg{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.4em}
+.ph-seg span{height:2.4em; display:grid; place-items:center; border-radius:.8em; background:#EEF3F9; font-size:.95em; font-weight:500; color:var(--ink-2)}
+.ph-seg .on{background:#DCEBFF; color:var(--blue-2); font-weight:600}
+.ph-ring{position:relative; width:9.4em; aspect-ratio:1; margin:1.1em auto 0}
+.ph-ring svg{display:block; width:100%; height:100%}
+.ph-ring div{position:absolute; inset:0; display:grid; place-content:center; text-align:center}
+.ph-ring b{font-family:var(--display); font-size:2em; letter-spacing:-.03em; line-height:1.1}
+.ph-ring span{font-size:.95em; color:var(--ink-3)}
+.ph-chart{margin-top:1.1em}
+.ph-bars{display:flex; align-items:flex-end; gap:.3em; height:5em; border-bottom:1px solid #DCE6F2;
+  background:repeating-linear-gradient(0deg, transparent 0 calc(33.33% - 1px), #EDF2F8 calc(33.33% - 1px) 33.33%)}
+.ph-bars span{flex:1; border-radius:.3em .3em .1em .1em; background:#C4E0FF}
+.ph-bars .hi{background:linear-gradient(180deg, #1A8CFF, #5BC2FF)}
+.ph-axis{display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); margin-top:.35em; font-size:.75em; color:var(--ink-3)}
+.ph-apps{list-style:none; margin:.6em 0 0; padding:0; display:flex; flex-direction:column; gap:.6em}
+.ph-apps li{display:grid; grid-template-columns:2.2em minmax(0,1fr) 4.2em 2.2em; align-items:center; gap:.7em}
+.ph-apps i{width:2.2em; height:2.2em; border-radius:.6em; display:grid; place-items:center; color:#fff}
+.ph-apps i .lucide{width:1.2em; height:1.2em}
+.ph-apps b{font-weight:600}
+.ph-track{height:.45em; border-radius:1em; background:#E6F0FB; overflow:hidden}
+.ph-track span{display:block; height:100%; border-radius:inherit; background:linear-gradient(90deg, #1A8CFF, #5BC2FF)}
+.ph-apps em{font-style:normal; font-size:.95em; font-weight:600; text-align:right; color:var(--ink-2)}
 
 /* ---------- Healthy habits ---------- */
 .lp-habits{position:relative; margin-top:56px; isolation:isolate}
 .lp-habits-img{position:absolute; left:0; top:50%; translate:0 -50%; width:60%; aspect-ratio:1.75; max-height:100%; z-index:-1;
   -webkit-mask-image:linear-gradient(90deg, #000 60%, transparent 100%), linear-gradient(180deg, transparent 0%, #000 10%, #000 88%, transparent 100%);
   -webkit-mask-composite:source-in; mask-image:linear-gradient(90deg, #000 60%, transparent 100%), linear-gradient(180deg, transparent 0%, #000 10%, #000 88%, transparent 100%); mask-composite:intersect}
-.lp-habits-img img{object-fit:cover; object-position:50% 40%}
+.lp-habits-img img{object-fit:cover; object-position:30% 35%}
 .lp-habits::after{content:""; position:absolute; inset:0; z-index:-2; background:linear-gradient(90deg, #F6FAFF, #EDF5FF)}
 .lp-habits .lp-wrap{display:grid; grid-template-columns:minmax(0,1.1fr) minmax(0,1fr); min-height:560px}
 .lp-habits-copy{grid-column:2; padding:190px 0 64px 24px}
@@ -189,7 +256,7 @@
 .lp-purpose{background:linear-gradient(90deg, #F6FAFF, #E6F1FF)}
 .lp-purpose-img{position:absolute; left:0; top:0; bottom:0; width:66%; z-index:-1;
   -webkit-mask-image:linear-gradient(90deg, #000 80%, transparent 100%); mask-image:linear-gradient(90deg, #000 80%, transparent 100%)}
-.lp-purpose-img img{object-fit:cover; object-position:100% 50%}
+.lp-purpose-img img{object-fit:cover; object-position:50% 62%}
 .lp-purpose .lp-wrap{display:flex; justify-content:flex-end; padding-top:28px; padding-bottom:28px}
 .lp-purpose-card{max-width:520px; padding:26px 34px 30px; border-radius:20px}
 .lp-purpose-card h2{font-size:clamp(26px, 2.6vw, 32px); line-height:1.18; margin-top:18px}
@@ -233,7 +300,7 @@
   background:linear-gradient(100deg, #1478F0 0%, #2A95FF 45%, #69B8FF 70%, #B9DCFF 100%); box-shadow:0 30px 60px -30px rgba(16,110,230,.6)}
 .lp-cta-img{position:absolute; right:0; top:0; bottom:0; width:56%; z-index:-1;
   -webkit-mask-image:linear-gradient(90deg, transparent 0%, #000 34%); mask-image:linear-gradient(90deg, transparent 0%, #000 34%)}
-.lp-cta-img img{object-fit:cover; object-position:60% 30%}
+.lp-cta-img img{object-fit:cover; object-position:55% 40%}
 .lp-cta h2{color:#fff; font-size:clamp(26px, 3vw, 36px); line-height:1.18; max-width:18em}
 .lp-cta p{color:rgba(255,255,255,.88); font-size:17px}
 .lp-cta .lp-hero-actions{margin-top:8px}
@@ -282,7 +349,7 @@
   .lp-habits-img{position:relative; top:auto; translate:none; width:100%; max-height:none; aspect-ratio:1.6; -webkit-mask-image:linear-gradient(0deg, transparent 0%, #000 22%); mask-image:linear-gradient(0deg, transparent 0%, #000 22%)}
   .lp-habits-copy{grid-column:1; padding:0 0 56px}
   .lp-purpose{flex-direction:column; align-items:stretch}
-  .lp-purpose-img{position:relative; width:100%; aspect-ratio:2.4; -webkit-mask-image:none; mask-image:none}
+  .lp-purpose-img{position:relative; width:100%; aspect-ratio:2; -webkit-mask-image:none; mask-image:none}
   .lp-purpose::after{display:none}
   .lp-purpose .lp-wrap{margin-top:-80px; justify-content:center}
   .lp-plans{grid-template-columns:minmax(0,1fr); max-width:480px}
@@ -308,8 +375,20 @@
   .lp-feature{padding:18px 16px}
   .lp-steps{grid-template-columns:minmax(0,1fr); gap:28px}
   .lp-step:not(:last-child)::after{top:auto; bottom:-26px; right:auto; left:44px; width:0; height:24px; border-top:0; border-left:2px dotted #A9CCF2; display:block}
+  .lp-hero-family img{object-position:50% 40%}
+  /* Phones become a swipeable row at readable size instead of two shrunken, overlapping screens. */
+  .lp-phones{justify-content:safe center; gap:16px; max-width:none; margin-inline:calc(-1 * var(--gutter)); padding:8px var(--gutter) 36px;
+    overflow-x:auto; scroll-snap-type:x mandatory; scroll-padding-inline:var(--gutter); scrollbar-width:none; filter:none}
+  .lp-phones::-webkit-scrollbar{display:none}
+  .lp-phone{width:min(68vw, 270px); scroll-snap-align:center; filter:drop-shadow(0 20px 24px rgba(15,60,130,.26))}
+  .lp-phone:first-child,.lp-phone:last-child{transform:none; margin-left:0}
+  .lp-habits-img{aspect-ratio:1.3}
+  .lp-purpose-img{aspect-ratio:1.5}
   .lp-purpose-card{padding:24px 22px}
   .lp-cta-box{padding:32px 24px}
+  /* CTA photo as a real banner that fades into the blue, not a 35%-opacity wash behind the text. */
+  .lp-cta-img{position:relative; width:auto; aspect-ratio:16/10; margin:-32px -24px 4px; opacity:1;
+    -webkit-mask-image:linear-gradient(0deg, transparent 0%, #000 45%); mask-image:linear-gradient(0deg, transparent 0%, #000 45%)}
   .lp-foot-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
   .lp-foot-grid > :first-child{grid-column:1 / -1}
 }
