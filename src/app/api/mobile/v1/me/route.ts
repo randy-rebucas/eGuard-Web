@@ -1,5 +1,5 @@
-import { NextResponse, after } from "next/server";
-import { sendVerificationEmailQuietly } from "@/lib/email-verification";
+import { NextResponse } from "next/server";
+import { sendVerificationEmailLater } from "@/lib/email-verification";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { changeEmail, deleteAccount } from "@/lib/family-service";
@@ -27,7 +27,7 @@ export const PATCH = authed(async ({ req, user }) => {
   const b = await body(req, Body);
   const emailChanged = b.email ? await changeEmail(user, b.email, b.password ?? "") : false;
   if (b.name) await db.user.update({ where: { id: user.id }, data: { name: b.name } });
-  if (emailChanged) after(() => sendVerificationEmailQuietly(user.id));
+  if (emailChanged) await sendVerificationEmailLater(user.id);
   if (b.timezone && user.role === "FAMILY_ADMIN") await db.family.update({ where: { id: user.familyId }, data: { timezone: b.timezone } });
   return NextResponse.json(await meJson(user.id));
 });

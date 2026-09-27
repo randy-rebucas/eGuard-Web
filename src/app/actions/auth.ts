@@ -7,7 +7,7 @@ import { z } from "zod";
 import { authenticate, createSession, destroySession, hashPassword, requireUser } from "@/lib/auth";
 import { LIMITS, clientIpFrom, enforce, hit, ipKey } from "@/lib/rate-limit";
 import { requestPasswordResetQuietly, resetPassword } from "@/lib/password-reset";
-import { type VerifyResult, sendVerificationEmail, sendVerificationEmailQuietly, verifyEmailToken } from "@/lib/email-verification";
+import { type VerifyResult, sendVerificationEmail, sendVerificationEmailLater, verifyEmailToken } from "@/lib/email-verification";
 import { ServiceError } from "@/lib/errors";
 import { RegisterSchema, createFamily } from "@/lib/family-service";
 
@@ -44,7 +44,7 @@ export async function register(_: FormState, form: FormData): Promise<FormState>
     if (e instanceof ServiceError) return { error: e.message, fields };
     throw e;
   }
-  after(() => sendVerificationEmailQuietly(userId));
+  await sendVerificationEmailLater(userId);
   await createSession(userId);
   redirect("/dashboard");
 }

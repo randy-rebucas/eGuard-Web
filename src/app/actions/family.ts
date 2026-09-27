@@ -3,12 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
-import { after } from "next/server";
 import { z } from "zod";
 import type { AppApproval } from "@prisma/client";
 import { db } from "@/lib/db";
 import { clearSessionCookie, requireAdmin, requireUser } from "@/lib/auth";
-import { sendVerificationEmailQuietly } from "@/lib/email-verification";
+import { sendVerificationEmailLater } from "@/lib/email-verification";
 import { ServiceError } from "@/lib/errors";
 import * as family from "@/lib/family-service";
 import type { FormState } from "./auth";
@@ -136,7 +135,7 @@ export async function updateAccount(_: FormState, form: FormData): Promise<FormS
     return failed(e);
   }
   await db.user.update({ where: { id: u.id }, data: { name: parsed.data.name } });
-  if (emailChanged) after(() => sendVerificationEmailQuietly(u.id));
+  if (emailChanged) await sendVerificationEmailLater(u.id);
   if (u.role === "FAMILY_ADMIN") await db.family.update({ where: { id: u.familyId }, data: { timezone: parsed.data.timezone } });
   revalidatePath("/", "layout");
   return { ok: emailChanged ? "Saved. Open the link we sent to your new email to verify it." : "Account details saved." };
@@ -191,7 +190,7 @@ export async function addParent(_: FormState, form: FormData): Promise<FormState
   } catch (e) {
     return failed(e);
   }
-  after(() => sendVerificationEmailQuietly(parentId));
+  await sendVerificationEmailLater(parentId);
   revalidatePath("/settings/family");
   return { ok: `${parsed.data.name} can now sign in with the temporary password. Ask them to change it.` };
 }

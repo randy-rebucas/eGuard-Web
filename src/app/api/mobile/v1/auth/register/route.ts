@@ -1,6 +1,5 @@
-import { after } from "next/server";
 import { hashPassword } from "@/lib/auth";
-import { sendVerificationEmailQuietly } from "@/lib/email-verification";
+import { sendVerificationEmailLater } from "@/lib/email-verification";
 import { RegisterSchema, createFamily } from "@/lib/family-service";
 import { clientIp, defaultFamilyName, sessionResponse } from "@/lib/mobile-account";
 import { body, open } from "@/lib/mobile-api";
@@ -15,6 +14,6 @@ export const POST = open(async ({ req }) => {
   const user = await createFamily({
     name: b.name, email: b.email, familyName: b.familyName ?? defaultFamilyName(b.name), passwordHash: await hashPassword(b.password),
   });
-  after(() => sendVerificationEmailQuietly(user.id));
+  await sendVerificationEmailLater(user.id);
   return sessionResponse(req, user.id, 201);
 });
