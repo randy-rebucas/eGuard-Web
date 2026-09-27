@@ -112,6 +112,8 @@ model Family {
   pairingCodes PairingCode[]
   checkRuns    CheckRun[]
   auditLogs    AuditLog[]
+  purchases    StorePurchase[]
+  supportTickets SupportTicket[]
 }
 
 model User {
@@ -133,6 +135,70 @@ model User {
 
   sessions Session[]
   readAlerts AlertRead[]
+  identities OAuthIdentity[]
+  pushTokens PushToken[]
+  supportTickets SupportTicket[]
+}
+
+/// Sign in with Apple / Google. `subject` is the provider's stable user id.
+model OAuthIdentity {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider  String
+  subject   String
+  email     String?
+  createdAt DateTime @default(now())
+
+  @@unique([provider, subject])
+  @@index([userId])
+}
+
+/// APNs/FCM tokens for the parent's own phone (delivery provider not wired yet).
+model PushToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  platform  Platform
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+/// An in-app subscription purchase, verified with the store. One purchase token belongs to one family.
+model StorePurchase {
+  id            String   @id @default(cuid())
+  familyId      String
+  family        Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  store         String   // "GOOGLE_PLAY"
+  productId     String
+  purchaseToken String   @unique
+  /// store state, e.g. SUBSCRIPTION_STATE_ACTIVE; REPLACED when a newer purchase supersedes it
+  state         String
+  autoRenewing  Boolean  @default(false)
+  expiresAt     DateTime?
+  checkedAt     DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([familyId])
+}
+
+model SupportTicket {
+  id        String   @id @default(cuid())
+  familyId  String
+  family    Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  category  String
+  subject   String
+  message   String
+  status    String   @default("OPEN")
+  createdAt DateTime @default(now())
+
+  @@index([familyId, createdAt])
 }
 
 model Session {
@@ -181,6 +247,17 @@ model Child {
   changes    ConfigChange[]
   requests   ConfigRequest[]
   alerts     Alert[]
+  photo      ChildPhoto?
+  visits     LocationVisit[]
+}
+
+/// Profile photo, kept out of Child so ordinary queries don't load the bytes.
+model ChildPhoto {
+  childId     String   @id
+  child       Child    @relation(fields: [childId], references: [id], onDelete: Cascade)
+  contentType String
+  data        Bytes
+  updatedAt   DateTime @updatedAt
 }
 
 /// Desired configuration per child and protection (what the parent asked for).
@@ -222,6 +299,7 @@ model Device {
   location    DeviceLocation?
   usage       ScreenTimeDaily[]
   checkResults CheckRunResult[]
+  visits      LocationVisit[]
 }
 
 /// Verified state per device and protection (what the device reported).
@@ -251,6 +329,23 @@ model DeviceLocation {
   updatedAt  DateTime @updatedAt
 }
 
+/// Places a device stayed at. Only written when the family turns on location history.
+model LocationVisit {
+  id         String   @id @default(cuid())
+  deviceId   String
+  device     Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  childId    String
+  child      Child    @relation(fields: [childId], references: [id], onDelete: Cascade)
+  lat        Float
+  lng        Float
+  placeLabel String?
+  arrivedAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  @@index([childId, arrivedAt])
+  @@index([deviceId, arrivedAt])
+}
+
 model PairingCode {
   id        String   @id @default(cuid())
   familyId  String
@@ -272,6 +367,8 @@ model ScreenTimeDaily {
   device   Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
   date     DateTime @db.Date
   minutes  Int
+  /// 24 per-hour totals in the family's timezone, when the device sends them
+  hourly   Int[]    @default([])
 
   @@unique([deviceId, date])
   @@index([childId, date])

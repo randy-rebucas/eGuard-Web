@@ -7,6 +7,8 @@ import { db } from "@/lib/db";
 import {
   clearLoginFailures, createSession, destroySession, hashPassword, loginRateLimited, noteLoginFailure, verifyPassword,
 } from "@/lib/auth";
+import { ServiceError } from "@/lib/errors";
+import { RegisterSchema, createFamily } from "@/lib/family-service";
 
 export type FormState = { error?: string; ok?: string; fields?: Record<string, string> } | undefined;
 
@@ -30,30 +32,19 @@ export async function login(_: FormState, form: FormData): Promise<FormState> {
   redirect("/dashboard");
 }
 
-const RegisterSchema = z.object({
-  name: z.string().trim().min(2, "Enter your name."),
-  familyName: z.string().trim().min(2, "Enter a family name."),
-  email: z.string().trim().toLowerCase().email("Enter a valid email address."),
-  password: z.string().min(10, "Use at least 10 characters for your password."),
-});
-
 export async function register(_: FormState, form: FormData): Promise<FormState> {
   const raw = Object.fromEntries(["name", "familyName", "email", "password"].map((k) => [k, String(form.get(k) ?? "")]));
   const parsed = RegisterSchema.safeParse(raw);
   const fields = { name: raw.name, familyName: raw.familyName, email: raw.email };
   if (!parsed.success) return { error: parsed.error.issues[0].message, fields };
-  if (await db.user.findUnique({ where: { email: parsed.data.email } })) {
-    return { error: "An account with this email already exists. Sign in instead.", fields };
+  let userId: string;
+  try {
+    userId = (await createFamily({ ...parsed.data, passwordHash: await hashPassword(parsed.data.password) })).id;
+  } catch (e) {
+    if (e instanceof ServiceError) return { error: e.message, fields };
+    throw e;
   }
-  const renews = new Date(); renews.setMonth(renews.getMonth() + 1);
-  const family = await db.family.create({
-    data: {
-      name: parsed.data.familyName, plan: "eGuard Plus", deviceLimit: 8, renewsAt: renews,
-      users: { create: { name: parsed.data.name, email: parsed.data.email, passwordHash: await hashPassword(parsed.data.password), role: "FAMILY_ADMIN" } },
-    },
-    include: { users: true },
-  });
-  await createSession(family.users[0].id);
+  await createSession(userId);
   redirect("/dashboard");
 }
 

@@ -28,7 +28,8 @@ original dev machine; change `docker-compose.yml` and `DATABASE_URL` together if
 |---|---|
 | `npm run dev` / `build` / `start` | Next.js |
 | `npm run typecheck` | `tsc --noEmit` (run `npx next typegen` first after adding routes) |
-| `npm test` | Vitest unit tests (health scoring, verification rules) |
+| `npm test` | Vitest unit tests (health scoring, verification rules, profiles, social sign-in tokens) |
+| `npm run test:api` | HTTP tests of the parent mobile API against a running server (`API_BASE_URL`, default `http://localhost:3000`). Creates and deletes its own families |
 | `node scripts/e2e-smoke.mjs` | End-to-end smoke test against a running dev server (needs Chrome and the seeded DB). Set `BASE_URL`, `SHOTS` |
 | `npm run db:seed` / `db:reset` | Reseed / reset the database |
 
@@ -101,12 +102,56 @@ All endpoints except `pair` need `Authorization: Bearer <device token>`. Only a 
 | `POST /pair` | `{ code, platform: "ANDROID"\|"IOS", name, model, kind: "PHONE"\|"TABLET", osVersion, appVersion? }` | Exchange a one-time code from the Devices page for `{ deviceId, token }`. Enforces the plan's device limit. |
 | `POST /sync` | `{ battery?, osVersion?, appVersion? }` | Heartbeat. Returns `policy` (all 10 protections), `requests` to apply, `apps` rules, `fullReportRequested`, `nextSyncSeconds`. |
 | `POST /report` | `{ protections: [{ key, config }], full?: boolean }` | The config the device actually has. Send `full: true` with all protections when `fullReportRequested`. |
-| `POST /usage` | `{ date: "YYYY-MM-DD", totalMinutes, apps: [{ name, minutes }] }` | Daily totals. Idempotent: the latest total wins. |
-| `POST /location` | `{ lat, lng, accuracyM?, placeLabel? }` | Current location. Overwrites the last one, no trail. |
-| `POST /events` | `{ type: "APP_INSTALLED", app }` \| `{ type: "APP_REQUESTED", app }` \| `{ type: "LIMIT_REACHED", minutes }` | Raise alerts or approval requests. |
+| `POST /usage` | `{ date: "YYYY-MM-DD", totalMinutes, apps: [{ name, minutes }], hourly?: number[24] }` | Daily totals, optionally per local hour (for the app's hourly chart). Idempotent: the latest total wins. |
+| `POST /location` | `{ lat, lng, accuracyM?, placeLabel? }` | Current location, overwriting the last one. Visits are recorded only when the family turns on location history. |
+| `POST /events` | `{ type: "APP_INSTALLED", app }` \| `{ type: "APP_REQUESTED", app }` \| `{ type: "LIMIT_REACHED", minutes }` \| `{ type: "APP_BLOCKED", app }` | Raise alerts or approval requests. `APP_BLOCKED` (the child tried to open a blocked app) alerts at most once per app per hour. |
 
 Config objects match `ProtectionConfig` in `src/lib/protections.ts`, for example
 `{ "key": "BEDTIME", "config": { "enabled": true, "start": "21:30", "end": "06:00", "days": "EVERY_DAY" } }`.
+
+## Parent mobile API (`/api/mobile/v1`) — for the iOS/Android parent app
+
+Everything the parent app's screens need (see `public/ios.png`). **Full reference for app developers:
+[docs/mobile-api.md](docs/mobile-api.md)**. Sign in returns
+`{ token, expiresAt, user }`; send `Authorization: Bearer <token>` on every other call and keep the token in
+the Keychain. Tokens are ordinary 30-day sessions, so "sign out other sessions" and password changes cover the
+web and phones alike. Send `X-eGuard-Client: ios` or `android` so history reads "Randy Cruz on iOS app".
+Errors are `{ error, code? }` with a message you can show to the parent (`400` invalid, `401` sign in again,
+`403` admin only or wrong password, `404` not in your family, `409` conflict or unsupported, `415`/`413` photo).
+Dates are ISO strings; `…Label` fields are pre-formatted in the family's time zone.
+
+The web server actions and this API share `src/lib/config-service.ts` and `src/lib/family-service.ts`, so both
+follow the same rules. In particular, a change counts only once each device has verified it.
+
+| Screen | Endpoints |
+|---|---|
+| Launch / About | `GET /app-info` (no auth): API version, minimum app version, which sign-in buttons to show |
+| Create account, sign in | `POST /auth/register` `{ name, email, password, familyName? }` · `POST /auth/login` · `POST /auth/social` `{ provider: "apple"\|"google", idToken, name? }` · `POST /auth/logout[?pushToken=]` |
+| Add child | `POST /children` `{ name, age, profile? }` · `PUT /children/{id}/photo` (raw JPEG/PNG/WebP/HEIC body, ≤ 2 MB) · `GET`/`DELETE` the photo |
+| Protection profile | `GET /profiles?age=12`: Balanced / Protected / Custom, with the recommended one flagged |
+| Recommended setup | `GET /children/{id}/recommendations?profile=`: all 10 suggested configs, and how each device applies them |
+| Setup progress | `POST /children/{id}/setup` `{ profile, overrides?: [config] }` → `batchId`; poll `GET /batches/{batchId}`; guided steps: `POST /batches/{id}/confirm`; `DELETE /batches/{id}` cancels |
+| Add a device | `POST /children/{id}/pairing-code`: the child's app exchanges it at `/api/device/v1/pair` |
+| Configuration health | `GET /health[?childId=]`: score, 10 checks, and `toFix` (child and device per failing check) |
+| Dashboard | `GET /dashboard`: greeting, family score, children, recent alerts, unread count |
+| Child profile | `GET`/`PATCH`/`DELETE /children/{id}` (delete: admin, `{ password }`) · `GET /children/{id}/history` |
+| Protection & controls | `GET /children/{id}/protections` · `PUT /children/{id}/protections/{KEY}` with the config fields → batch to poll |
+| Screen time | `GET /children/{id}/screen-time?period=today\|7d\|30d`: total vs limit, daily series, top apps, `hourly[24]` for today |
+| App management | `GET /children/{id}/apps?filter=installed\|blocked\|pending` · `POST /children/{id}/apps` (add ahead of time) · `PATCH /apps/{id}` `{ approval?, dailyLimitMinutes? }` |
+| Location | `GET /children/{id}/location`: current place and, with history on, today's and yesterday's visits · `GET /children/{id}/location/visits` ("View All", paged) · `GET /locations` (all children) |
+| Alerts | `GET /alerts?filter=ALL\|PROTECTION\|APPS\|SCREEN_TIME\|DEVICES\|LOCATION\|SYSTEM&before=` · `GET /alerts/unread-count` · `POST /alerts/{id}/read` · `POST /alerts/read-all` · `POST /alerts/{id}/dismiss` (info only). Each alert has `day` for section headers and a typed `action` |
+| Devices, checks | `GET /devices` · `GET`/`PATCH`/`DELETE /devices/{id}` · `POST /checks` `{ deviceId? }` → poll `GET /checks/{runId}` |
+| Settings | `GET`/`PATCH /me` · `POST /me/password` · `GET`/`PATCH /me/notifications` · `POST`/`DELETE /me/push-tokens` · `GET`/`DELETE /me/sessions` · `GET /family` · `POST /family/members`, `DELETE /family/members/{id}` · `GET`/`PATCH /family/privacy` (admin) |
+| Subscription | `GET /subscription`: plan, renewal, features, devices used of the limit · `GET /subscription/plans` · `POST /subscription/google-play` `{ productId, purchaseToken }` (Android "Upgrade to Family") |
+| Help & support | `GET /help?q=&category=` and `GET /help/{slug}` (no auth) · `GET`/`POST /support/tickets` |
+
+Apple and Google ID tokens are verified against the providers' published keys (`src/lib/social-auth.ts`); set
+`APPLE_CLIENT_IDS` / `GOOGLE_CLIENT_IDS` (see `.env.example`). A new social account creates a family. An
+existing account with the same verified email gets linked.
+
+Google Play subscriptions (`src/lib/google-play.ts`, `src/lib/billing.ts`) are verified with the Play Developer API
+using a service account (`GOOGLE_PLAY_PACKAGE_NAME`, `GOOGLE_PLAY_SERVICE_ACCOUNT`), acknowledged by the server,
+and re-checked when the paid period ends. Plans and product IDs are in `src/lib/plans.ts`.
 
 ## Project layout
 
@@ -123,11 +168,19 @@ scripts/           end-to-end smoke test
 
 ## Not built yet
 
-- **Native Android/iOS apps.** The API contract above is ready for them. Until they exist, the simulator stands in.
-- **Push/email delivery.** Preferences are stored, but no provider (FCM/APNs/SMTP) is wired up.
-- **Billing.** Plan and device limit are enforced, but "Change plan" needs a payment provider.
+- **Native Android/iOS apps.** Both API contracts above are ready for them. Until they exist, the simulator stands in.
+- **Push/email delivery.** Preferences and the parent app's push tokens are stored, but no provider (FCM/APNs/SMTP) is wired up.
+- **"Gaming time"** on the app's Recommended Setup screen. eGuard has per-app limits but no app categories yet, so
+  there's no per-category limit to recommend.
+- **Social accounts and passwords.** Parents who sign up with Apple/Google have no password yet, so they can't
+  change one or confirm deleting a child until "set a password" or a reset flow exists.
+- **Billing on web and iOS.** Android upgrades go through Google Play. The web's "Change plan" and iOS (App Store /
+  StoreKit) purchases aren't built. Play Real-time Developer Notifications aren't wired up either; subscription
+  state is re-checked when a paid period ends.
 - **Two-step verification.** Shown as "Coming soon".
 - **Realtime.** The UI polls (bell every 30s, workflows every ~1s). WebSockets or SSE would replace this.
 - **Family photography.** The hero has a CSS photo slot (`--hero-photo`, see `globals.css`) for licensed images.
-- **Location history** when the privacy toggle is on. Only the current location is stored today.
-- **Data retention job.** The 90-day retention is displayed, but no scheduled deletion job runs yet.
+- **Location history on the web.** Visits are recorded when the privacy toggle is on and shown in the mobile API.
+  The web Location page still shows current locations only.
+- **Data retention job.** The retention period is displayed and applied to location visits as they're written,
+  but no scheduled job deletes other old data yet.

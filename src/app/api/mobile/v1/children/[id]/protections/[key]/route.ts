@@ -1,0 +1,22 @@
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import type { ProtectionConfig } from "@/lib/protections";
+import { PROTECTION_BY_KEY } from "@/lib/protections";
+import { ConfigSchema, batchStatus, requestConfigs } from "@/lib/config-service";
+import { invalid } from "@/lib/errors";
+import { authed, body, clientLabel } from "@/lib/mobile-api";
+
+/**
+ * Change one protection, e.g. PUT /children/{id}/protections/BEDTIME
+ * `{ "enabled": true, "start": "21:30", "end": "06:00", "days": "EVERY_DAY" }`.
+ * Returns the batch to poll; the setting counts only once each device verifies it.
+ */
+export const PUT = authed<{ id: string; key: string }>(async ({ req, user, params }) => {
+  const key = params.key.toUpperCase();
+  if (!(key in PROTECTION_BY_KEY)) throw invalid("Unknown protection.");
+  const raw = await body(req, z.record(z.string(), z.unknown()));
+  const parsed = ConfigSchema.safeParse({ ...raw, key });
+  if (!parsed.success) throw invalid(parsed.error.issues[0].message);
+  const { batchId } = await requestConfigs(user, params.id, [parsed.data as ProtectionConfig], clientLabel(req), { strict: true });
+  return NextResponse.json(await batchStatus(user.familyId, batchId!), { status: 202 });
+});

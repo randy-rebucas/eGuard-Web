@@ -20,13 +20,31 @@ export async function verifyPassword(pw: string, hash: string) {
   return bcrypt.compare(pw, hash);
 }
 
-export async function createSession(userId: string) {
+/** Creates a DB session and returns its raw token. Used by the cookie (web) and bearer (mobile) flows. */
+export async function issueSession(userId: string, userAgent: string | null) {
   const token = newToken();
-  const h = await headers();
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 864e5);
-  await db.session.create({
-    data: { userId, tokenHash: sha256(token), userAgent: h.get("user-agent")?.slice(0, 200) ?? null, expiresAt },
+  const session = await db.session.create({
+    data: { userId, tokenHash: sha256(token), userAgent: userAgent?.slice(0, 200) ?? null, expiresAt },
   });
+  return { token, expiresAt, sessionId: session.id };
+}
+
+/** Resolves a raw session token (cookie or bearer) to the signed-in user. */
+export async function userForToken(token: string): Promise<SessionUser | null> {
+  if (!token) return null;
+  const s = await db.session.findUnique({ where: { tokenHash: sha256(token) }, include: { user: true } });
+  if (!s || s.expiresAt < new Date()) return null;
+  if (Date.now() - s.lastSeenAt.getTime() > 5 * 60_000) {
+    await db.session.update({ where: { id: s.id }, data: { lastSeenAt: new Date() } }).catch(() => {});
+  }
+  const u = s.user;
+  return { id: u.id, name: u.name, email: u.email, role: u.role, familyId: u.familyId, sessionId: s.id };
+}
+
+export async function createSession(userId: string) {
+  const h = await headers();
+  const { token, expiresAt } = await issueSession(userId, h.get("user-agent"));
   const jar = await cookies();
   jar.set(COOKIE, token, {
     httpOnly: true,
@@ -56,14 +74,7 @@ export type SessionUser = {
 /** Current user, or null. Cached per request. */
 export const getUser = cache(async (): Promise<SessionUser | null> => {
   const token = (await cookies()).get(COOKIE)?.value;
-  if (!token) return null;
-  const s = await db.session.findUnique({ where: { tokenHash: sha256(token) }, include: { user: true } });
-  if (!s || s.expiresAt < new Date()) return null;
-  if (Date.now() - s.lastSeenAt.getTime() > 5 * 60_000) {
-    await db.session.update({ where: { id: s.id }, data: { lastSeenAt: new Date() } }).catch(() => {});
-  }
-  const u = s.user;
-  return { id: u.id, name: u.name, email: u.email, role: u.role, familyId: u.familyId, sessionId: s.id };
+  return token ? userForToken(token) : null;
 });
 
 export async function requireUser() {

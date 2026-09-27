@@ -53,6 +53,15 @@ const KIDS: Kid[] = [
   },
 ];
 
+/** Splits a day's minutes over 7 AM – 9 PM, heavier after school. Sums to `total`. */
+function spreadOverDay(total: number) {
+  const weights = Array.from({ length: 24 }, (_, h): number => (h < 7 || h > 21 ? 0 : h >= 16 ? 3 : h >= 12 ? 1 : 2));
+  const sum = weights.reduce((a, b) => a + b, 0);
+  const out = weights.map((w) => Math.floor((total * w) / sum));
+  out[19] += total - out.reduce((a, b) => a + b, 0);
+  return out;
+}
+
 function strip(c: ProtectionConfig) {
   const { key: _k, ...rest } = c;
   return rest;
@@ -135,8 +144,11 @@ async function main() {
       const total = series[i];
       const devs = ids[k.name].devices;
       const share = devs.length > 1 && !(k.name === "Lucas" && i >= 11) ? 0.8 : 1; // Lucas's tablet offline since 3 days
-      await db.screenTimeDaily.create({ data: { childId: child.id, deviceId: devs[0], date, minutes: Math.round(total * share) } });
-      if (share < 1) await db.screenTimeDaily.create({ data: { childId: child.id, deviceId: devs[1], date, minutes: total - Math.round(total * share) } });
+      const main = Math.round(total * share), rest = total - main;
+      // Today's rows carry an hourly breakdown (for the app's Screen Time chart)
+      const hourly = (m: number) => (i === 13 ? spreadOverDay(m) : []);
+      await db.screenTimeDaily.create({ data: { childId: child.id, deviceId: devs[0], date, minutes: main, hourly: hourly(main) } });
+      if (share < 1) await db.screenTimeDaily.create({ data: { childId: child.id, deviceId: devs[1], date, minutes: rest, hourly: hourly(rest) } });
       for (const [app, m] of k.todayApps) {
         await db.appUsageDaily.create({ data: { childId: child.id, date, app, minutes: Math.round((m / todayTotal) * total) } });
       }

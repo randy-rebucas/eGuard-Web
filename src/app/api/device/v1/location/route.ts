@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { recordLocation } from "@/lib/location";
 import { authDevice, badRequest, readJson, unauthorized } from "@/lib/device-auth";
 
 const Body = z.object({
@@ -10,18 +11,16 @@ const Body = z.object({
   placeLabel: z.string().max(80).optional(),
 });
 
-/** Current location only. eGuard overwrites the previous value and keeps no trail. */
+/**
+ * Current location. eGuard overwrites the previous value; it only keeps a trail of visits
+ * when the family has turned on location history in Privacy settings.
+ */
 export async function POST(req: Request) {
   const device = await authDevice(req);
   if (!device) return unauthorized();
   const parsed = Body.safeParse(await readJson(req));
   if (!parsed.success) return badRequest(parsed.error.issues[0].message);
-  const b = parsed.data;
-  await db.deviceLocation.upsert({
-    where: { deviceId: device.id },
-    create: { deviceId: device.id, sharing: true, locatedAt: new Date(), ...b },
-    update: { sharing: true, locatedAt: new Date(), ...b },
-  });
+  await recordLocation(device, parsed.data);
   await db.device.update({ where: { id: device.id }, data: { lastSeenAt: new Date() } });
   return NextResponse.json({ ok: true });
 }

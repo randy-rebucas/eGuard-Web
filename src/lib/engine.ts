@@ -93,6 +93,7 @@ export async function processReport(deviceId: string, report: DeviceReport) {
           create: { childId: device.childId, key: rp.key, config: req.desired as Prisma.InputJsonValue },
           update: { config: req.desired as Prisma.InputJsonValue },
         });
+        await syncChildLimits(device.childId, req.desired);
         const from = describeConfig(req.previous), to = describeConfig(req.desired);
         await db.configChange.create({
           data: {
@@ -176,7 +177,14 @@ export async function processReport(deviceId: string, report: DeviceReport) {
   return { ok: true };
 }
 
-const rpHasLocation = (r: DeviceReport) => r.protections.some((p) => p.key === "LOCATION");
+/** Child.dailyLimitMinutes mirrors the Screen Time policy for quick display. */
+export async function syncChildLimits(childId: string, cfg: unknown) {
+  const c = cfg as { key?: string; dailyMinutes?: number; weekendMinutes?: number } | null;
+  if (c?.key !== "SCREEN_TIME" || typeof c.dailyMinutes !== "number") return;
+  await db.child.update({ where: { id: childId }, data: { dailyLimitMinutes: c.dailyMinutes, weekendLimitMinutes: c.weekendMinutes ?? c.dailyMinutes } });
+}
+
+const rpHasLocation =(r: DeviceReport) => r.protections.some((p) => p.key === "LOCATION");
 
 export async function resolveAlerts(familyId: string, resolveKey: string) {
   await db.alert.updateMany({ where: { familyId, resolveKey, resolvedAt: null }, data: { resolvedAt: new Date() } });

@@ -8,7 +8,11 @@ const Body = z.discriminatedUnion("type", [
   z.object({ type: z.literal("APP_INSTALLED"), app: z.string().min(1).max(80), ageRating: z.number().int().optional() }),
   z.object({ type: z.literal("APP_REQUESTED"), app: z.string().min(1).max(80) }),
   z.object({ type: z.literal("LIMIT_REACHED"), minutes: z.number().int().min(0) }),
+  z.object({ type: z.literal("APP_BLOCKED"), app: z.string().min(1).max(80) }),
 ]);
+
+/** Repeated attempts to open the same blocked app raise one alert per this window. */
+const BLOCKED_ALERT_WINDOW_MS = 60 * 60_000;
 
 /** Notable things that happened on the device. Protection changes are detected from /report instead. */
 export async function POST(req: Request) {
@@ -36,6 +40,14 @@ export async function POST(req: Request) {
     });
     await db.alert.create({ data: { ...base, severity: "ATTENTION", category: "APPS", icon: "app-window", title: "App approval requested",
       body: `${device.child.name} asked to install ${e.app}.`, subject: `${e.app} · ${who}`, resolveKey: `APPREQ:${device.childId}:${e.app}` } });
+  } else if (e.type === "APP_BLOCKED") {
+    const recent = await db.alert.findFirst({
+      where: { ...base, title: "App blocked", subject: `${e.app} · ${who}`, createdAt: { gt: new Date(Date.now() - BLOCKED_ALERT_WINDOW_MS) } },
+    });
+    if (!recent) {
+      await db.alert.create({ data: { ...base, severity: "INFO", category: "APPS", icon: "ban", title: "App blocked",
+        body: `${device.child.name} tried to open ${e.app}, which is blocked.`, subject: `${e.app} · ${who}` } });
+    }
   } else {
     await db.alert.create({ data: { ...base, severity: "INFO", category: "SCREEN_TIME", icon: "hourglass", title: "Screen time limit reached",
       body: `${device.child.name} reached the ${fmtMinutes(e.minutes)} daily limit. Apps were paused as scheduled.`, subject: who } });
