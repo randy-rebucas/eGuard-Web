@@ -2,11 +2,13 @@
 
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
+import { after } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import {
-  clearLoginFailures, createSession, destroySession, hashPassword, loginRateLimited, noteLoginFailure, verifyPassword,
+  clearLoginFailures, createSession, destroySession, hashPassword, loginRateLimited, noteLoginFailure, requireUser, verifyPassword,
 } from "@/lib/auth";
+import { type VerifyResult, sendVerificationEmail, sendVerificationEmailQuietly, verifyEmailToken } from "@/lib/email-verification";
 import { ServiceError } from "@/lib/errors";
 import { RegisterSchema, createFamily } from "@/lib/family-service";
 
@@ -34,8 +36,9 @@ export async function login(_: FormState, form: FormData): Promise<FormState> {
 
 export async function register(_: FormState, form: FormData): Promise<FormState> {
   const raw = Object.fromEntries(["name", "familyName", "email", "password"].map((k) => [k, String(form.get(k) ?? "")]));
-  const parsed = RegisterSchema.safeParse(raw);
-  const fields = { name: raw.name, familyName: raw.familyName, email: raw.email };
+  const guardian = form.get("guardian") === "on";
+  const parsed = RegisterSchema.safeParse({ ...raw, guardian });
+  const fields = { name: raw.name, familyName: raw.familyName, email: raw.email, guardian: guardian ? "on" : "" };
   if (!parsed.success) return { error: parsed.error.issues[0].message, fields };
   let userId: string;
   try {
@@ -44,8 +47,26 @@ export async function register(_: FormState, form: FormData): Promise<FormState>
     if (e instanceof ServiceError) return { error: e.message, fields };
     throw e;
   }
+  after(() => sendVerificationEmailQuietly(userId));
   await createSession(userId);
   redirect("/dashboard");
+}
+
+/** The button on /verify-email. A POST, so mail scanners that open links don't use up the token. */
+export async function verifyEmail(_: VerifyResult | undefined, form: FormData): Promise<VerifyResult> {
+  return verifyEmailToken(String(form.get("token") ?? ""));
+}
+
+/** "Resend link" on the verify-your-email banner. */
+export async function resendVerificationEmail(): Promise<FormState> {
+  const u = await requireUser();
+  try {
+    const sent = await sendVerificationEmail(u.id, { throttle: true });
+    return { ok: sent ? `We sent a new link to ${u.email}.` : "Your email is already verified." };
+  } catch (e) {
+    if (e instanceof ServiceError) return { error: e.message };
+    throw e;
+  }
 }
 
 export async function logout() {

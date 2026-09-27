@@ -7,7 +7,8 @@ import { hashPassword, verifyPassword } from "./auth";
 import { profileConfigs, type ProfileId } from "./profiles";
 import type { ProtectionConfig } from "./protections";
 import type { Actor } from "./config-service";
-import { ServiceError, conflict, forbidden, invalid, notFound } from "./errors";
+import { ServiceError, conflict, forbidden, invalid, isUniqueViolation, notFound } from "./errors";
+import { requireVerifiedEmail } from "./email-verification";
 
 /** Family, children, apps and devices: shared by the web server actions and the mobile API. */
 
@@ -94,6 +95,7 @@ export async function createPairingCode(actor: Actor, childId: string) {
     db.device.count({ where: { familyId: actor.familyId } }),
   ]);
   if (!child) throw notFound("Child");
+  await requireVerifiedEmail(actor.id);
   if (count >= family.deviceLimit) throw conflict(`Your plan covers ${family.deviceLimit} devices. Remove a device to add another.`);
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   const code = Array.from({ length: 8 }, () => alphabet[randomInt(alphabet.length)]).join("");
@@ -121,10 +123,11 @@ export const ParentSchema = z.object({
 
 export async function addParent(actor: Actor, input: z.infer<typeof ParentSchema>) {
   requireAdminActor(actor);
-  if (await db.user.findUnique({ where: { email: input.email } })) throw conflict("An account with this email already exists.");
+  const taken = () => conflict("An account with this email already exists.");
+  if (await userIdForMailbox(input.email)) throw taken();
   const user = await db.user.create({
     data: { familyId: actor.familyId, name: input.name, email: input.email, passwordHash: await hashPassword(input.password), role: "PARENT" },
-  });
+  }).catch((e) => { throw isUniqueViolation(e) ? taken() : e; });
   await audit(actor.familyId, actor.name, "member.added", input.email);
   return user;
 }
@@ -139,23 +142,47 @@ export async function removeParent(actor: Actor, userId: string) {
 
 /* ---------- Registration ---------- */
 
+export const GUARDIAN_REQUIRED = "Confirm you're a parent or legal guardian, 18 or older.";
+
+/**
+ * The account already using this mailbox, matching aliases too: "R.andy+kids@gmail.com" finds randy@gmail.com.
+ * Uses email_key() from the email_uniqueness migration, whose unique index backs this up under races.
+ */
+export async function userIdForMailbox(email: string, exceptUserId = "") {
+  const rows = await db.$queryRaw<{ id: string }[]>`
+    SELECT id FROM "User" WHERE email_key(email) = email_key(${email}) AND id <> ${exceptUserId} LIMIT 1`;
+  return rows[0]?.id ?? null;
+}
+
 export const RegisterSchema = z.object({
   name: z.string().trim().min(2, "Enter your name."),
   familyName: z.string().trim().min(2, "Enter a family name."),
   email: z.string().trim().toLowerCase().email("Enter a valid email address."),
   password: z.string().min(10, "Use at least 10 characters for your password."),
+  /** Accounts are for parents and guardians only; children are added by a parent, never sign up */
+  guardian: z.literal(true, { error: GUARDIAN_REQUIRED }),
 });
 
-/** Creates a family and its admin. `passwordHash` lets social sign-up pass an unusable hash. */
-export async function createFamily(input: { name: string; familyName: string; email: string; passwordHash: string }) {
-  if (await db.user.findUnique({ where: { email: input.email } })) throw conflict("An account with this email already exists. Sign in instead.");
+/**
+ * Creates a family and its admin. Callers must have had the person confirm they're a parent or
+ * guardian (18+); it's recorded in the audit log. `passwordHash` lets social sign-up pass an unusable hash,
+ * and `emailVerified` marks an email the provider already verified. Otherwise, send a verification email.
+ */
+export async function createFamily(input: { name: string; familyName: string; email: string; passwordHash: string; emailVerified?: boolean }) {
+  const taken = () => conflict("An account with this email already exists. Sign in instead.");
+  if (await userIdForMailbox(input.email)) throw taken();
   const renews = new Date(); renews.setMonth(renews.getMonth() + 1);
+  // Family and admin are created in one statement, so a lost race leaves no empty family behind
   const family = await db.family.create({
     data: {
       name: input.familyName, plan: "eGuard Plus", deviceLimit: 8, renewsAt: renews,
-      users: { create: { name: input.name, email: input.email, passwordHash: input.passwordHash, role: "FAMILY_ADMIN" } },
+      users: { create: {
+        name: input.name, email: input.email, passwordHash: input.passwordHash, role: "FAMILY_ADMIN",
+        emailVerifiedAt: input.emailVerified ? new Date() : null,
+      } },
     },
     include: { users: true },
-  });
+  }).catch((e) => { throw isUniqueViolation(e) ? taken() : e; });
+  await audit(family.id, input.name, "account.created", "Confirmed parent or legal guardian, 18 or older");
   return family.users[0];
 }

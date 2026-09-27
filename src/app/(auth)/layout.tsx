@@ -1,25 +1,61 @@
+import Image from "next/image";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getUser } from "@/lib/auth";
 import { Brand } from "@/components/logo";
 import { Icon } from "@/components/icon";
+import "./auth.css";
+
+import panelBackground from "../../../public/landing/hero-background.jpg";
+import family from "../../../public/landing/hero-family.jpg";
+import avatar1 from "../../../public/landing/avatar-1.png";
+import avatar2 from "../../../public/landing/avatar-2.png";
+import avatar3 from "../../../public/landing/avatar-3.png";
+
+const POINTS = [
+  { icon: "shield-check", label: "Easy setup and configuration" },
+  { icon: "badge-check", label: "Verified protection" },
+  { icon: "bell-ring", label: "Real-time alerts" },
+  { icon: "shield", label: "Peace of mind" },
+];
 
 export default async function AuthLayout({ children }: { children: React.ReactNode }) {
   if (await getUser()) redirect("/dashboard");
   return (
     <div className="auth">
-      <div className="auth-panel">
-        <Brand />
-        {children}
-      </div>
-      <aside className="auth-art" aria-hidden="true">
-        <h2>A Safer Digital World for Their Brighter Tomorrow</h2>
-        <p>Set protections once for every Android and iOS device in your family. eGuard verifies they stay on.</p>
-        <div className="auth-points">
-          <span><Icon name="shield-check" />Configuration Health for every device</span>
-          <span><Icon name="list-checks" />Guided setup where a platform needs it</span>
-          <span><Icon name="lock" />eGuard does not sell your children&apos;s data</span>
+      <Image className="auth-bg" src={panelBackground} alt="" fill priority sizes="100vw" placeholder="blur" />
+      <aside className="auth-art">
+        <div className="auth-art-copy">
+          <Link href="/" className="auth-home" aria-label="eGuard home"><Brand /></Link>
+          <h2>A Safer Digital World for Their Brighter Tomorrow</h2>
+          <p>eGuard helps parents configure, manage, and verify digital safety protections for their children&apos;s devices — all in one place.</p>
+          <ul className="auth-points">
+            {POINTS.map((p) => (
+              <li key={p.label}><span className="auth-point-icon"><Icon name={p.icon} /></span>{p.label}</li>
+            ))}
+          </ul>
+        </div>
+        <div className="auth-art-photo">
+          <Image src={family} alt="A parent couple and their daughter smiling at a laptop together" fill sizes="45vw" placeholder="blur" />
+        </div>
+        <div className="auth-trust">
+          <div>
+            <div className="auth-trust-title">Trusted by families</div>
+            <div className="auth-trust-sub">for a safer digital tomorrow.</div>
+          </div>
+          <div className="auth-trust-avatars">
+            {[avatar1, avatar2, avatar3].map((a, i) => <Image key={i} src={a} alt="" width={36} height={36} />)}
+            <span>50K+</span>
+          </div>
         </div>
       </aside>
+
+      <main className="auth-stage">
+        <div className="auth-card">
+          <Link href="/" className="auth-home auth-card-brand" aria-label="eGuard home"><Brand /></Link>
+          {children}
+        </div>
+      </main>
     </div>
   );
 }

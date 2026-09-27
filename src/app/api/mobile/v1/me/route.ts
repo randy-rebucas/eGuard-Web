@@ -1,7 +1,9 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
+import { sendVerificationEmailQuietly } from "@/lib/email-verification";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { conflict } from "@/lib/errors";
+import { conflict, isUniqueViolation } from "@/lib/errors";
+import { userIdForMailbox } from "@/lib/family-service";
 import { meJson } from "@/lib/mobile-account";
 import { authed, body } from "@/lib/mobile-api";
 
@@ -18,8 +20,15 @@ const Body = z.object({
 /** Settings › Account. */
 export const PATCH = authed(async ({ req, user }) => {
   const b = await body(req, Body);
-  if (b.email && (await db.user.findFirst({ where: { email: b.email, id: { not: user.id } } }))) throw conflict("Another account already uses this email.");
-  await db.user.update({ where: { id: user.id }, data: { ...(b.name ? { name: b.name } : {}), ...(b.email ? { email: b.email } : {}) } });
+  const taken = () => conflict("Another account already uses this email.");
+  if (b.email && (await userIdForMailbox(b.email, user.id))) throw taken();
+  const emailChanged = !!b.email && b.email !== user.email;
+  await db.user.update({
+    where: { id: user.id },
+    // A new email is unverified until they open the link we send it
+    data: { ...(b.name ? { name: b.name } : {}), ...(emailChanged ? { email: b.email, emailVerifiedAt: null } : {}) },
+  }).catch((e) => { throw isUniqueViolation(e) ? taken() : e; });
+  if (emailChanged) after(() => sendVerificationEmailQuietly(user.id));
   if (b.timezone && user.role === "FAMILY_ADMIN") await db.family.update({ where: { id: user.familyId }, data: { timezone: b.timezone } });
   return NextResponse.json(await meJson(user.id));
 });

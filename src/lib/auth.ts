@@ -39,7 +39,7 @@ export async function userForToken(token: string): Promise<SessionUser | null> {
     await db.session.update({ where: { id: s.id }, data: { lastSeenAt: new Date() } }).catch(() => {});
   }
   const u = s.user;
-  return { id: u.id, name: u.name, email: u.email, role: u.role, familyId: u.familyId, sessionId: s.id };
+  return { id: u.id, name: u.name, email: u.email, emailVerified: !!u.emailVerifiedAt, role: u.role, familyId: u.familyId, sessionId: s.id };
 }
 
 export async function createSession(userId: string) {
@@ -66,6 +66,7 @@ export type SessionUser = {
   id: string;
   name: string;
   email: string;
+  emailVerified: boolean;
   role: Role;
   familyId: string;
   sessionId: string;

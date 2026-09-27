@@ -74,8 +74,8 @@ async function main() {
     data: { name: "Cruz Family", timezone: TZ, plan: "eGuard Plus", deviceLimit: 8, renewsAt: new Date("2026-10-12T00:00:00+08:00") },
   });
   const pw = await bcrypt.hash("ChangeMe123!", 12);
-  await db.user.create({ data: { familyId: family.id, email: "randy@example.com", name: "Randy Cruz", passwordHash: pw, role: "FAMILY_ADMIN", twoFactor: true } });
-  await db.user.create({ data: { familyId: family.id, email: "ana@example.com", name: "Ana Cruz", passwordHash: pw, role: "PARENT" } });
+  await db.user.create({ data: { familyId: family.id, email: "randy@example.com", name: "Randy Cruz", passwordHash: pw, role: "FAMILY_ADMIN", twoFactor: true, emailVerifiedAt: new Date() } });
+  await db.user.create({ data: { familyId: family.id, email: "ana@example.com", name: "Ana Cruz", passwordHash: pw, role: "PARENT", emailVerifiedAt: new Date() } });
 
   const ids: Record<string, { child: string; devices: string[] }> = {};
 

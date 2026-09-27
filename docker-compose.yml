@@ -18,5 +18,14 @@ services:
       timeout: 3s
       retries: 10
 
+  # Dev SMTP server: catches every email eGuard sends. Inbox at http://localhost:8025
+  mail:
+    image: axllent/mailpit:latest
+    container_name: eguard-mail
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
 volumes:
   eguard-db:

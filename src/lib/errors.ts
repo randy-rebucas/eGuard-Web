@@ -13,3 +13,6 @@ export const notFound = (what: string) => new ServiceError(404, `${what} not fou
 export const forbidden = (message = "Only the family admin can do this.") => new ServiceError(403, message, "forbidden");
 export const invalid = (message: string) => new ServiceError(400, message, "invalid");
 export const conflict = (message: string) => new ServiceError(409, message, "conflict");
+
+/** Prisma's unique-constraint error (P2002): a concurrent request won the race past our "already exists?" check. */
+export const isUniqueViolation = (e: unknown) => typeof e === "object" && e !== null && (e as { code?: unknown }).code === "P2002";

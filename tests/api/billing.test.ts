@@ -18,8 +18,8 @@ async function family(name: string) {
     data: {
       name, plan: "eGuard Plus", deviceLimit: 8,
       users: { create: [
-        { name: `${name} Admin`, email: `admin.${name}.${RUN}@billing-test.example`, passwordHash: "x", role: "FAMILY_ADMIN" },
-        { name: `${name} Parent`, email: `parent.${name}.${RUN}@billing-test.example`, passwordHash: "x", role: "PARENT" },
+        { name: `${name} Admin`, email: `admin.${name.toLowerCase()}.${RUN}@billing-test.example`, passwordHash: "x", role: "FAMILY_ADMIN" },
+        { name: `${name} Parent`, email: `parent.${name.toLowerCase()}.${RUN}@billing-test.example`, passwordHash: "x", role: "PARENT" },
       ] },
     },
     include: { users: true },

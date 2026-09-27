@@ -3,11 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
+import { after } from "next/server";
 import { z } from "zod";
 import type { AppApproval } from "@prisma/client";
 import { db } from "@/lib/db";
 import { requireAdmin, requireUser } from "@/lib/auth";
-import { ServiceError } from "@/lib/errors";
+import { sendVerificationEmailQuietly } from "@/lib/email-verification";
+import { ServiceError, isUniqueViolation } from "@/lib/errors";
 import * as family from "@/lib/family-service";
 import type { FormState } from "./auth";
 
@@ -92,7 +94,7 @@ export async function createPairingCode(childId: string) {
     const p = await family.createPairingCode(u, childId);
     return { code: p.code, expiresAt: p.expiresAt.toISOString(), childName: p.childName };
   } catch (e) {
-    if (e instanceof ServiceError && e.status === 409) return { error: e.message };
+    if (e instanceof ServiceError && (e.status === 409 || e.code === "email_unverified")) return { error: e.message };
     throw e;
   }
 }
@@ -126,9 +128,19 @@ export async function updateAccount(_: FormState, form: FormData): Promise<FormS
     timezone: z.string().refine((tz) => { try { new Intl.DateTimeFormat("en", { timeZone: tz }); return true; } catch { return false; } }, "Choose a valid time zone."),
   }).safeParse({ name: form.get("name"), email: form.get("email"), timezone: form.get("timezone") });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
-  const clash = await db.user.findFirst({ where: { email: parsed.data.email, id: { not: u.id } } });
-  if (clash) return { error: "Another account already uses this email." };
-  await db.user.update({ where: { id: u.id }, data: { name: parsed.data.name, email: parsed.data.email } });
+  if (await family.userIdForMailbox(parsed.data.email, u.id)) return { error: "Another account already uses this email." };
+  const emailChanged = parsed.data.email !== u.email;
+  try {
+    await db.user.update({
+      where: { id: u.id },
+      // A new email is unverified until they open the link we send it
+      data: { name: parsed.data.name, email: parsed.data.email, ...(emailChanged ? { emailVerifiedAt: null } : {}) },
+    });
+  } catch (e) {
+    if (isUniqueViolation(e)) return { error: "Another account already uses this email." };
+    throw e;
+  }
+  if (emailChanged) after(() => sendVerificationEmailQuietly(u.id));
   if (u.role === "FAMILY_ADMIN") await db.family.update({ where: { id: u.familyId }, data: { timezone: parsed.data.timezone } });
   revalidatePath("/", "layout");
   return { ok: "Account details saved." };
@@ -165,11 +177,13 @@ export async function addParent(_: FormState, form: FormData): Promise<FormState
   const u = await requireAdmin();
   const parsed = family.ParentSchema.safeParse({ name: form.get("name"), email: form.get("email"), password: form.get("password") });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
+  let parentId: string;
   try {
-    await family.addParent(u, parsed.data);
+    parentId = (await family.addParent(u, parsed.data)).id;
   } catch (e) {
     return failed(e);
   }
+  after(() => sendVerificationEmailQuietly(parentId));
   revalidatePath("/settings/family");
   return { ok: `${parsed.data.name} can now sign in with the temporary password. Ask them to change it.` };
 }

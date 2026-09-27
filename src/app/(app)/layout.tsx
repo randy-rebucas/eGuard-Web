@@ -5,6 +5,7 @@ import { ensureOfflineAlerts } from "@/lib/engine";
 import { touchSimulated } from "@/lib/simulator";
 import { BottomNav, Sidebar, TopHeader } from "@/components/shell";
 import { FlowProvider } from "@/components/flow";
+import { VerifyEmailBanner } from "@/components/verify-email-banner";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
@@ -19,7 +20,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <Sidebar attention={attention} plan={plan} />
         <div className="main">
           <TopHeader user={{ name: user.name, email: user.email, role: user.role }} unread={unread} theme={jar.get("eg_theme")?.value ?? "system"} />
-          <main className="content" id="main">{children}</main>
+          <main className="content" id="main">
+            {user.emailVerified ? null : <VerifyEmailBanner email={user.email} />}
+            {children}
+          </main>
         </div>
       </div>
       <BottomNav attention={attention} plan={plan} />

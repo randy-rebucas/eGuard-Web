@@ -121,6 +121,9 @@ model User {
   familyId     String
   family       Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
   email        String   @unique
+  /// Set when the parent opens the link we emailed, or signs in with a provider-verified email.
+  /// Cleared when the email changes. Unverified parents can't pair a child's device.
+  emailVerifiedAt DateTime?
   name         String
   passwordHash String
   role         Role     @default(PARENT)
@@ -134,10 +137,25 @@ model User {
   createdAt    DateTime @default(now())
 
   sessions Session[]
+  emailVerifications EmailVerification[]
   readAlerts AlertRead[]
   identities OAuthIdentity[]
   pushTokens PushToken[]
   supportTickets SupportTicket[]
+}
+
+/// A single-use "verify your email" link. Only the SHA-256 of the token is stored; `email` is the
+/// address it was sent to, so a link stops working if the parent changes their email meanwhile.
+model EmailVerification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  email     String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
 }
 
 /// Sign in with Apple / Google. `subject` is the provider's stable user id.

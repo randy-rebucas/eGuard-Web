@@ -9,7 +9,31 @@ export const RUN = `t${Date.now().toString(36)}`;
 export const email = (who: string) => `${who}.${RUN}@mobile-test.example`;
 export const PASSWORD = "CorrectHorse123!";
 
-type Opts = { token?: string; body?: unknown; raw?: BodyInit; headers?: Record<string, string> };
+/** Mailpit (docker compose `mail`), which the dev server's SMTP_URL points at. */
+const MAILPIT = process.env.MAILPIT_URL ?? "http://localhost:8025";
+
+/** The token from the newest verification email sent to `to`. Waits for it, since it's sent after the response. */
+export async function verificationToken(to: string, { after = 0 } = {}) {
+  for (let i = 0; i < 50; i++) {
+    const r = await fetch(`${MAILPIT}/api/v1/search?query=${encodeURIComponent(`to:"${to}"`)}`).then((r) => r.json());
+    const msg = r.messages?.find((m: { Created: string }) => Date.parse(m.Created) >= after);
+    if (msg) {
+      const full = await fetch(`${MAILPIT}/api/v1/message/${msg.ID}`).then((r) => r.json());
+      const token = /verify-email\?token=([\w-]+)/.exec(full.Text)?.[1];
+      if (token) return token;
+    }
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  throw new Error(`No verification email reached ${to} (is Mailpit running? npm run db:up)`);
+}
+
+/** Verifies a parent's email the way they would: from the link in their inbox. */
+export async function verifyInbox(to: string) {
+  const r = await call("POST", "/auth/verify-email", { body: { token: await verificationToken(to) } });
+  if (r.status !== 200) throw new Error(`verify failed: ${JSON.stringify(r.data)}`);
+}
+
+type Opts ={ token?: string; body?: unknown; raw?: BodyInit; headers?: Record<string, string> };
 
 export async function call(method: string, path: string, o: Opts = {}) {
   const headers: Record<string, string> = { "x-eguard-client": "ios", ...o.headers };

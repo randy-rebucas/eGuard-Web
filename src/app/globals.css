@@ -529,15 +529,6 @@ button.check-item:hover{border-color:var(--line-strong); background:var(--surfac
 /* ---------- Next.js app additions ---------- */
 /* Photo slot: add public/images/family-hero.jpg and set .hero{--hero-photo:url("/images/family-hero.jpg")} */
 .promo{background-image:linear-gradient(180deg, rgba(11,35,72,.1), rgba(11,35,72,.1)), var(--promo-photo, none), radial-gradient(70% 60% at 80% 10%, rgba(255,210,160,.45), transparent 65%), radial-gradient(60% 70% at 10% 30%, rgba(91,184,247,.5), transparent 70%), linear-gradient(180deg, #173766 0%, #0B2348 100%); background-size:cover; background-position:center}
-.auth{min-height:100dvh; display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.1fr); background:var(--bg)}
-.auth-panel{display:flex; flex-direction:column; justify-content:center; padding:48px clamp(16px,6vw,96px); gap:28px}
-.auth-form{display:flex; flex-direction:column; gap:16px; max-width:420px; width:100%}
-.auth-art{position:relative; overflow:hidden; margin:16px; border-radius:28px; color:#fff; display:flex; flex-direction:column; justify-content:flex-end; padding:48px; isolation:isolate;
-  background:radial-gradient(60% 70% at 85% 15%, rgba(255,214,170,.4), transparent 60%), radial-gradient(50% 60% at 20% 80%, rgba(91,184,247,.5), transparent 70%), linear-gradient(135deg, #0B2348 0%, #173766 50%, #2B7FD6 120%)}
-.auth-art h2{color:#fff; font-size:34px; font-weight:600; line-height:1.15; max-width:16ch}
-.auth-art p{color:rgba(255,255,255,.78); max-width:44ch; margin-top:12px}
-.auth-points{display:flex; flex-direction:column; gap:10px; margin-top:28px}
-.auth-points span{display:flex; align-items:center; gap:10px; font-size:14px; color:rgba(255,255,255,.9)}
 .form-error{display:flex; gap:8px; align-items:flex-start; padding:12px 14px; border-radius:12px; background:var(--crit-soft); color:var(--crit-ink); font-size:14px}
 .form-ok{display:flex; gap:8px; align-items:flex-start; padding:12px 14px; border-radius:12px; background:var(--ok-soft); color:var(--ok-ink); font-size:14px}
 .field-hint{font-size:12.5px; color:var(--ink-3)}
@@ -548,11 +539,20 @@ select.input{appearance:auto}
 .map-pin{position:relative; display:flex; flex-direction:column; align-items:center; gap:4px; transform:translate(-50%,-100%)}
 .map-pin .avatar{width:44px; height:44px; box-shadow:0 0 0 3px var(--accent), var(--shadow)}
 .map-pin .pin-label{background:var(--surface); color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:2px 8px; font-size:12px; font-weight:600; white-space:nowrap}
+.verify-banner{display:flex; align-items:center; gap:12px; padding:12px 14px; border-radius:12px; background:var(--warn-soft); color:var(--warn-ink); font-size:14px; flex-wrap:wrap}
+.verify-banner > .lucide{width:20px; height:20px; flex:none}
+.verify-banner p{flex:1 1 240px; margin:0}
+.verify-banner .btn{flex:none}
+.verify-page{min-height:100dvh; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:24px; padding:24px 16px; background:var(--bg)}
+.verify-card{width:100%; max-width:440px}
+.verify-card-body{display:flex; flex-direction:column; align-items:center; text-align:center; gap:12px}
+.verify-card-body > .lucide{color:var(--accent-ink)}
+.verify-card-body h1{font-size:22px; margin:0}
+.verify-card-body p{margin:0 0 8px; color:var(--ink-2)}
 .dev-banner{display:flex; align-items:center; gap:10px; padding:10px 14px; border-radius:12px; border:1px dashed var(--line-strong); color:var(--ink-3); font-size:13px}
 .skeleton{background:linear-gradient(90deg, var(--surface-2), var(--surface-3), var(--surface-2)); background-size:200% 100%; animation:shimmer 1.2s linear infinite; border-radius:12px}
 @keyframes shimmer{to{background-position:-200% 0}}
 .pairing-code{font-family:var(--display); font-size:34px; font-weight:600; letter-spacing:.18em; text-align:center; padding:18px; border-radius:14px; background:var(--surface-2); border:1px dashed var(--line-strong)}
-@media (max-width:900px){ .auth{grid-template-columns:minmax(0,1fr)} .auth-art{display:none} }
 
 
 /* link-based variants of prototype controls */

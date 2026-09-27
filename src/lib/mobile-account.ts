@@ -8,6 +8,8 @@ export async function meJson(userId: string) {
   const u = await db.user.findUniqueOrThrow({ where: { id: userId }, include: { family: true } });
   return {
     id: u.id, name: u.name, firstName: u.name.split(/\s+/)[0], email: u.email, role: u.role,
+    /** false: show "Verify your email"; pairing a device returns 403 email_unverified until it's true */
+    emailVerified: !!u.emailVerifiedAt,
     family: { id: u.family.id, name: u.family.name, timezone: u.family.timezone },
     notifications: { notifyPush: u.notifyPush, notifyEmail: u.notifyEmail, notifyApproval: u.notifyApproval, weeklySummary: u.weeklySummary },
     twoFactor: u.twoFactor,

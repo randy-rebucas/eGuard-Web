@@ -1,13 +1,9 @@
 # eGuard Parent Mobile API — v1
 
-Everything the eGuard parent app needs to implement the screens in `public/ios.png` and `public/android.png`. The two
-designs share one API. The only Android-specific part is Google Play billing for "Upgrade to Family"
-([§4.14](#414-subscription)).
 All examples on this page are real responses from the API, trimmed for length (arrays show 1–2 items).
 
-- **Base URL:** `https://<host>/api/mobile/v1` (local: `http://localhost:3000/api/mobile/v1`)
+- **Base URL:** `https://e-guard-web.vercel.app/api/mobile/v1`
 - **Format:** JSON in and out, UTF-8. The only exception is child photos (raw image bytes).
-- **Tests:** `npm run test:api` exercises every endpoint below against a running server.
 
 ---
 
@@ -67,7 +63,7 @@ Every error has the same shape. `error` is always written for the parent and saf
 |---|---|---|
 | 400 | `invalid`, `invalid_json` | Validation failed. For body fields, `error` starts with the field path, e.g. `"email: Enter a valid email address."`, so you can highlight the field |
 | 401 | `unauthorized`, `invalid_credentials`, `invalid_token` | Session gone (sign out locally), wrong password, or a rejected Apple/Google token |
-| 403 | `forbidden`, `wrong_password` | Family-admin-only action, or a password confirmation was wrong |
+| 403 | `forbidden`, `wrong_password`, `email_unverified` | Family-admin-only action, a password confirmation was wrong, or pairing a device before verifying email |
 | 404 | `not_found` | Doesn't exist **or belongs to another family**. The API never reveals which |
 | 409 | `conflict`, `unsupported`, `not_dismissible` | Duplicate email/app, device limit reached, protection unsupported on the child's devices, alert can't be dismissed |
 | 413 | `too_large` | Photo over 2 MB |
@@ -369,11 +365,32 @@ Creates a new family with this parent as `FAMILY_ADMIN` and signs them in.
 | Field | Type | Rules |
 |---|---|---|
 | `name` | string | ≥ 2 chars |
-| `email` | string | valid email. Case doesn't matter; it's stored lowercase |
+| `email` | string | valid email. Case doesn't matter; it's stored lowercase. One account per mailbox: `randy+kids@…`, and for Gmail `r.andy@gmail.com` / `randy@googlemail.com`, count as `randy@gmail.com` (`409`) |
 | `password` | string | ≥ 10 chars |
 | `familyName` | string, optional | ≥ 2 chars. Default: last name + " Family" ("Cruz Family"), or "Randy's Family" |
+| `guardian` | `true` | Required. The "I'm a parent or legal guardian, 18 or older" checkbox. Children never get accounts; parents add them after sign-up |
 
-Response: `{ token, expiresAt, user }`. Errors: `400` (field message), `409` (email already registered).
+Response: `{ token, expiresAt, user }`. Errors: `400` (field message, e.g. `guardian: Confirm you're a parent…`), `409 conflict` (email already registered — also returned to every duplicate of a double-tapped submit, so treat it as "Sign in instead").
+
+The new parent is signed in straight away with `user.emailVerified: false`, and we email them a verification link.
+
+#### Email verification
+
+Parents must verify their email before they can pair a child's device. Everything else works while unverified.
+
+- New sign-ups, parents added by the admin, and anyone who changes their email get a link:
+  `{APP_URL}/verify-email?token=…`. It works once, expires after 24 hours, and stops working if a newer link is sent or the email changes.
+- Apple / Google sign-ins count as verified, because the provider has already verified the email.
+- While `user.emailVerified` is `false`, show a "Verify your email" banner with a **Resend link** button.
+- `POST /children/{id}/pairing-code` returns `403 email_unverified` until the parent verifies. Show the error message and the resend button.
+- After the parent taps the link, refresh `GET /me`.
+
+| Endpoint | Body | Response |
+|---|---|---|
+| `POST /me/verify-email` | none | Sends a new link. `202 { sent: true, email }`, or `200 { sent: false }` if already verified. `429 rate_limited` if a link went out in the last minute |
+| `POST /auth/verify-email` (no auth) | `{ token }` | For apps that open the link themselves (universal link / app link). `200 { ok: true }`, `400 link_expired` or `400 link_invalid` (used, replaced or unknown) |
+
+Otherwise the link opens a web page, where the parent taps **Verify my email**. The link doesn't verify on page load, so email scanners that open links can't use it up.
 
 #### `POST /auth/login` → `200`
 
@@ -392,6 +409,7 @@ Response: `{ token, expiresAt, user }`. Errors: `401 invalid_credentials`, `429 
 | `provider` | `"apple"` \| `"google"` | |
 | `idToken` | string | iOS: `ASAuthorizationAppleIDCredential.identityToken` (UTF-8). Google: `GIDGoogleUser.idToken.tokenString` / Android `GoogleIdTokenCredential.idToken` |
 | `name` | string, optional | Apple only gives the name on the **first** authorization. Forward `fullName` so the account gets a name |
+| `guardian` | boolean, optional | Needed only when this creates a new account. Without it, a new sign-up gets `400 guardian_required`: show the parent/guardian (18+) confirmation and retry the same `idToken` with `guardian: true` |
 
 Response: `{ token, expiresAt, user, isNew }`. Continue with onboarding when `isNew` is true.
 
@@ -415,7 +433,7 @@ Ends this session only. Pass the device's push token so this phone stops receivi
 | Method & path | Body | Response |
 |---|---|---|
 | `GET /me` | none | `User` |
-| `PATCH /me` | any of `{ name, email, timezone }` | `User`. `timezone` (IANA, e.g. `Asia/Manila`) is applied only for the family admin. `409` if the email is taken |
+| `PATCH /me` | any of `{ name, email, timezone }` | `User`. `timezone` (IANA, e.g. `Asia/Manila`) is applied only for the family admin. `409` if the email is taken. A new email sets `emailVerified: false` and sends a link to the new address |
 | `POST /me/password` | `{ current, next }` | `{ ok, message }`. `403 wrong_password`, `400` if `next` < 10 chars. **Signs out every other session**; this one stays |
 | `GET /me/notifications` | none | `{ notifyPush, notifyEmail, notifyApproval, weeklySummary }` |
 | `PATCH /me/notifications` | any subset of those booleans | Same object, updated |
@@ -639,7 +657,7 @@ device, which calls `POST /api/device/v1/pair`.
 { "code": "FJZM7J7H", "expiresAt": "2026-09-27T06:14:58.928Z", "childName": "Mia" }
 ```
 
-The code is 8 characters, single-use, and valid for 15 minutes. `409` means the plan's device limit has been reached.
+The code is 8 characters, single-use, and valid for 15 minutes. `409` means the plan's device limit has been reached. `403 email_unverified` means the parent hasn't verified their email yet (see Email verification).
 After pairing, `GET /children/{id}` shows the device, and a first full check runs automatically.
 
 ### 4.7 Protections and configuration batches
