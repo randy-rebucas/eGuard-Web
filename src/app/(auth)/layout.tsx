@@ -1,7 +1,5 @@
 import Image from "next/image";
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { getUser } from "@/lib/auth";
 import { Brand } from "@/components/logo";
 import { Icon } from "@/components/icon";
 import "./auth.css";
@@ -19,8 +17,8 @@ const POINTS = [
   { icon: "shield", label: "Peace of mind" },
 ];
 
-export default async function AuthLayout({ children }: { children: React.ReactNode }) {
-  if (await getUser()) redirect("/dashboard");
+/** Sign-in pages that are only for signed-out visitors call redirectIfSignedIn(); reset-password works either way. */
+export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="auth">
       <Image className="auth-bg" src={panelBackground} alt="" fill priority sizes="100vw" placeholder="blur" />

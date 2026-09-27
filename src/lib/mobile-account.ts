@@ -2,6 +2,7 @@ import "server-only";
 import { NextResponse } from "next/server";
 import { db } from "./db";
 import { issueSession } from "./auth";
+import { clientIpFrom } from "./rate-limit";
 
 /** The signed-in parent, as returned by /me and every sign-in endpoint. */
 export async function meJson(userId: string) {
@@ -12,7 +13,10 @@ export async function meJson(userId: string) {
     emailVerified: !!u.emailVerifiedAt,
     family: { id: u.family.id, name: u.family.name, timezone: u.family.timezone },
     notifications: { notifyPush: u.notifyPush, notifyEmail: u.notifyEmail, notifyApproval: u.notifyApproval, weeklySummary: u.weeklySummary },
-    twoFactor: u.twoFactor,
+    /** false for Apple/Google accounts until they set a password via /auth/forgot-password */
+    hasPassword: u.passwordSet,
+    /** Two-step verification isn't available yet; always false */
+    twoFactor: false,
     createdAt: u.createdAt,
   };
 }
@@ -29,4 +33,4 @@ export function defaultFamilyName(name: string) {
   return parts.length > 1 ? `${parts[parts.length - 1]} Family` : `${parts[0]}'s Family`;
 }
 
-export const clientIp = (req: Request) => req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "local";
+export const clientIp = (req: Request) => clientIpFrom(req.headers);

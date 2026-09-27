@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { requireUser } from "@/lib/auth";
+import { getUser, requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { dateFromKey, dayKey, getAlerts, getFamily, getFamilyGraph } from "@/lib/queries";
+import { appMinutesOn, dateFromKey, dayKey, getAlerts, getFamily, getFamilyGraph } from "@/lib/queries";
 import { ago, dayTime } from "@/lib/format";
 import { toAlertItem, weeklySeries } from "@/lib/views";
 import { PROTECTION_BY_KEY, describeConfig, fmtMinutes, fmtMinutesPadded, type ProtectionConfig } from "@/lib/protections";
@@ -19,7 +19,8 @@ type Tab = (typeof TABS)[number][0];
 
 export async function generateMetadata(props: PageProps<"/children/[id]">) {
   const { id } = await props.params;
-  const c = await db.child.findUnique({ where: { id }, select: { name: true } });
+  const u = await getUser();
+  const c = u ? await db.child.findFirst({ where: { id, familyId: u.familyId }, select: { name: true } }) : null;
   return { title: c?.name ?? "Child" };
 }
 
@@ -78,7 +79,7 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
     const today = dateFromKey(dayKey(new Date(), tz));
     const [usage, apps, alerts] = await Promise.all([
       db.screenTimeDaily.aggregate({ where: { childId: c!.id, date: today }, _sum: { minutes: true } }),
-      db.appUsageDaily.findMany({ where: { childId: c!.id, date: today }, orderBy: { minutes: "desc" } }),
+      appMinutesOn([c!.id], today),
       getAlerts(u.familyId, u.id, { take: 20 }),
     ]);
     const used = usage._sum.minutes ?? 0;
@@ -114,7 +115,7 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
             <div className="card-head"><h2 style={{ fontSize: 18 }}>Screen time today</h2></div>
             <div className="usage-big num" style={{ marginTop: 0 }}>{fmtMinutesPadded(used)} <small>/ {fmtMinutes(c!.dailyLimitMinutes)}</small></div>
             <div className={`bar ${pct >= 85 ? "warn" : ""}`}><span style={{ width: `${Math.min(100, pct)}%` }} /></div>
-            <div className="app-rows">{apps.length ? apps.map((a) => <div key={a.id}><span>{a.app}</span><span>{fmtMinutes(a.minutes)}</span></div>) : <div><span>No usage reported yet today</span><span /></div>}</div>
+            <div className="app-rows">{apps.length ? apps.map((a) => <div key={a.app}><span>{a.app}</span><span>{fmtMinutes(a.minutes)}</span></div>) : <div><span>No usage reported yet today</span><span /></div>}</div>
           </section>
           <section className="card card-pad">
             <div className="card-head"><h2 style={{ fontSize: 18 }}>Recent alerts</h2></div>
@@ -150,7 +151,7 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
   async function Apps() {
     const apps = await db.childApp.findMany({ where: { childId: c!.id }, orderBy: [{ approval: "desc" }, { name: "asc" }] });
     const today = dateFromKey(dayKey(new Date(), tz));
-    const usage = await db.appUsageDaily.findMany({ where: { childId: c!.id, date: today } });
+    const usage = await appMinutesOn([c!.id], today);
     const approval = c!.policies.find((p) => p.key === "APP_APPROVAL")?.config as { enabled?: boolean } | undefined;
     const label = { ALLOWED: "Allowed", ALWAYS_ALLOWED: "Always allowed", FILTERED: "Filtered", BLOCKED: "Blocked", PENDING: "Waiting for your approval" };
     const pending = apps.filter((a) => a.approval === "PENDING");

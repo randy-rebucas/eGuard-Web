@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "./db";
 import { ServiceError, conflict, forbidden, invalid } from "./errors";
-import { audit } from "./family-service";
+import { audit } from "./audit";
 import type { Actor } from "./config-service";
 import { BASE_PLAN, planByGoogleProduct, planByName } from "./plans";
 import {
@@ -22,6 +22,9 @@ function requireConfig(cfg: GooglePlayConfig | null): GooglePlayConfig {
 
 const isEntitled = (p: { state: string; expiresAt: Date | null }, now = Date.now()) =>
   ENTITLED_STATES.includes(p.state) && !!p.expiresAt && p.expiresAt.getTime() > now;
+
+/** Purchase states eGuard sets itself: superseded by a newer purchase, or refunded (voided) by Google. */
+const CLOSED_STATES = ["REPLACED", "VOIDED"];
 
 /** Sets the family's plan from its store purchases; back to the base plan when none is active. */
 async function applyEntitlement(familyId: string) {
@@ -57,6 +60,7 @@ export async function redeemGooglePlay(actor: Actor, productId: string, purchase
 
   const existing = await db.storePurchase.findUnique({ where: { purchaseToken } });
   if (existing && existing.familyId !== actor.familyId) throw conflict("This purchase is already linked to another eGuard family.");
+  if (existing?.state === "VOIDED") throw conflict("This purchase was refunded. Buy the plan again to upgrade.");
 
   const s = summarize(await getSubscription(cfg, purchaseToken, opts.fetch), productId);
   if (!s.productMatches) throw invalid("This purchase is for a different product.");
@@ -74,14 +78,24 @@ export async function redeemGooglePlay(actor: Actor, productId: string, purchase
   return { plan: plan.name, expiresAt: s.expiresAt, autoRenewing: s.autoRenewing, test: s.test };
 }
 
+/** An active purchase is re-checked this often even before it expires, to catch refunds and revocations. */
+export const RECHECK_ACTIVE_MS = 24 * 3600_000;
+
 /**
  * Re-checks purchases whose paid period has passed (renewed? cancelled? in grace?) at most every
- * 10 minutes, then updates the family's plan. Store errors keep the last known state.
+ * 10 minutes, and active ones once a day (refunded? revoked?), then updates the family's plan.
+ * Store errors keep the last known state.
  */
 export async function refreshPurchases(familyId: string, opts: { cfg?: GooglePlayConfig | null; fetch?: Fetch } = {}) {
   const now = new Date();
   const due = await db.storePurchase.findMany({
-    where: { familyId, store: "GOOGLE_PLAY", state: { not: "REPLACED" }, expiresAt: { lt: now }, checkedAt: { lt: new Date(now.getTime() - 10 * 60_000) } },
+    where: {
+      familyId, store: "GOOGLE_PLAY", state: { notIn: CLOSED_STATES },
+      OR: [
+        { expiresAt: { lt: now }, checkedAt: { lt: new Date(now.getTime() - 10 * 60_000) } },
+        { checkedAt: { lt: new Date(now.getTime() - RECHECK_ACTIVE_MS) } },
+      ],
+    },
   });
   const cfg = opts.cfg !== undefined ? opts.cfg : googlePlayConfig();
   if (due.length && cfg) {
@@ -96,6 +110,35 @@ export async function refreshPurchases(familyId: string, opts: { cfg?: GooglePla
     }
   }
   await applyEntitlement(familyId);
+}
+
+/**
+ * Google Play Real-time Developer Notification for one purchase token: renewals, cancellations,
+ * expiry, revocations and refunds. Re-checks the purchase with Google (or, for a refund, closes it)
+ * and updates the family's plan. Tokens eGuard hasn't seen yet are ignored; the app redeems them.
+ */
+export async function handlePlayNotification(
+  n: { purchaseToken: string; voided?: boolean },
+  opts: { cfg?: GooglePlayConfig | null; fetch?: Fetch } = {},
+) {
+  const p = await db.storePurchase.findUnique({ where: { purchaseToken: n.purchaseToken } });
+  if (!p) return { handled: false };
+  if (n.voided) {
+    await db.storePurchase.update({ where: { id: p.id }, data: { state: "VOIDED", autoRenewing: false, checkedAt: new Date() } });
+    await audit(p.familyId, "Google Play", "purchase.voided", p.productId);
+  } else if (!CLOSED_STATES.includes(p.state)) {
+    const cfg = requireConfig(opts.cfg !== undefined ? opts.cfg : googlePlayConfig());
+    const s = summarize(await getSubscription(cfg, p.purchaseToken, opts.fetch), p.productId);
+    await db.storePurchase.update({ where: { id: p.id }, data: { state: s.state, expiresAt: s.expiresAt, autoRenewing: s.autoRenewing, checkedAt: new Date() } });
+  }
+  await applyEntitlement(p.familyId);
+  return { handled: true };
+}
+
+/** Families with store purchases that may need re-checking (for the maintenance job). */
+export async function familiesWithPurchases() {
+  const rows = await db.storePurchase.findMany({ where: { state: { notIn: CLOSED_STATES } }, distinct: ["familyId"], select: { familyId: true } });
+  return rows.map((r) => r.familyId);
 }
 
 export async function currentPurchase(familyId: string) {

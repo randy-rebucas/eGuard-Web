@@ -4,10 +4,9 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { after } from "next/server";
 import { z } from "zod";
-import { db } from "@/lib/db";
-import {
-  clearLoginFailures, createSession, destroySession, hashPassword, loginRateLimited, noteLoginFailure, requireUser, verifyPassword,
-} from "@/lib/auth";
+import { authenticate, createSession, destroySession, hashPassword, requireUser } from "@/lib/auth";
+import { LIMITS, clientIpFrom, enforce, hit, ipKey } from "@/lib/rate-limit";
+import { requestPasswordResetQuietly, resetPassword } from "@/lib/password-reset";
 import { type VerifyResult, sendVerificationEmail, sendVerificationEmailQuietly, verifyEmailToken } from "@/lib/email-verification";
 import { ServiceError } from "@/lib/errors";
 import { RegisterSchema, createFamily } from "@/lib/family-service";
@@ -20,17 +19,14 @@ export async function login(_: FormState, form: FormData): Promise<FormState> {
   const parsed = LoginSchema.safeParse({ email: form.get("email"), password: form.get("password") });
   const email = String(form.get("email") ?? "");
   if (!parsed.success) return { error: parsed.error.issues[0].message, fields: { email } };
-  const ip = (await headers()).get("x-forwarded-for") ?? "local";
-  const key = `${parsed.data.email}|${ip}`;
-  if (loginRateLimited(key)) return { error: "Too many attempts. Wait 10 minutes and try again.", fields: { email } };
-
-  const user = await db.user.findUnique({ where: { email: parsed.data.email } });
-  if (!user || !(await verifyPassword(parsed.data.password, user.passwordHash))) {
-    noteLoginFailure(key);
-    return { error: "That email and password don't match an eGuard account.", fields: { email } };
+  let userId: string;
+  try {
+    userId = (await authenticate(parsed.data.email, parsed.data.password, clientIpFrom(await headers()))).id;
+  } catch (e) {
+    if (e instanceof ServiceError) return { error: e.message, fields: { email } };
+    throw e;
   }
-  clearLoginFailures(key);
-  await createSession(user.id);
+  await createSession(userId);
   redirect("/dashboard");
 }
 
@@ -42,6 +38,7 @@ export async function register(_: FormState, form: FormData): Promise<FormState>
   if (!parsed.success) return { error: parsed.error.issues[0].message, fields };
   let userId: string;
   try {
+    await enforce(ipKey("signup", clientIpFrom(await headers())), LIMITS.signupIp);
     userId = (await createFamily({ ...parsed.data, passwordHash: await hashPassword(parsed.data.password) })).id;
   } catch (e) {
     if (e instanceof ServiceError) return { error: e.message, fields };
@@ -54,7 +51,31 @@ export async function register(_: FormState, form: FormData): Promise<FormState>
 
 /** The button on /verify-email. A POST, so mail scanners that open links don't use up the token. */
 export async function verifyEmail(_: VerifyResult | undefined, form: FormData): Promise<VerifyResult> {
+  if ((await hit(ipKey("token", clientIpFrom(await headers())), LIMITS.tokenIp)).limited) return "invalid";
   return verifyEmailToken(String(form.get("token") ?? ""));
+}
+
+/** /forgot-password. Says the same thing whether or not the account exists. */
+export async function forgotPassword(_: FormState, form: FormData): Promise<FormState> {
+  const parsed = z.string().trim().toLowerCase().email("Enter a valid email address.").safeParse(form.get("email"));
+  const email = String(form.get("email") ?? "");
+  if (!parsed.success) return { error: parsed.error.issues[0].message, fields: { email } };
+  const ip = clientIpFrom(await headers());
+  if ((await hit(ipKey("reset", ip), LIMITS.resetIp)).limited) return { error: "Too many requests. Try again in an hour.", fields: { email } };
+  after(() => requestPasswordResetQuietly(parsed.data, null));
+  return { ok: `If an eGuard account uses ${parsed.data}, we sent it a link to reset the password. It expires in an hour.` };
+}
+
+/** /reset-password: sets the new password, signs out every session, then signs in here. */
+export async function resetPasswordWithToken(_: FormState, form: FormData): Promise<FormState> {
+  try {
+    const user = await resetPassword(String(form.get("token") ?? ""), String(form.get("password") ?? ""), clientIpFrom(await headers()));
+    await createSession(user.id);
+  } catch (e) {
+    if (e instanceof ServiceError) return { error: e.message };
+    throw e;
+  }
+  redirect("/dashboard");
 }
 
 /** "Resend link" on the verify-your-email banner. */

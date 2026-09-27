@@ -6,6 +6,8 @@ import { cache } from "react";
 import bcrypt from "bcryptjs";
 import type { Role } from "@prisma/client";
 import { db } from "./db";
+import { ServiceError } from "./errors";
+import { LIMITS, clearLimit, hit, ipKey, isLimited } from "./rate-limit";
 
 const COOKIE = "eg_session";
 const SESSION_DAYS = 30;
@@ -55,6 +57,11 @@ export async function createSession(userId: string) {
   });
 }
 
+/** Forgets the browser's session cookie (after the account itself is gone). */
+export async function clearSessionCookie() {
+  (await cookies()).delete(COOKIE);
+}
+
 export async function destroySession() {
   const jar = await cookies();
   const token = jar.get(COOKIE)?.value;
@@ -90,17 +97,43 @@ export async function requireAdmin() {
   return u;
 }
 
-/* Simple in-memory limiter for login attempts (per process). */
-const attempts = new Map<string, { n: number; until: number }>();
-export function loginRateLimited(key: string) {
-  const a = attempts.get(key);
-  return !!a && a.n >= 5 && a.until > Date.now();
+/** Compared against when the email has no account, so a miss takes as long as a wrong password. */
+let dummyHash: Promise<string> | undefined;
+const timingDecoy = () => (dummyHash ??= bcrypt.hash(newToken(), 12));
+
+export const BAD_CREDENTIALS = "That email and password don't match an eGuard account.";
+
+/**
+ * Email + password sign-in, shared by web and mobile. Failures count against the account (from any
+ * address) and against the address (across accounts), in the database, so limits survive restarts.
+ */
+export async function authenticate(email: string, password: string, ip: string | null) {
+  const accountKey = `login:acct:${email}`, addrKey = ipKey("login", ip);
+  if ((await isLimited(accountKey, LIMITS.loginAccount)) || (await isLimited(addrKey, LIMITS.loginIp))) {
+    throw new ServiceError(429, "Too many attempts. Wait 15 minutes and try again, or reset your password.", "rate_limited");
+  }
+  const user = await db.user.findUnique({ where: { email } });
+  const ok = user ? await verifyPassword(password, user.passwordHash) : (await verifyPassword(password, await timingDecoy()), false);
+  if (!user || !ok) {
+    await Promise.all([hit(accountKey, LIMITS.loginAccount), hit(addrKey, LIMITS.loginIp)]);
+    throw new ServiceError(401, BAD_CREDENTIALS, "invalid_credentials");
+  }
+  await clearLimit(accountKey);
+  return user;
 }
-export function noteLoginFailure(key: string) {
-  const a = attempts.get(key);
-  const n = a && a.until > Date.now() ? a.n + 1 : 1;
-  attempts.set(key, { n, until: Date.now() + 10 * 60_000 });
-}
-export function clearLoginFailures(key: string) {
-  attempts.delete(key);
+
+/** Checks the signed-in parent's password before a sensitive change. Social-only accounts have none yet. */
+export async function confirmPassword(userId: string, password: string) {
+  const user = await db.user.findUniqueOrThrow({ where: { id: userId } });
+  if (!user.passwordSet) {
+    throw new ServiceError(403, "Set a password first: sign out and use \"Forgot password\" to create one.", "password_not_set");
+  }
+  const key = `confirm:${userId}`;
+  if (await isLimited(key, LIMITS.loginAccount)) throw new ServiceError(429, "Too many attempts. Wait 15 minutes and try again.", "rate_limited");
+  if (!(await verifyPassword(password, user.passwordHash))) {
+    await hit(key, LIMITS.loginAccount);
+    throw new ServiceError(403, "That password isn't right.", "wrong_password");
+  }
+  await clearLimit(key);
+  return user;
 }

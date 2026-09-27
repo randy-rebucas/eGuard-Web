@@ -8,9 +8,10 @@ import { Icon } from "@/components/icon";
 import { Avatar, DeviceIcon } from "@/components/ui";
 import { ToastButton } from "@/components/flow";
 import {
-  AccountForm, AddParentForm, PasswordForm, RemoveParentButton, SettingSwitch, SignOutOthersButton,
+  AccountForm, AddParentForm, DeleteAccountForm, PasswordForm, RemoveParentButton, SettingSwitch, SignOutOthersButton, UnlinkIdentityButton,
 } from "@/components/forms";
 import { SECTIONS } from "../sections";
+import { supportEmail } from "@/lib/support";
 
 export async function generateMetadata(props: PageProps<"/settings/[section]">) {
   const { section } = await props.params;
@@ -29,7 +30,7 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
 
   switch (section) {
     case "account":
-      return (<>{head}<AccountForm name={user.name} email={user.email} timezone={tz} zones={Intl.supportedValuesOf("timeZone")} canSetTimezone={admin} /></>);
+      return (<>{head}<AccountForm name={user.name} email={user.email} timezone={tz} zones={Intl.supportedValuesOf("timeZone")} canSetTimezone={admin} hasPassword={user.passwordSet} /></>);
 
     case "family": {
       const [members, graph] = await Promise.all([db.user.findMany({ where: { familyId: u.familyId }, orderBy: { createdAt: "asc" } }), getFamilyGraph(u.familyId)]);
@@ -66,10 +67,10 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
         <>
           {head}
           <SettingSwitch setting="notifyPush" title="Push notifications" desc="Protection changes and devices that need attention" checked={user.notifyPush} />
-          <SettingSwitch setting="notifyEmail" title="Email alerts" desc="Action required alerts only" checked={user.notifyEmail} />
+          <SettingSwitch setting="notifyEmail" title="Email alerts" desc="Protection changes, devices that stop syncing, and anything that needs action" checked={user.notifyEmail} />
           <SettingSwitch setting="notifyApproval" title="App approval requests" desc="When a child asks to install an app" checked={user.notifyApproval} />
           <SettingSwitch setting="weeklySummary" title="Weekly summary" desc="Every Sunday at 6 PM" checked={user.weeklySummary} />
-          <p className="t-meta" style={{ marginTop: 12 }}>Delivery channels (push and email) need a notification provider configured on the server. Preferences are saved now and apply once one is connected.</p>
+          <p className="t-meta" style={{ marginTop: 12 }}>Email alerts go to your verified email address. Push notifications and the weekly summary aren&apos;t sent yet; your choices are saved and apply once they are.</p>
         </>
       );
 
@@ -80,13 +81,16 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
           <SettingSwitch setting="keepLocationHistory" title="Keep location history" desc={family.keepLocationHistory ? "On: recent locations are kept for the retention period" : "Off: only the current location is stored"} checked={family.keepLocationHistory} disabled={!admin} />
           <SettingSwitch setting="shareAnalytics" title="Share anonymous product analytics" desc="Helps improve eGuard. Never includes children's data" checked={family.shareAnalytics} disabled={!admin} />
           <div className="setting-row"><div className="grow"><div className="t-title">What children can see</div><div className="t-meta">Children see which protections are on and can request more time or new apps</div></div></div>
-          <div className="setting-row"><div className="grow"><div className="t-title">Data retention</div><div className="t-meta">Activity summaries are kept for {family.retentionDays} days, then deleted</div></div><span className="pill tone-accent">{family.retentionDays} days</span></div>
+          <div className="setting-row"><div className="grow"><div className="t-title">Data retention</div><div className="t-meta">Screen time, app usage, alerts, change history and location visits are deleted after {family.retentionDays} days</div></div><span className="pill tone-accent">{family.retentionDays} days</span></div>
           {!admin ? <p className="t-meta" style={{ marginTop: 12 }}>Only the family admin can change privacy settings.</p> : null}
         </>
       );
 
     case "security": {
-      const sessions = await db.session.findMany({ where: { userId: u.id, expiresAt: { gt: new Date() } }, orderBy: { lastSeenAt: "desc" } });
+      const [sessions, identities] = await Promise.all([
+        db.session.findMany({ where: { userId: u.id, expiresAt: { gt: new Date() } }, orderBy: { lastSeenAt: "desc" } }),
+        db.oAuthIdentity.findMany({ where: { userId: u.id }, orderBy: { createdAt: "asc" } }),
+      ]);
       return (
         <>
           {head}
@@ -99,9 +103,20 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
             {sessions.length > 1 ? <SignOutOthersButton /> : null}
           </div>
           <div className="setting-row" style={{ flexDirection: "column", alignItems: "stretch" }}>
-            <div><div className="t-title">Password</div><div className="t-meta">Last changed {shortDate(user.passwordChangedAt, tz)}</div></div>
-            <PasswordForm />
+            <div><div className="t-title">Password</div><div className="t-meta">{user.passwordSet ? `Last changed ${shortDate(user.passwordChangedAt, tz)}` : "Not set. You sign in with Apple or Google. To add a password, sign out and choose “Forgot password?”."}</div></div>
+            {user.passwordSet ? <PasswordForm /> : null}
           </div>
+          {identities.length ? (
+            <div className="setting-row" style={{ alignItems: "flex-start", flexDirection: "column" }}>
+              <div className="t-title">Sign in with Apple or Google</div>
+              {identities.map((i) => (
+                <div key={i.id} className="row" style={{ justifyContent: "space-between", width: "100%" }}>
+                  <span className="t-meta">{i.provider === "apple" ? "Apple" : "Google"}{i.email ? ` · ${i.email}` : ""} · linked {shortDate(i.createdAt, tz)}</span>
+                  {user.passwordSet || identities.length > 1 ? <UnlinkIdentityButton identityId={i.id} provider={i.provider === "apple" ? "Apple" : "Google"} /> : null}
+                </div>
+              ))}
+            </div>
+          ) : null}
         </>
       );
     }
@@ -115,7 +130,7 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
           <div className="row" style={{ gap: 16, flexWrap: "wrap" }}>
             <span className="ico-tile" style={{ width: 52, height: 52 }}><Icon name="crown" /></span>
             <div className="grow"><div className="t-title" style={{ fontSize: 18 }}>{family.plan}</div><div className="t-meta">{family.renewsAt ? `Renews ${shortDate(family.renewsAt, tz)}` : "No renewal date"} · up to {family.deviceLimit} devices</div></div>
-            <ToastButton className="btn btn-secondary" message="Plan changes need a billing provider, which isn't connected yet.">Change plan</ToastButton>
+            <ToastButton className="btn btn-secondary" message="Upgrade or manage your plan in the eGuard app for Android (Settings › Subscription). Web and iPhone billing are coming soon.">Change plan</ToastButton>
           </div>
           <div style={{ marginTop: 20 }}>
             <div className="row" style={{ justifyContent: "space-between" }}><span className="t-meta">Devices</span><span className="t-meta num">{used} of {family.deviceLimit}</span></div>
@@ -161,6 +176,10 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
           {head}
           <div className="setting-row"><div className="grow"><div className="t-title">Export family data</div><div className="t-meta">Settings, children, devices, configuration history and activity summaries as JSON</div></div><a className="btn btn-secondary btn-sm" href="/api/account/export" download><Icon name="download" />Download</a></div>
           <div className="setting-row"><div className="grow"><div className="t-title">Delete a child&apos;s data</div><div className="t-meta">Open the child&apos;s page, then Profile. Needs your password.</div></div><Link className="btn btn-secondary btn-sm" href="/children">Choose child</Link></div>
+          <div className="setting-row" style={{ flexDirection: "column", alignItems: "stretch" }}>
+            <div><div className="t-title">Delete your account</div><div className="t-meta">{admin ? "Deletes your family and everything eGuard stores about it." : "Removes you from the family. The family admin keeps the family."}</div></div>
+            <DeleteAccountForm isAdmin={admin} hasPassword={user.passwordSet} />
+          </div>
         </>
       );
 
@@ -169,7 +188,7 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
         <>
           {head}
           <div className="setting-row"><span className="ico-tile"><Icon name="book-open" /></span><div className="grow"><div className="t-title">Setup guides</div><div className="t-meta">Step-by-step help for Android and iOS is built into each guided setup</div></div></div>
-          <div className="setting-row"><span className="ico-tile"><Icon name="message-circle" /></span><div className="grow"><div className="t-title">Contact support</div><div className="t-meta">support@eguard.example · replies within 1 business day</div></div></div>
+          <div className="setting-row"><span className="ico-tile"><Icon name="message-circle" /></span><div className="grow"><div className="t-title">Contact support</div><div className="t-meta"><a className="link-btn" href={`mailto:${supportEmail()}`}>{supportEmail()}</a> · replies within 1 business day</div></div></div>
         </>
       );
   }

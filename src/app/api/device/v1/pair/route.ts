@@ -3,6 +3,8 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { newToken, sha256 } from "@/lib/auth";
 import { badRequest, readJson } from "@/lib/device-auth";
+import { refreshPurchases } from "@/lib/billing";
+import { LIMITS, clientIpFrom, hit, ipKey } from "@/lib/rate-limit";
 
 const Body = z.object({
   code: z.string().trim().min(6).max(12),
@@ -16,13 +18,28 @@ const Body = z.object({
 
 /** Exchange a one-time pairing code (shown in the parent dashboard) for a device token. */
 export async function POST(req: Request) {
+  if ((await hit(ipKey("pair", clientIpFrom(req.headers)), LIMITS.pairIp)).limited) {
+    return NextResponse.json({ error: "Too many attempts. Wait a few minutes and try again." }, { status: 429 });
+  }
   const parsed = Body.safeParse(await readJson(req));
   if (!parsed.success) return badRequest(parsed.error.issues[0].message);
   const b = parsed.data;
-  const code = await db.pairingCode.findUnique({ where: { code: b.code.toUpperCase() }, include: { family: true } });
-  if (!code || code.usedAt || code.expiresAt < new Date()) return NextResponse.json({ error: "Pairing code is invalid or expired" }, { status: 400 });
-  const count = await db.device.count({ where: { familyId: code.familyId } });
-  if (count >= code.family.deviceLimit) return NextResponse.json({ error: "Device limit reached for this plan" }, { status: 409 });
+  const invalidCode = () => NextResponse.json({ error: "Pairing code is invalid or expired" }, { status: 400 });
+  const code = await db.pairingCode.findUnique({ where: { code: b.code.toUpperCase() } });
+  if (!code || code.usedAt || code.expiresAt < new Date()) return invalidCode();
+  // Claim the code first, atomically: of two devices racing with the same code, only one gets past here
+  const claimed = await db.pairingCode.updateMany({ where: { id: code.id, usedAt: null, expiresAt: { gt: new Date() } }, data: { usedAt: new Date() } });
+  if (!claimed.count) return invalidCode();
+  await refreshPurchases(code.familyId);
+  const [family, count] = await Promise.all([
+    db.family.findUniqueOrThrow({ where: { id: code.familyId } }),
+    db.device.count({ where: { familyId: code.familyId } }),
+  ]);
+  if (count >= family.deviceLimit) {
+    // Give the code back so the parent can use it after removing a device
+    await db.pairingCode.update({ where: { id: code.id }, data: { usedAt: null } });
+    return NextResponse.json({ error: "Device limit reached for this plan" }, { status: 409 });
+  }
 
   const token = newToken();
   const hasPrimary = await db.device.count({ where: { childId: code.childId, isPrimary: true } });
@@ -33,7 +50,6 @@ export async function POST(req: Request) {
     },
     include: { child: true },
   });
-  await db.pairingCode.update({ where: { id: code.id }, data: { usedAt: new Date() } });
   await db.alert.create({
     data: {
       familyId: code.familyId, childId: code.childId, deviceId: device.id, severity: "INFO", category: "DEVICES", icon: "refresh-cw",

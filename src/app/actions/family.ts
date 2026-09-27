@@ -7,9 +7,9 @@ import { after } from "next/server";
 import { z } from "zod";
 import type { AppApproval } from "@prisma/client";
 import { db } from "@/lib/db";
-import { requireAdmin, requireUser } from "@/lib/auth";
+import { clearSessionCookie, requireAdmin, requireUser } from "@/lib/auth";
 import { sendVerificationEmailQuietly } from "@/lib/email-verification";
-import { ServiceError, isUniqueViolation } from "@/lib/errors";
+import { ServiceError } from "@/lib/errors";
 import * as family from "@/lib/family-service";
 import type { FormState } from "./auth";
 
@@ -128,22 +128,30 @@ export async function updateAccount(_: FormState, form: FormData): Promise<FormS
     timezone: z.string().refine((tz) => { try { new Intl.DateTimeFormat("en", { timeZone: tz }); return true; } catch { return false; } }, "Choose a valid time zone."),
   }).safeParse({ name: form.get("name"), email: form.get("email"), timezone: form.get("timezone") });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
-  if (await family.userIdForMailbox(parsed.data.email, u.id)) return { error: "Another account already uses this email." };
-  const emailChanged = parsed.data.email !== u.email;
+  let emailChanged = false;
   try {
-    await db.user.update({
-      where: { id: u.id },
-      // A new email is unverified until they open the link we send it
-      data: { name: parsed.data.name, email: parsed.data.email, ...(emailChanged ? { emailVerifiedAt: null } : {}) },
-    });
+    // A new email needs the password and is unverified until they open the link we send it
+    emailChanged = await family.changeEmail(u, parsed.data.email, String(form.get("password") ?? ""));
   } catch (e) {
-    if (isUniqueViolation(e)) return { error: "Another account already uses this email." };
-    throw e;
+    return failed(e);
   }
+  await db.user.update({ where: { id: u.id }, data: { name: parsed.data.name } });
   if (emailChanged) after(() => sendVerificationEmailQuietly(u.id));
   if (u.role === "FAMILY_ADMIN") await db.family.update({ where: { id: u.familyId }, data: { timezone: parsed.data.timezone } });
   revalidatePath("/", "layout");
-  return { ok: "Account details saved." };
+  return { ok: emailChanged ? "Saved. Open the link we sent to your new email to verify it." : "Account details saved." };
+}
+
+/** Settings › Export or delete data. The admin's account takes the whole family with it. */
+export async function deleteAccount(_: FormState, form: FormData): Promise<FormState> {
+  const u = await requireUser();
+  try {
+    await family.deleteAccount(u, { password: String(form.get("password") ?? ""), phrase: String(form.get("phrase") ?? "").trim() });
+  } catch (e) {
+    return failed(e);
+  }
+  await clearSessionCookie();
+  redirect("/?deleted=1");
 }
 
 export async function changePassword(_: FormState, form: FormData): Promise<FormState> {
@@ -156,7 +164,7 @@ export async function changePassword(_: FormState, form: FormData): Promise<Form
   return { ok: "Password changed. Other sessions were signed out." };
 }
 
-const USER_TOGGLES = ["notifyPush", "notifyEmail", "notifyApproval", "weeklySummary", "twoFactor"] as const;
+const USER_TOGGLES = ["notifyPush", "notifyEmail", "notifyApproval", "weeklySummary"] as const;
 const FAMILY_TOGGLES = ["keepLocationHistory", "shareAnalytics"] as const;
 
 export async function setToggle(key: string, value: boolean) {
@@ -194,6 +202,18 @@ export async function removeParent(userId: string) {
   const r = await db.user.deleteMany({ where: { id: userId, familyId: u.familyId, role: "PARENT" } });
   if (r.count) await audit(u.familyId, u.name, "member.removed", userId);
   revalidatePath("/settings/family");
+}
+
+export async function unlinkIdentity(identityId: string): Promise<{ error?: string }> {
+  const u = await requireUser();
+  try {
+    await family.unlinkIdentity(u, identityId);
+  } catch (e) {
+    if (e instanceof ServiceError) return { error: e.message };
+    throw e;
+  }
+  revalidatePath("/settings/security");
+  return {};
 }
 
 export async function signOutOthers() {

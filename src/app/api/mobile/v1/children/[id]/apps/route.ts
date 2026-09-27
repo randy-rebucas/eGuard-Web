@@ -5,7 +5,7 @@ import { db } from "@/lib/db";
 import { childFor } from "@/lib/config-service";
 import { APPROVAL_LABEL, audit } from "@/lib/family-service";
 import { conflict } from "@/lib/errors";
-import { dateFromKey, dayKey, getFamily } from "@/lib/queries";
+import { appMinutesOn, dateFromKey, dayKey, getFamily } from "@/lib/queries";
 import { authed, body, clientLabel, query } from "@/lib/mobile-api";
 
 const APPROVALS = ["ALLOWED", "ALWAYS_ALLOWED", "FILTERED", "BLOCKED", "PENDING"] as const;
@@ -21,7 +21,7 @@ export const GET = authed<{ id: string }>(async ({ req, user, params }) => {
     : filter === "installed" ? { approval: { not: "BLOCKED" as AppApproval } } : {};
   const [apps, usage, counts] = await Promise.all([
     db.childApp.findMany({ where: { childId: child.id, ...where }, orderBy: [{ approval: "asc" }, { name: "asc" }] }),
-    db.appUsageDaily.findMany({ where: { childId: child.id, date: dateFromKey(dayKey(new Date(), family.timezone)) } }),
+    appMinutesOn([child.id], dateFromKey(dayKey(new Date(), family.timezone))),
     db.childApp.groupBy({ by: ["approval"], where: { childId: child.id }, _count: true }),
   ]);
   const count = (a: AppApproval) => counts.find((c) => c.approval === a)?._count ?? 0;

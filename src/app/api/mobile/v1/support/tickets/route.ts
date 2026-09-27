@@ -1,7 +1,9 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { authed, body } from "@/lib/mobile-api";
+import { LIMITS, enforce } from "@/lib/rate-limit";
+import { forwardTicket } from "@/lib/support";
 
 /** Contact Support: this parent's requests, newest first. */
 export const GET = authed(async ({ user }) => {
@@ -20,6 +22,9 @@ const Body = z.object({
 
 export const POST = authed(async ({ req, user }) => {
   const b = await body(req, Body);
+  await enforce(`support:${user.id}`, LIMITS.supportUser, "You've sent several requests. We'll reply to those first.");
   const t = await db.supportTicket.create({ data: { ...b, familyId: user.familyId, userId: user.id } });
+  // Deliver it to the support inbox; the ticket is saved either way, so a mail hiccup isn't the parent's problem
+  after(() => forwardTicket(t, user).catch((e) => console.error("[support] forwarding ticket failed", t.id, e)));
   return NextResponse.json({ id: t.id, status: t.status, createdAt: t.createdAt, message: "Thanks. We'll reply by email within one business day." }, { status: 201 });
 });

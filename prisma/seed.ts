@@ -62,16 +62,15 @@ function spreadOverDay(total: number) {
   return out;
 }
 
-function strip(c: ProtectionConfig) {
-  const { key: _k, ...rest } = c;
-  return rest;
+function strip(c: ProtectionConfig): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(c).filter(([k]) => k !== "key"));
 }
 
 async function main() {
   await db.family.deleteMany();
 
   const family = await db.family.create({
-    data: { name: "Cruz Family", timezone: TZ, plan: "eGuard Plus", deviceLimit: 8, renewsAt: new Date("2026-10-12T00:00:00+08:00") },
+    data: { name: "Cruz Family", timezone: TZ, plan: "eGuard Plus", deviceLimit: 8, renewsAt: null },
   });
   const pw = await bcrypt.hash("ChangeMe123!", 12);
   await db.user.create({ data: { familyId: family.id, email: "randy@example.com", name: "Randy Cruz", passwordHash: pw, role: "FAMILY_ADMIN", twoFactor: true, emailVerifiedAt: new Date() } });
@@ -150,7 +149,7 @@ async function main() {
       await db.screenTimeDaily.create({ data: { childId: child.id, deviceId: devs[0], date, minutes: main, hourly: hourly(main) } });
       if (share < 1) await db.screenTimeDaily.create({ data: { childId: child.id, deviceId: devs[1], date, minutes: rest, hourly: hourly(rest) } });
       for (const [app, m] of k.todayApps) {
-        await db.appUsageDaily.create({ data: { childId: child.id, date, app, minutes: Math.round((m / todayTotal) * total) } });
+        await db.appUsageDaily.create({ data: { childId: child.id, deviceId: devs[0], date, app, minutes: Math.round((m / todayTotal) * total) } });
       }
     }
   }

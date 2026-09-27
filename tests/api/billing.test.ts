@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PrismaClient } from "@prisma/client";
-import { redeemGooglePlay, refreshPurchases } from "@/lib/billing";
+import { RECHECK_ACTIVE_MS, handlePlayNotification, redeemGooglePlay, refreshPurchases } from "@/lib/billing";
 import { accessToken, googlePlayConfig, obfuscatedAccountId, summarize } from "@/lib/google-play";
 import type { Actor } from "@/lib/config-service";
 import { fakeGooglePlay, playSub } from "../fake-google-play";
@@ -164,5 +164,47 @@ describe("refreshPurchases", () => {
   it("leaves families without store purchases alone", async () => {
     await refreshPurchases(other.familyId, opts);
     expect(await db.family.findUniqueOrThrow({ where: { id: other.familyId } })).toMatchObject({ plan: "eGuard Plus", deviceLimit: 8 });
+  });
+});
+
+describe("refunds and Real-time Developer Notifications", () => {
+  const redeem = async (token: string) => {
+    play.subs.set(token, playSub({ accountId: acct(), ack: true }));
+    await redeemGooglePlay(admin, "eguard_family", token, opts);
+    expect((await fam()).plan).toBe("eGuard Family");
+  };
+
+  it("re-checks an active purchase once a day, so a revoked one ends before its paid period", async () => {
+    await redeem("tok-3");
+    play.subs.set("tok-3", playSub({ accountId: acct(), ack: true, state: "SUBSCRIPTION_STATE_EXPIRED", expiresInMs: -1000 }));
+    // Checked recently: nothing happens yet
+    await refreshPurchases(admin.familyId, opts);
+    expect((await fam()).plan).toBe("eGuard Family");
+    await db.storePurchase.updateMany({ where: { purchaseToken: "tok-3" }, data: { checkedAt: new Date(Date.now() - RECHECK_ACTIVE_MS - 1000) } });
+    await refreshPurchases(admin.familyId, opts);
+    expect(await fam()).toMatchObject({ plan: "eGuard Plus", deviceLimit: 8 });
+  });
+
+  it("a refund notification ends the plan right away, and the token can't be redeemed again", async () => {
+    await redeem("tok-4");
+    expect(await handlePlayNotification({ purchaseToken: "tok-4", voided: true }, opts)).toEqual({ handled: true });
+    expect(await fam()).toMatchObject({ plan: "eGuard Plus", deviceLimit: 8 });
+    expect((await db.storePurchase.findUniqueOrThrow({ where: { purchaseToken: "tok-4" } })).state).toBe("VOIDED");
+    await expect(redeemGooglePlay(admin, "eguard_family", "tok-4", opts)).rejects.toMatchObject({ status: 409 });
+    // A later routine refresh doesn't bring it back
+    await db.storePurchase.updateMany({ where: { purchaseToken: "tok-4" }, data: { checkedAt: new Date(0) } });
+    await refreshPurchases(admin.familyId, opts);
+    expect((await fam()).plan).toBe("eGuard Plus");
+  });
+
+  it("a renewal notification moves the renewal date", async () => {
+    await redeem("tok-5");
+    play.subs.set("tok-5", playSub({ accountId: acct(), ack: true, expiresInMs: 90 * 864e5 }));
+    await handlePlayNotification({ purchaseToken: "tok-5" }, opts);
+    expect((await fam()).renewsAt!.getTime()).toBeGreaterThan(Date.now() + 80 * 864e5);
+  });
+
+  it("ignores tokens eGuard hasn't seen (the app redeems those)", async () => {
+    expect(await handlePlayNotification({ purchaseToken: "tok-unknown" }, opts)).toEqual({ handled: false });
   });
 });

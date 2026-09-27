@@ -161,7 +161,10 @@ describe("3b. Verify email", () => {
     const r = await call("POST", "/auth/register", { body: { name: "Moe Cruz", email: email("moe"), password: PASSWORD, guardian: true } });
     const oldLink = await verificationToken(email("moe"));
     await verifyInbox(email("moe"));
-    const moved = await call("PATCH", "/me", { token: r.data.token, body: { email: email("moe2") } });
+    // Moving the account to another address needs the password
+    expect((await call("PATCH", "/me", { token: r.data.token, body: { email: email("moe2") } })).data.code).toBe("wrong_password");
+    expect((await call("PATCH", "/me", { token: r.data.token, body: { email: email("moe2"), password: "not-it-at-all" } })).status).toBe(403);
+    const moved = await call("PATCH", "/me", { token: r.data.token, body: { email: email("moe2"), password: PASSWORD } });
     expect(moved.data).toMatchObject({ email: email("moe2"), emailVerified: false });
     expect((await call("POST", "/auth/verify-email", { body: { token: oldLink } })).data.code).toBe("link_invalid");
     await verifyInbox(email("moe2"));
@@ -536,7 +539,8 @@ describe("16–17. Settings and subscription", () => {
   it("shows the plan, renewal, features and device usage", async () => {
     const r = await call("GET", "/subscription", { token });
     expect(r.data).toMatchObject({ plan: "eGuard Plus", status: "ACTIVE", usage: { devicesUsed: 2, deviceLimit: 8, children: 2 } });
-    expect(r.data.renewsLabel).toMatch(/^Renews on /);
+    // The free base plan doesn't renew (it used to show a date that later read as "expired")
+    expect(r.data).toMatchObject({ renewsAt: null, renewsLabel: null });
     expect(r.data.features.find((f: { key: string }) => f.key === "devices").label).toBe("Up to 8 devices");
   });
 

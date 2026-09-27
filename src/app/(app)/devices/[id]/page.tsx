@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { requireUser } from "@/lib/auth";
+import { getUser, requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { dateFromKey, dayKey, getFamily, getFamilyGraph } from "@/lib/queries";
 import { dayTime } from "@/lib/format";
@@ -12,7 +12,8 @@ import { RemoveDeviceButton, RenameDeviceForm } from "@/components/forms";
 
 export async function generateMetadata(props: PageProps<"/devices/[id]">) {
   const { id } = await props.params;
-  const d = await db.device.findUnique({ where: { id }, select: { name: true } });
+  const u = await getUser();
+  const d = u ? await db.device.findFirst({ where: { id, familyId: u.familyId }, select: { name: true } }) : null;
   return { title: d?.name ?? "Device" };
 }
 

@@ -2,9 +2,14 @@ import { getUser } from "@/lib/auth";
 import { getFamily } from "@/lib/queries";
 import { reportData, resolveRange, type Period } from "@/lib/reports";
 
+/**
+ * One CSV cell. App and device names come from the child's device, so a leading = + - @ (or tab/CR) is
+ * neutralised with a quote; otherwise a spreadsheet would run the text as a formula.
+ */
 const csv = (v: unknown) => {
-  const s = v == null ? "" : String(v);
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  let s = v == null ? "" : String(v);
+  if (typeof v === "string" && /^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
 
 export async function GET(req: Request) {

@@ -6,8 +6,8 @@ import { Icon } from "./icon";
 import { useFlow } from "./flow";
 import type { FormState } from "@/app/actions/auth";
 import {
-  addParent, changePassword, createChild, createPairingCode, deleteChildData, removeDevice, removeParent, renameDevice,
-  setAppApproval, setAppLimit, setToggle, signOutOthers, updateAccount, updateChild,
+  addParent, changePassword, createChild, createPairingCode, deleteAccount, deleteChildData, removeDevice, removeParent, renameDevice,
+  setAppApproval, setAppLimit, setToggle, signOutOthers, unlinkIdentity, updateAccount, updateChild,
 } from "@/app/actions/family";
 
 export function Feedback({ state }: { state: FormState }) {
@@ -151,14 +151,23 @@ export function SettingSwitch({ setting, title, desc, checked, disabled }: { set
   );
 }
 
-export function AccountForm({ name, email, timezone, zones, canSetTimezone }: { name: string; email: string; timezone: string; zones: string[]; canSetTimezone: boolean }) {
+export function AccountForm({ name, email, timezone, zones, canSetTimezone, hasPassword }: { name: string; email: string; timezone: string; zones: string[]; canSetTimezone: boolean; hasPassword: boolean }) {
   const [state, action, pending] = useActionState(updateAccount, undefined);
+  const [newEmail, setNewEmail] = useState(email);
+  const changingEmail = newEmail.trim().toLowerCase() !== email;
   return (
     <form action={action} className="dash-col" style={{ gap: 16 }}>
       <Feedback state={state} />
       <div className="form-grid">
         <div className="field"><label htmlFor="fn">Full name</label><input className="input" id="fn" name="name" defaultValue={name} autoComplete="name" /></div>
-        <div className="field"><label htmlFor="em">Email</label><input className="input" id="em" name="email" type="email" defaultValue={email} autoComplete="email" /></div>
+        <div className="field"><label htmlFor="em">Email</label><input className="input" id="em" name="email" type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} autoComplete="email" /></div>
+        {changingEmail ? (
+          <div className="field">
+            <label htmlFor="em-pw">Current password</label>
+            <input className="input" id="em-pw" name="password" type="password" autoComplete="current-password" required />
+            <span className="field-hint">{hasPassword ? "Needed to change your email." : "You signed up with Apple or Google. Sign out and use “Forgot password” to set one first."}</span>
+          </div>
+        ) : null}
         <div className="field">
           <label htmlFor="tz">Family time zone</label>
           <select className="input" id="tz" name="timezone" defaultValue={timezone} disabled={!canSetTimezone}>
@@ -182,6 +191,28 @@ export function PasswordForm() {
         <div className="field"><label htmlFor="pw-n">New password</label><input className="input" id="pw-n" name="next" type="password" minLength={10} autoComplete="new-password" /></div>
       </div>
       <div><button className="btn btn-secondary" disabled={pending}>Change password</button></div>
+    </form>
+  );
+}
+
+export function DeleteAccountForm({ isAdmin, hasPassword }: { isAdmin: boolean; hasPassword: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [state, action, pending] = useActionState(deleteAccount, undefined);
+  if (!open) return <button className="btn btn-secondary btn-sm" style={{ color: "var(--crit-ink)" }} onClick={() => setOpen(true)}><Icon name="trash" />Delete account…</button>;
+  return (
+    <form action={action} className="dash-col" style={{ gap: 12, maxWidth: 440 }}>
+      <p className="t-meta" style={{ color: "var(--ink-2)" }}>
+        {isAdmin
+          ? "You're the family admin, so this deletes the whole family: every child, device, setting and history, and the other parents' accounts. Protections on the devices stop being managed. This can't be undone."
+          : "This deletes your account. The family and its children stay with the family admin. This can't be undone."}
+      </p>
+      <Feedback state={state} />
+      {hasPassword ? (
+        <div className="field"><label htmlFor="da-pw">Your password</label><input className="input" id="da-pw" name="password" type="password" required autoComplete="current-password" /></div>
+      ) : (
+        <div className="field"><label htmlFor="da-ph">Type DELETE to confirm</label><input className="input" id="da-ph" name="phrase" required autoComplete="off" /></div>
+      )}
+      <div className="row"><button type="button" className="btn btn-ghost" onClick={() => setOpen(false)}>Cancel</button><button className="btn btn-primary" style={{ background: "var(--crit)" }} disabled={pending}>{isAdmin ? "Delete family and account" : "Delete my account"}</button></div>
     </form>
   );
 }
@@ -216,4 +247,10 @@ export function SignOutOthersButton() {
   const [pending, start] = useTransition();
   const { toast } = useFlow();
   return <button className="btn btn-secondary btn-sm" disabled={pending} onClick={() => start(async () => { await signOutOthers(); toast("Other sessions were signed out."); })}>Sign out other sessions</button>;
+}
+
+export function UnlinkIdentityButton({ identityId, provider }: { identityId: string; provider: string }) {
+  const [pending, start] = useTransition();
+  const { toast } = useFlow();
+  return <button className="btn btn-secondary btn-sm" disabled={pending} onClick={() => start(async () => { const r = await unlinkIdentity(identityId); toast(r.error ?? `${provider} sign-in removed.`); })}>Unlink</button>;
 }

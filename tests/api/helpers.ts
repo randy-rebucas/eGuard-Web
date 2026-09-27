@@ -12,19 +12,32 @@ export const PASSWORD = "CorrectHorse123!";
 /** Mailpit (docker compose `mail`), which the dev server's SMTP_URL points at. */
 const MAILPIT = process.env.MAILPIT_URL ?? "http://localhost:8025";
 
-/** The token from the newest verification email sent to `to`. Waits for it, since it's sent after the response. */
-export async function verificationToken(to: string, { after = 0 } = {}) {
+/** The token from the newest email sent to `to` whose link matches `path`. Waits for it, since it's sent after the response. */
+async function mailToken(to: string, path: string, { after = 0 } = {}) {
+  const pattern = new RegExp(`${path}\\?token=([\\w-]+)`);
   for (let i = 0; i < 50; i++) {
     const r = await fetch(`${MAILPIT}/api/v1/search?query=${encodeURIComponent(`to:"${to}"`)}`).then((r) => r.json());
-    const msg = r.messages?.find((m: { Created: string }) => Date.parse(m.Created) >= after);
-    if (msg) {
+    for (const msg of r.messages ?? []) {
+      if (Date.parse(msg.Created) < after) continue;
       const full = await fetch(`${MAILPIT}/api/v1/message/${msg.ID}`).then((r) => r.json());
-      const token = /verify-email\?token=([\w-]+)/.exec(full.Text)?.[1];
+      const token = pattern.exec(full.Text)?.[1];
       if (token) return token;
     }
     await new Promise((r) => setTimeout(r, 200));
   }
-  throw new Error(`No verification email reached ${to} (is Mailpit running? npm run db:up)`);
+  throw new Error(`No ${path} email reached ${to} (is Mailpit running? npm run db:up)`);
+}
+
+export const verificationToken = (to: string, o: { after?: number } = {}) => mailToken(to, "verify-email", o);
+export const resetToken = (to: string, o: { after?: number } = {}) => mailToken(to, "reset-password", o);
+
+/** Every email Mailpit holds for `to`, newest first (subject and text). */
+export async function inbox(to: string) {
+  const r = await fetch(`${MAILPIT}/api/v1/search?query=${encodeURIComponent(`to:"${to}"`)}`).then((r) => r.json());
+  return Promise.all((r.messages ?? []).map(async (m: { ID: string; Subject: string }) => {
+    const full = await fetch(`${MAILPIT}/api/v1/message/${m.ID}`).then((r) => r.json());
+    return { subject: m.Subject as string, text: full.Text as string };
+  }));
 }
 
 /** Verifies a parent's email the way they would: from the link in their inbox. */

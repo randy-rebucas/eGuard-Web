@@ -84,6 +84,7 @@
 .auth-submit{width:100%; min-height:48px; margin-top:4px; border-radius:10px; font-size:15px; background:linear-gradient(180deg, #2398FF, #0F7AF0); box-shadow:0 10px 24px -12px rgba(16,122,240,.75)}
 .auth-submit:hover{background:linear-gradient(180deg, #1A8CFF, #0B6ADB)}
 .auth-submit:disabled{opacity:.7; cursor:progress}
+.auth-forgot{align-self:flex-end; font-size:13px; font-weight:600; color:var(--accent-ink)}
 .auth-foot{text-align:center; font-size:14px; color:var(--ink-2)}
 .auth-foot a{color:var(--accent-ink); font-weight:600}
 .auth-foot a:hover{text-decoration:underline; text-underline-offset:3px}

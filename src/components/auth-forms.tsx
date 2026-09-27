@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useActionState, useState } from "react";
-import { login, register } from "@/app/actions/auth";
+import { forgotPassword, login, register, resetPasswordWithToken } from "@/app/actions/auth";
 import { Icon } from "./icon";
 
 function ErrorBox({ error }: { error?: string }) {
@@ -57,7 +57,9 @@ export function LoginForm() {
       <Header title="Welcome back" sub="Sign in to manage your family's digital safety." />
       <ErrorBox error={state?.error} />
       <IconInput id="email" label="Email address" icon="mail" type="email" autoComplete="email" placeholder="you@example.com" required defaultValue={state?.fields?.email ?? ""} />
-      <PasswordInput id="password" label="Password" autoComplete="current-password" placeholder="Enter your password" required />
+      <PasswordInput id="password" label="Password" autoComplete="current-password" placeholder="Enter your password" required>
+        <Link className="auth-forgot" href="/forgot-password">Forgot password?</Link>
+      </PasswordInput>
       <button className="btn btn-primary auth-submit" disabled={pending}>{pending ? "Signing in…" : "Sign in"}</button>
       <p className="auth-foot">Don&apos;t have an account? <Link href="/register">Create account</Link></p>
       {process.env.NODE_ENV !== "production" ? (
@@ -95,6 +97,58 @@ export function RegisterForm() {
       </label>
       <button className="btn btn-primary auth-submit" disabled={pending}>{pending ? "Creating account…" : "Create account"}</button>
       <p className="auth-foot">Already have an account? <Link href="/login">Sign in</Link></p>
+    </form>
+  );
+}
+
+export function ForgotPasswordForm() {
+  const [state, action, pending] = useActionState(forgotPassword, undefined);
+  if (state?.ok) {
+    return (
+      <div className="auth-form">
+        <Header title="Check your email" sub={state.ok} />
+        <p className="auth-foot"><Link href="/login">Back to sign in</Link></p>
+      </div>
+    );
+  }
+  return (
+    <form action={action} className="auth-form" noValidate>
+      <Header title="Forgot your password?" sub="Enter your email and we'll send you a link to choose a new one." />
+      <ErrorBox error={state?.error} />
+      <IconInput id="email" label="Email address" icon="mail" type="email" autoComplete="email" placeholder="you@example.com" required defaultValue={state?.fields?.email ?? ""} />
+      <button className="btn btn-primary auth-submit" disabled={pending}>{pending ? "Sending…" : "Send reset link"}</button>
+      <p className="auth-foot">Remembered it? <Link href="/login">Sign in</Link></p>
+    </form>
+  );
+}
+
+export function ResetPasswordForm({ token }: { token: string }) {
+  const [state, action, pending] = useActionState(resetPasswordWithToken, undefined);
+  const [password, setPassword] = useState("");
+  const longEnough = password.length >= MIN_PASSWORD;
+  if (!token) {
+    return (
+      <div className="auth-form">
+        <Header title="This link doesn't work" sub="Open the link from your email again, or ask for a new one." />
+        <Link className="btn btn-primary auth-submit" href="/forgot-password">Send a new link</Link>
+      </div>
+    );
+  }
+  return (
+    <form action={action} className="auth-form" noValidate>
+      <Header title="Choose a new password" sub="You'll be signed out everywhere else, then signed in here." />
+      <ErrorBox error={state?.error} />
+      <input type="hidden" name="token" value={token} />
+      <PasswordInput
+        id="password" label="New password" autoComplete="new-password" placeholder="Create a password" minLength={MIN_PASSWORD} required
+        aria-describedby="pw-rules" value={password} onChange={(e) => setPassword(e.target.value)}
+      >
+        <ul className="auth-rules" id="pw-rules">
+          <li data-ok={longEnough}><Icon name={longEnough ? "circle-check" : "circle-dashed"} />At least {MIN_PASSWORD} characters</li>
+        </ul>
+      </PasswordInput>
+      <button className="btn btn-primary auth-submit" disabled={pending}>{pending ? "Saving…" : "Save password"}</button>
+      {state?.error ? <p className="auth-foot"><Link href="/forgot-password">Send a new link</Link></p> : null}
     </form>
   );
 }

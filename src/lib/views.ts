@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "./db";
 import { ago, dayLabel, dayTime } from "./format";
-import { dateFromKey, dayKey, getScreenTime, type FamilyGraph } from "./queries";
+import { appMinutesOn, dateFromKey, dayKey, getScreenTime, type FamilyGraph } from "./queries";
 import { alertAction } from "@/components/cards";
 import type { AlertItem } from "@/components/alerts";
 import type { ActivityChild, Series } from "@/components/charts";
@@ -34,7 +34,7 @@ export async function todayActivity(graph: FamilyGraph, tz: string): Promise<Act
   const today = dateFromKey(dayKey(new Date(), tz));
   const [usage, apps] = await Promise.all([
     db.screenTimeDaily.groupBy({ by: ["childId"], where: { childId: { in: graph.children.map((c) => c.id) }, date: today }, _sum: { minutes: true } }),
-    db.appUsageDaily.findMany({ where: { childId: { in: graph.children.map((c) => c.id) }, date: today }, orderBy: { minutes: "desc" } }),
+    appMinutesOn(graph.children.map((c) => c.id), today),
   ]);
   return graph.children.map((c) => {
     const loc = c.devices.map((d) => d.location).find((l) => l?.sharing && l.lat != null);

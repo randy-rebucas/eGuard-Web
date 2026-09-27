@@ -7,7 +7,8 @@ export type Period = "today" | "7d" | "30d" | "custom";
 export function resolveRange(period: Period, tz: string, from?: string, to?: string) {
   const today = dayKey(new Date(), tz);
   const base = dateFromKey(today).getTime();
-  const valid = (s?: string) => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
+  // A real calendar date: "2026-02-30" and "2026-13-45" match the pattern but aren't dates
+  const valid = (s?: string) => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(Date.parse(`${s}T00:00:00Z`)) && new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) === s;
   if (period === "custom" && valid(from) && valid(to) && from! <= to!) return { from: from!, to: to! > today ? today : to! };
   const n = period === "today" ? 1 : period === "30d" ? 30 : 7;
   return { from: new Date(base - (n - 1) * 864e5).toISOString().slice(0, 10), to: today };

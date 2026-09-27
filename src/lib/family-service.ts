@@ -3,17 +3,19 @@ import { randomInt } from "node:crypto";
 import { z } from "zod";
 import type { AppApproval, Prisma } from "@prisma/client";
 import { db } from "./db";
-import { hashPassword, verifyPassword } from "./auth";
+import { confirmPassword, hashPassword } from "./auth";
+import { refreshPurchases } from "./billing";
+import { audit } from "./audit";
 import { profileConfigs, type ProfileId } from "./profiles";
 import type { ProtectionConfig } from "./protections";
 import type { Actor } from "./config-service";
-import { ServiceError, conflict, forbidden, invalid, isUniqueViolation, notFound } from "./errors";
+import { conflict, forbidden, invalid, isUniqueViolation, notFound } from "./errors";
 import { requireVerifiedEmail } from "./email-verification";
+import { BASE_PLAN, planByName } from "./plans";
 
 /** Family, children, apps and devices: shared by the web server actions and the mobile API. */
 
-export const audit = (familyId: string, actor: string, action: string, detail?: string) =>
-  db.auditLog.create({ data: { familyId, actor, action, detail } });
+export { audit };
 
 const requireAdminActor = (a: Actor) => { if (a.role !== "FAMILY_ADMIN") throw forbidden(); };
 
@@ -44,8 +46,7 @@ export async function createChild(actor: Actor, input: { name: string; birthYear
 
 export async function deleteChild(actor: Actor, childId: string, password: string) {
   requireAdminActor(actor);
-  const user = await db.user.findUniqueOrThrow({ where: { id: actor.id } });
-  if (!(await verifyPassword(password, user.passwordHash))) throw new ServiceError(403, "That password isn't right.", "wrong_password");
+  await confirmPassword(actor.id, password);
   const child = await db.child.findFirst({ where: { id: childId, familyId: actor.familyId } });
   if (!child) throw notFound("Child");
   await db.child.delete({ where: { id: child.id } });
@@ -89,6 +90,8 @@ export async function setAppLimit(actor: Actor, appId: string, minutes: number |
 /* ---------- Devices ---------- */
 
 export async function createPairingCode(actor: Actor, childId: string) {
+  // The device limit comes from the plan; make sure a lapsed or refunded subscription is reflected first
+  await refreshPurchases(actor.familyId);
   const [child, family, count] = await Promise.all([
     db.child.findFirst({ where: { id: childId, familyId: actor.familyId } }),
     db.family.findUniqueOrThrow({ where: { id: actor.familyId } }),
@@ -107,12 +110,66 @@ export async function createPairingCode(actor: Actor, childId: string) {
 /* ---------- Account ---------- */
 
 export async function changePassword(actor: Actor & { sessionId: string }, current: string, next: string) {
-  const user = await db.user.findUniqueOrThrow({ where: { id: actor.id } });
-  if (!(await verifyPassword(current, user.passwordHash))) throw new ServiceError(403, "Your current password isn't right.", "wrong_password");
   if (next.length < 10) throw invalid("Use at least 10 characters for your new password.");
+  await confirmPassword(actor.id, current);
   await db.user.update({ where: { id: actor.id }, data: { passwordHash: await hashPassword(next), passwordChangedAt: new Date() } });
   await db.session.deleteMany({ where: { userId: actor.id, id: { not: actor.sessionId } } });
   await audit(actor.familyId, actor.name, "password.changed");
+}
+
+/**
+ * Changes the parent's email. Needs their password, so a stolen session can't move the account to
+ * an address the thief controls. The new address is unverified until its link is opened, and Apple/Google
+ * sign-ins linked under the old address are unlinked.
+ */
+export async function changeEmail(actor: Actor, email: string, password: string) {
+  const current = await db.user.findUniqueOrThrow({ where: { id: actor.id } });
+  if (email === current.email) return false;
+  const taken = () => conflict("Another account already uses this email.");
+  if (await userIdForMailbox(email, actor.id)) throw taken();
+  await confirmPassword(actor.id, password);
+  await db.$transaction([
+    db.user.update({ where: { id: actor.id }, data: { email, emailVerifiedAt: null } }),
+    db.oAuthIdentity.deleteMany({ where: { userId: actor.id } }),
+    db.emailVerification.deleteMany({ where: { userId: actor.id } }),
+    db.passwordReset.deleteMany({ where: { userId: actor.id } }),
+  ]).catch((e) => { throw isUniqueViolation(e) ? taken() : e; });
+  await audit(actor.familyId, actor.name, "email.changed", `${current.email} → ${email}`);
+  return true;
+}
+
+/** Linked Apple/Google sign-ins (Privacy & security). */
+export const listIdentities = (userId: string) =>
+  db.oAuthIdentity.findMany({ where: { userId }, orderBy: { createdAt: "asc" }, select: { id: true, provider: true, email: true, createdAt: true } });
+
+/** Unlinks an Apple/Google sign-in, unless it's the only way left to sign in. */
+export async function unlinkIdentity(actor: Actor, identityId: string) {
+  const [user, identities] = await Promise.all([db.user.findUniqueOrThrow({ where: { id: actor.id } }), listIdentities(actor.id)]);
+  const target = identities.find((i) => i.id === identityId);
+  if (!target) throw notFound("Sign-in");
+  if (!user.passwordSet && identities.length === 1) {
+    throw conflict("This is your only way to sign in. Set a password first (sign out, then “Forgot password?”).");
+  }
+  await db.oAuthIdentity.delete({ where: { id: target.id } });
+  await audit(actor.familyId, actor.name, "identity.unlinked", target.provider);
+}
+
+/**
+ * Deletes the signed-in parent's account. The family admin's account takes the whole family with it
+ * (children, devices, history, other parents); another parent's account removes only them. Needs the
+ * password, or for Apple/Google accounts without one, typing DELETE.
+ */
+export async function deleteAccount(actor: Actor, confirm: { password?: string; phrase?: string }) {
+  const user = await db.user.findUniqueOrThrow({ where: { id: actor.id } });
+  if (user.passwordSet) await confirmPassword(actor.id, confirm.password ?? "");
+  else if (confirm.phrase !== "DELETE") throw invalid("Type DELETE to confirm.");
+  if (actor.role === "FAMILY_ADMIN") {
+    await db.family.delete({ where: { id: actor.familyId } });
+    return { deleted: "family" as const };
+  }
+  await db.user.delete({ where: { id: actor.id } });
+  await audit(actor.familyId, actor.name, "member.left", user.email);
+  return { deleted: "account" as const };
 }
 
 export const ParentSchema = z.object({
@@ -168,17 +225,17 @@ export const RegisterSchema = z.object({
  * guardian (18+); it's recorded in the audit log. `passwordHash` lets social sign-up pass an unusable hash,
  * and `emailVerified` marks an email the provider already verified. Otherwise, send a verification email.
  */
-export async function createFamily(input: { name: string; familyName: string; email: string; passwordHash: string; emailVerified?: boolean }) {
+export async function createFamily(input: { name: string; familyName: string; email: string; passwordHash: string; emailVerified?: boolean; passwordSet?: boolean }) {
   const taken = () => conflict("An account with this email already exists. Sign in instead.");
   if (await userIdForMailbox(input.email)) throw taken();
-  const renews = new Date(); renews.setMonth(renews.getMonth() + 1);
-  // Family and admin are created in one statement, so a lost race leaves no empty family behind
+  // Family and admin are created in one statement, so a lost race leaves no empty family behind.
+  // The base plan is free and has no renewal date; a store purchase sets one.
   const family = await db.family.create({
     data: {
-      name: input.familyName, plan: "eGuard Plus", deviceLimit: 8, renewsAt: renews,
+      name: input.familyName, plan: BASE_PLAN, deviceLimit: planByName(BASE_PLAN).deviceLimit, renewsAt: null,
       users: { create: {
         name: input.name, email: input.email, passwordHash: input.passwordHash, role: "FAMILY_ADMIN",
-        emailVerifiedAt: input.emailVerified ? new Date() : null,
+        emailVerifiedAt: input.emailVerified ? new Date() : null, passwordSet: input.passwordSet ?? true,
       } },
     },
     include: { users: true },

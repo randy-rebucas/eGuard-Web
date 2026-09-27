@@ -73,6 +73,19 @@ export async function getScreenTime(familyId: string, tz: string, n = 14) {
   return { days, byChild };
 }
 
+/**
+ * Minutes per app on one day, summed across each child's devices, most-used first.
+ * (Rows are stored per device so a phone and a tablet don't overwrite each other.)
+ */
+export async function appMinutesOn(childIds: string[], date: Date) {
+  const rows = await db.appUsageDaily.groupBy({
+    by: ["childId", "app"], where: { childId: { in: childIds }, date }, _sum: { minutes: true },
+  });
+  return rows
+    .map((r) => ({ childId: r.childId, app: r.app, minutes: r._sum.minutes ?? 0 }))
+    .sort((a, b) => b.minutes - a.minutes);
+}
+
 export async function getAppUsage(familyId: string, from: string, to: string) {
   return db.appUsageDaily.groupBy({
     by: ["childId", "app"],

@@ -115,10 +115,15 @@ Returned by `/me`, every sign-in, and `dashboard.user`.
   "role": "FAMILY_ADMIN",
   "family": { "id": "cmujeoltx0000ncgsox90ftwt", "name": "Cruz Family", "timezone": "Asia/Manila" },
   "notifications": { "notifyPush": true, "notifyEmail": true, "notifyApproval": true, "weeklySummary": true },
-  "twoFactor": true,
+  "hasPassword": true,
+  "twoFactor": false,
   "createdAt": "2026-09-27T05:56:40.493Z"
 }
 ```
+
+`hasPassword` is false for parents who signed up with Apple/Google and haven't set a password. For them, hide
+"Change password" and point to "Forgot password?". Deleting the account asks them to type DELETE instead of a
+password. `twoFactor` is always false; two-step verification isn't available yet.
 
 `role` is `FAMILY_ADMIN` or `PARENT`. Admin-only actions return `403` for a `PARENT`, so hide them in the UI:
 - deleting a child
@@ -314,7 +319,7 @@ older. Show the Apple/Google buttons only when enabled.
   "apiVersion": "1",
   "minimumAppVersion": "1.0.0",
   "signIn": { "password": true, "apple": false, "google": false },
-  "supportEmail": "support@eguard.example"
+  "supportEmail": "support@eguard.app"
 }
 ```
 
@@ -335,7 +340,7 @@ older. Show the Apple/Google buttons only when enabled.
     { "slug": "device-offline", "category": "TROUBLESHOOTING", "title": "A device shows as offline",
       "summary": "Settings stay active, but eGuard can't verify them until the device reconnects." }
   ],
-  "contact": { "email": "support@eguard.example", "replyTime": "Replies within 1 business day" }
+  "contact": { "email": "support@eguard.app", "replyTime": "Replies within 1 business day" }
 }
 ```
 
@@ -398,7 +403,22 @@ Otherwise the link opens a web page, where the parent taps **Verify my email**. 
 { "email": "randy@example.com", "password": "ChangeMe123!" }
 ```
 
-Response: `{ token, expiresAt, user }`. Errors: `401 invalid_credentials`, `429 rate_limited`.
+Response: `{ token, expiresAt, user }`. Errors: `401 invalid_credentials`, `429 rate_limited`. After 10 wrong
+passwords in 15 minutes the account is locked for the rest of that window, even with the right password; offer
+"Forgot password?", since a reset lifts the lock.
+
+#### `POST /auth/forgot-password` → `202`
+
+`{ "email": "randy@example.com" }`. Emails a link to `/reset-password?token=…` (valid for 1 hour, single use) if an
+account uses that address. The response is the same whether or not one does:
+`{ ok: true, message }`. Show the message. Also how Apple/Google parents set their first password. `429` after
+too many requests from one address.
+
+#### `POST /auth/reset-password` → `200`
+
+`{ "token": "<from the link>", "password": "at least 10 characters" }`. For apps that open reset links
+themselves. Sets the password, **signs out every session**, and returns a new one: `{ token, expiresAt, user }`.
+Errors: `400 invalid` (password too short), `400 link_invalid` (used, replaced or unknown), `400 link_expired`.
 
 #### `POST /auth/social` → `200` (existing account) / `201` (new account)
 
@@ -414,7 +434,9 @@ Response: `{ token, expiresAt, user }`. Errors: `401 invalid_credentials`, `429 
 Response: `{ token, expiresAt, user, isNew }`. Continue with onboarding when `isNew` is true.
 
 - If the provider account is already linked, the parent is signed in.
-- Otherwise, an existing eGuard account with the same **verified** email gets linked.
+- Otherwise, an existing eGuard account with **exactly** the same email gets linked. Aliases (`+tag`, Gmail dots)
+  never link, and get `409 conflict` asking the parent to sign in with their password. If that account's email
+  was never verified, whoever registered it is signed out and their password stops working.
 - Otherwise, a new family is created.
 
 Errors: `400 email_required` (no verified email; Apple "Hide my email" relay addresses are fine),
@@ -433,7 +455,10 @@ Ends this session only. Pass the device's push token so this phone stops receivi
 | Method & path | Body | Response |
 |---|---|---|
 | `GET /me` | none | `User` |
-| `PATCH /me` | any of `{ name, email, timezone }` | `User`. `timezone` (IANA, e.g. `Asia/Manila`) is applied only for the family admin. `409` if the email is taken. A new email sets `emailVerified: false` and sends a link to the new address |
+| `PATCH /me` | any of `{ name, email, password, timezone }` | `User`. `timezone` (IANA, e.g. `Asia/Manila`) is applied only for the family admin. Changing `email` needs the current `password` (`403 wrong_password`, or `403 password_not_set` when `hasPassword` is false). `409` if the email is taken. A new email sets `emailVerified: false`, sends a link to the new address, and unlinks Apple/Google sign-ins |
+| `DELETE /me` | `{ password }`, or `{ confirm: "DELETE" }` when `hasPassword` is false | `{ ok, deleted: "family" \| "account" }`. **Deletes the account.** The family admin's account deletes the whole family (children, devices, history, other parents). Another parent's account removes only them. Sign out locally afterwards |
+| `GET /me/identities` | none | `{ identities: [{ id, provider, email, createdAt }] }`: linked Apple/Google sign-ins |
+| `DELETE /me/identities/{id}` | none | `{ ok }`. `409` if it's the only way to sign in (no password set) |
 | `POST /me/password` | `{ current, next }` | `{ ok, message }`. `403 wrong_password`, `400` if `next` < 10 chars. **Signs out every other session**; this one stays |
 | `GET /me/notifications` | none | `{ notifyPush, notifyEmail, notifyApproval, weeklySummary }` |
 | `PATCH /me/notifications` | any subset of those booleans | Same object, updated |

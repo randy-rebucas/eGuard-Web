@@ -126,6 +126,8 @@ model User {
   emailVerifiedAt DateTime?
   name         String
   passwordHash String
+  /// false for Apple/Google sign-ups until they set a password (through "Forgot password")
+  passwordSet  Boolean  @default(true)
   role         Role     @default(PARENT)
   // notification preferences
   notifyPush     Boolean @default(true)
@@ -138,6 +140,7 @@ model User {
 
   sessions Session[]
   emailVerifications EmailVerification[]
+  passwordResets PasswordReset[]
   readAlerts AlertRead[]
   identities OAuthIdentity[]
   pushTokens PushToken[]
@@ -156,6 +159,28 @@ model EmailVerification {
   createdAt DateTime @default(now())
 
   @@index([userId, createdAt])
+}
+
+/// A single-use "reset your password" link (SHA-256 of the token only). Valid for an hour.
+model PasswordReset {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  email     String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+}
+
+/// Fixed-window counters for rate limits, shared by every server instance.
+model RateLimit {
+  key     String   @id
+  count   Int
+  resetAt DateTime
+
+  @@index([resetAt])
 }
 
 /// Sign in with Apple / Google. `subject` is the provider's stable user id.
@@ -316,6 +341,7 @@ model Device {
   requests    ConfigRequest[]
   location    DeviceLocation?
   usage       ScreenTimeDaily[]
+  appUsage    AppUsageDaily[]
   checkResults CheckRunResult[]
   visits      LocationVisit[]
 }
@@ -392,15 +418,19 @@ model ScreenTimeDaily {
   @@index([childId, date])
 }
 
+/// Per device, so a child's phone and tablet don't overwrite each other; sum across devices to show a child's total.
 model AppUsageDaily {
-  id      String   @id @default(cuid())
-  childId String
-  child   Child    @relation(fields: [childId], references: [id], onDelete: Cascade)
-  date    DateTime @db.Date
-  app     String
-  minutes Int
+  id       String   @id @default(cuid())
+  childId  String
+  child    Child    @relation(fields: [childId], references: [id], onDelete: Cascade)
+  deviceId String
+  device   Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  date     DateTime @db.Date
+  app      String
+  minutes  Int
 
-  @@unique([childId, date, app])
+  @@unique([deviceId, date, app])
+  @@index([childId, date])
 }
 
 model ChildApp {
@@ -499,6 +529,8 @@ model Alert {
   /// what resolves it, e.g. "BEDTIME:<deviceId>"
   resolveKey String?
   resolvedAt DateTime?
+  /// when parents were emailed about it (set once, even if nobody wanted email)
+  notifiedAt DateTime?
   createdAt  DateTime      @default(now())
 
   reads AlertRead[]

@@ -16,6 +16,24 @@ function sniff(b: Buffer) {
   return null;
 }
 
+/** Reads the body, stopping as soon as it passes `max` bytes (Content-Length can be missing or wrong). */
+async function readCapped(req: Request, max: number) {
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  const reader = req.body?.getReader();
+  while (reader) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.length;
+    if (size > max) {
+      await reader.cancel();
+      throw new ServiceError(413, "Choose an image under 2 MB.", "too_large");
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks);
+}
+
 /** The child's photo. Needs the parent's bearer token like every other endpoint. */
 export const GET = authed<{ id: string }>(async ({ user, params }) => {
   await childFor(user.familyId, params.id);
@@ -31,7 +49,9 @@ export const PUT = authed<{ id: string }>(async ({ req, user, params }) => {
   await childFor(user.familyId, params.id);
   const declared = (req.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
   if (!TYPES.includes(declared)) throw new ServiceError(415, "Upload a JPEG, PNG, WebP or HEIC image.", "unsupported_media_type");
-  const data = Buffer.from(await req.arrayBuffer());
+  // Refuse oversized uploads before reading them into memory
+  if (Number(req.headers.get("content-length") ?? 0) > MAX_BYTES) throw new ServiceError(413, "Choose an image under 2 MB.", "too_large");
+  const data = await readCapped(req, MAX_BYTES);
   if (!data.length) throw new ServiceError(400, "The image is empty.", "invalid");
   if (data.length > MAX_BYTES) throw new ServiceError(413, "Choose an image under 2 MB.", "too_large");
   if (sniff(data) !== declared) throw new ServiceError(415, "That file isn't a valid image.", "unsupported_media_type");

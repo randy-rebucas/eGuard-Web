@@ -24,10 +24,11 @@ export async function POST(req: Request) {
     create: { deviceId: device.id, childId: device.childId, date, minutes: totalMinutes, hourly: hourly ?? [] },
     update: { minutes: totalMinutes, ...(hourly ? { hourly } : {}) },
   });
+  // Per device: a child's phone and tablet each report their own minutes, summed when shown
   for (const a of apps) {
     await db.appUsageDaily.upsert({
-      where: { childId_date_app: { childId: device.childId, date, app: a.name } },
-      create: { childId: device.childId, date, app: a.name, minutes: a.minutes },
+      where: { deviceId_date_app: { deviceId: device.id, date, app: a.name } },
+      create: { childId: device.childId, deviceId: device.id, date, app: a.name, minutes: a.minutes },
       update: { minutes: a.minutes },
     });
   }

@@ -2,7 +2,7 @@ import "server-only";
 import type { Alert, AlertCategory, ProtectionKey } from "@prisma/client";
 import { db } from "./db";
 import { dayTime } from "./format";
-import { dateFromKey, dayKey, getFamilyGraph, lastNDays, type ChildView, type DeviceView, type FamilyGraph } from "./queries";
+import { appMinutesOn, dateFromKey, dayKey, getFamilyGraph, lastNDays, type ChildView, type DeviceView, type FamilyGraph } from "./queries";
 import { PROTECTION_BY_KEY, describeConfig, type ProtectionConfig } from "./protections";
 import { photoUrl } from "./mobile-api";
 import { ensureOfflineAlerts } from "./engine";
@@ -196,7 +196,7 @@ export async function childOverview(graph: FamilyGraph, childId: string, tz: str
   const [photos, minutes, appsToday, pending, changes] = await Promise.all([
     photoVersions([c.id]),
     todayMinutes([c.id], tz),
-    db.appUsageDaily.findMany({ where: { childId: c.id, date: dateFromKey(todayKey), minutes: { gt: 0 } }, orderBy: { minutes: "desc" } }),
+    appMinutesOn([c.id], dateFromKey(todayKey)).then((rows) => rows.filter((r) => r.minutes > 0)),
     db.childApp.count({ where: { childId: c.id, approval: "PENDING" } }),
     db.configChange.findMany({ where: { childId: c.id }, orderBy: { createdAt: "desc" }, take: 5 }),
   ]);

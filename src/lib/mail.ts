@@ -9,7 +9,7 @@ function transporter() {
   return transport;
 }
 
-export type Mail = { to: string; subject: string; text: string; html: string };
+export type Mail = { to: string; subject: string; text: string; html: string; replyTo?: string };
 
 /** Sends an email. Without SMTP_URL, dev prints it to the server log; production refuses. */
 export async function sendMail(mail: Mail) {

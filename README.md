@@ -29,14 +29,19 @@ original dev machine; change `docker-compose.yml` and `DATABASE_URL` together if
 | `npm run dev` / `build` / `start` | Next.js |
 | `npm run typecheck` | `tsc --noEmit` (run `npx next typegen` first after adding routes) |
 | `npm test` | Vitest unit tests (health scoring, verification rules, profiles, social sign-in tokens) |
-| `npm run test:api` | HTTP tests of the parent mobile API against a running server (`API_BASE_URL`, default `http://localhost:3000`). Creates and deletes its own families |
+| `npm run test:api` | HTTP and service tests against a running server (`API_BASE_URL`, default `http://localhost:3000`) whose `SMTP_URL` points at Mailpit. Creates and deletes its own families. Start the server with `CRON_SECRET=test-cron-secret RATE_LIMIT_IP_ALLOWLIST=::1,127.0.0.1` so the maintenance-job tests can run and one machine can register many test families |
 | `node scripts/e2e-smoke.mjs` | End-to-end smoke test against a running dev server (needs Chrome and the seeded DB). Set `BASE_URL`, `SHOTS` |
 | `npm run db:seed` / `db:reset` | Reseed / reset the database |
 
 ## What's built
 
 - **Auth:** registration creates a family and its admin; sign-in with DB-backed sessions in an httpOnly cookie
-  (bcrypt, 30-day expiry, login rate limiting). Roles: `FAMILY_ADMIN` and `PARENT`.
+  (bcrypt, 30-day expiry). Forgot/reset password by emailed link (signs out every session). Changing the email
+  needs the password. Rate limits are kept in Postgres (`src/lib/rate-limit.ts`): failed sign-ins lock an account
+  after 10 tries in 15 minutes from anywhere, and per-address limits cover sign-in, sign-up, social sign-in,
+  pairing, links and password resets. Roles: `FAMILY_ADMIN` and `PARENT`.
+- **Account deletion:** Settings › Export or delete data, and `DELETE /api/mobile/v1/me`. The admin's account takes
+  the whole family with it; another parent's removes only them.
 - **Dashboard:** hero summary, Family Protection score, children, devices, today's activity (screen time, apps,
   location, device status), device protection status, weekly screen-time trend, recent alerts, quick actions.
 - **Children:** list, add, edit, delete (password-confirmed). Each child has 8 tabs: overview, activity, apps
@@ -126,7 +131,7 @@ follow the same rules. In particular, a change counts only once each device has 
 | Screen | Endpoints |
 |---|---|
 | Launch / About | `GET /app-info` (no auth): API version, minimum app version, which sign-in buttons to show |
-| Create account, sign in | `POST /auth/register` `{ name, email, password, familyName? }` · `POST /auth/login` · `POST /auth/social` `{ provider: "apple"\|"google", idToken, name? }` · `POST /auth/logout[?pushToken=]` |
+| Create account, sign in | `POST /auth/register` `{ name, email, password, familyName? }` · `POST /auth/login` · `POST /auth/social` `{ provider: "apple"\|"google", idToken, name? }` · `POST /auth/logout[?pushToken=]` · `POST /auth/forgot-password` `{ email }` · `POST /auth/reset-password` `{ token, password }` |
 | Add child | `POST /children` `{ name, age, profile? }` · `PUT /children/{id}/photo` (raw JPEG/PNG/WebP/HEIC body, ≤ 2 MB) · `GET`/`DELETE` the photo |
 | Protection profile | `GET /profiles?age=12`: Balanced / Protected / Custom, with the recommended one flagged |
 | Recommended setup | `GET /children/{id}/recommendations?profile=`: all 10 suggested configs, and how each device applies them |
@@ -141,17 +146,44 @@ follow the same rules. In particular, a change counts only once each device has 
 | Location | `GET /children/{id}/location`: current place and, with history on, today's and yesterday's visits · `GET /children/{id}/location/visits` ("View All", paged) · `GET /locations` (all children) |
 | Alerts | `GET /alerts?filter=ALL\|PROTECTION\|APPS\|SCREEN_TIME\|DEVICES\|LOCATION\|SYSTEM&before=` · `GET /alerts/unread-count` · `POST /alerts/{id}/read` · `POST /alerts/read-all` · `POST /alerts/{id}/dismiss` (info only). Each alert has `day` for section headers and a typed `action` |
 | Devices, checks | `GET /devices` · `GET`/`PATCH`/`DELETE /devices/{id}` · `POST /checks` `{ deviceId? }` → poll `GET /checks/{runId}` |
-| Settings | `GET`/`PATCH /me` · `POST /me/password` · `GET`/`PATCH /me/notifications` · `POST`/`DELETE /me/push-tokens` · `GET`/`DELETE /me/sessions` · `GET /family` · `POST /family/members`, `DELETE /family/members/{id}` · `GET`/`PATCH /family/privacy` (admin) |
+| Settings | `GET`/`PATCH /me` (email change needs `password`) · `DELETE /me` (delete account) · `GET /me/identities`, `DELETE /me/identities/{id}` · `POST /me/password` · `GET`/`PATCH /me/notifications` · `POST`/`DELETE /me/push-tokens` · `GET`/`DELETE /me/sessions` · `GET /family` · `POST /family/members`, `DELETE /family/members/{id}` · `GET`/`PATCH /family/privacy` (admin) |
 | Subscription | `GET /subscription`: plan, renewal, features, devices used of the limit · `GET /subscription/plans` · `POST /subscription/google-play` `{ productId, purchaseToken }` (Android "Upgrade to Family") |
 | Help & support | `GET /help?q=&category=` and `GET /help/{slug}` (no auth) · `GET`/`POST /support/tickets` |
 
 Apple and Google ID tokens are verified against the providers' published keys (`src/lib/social-auth.ts`); set
 `APPLE_CLIENT_IDS` / `GOOGLE_CLIENT_IDS` (see `.env.example`). A new social account creates a family. An
-existing account with the same verified email gets linked.
+existing account with exactly the same email gets linked (`src/lib/social-signin.ts`). Aliases (`+tag`, Gmail
+dots) are never linked. If that account never verified its email, whoever registered it is locked out first:
+their password is replaced and their sessions end.
 
 Google Play subscriptions (`src/lib/google-play.ts`, `src/lib/billing.ts`) are verified with the Play Developer API
 using a service account (`GOOGLE_PLAY_PACKAGE_NAME`, `GOOGLE_PLAY_SERVICE_ACCOUNT`), acknowledged by the server,
-and re-checked when the paid period ends. Plans and product IDs are in `src/lib/plans.ts`.
+re-checked when the paid period ends and once a day while active, and before a device pairs. Real-time Developer
+Notifications (renewals, cancellations, refunds) arrive at `POST /api/billing/google-play/notifications`. Point a
+Pub/Sub push subscription with authentication at it, and set `GOOGLE_PLAY_RTDN_AUDIENCE` and
+`GOOGLE_PLAY_RTDN_SERVICE_ACCOUNT`. Plans and product IDs are in `src/lib/plans.ts`.
+
+## Background jobs
+
+`GET`/`POST /api/cron/maintenance` with `Authorization: Bearer $CRON_SECRET`. Run it every 5–15 minutes (Vercel
+Cron sends the header itself when `CRON_SECRET` is set; elsewhere use any scheduler). Each run:
+
+- raises "device hasn't synced" alerts
+- emails parents (verified address, email alerts on) about protection changes, offline devices and anything that
+  needs action
+- re-checks store subscriptions
+- deletes activity older than each family's retention period (screen time, app usage, location visits, history,
+  closed alerts), audit entries older than a year, and expired sessions, links and pairing codes
+
+Without `CRON_SECRET` it only runs in development.
+
+## Deploying
+
+- Put the app behind a proxy that sets `X-Forwarded-For` (Vercel, a load balancer, nginx). Per-address rate limits
+  use the entry the nearest proxy added. Set `TRUSTED_PROXY_HOPS` if more than one proxy is in front. Without a
+  proxy, only per-account limits apply.
+- Set `SMTP_URL`, `APP_URL`, `SUPPORT_EMAIL` and `CRON_SECRET`, and schedule the maintenance job.
+- `npm run build` runs `prisma migrate deploy`.
 
 ## Project layout
 
@@ -169,18 +201,18 @@ scripts/           end-to-end smoke test
 ## Not built yet
 
 - **Native Android/iOS apps.** Both API contracts above are ready for them. Until they exist, the simulator stands in.
-- **Push/email delivery.** Preferences and the parent app's push tokens are stored, but no provider (FCM/APNs/SMTP) is wired up.
+- **Push delivery and the weekly summary.** Email alerts are sent (see Background jobs). The parent app's push tokens
+  are stored, but no FCM/APNs provider is wired up yet.
 - **"Gaming time"** on the app's Recommended Setup screen. eGuard has per-app limits but no app categories yet, so
   there's no per-category limit to recommend.
-- **Social accounts and passwords.** Parents who sign up with Apple/Google have no password yet, so they can't
-  change one or confirm deleting a child until "set a password" or a reset flow exists.
+- **Setting a password while signed in.** Parents who signed up with Apple/Google set their first password through
+  "Forgot password?". Until then, deleting a child or changing the email asks them to do that. Deleting the account
+  takes typing DELETE instead.
 - **Billing on web and iOS.** Android upgrades go through Google Play. The web's "Change plan" and iOS (App Store /
-  StoreKit) purchases aren't built. Play Real-time Developer Notifications aren't wired up either; subscription
-  state is re-checked when a paid period ends.
+  StoreKit) purchases aren't built.
 - **Two-step verification.** Shown as "Coming soon".
 - **Realtime.** The UI polls (bell every 30s, workflows every ~1s). WebSockets or SSE would replace this.
 - **Family photography.** The hero has a CSS photo slot (`--hero-photo`, see `globals.css`) for licensed images.
 - **Location history on the web.** Visits are recorded when the privacy toggle is on and shown in the mobile API.
   The web Location page still shows current locations only.
-- **Data retention job.** The retention period is displayed and applied to location visits as they're written,
-  but no scheduled job deletes other old data yet.
+- **Choosing the retention period.** It's 90 days for every family; there's no setting to change it yet.
