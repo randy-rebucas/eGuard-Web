@@ -22,5 +22,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
     page("/login", 0.3, "yearly"),
     page("/privacy", 0.3, "yearly", LEGAL.updated),
     page("/terms", 0.3, "yearly", LEGAL.updated),
+    page("/delete-account", 0.3, "yearly", LEGAL.updated),
   ];
 }

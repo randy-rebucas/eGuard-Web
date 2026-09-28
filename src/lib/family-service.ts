@@ -5,6 +5,7 @@ import type { AppApproval, Prisma } from "@prisma/client";
 import { db } from "./db";
 import { confirmPassword, hashPassword } from "./auth";
 import { refreshPurchases } from "./billing";
+import { cancelSubscriptionsBeforeDeletion } from "./web-billing";
 import { audit } from "./audit";
 import { profileConfigs, type ProfileId } from "./profiles";
 import type { ProtectionConfig } from "./protections";
@@ -237,14 +238,15 @@ export async function unlinkIdentity(actor: Actor, identityId: string) {
 
 /**
  * Deletes the signed-in parent's account. The family admin's account takes the whole family with it
- * (children, devices, history, other parents); another parent's account removes only them. Needs the
- * password, or for Apple/Google accounts without one, typing DELETE.
+ * (children, devices, history, other parents) and first cancels any PayMongo auto-renew; another parent's
+ * account removes only them. Needs the password, or for Apple/Google accounts without one, typing DELETE.
  */
 export async function deleteAccount(actor: Actor, confirm: { password?: string; phrase?: string }) {
   const user = await db.user.findUniqueOrThrow({ where: { id: actor.id } });
   if (user.passwordSet) await confirmPassword(actor.id, confirm.password ?? "");
   else if (confirm.phrase !== "DELETE") throw invalid("Type DELETE to confirm.");
   if (actor.role === "FAMILY_ADMIN") {
+    await cancelSubscriptionsBeforeDeletion(actor.familyId);
     await db.family.delete({ where: { id: actor.familyId } });
     return { deleted: "family" as const };
   }

@@ -3,7 +3,7 @@ import Image, { type StaticImageData } from "next/image";
 import Link from "next/link";
 import {
   ArrowRight, BellRing, CalendarClock, ChartNoAxesColumnIncreasing, Check, ChevronDown, ChevronRight, CircleCheck,
-  ClipboardCheck, Laptop, Plus, Settings, ShieldCheck, Smartphone, Sparkles, Tablet, Users, type LucideIcon,
+  ClipboardCheck, Download, Laptop, Plus, Settings, ShieldCheck, Smartphone, Sparkles, Tablet, Users, type LucideIcon,
 } from "lucide-react";
 import { getUser } from "@/lib/auth";
 import { LEGAL } from "@/lib/legal";
@@ -98,7 +98,7 @@ function structuredData() {
         parentOrganization: { "@type": "Organization", name: LEGAL.entity },
         contactPoint: { "@type": "ContactPoint", contactType: "customer support", email: supportEmail(), areaServed: "PH", availableLanguage: "en" } },
       { "@type": "WebSite", "@id": `${site}/#website`, name: "eGuard", url: site, inLanguage: "en-PH", publisher: { "@id": org } },
-      { "@type": "WebApplication", name: "eGuard", url: site, applicationCategory: "LifestyleApplication", operatingSystem: "Web, Android, iOS",
+      { "@type": "WebApplication", name: "eGuard", url: site, applicationCategory: "LifestyleApplication", operatingSystem: "Web, Android", installUrl: PLAY_STORE_URL,
         description: "Parental controls for screen time, bedtime, apps, web and location, with every setting verified on the child's device.",
         publisher: { "@id": org },
         offers: PLANS.map((p) => ({ "@type": "Offer", name: p.name, price: p.price, priceCurrency: "PHP", url: `${site}/#pricing` })) },
@@ -110,7 +110,7 @@ const FAQS = [
   ["How does eGuard work?",
     "You create a family account, add your children and their devices, then follow guided steps to switch on the protections you choose. eGuard keeps checking that each protection is still applied and alerts you if something changes."],
   ["Is eGuard available for both Android and iOS?",
-    "Yes. eGuard supports Android and iOS devices. Where a platform lets eGuard apply a setting directly it does; where it doesn't, you get a step-by-step guide and eGuard verifies the result."],
+    "The Android app is available now on Google Play, and the iOS app is coming soon to the App Store. Where a platform lets eGuard apply a setting directly it does; where it doesn't, you get a step-by-step guide and eGuard verifies the result."],
   ["Do you have a free plan?",
     "Yes. The Free plan covers one child with basic protection setup, screen time management and limited app monitoring. You can upgrade whenever your family needs more."],
   ["How is my family's data protected?",
@@ -142,9 +142,24 @@ function Avatars() {
   return <div className="lp-avatars">{AVATARS.map((a, i) => <Image key={i} src={a} alt="" width={40} height={40} />)}</div>;
 }
 
-/** Store badges go back here once the Android and iOS apps are published. */
+const PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.devcom.eguard";
+
+/** Android is live on Google Play; the App Store badge stays disabled until the iOS app is published. */
 function Stores() {
-  return <p className="lp-stores"><Smartphone />Android and iOS apps coming soon. Set up your family on the web today.</p>;
+  return (
+    <div className="lp-stores">
+      <a className="lp-btn lp-btn-app" href={PLAY_STORE_URL} target="_blank" rel="noopener noreferrer">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path fill="#00D7FE" d="M3.6 2.2c-.2.3-.4.7-.4 1.2v17.2c0 .5.2.9.4 1.2L13.3 12z" />
+          <path fill="#FFCE00" d="M16.6 15.3 13.3 12l3.3-3.3 4 2.3c1.1.6 1.1 1.7 0 2.3z" />
+          <path fill="#FF3A44" d="M16.6 15.3 13.3 12l-9.7 9.8c.4.4 1 .4 1.7 0z" />
+          <path fill="#00F076" d="M16.6 8.7 5.3 2.2c-.7-.4-1.3-.4-1.7 0L13.3 12z" />
+        </svg>
+        Download the Android App<Download />
+      </a>
+      <span className="lp-stores-off" aria-disabled="true"><Smartphone />iOS coming soon</span>
+    </div>
+  );
 }
 
 export default async function Home() {
@@ -360,6 +375,7 @@ export default async function Home() {
                 <Link href={start} className="lp-btn lp-btn-white">{signedIn ? "Open Dashboard" : "Get Started Free"}<ArrowRight /></Link>
                 <a href="#how-it-works" className="lp-btn lp-btn-ghost-light"><PlayDot />See How It Works</a>
               </div>
+              <Stores />
             </div>
           </div>
         </section>

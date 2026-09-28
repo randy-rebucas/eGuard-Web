@@ -39,7 +39,7 @@ Status uses eGuard's own words: **Verified** means it works, **Needs attention**
 | Alerts copy | Plus lists "Push alerts (coming soon)"; the landing page describes instant email alerts | Verified |
 | Newsletter box | Removed: it didn't save addresses | Verified |
 | `robots.txt` | Blocks `/api/`, points to the sitemap | Verified |
-| `sitemap.xml` | 21 public URLs: home, about, blog and posts, help and all 10 articles, sign-up, sign-in, privacy, terms | Verified |
+| `sitemap.xml` | 22 public URLs: home, about, blog and posts, help and all 10 articles, sign-up, sign-in, privacy, terms, delete-account | Verified |
 | Link previews (Open Graph, X) | Every public page has its own title, description and a 1200 × 630 share image; posts and help articles get one with their title | Verified |
 | Canonical URL | Set on every public page, from `APP_URL` | Verified |
 | Structured data | Organization, WebSite and WebApplication (peso offers, no rating) on the home page; BlogPosting and TechArticle with breadcrumbs on posts and articles | Verified |

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { LEGAL, legalDate } from "@/lib/legal";
 import { pageMetadata } from "@/lib/site";
 import { supportEmail } from "@/lib/support";
@@ -120,7 +121,7 @@ export default function PrivacyPage() {
           <li><strong>Security records</strong> of account changes: one year.</li>
           <li><strong>Sessions</strong>: until you sign out, or 30 days. Email verification links expire after 24 hours and password-reset links after one hour.</li>
           <li><strong>Your account, children and settings</strong>: until you delete them.</li>
-          <li><strong>Payment records</strong>: as long as Philippine tax and accounting laws require, even after you delete your account.</li>
+          <li><strong>Payment records</strong>: until you delete your account. PayMongo keeps its own record of your payments, as the law requires of it.</li>
         </ul>
       ),
     },
@@ -159,7 +160,7 @@ export default function PrivacyPage() {
             <li><strong>Download everything</strong>: Settings › Data › Export (JSON).</li>
             <li><strong>Correct details</strong>: Settings › Account, or edit a child&apos;s profile.</li>
             <li><strong>Delete a child&apos;s data</strong>: delete the child from their profile.</li>
-            <li><strong>Delete your account</strong>: Settings › Data. If you&apos;re the family admin, this deletes the whole family, including every child and device.</li>
+            <li><strong>Delete your account</strong>: Settings › Data. If you&apos;re the family admin, this deletes the whole family, including every child and device. Can&apos;t sign in? See <Link href="/delete-account">how to request deletion</Link>.</li>
           </ul>
           <p>For anything else, write to <Contact />. If you&apos;re not satisfied with our answer, you can file a complaint with the <a href="https://privacy.gov.ph" rel="noopener noreferrer" target="_blank">National Privacy Commission</a>.</p>
         </>

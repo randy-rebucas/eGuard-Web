@@ -115,7 +115,7 @@ export default function TermsPage() {
     {
       id: "ending", title: "Ending your account",
       body: (
-        <p>You can delete your account at any time in Settings › Data. If you&apos;re the family admin, this deletes the whole family. We may suspend or close an account that breaks these terms or puts others at risk. Where it&apos;s safe to, we&apos;ll tell you first and give you a chance to export your data.</p>
+        <p>You can delete your account at any time in Settings › Data, or <Link href="/delete-account">ask us to</Link> if you can&apos;t sign in. If you&apos;re the family admin, this deletes the whole family and cancels an auto-renewing plan. We may suspend or close an account that breaks these terms or puts others at risk. Where it&apos;s safe to, we&apos;ll tell you first and give you a chance to export your data.</p>
       ),
     },
     {

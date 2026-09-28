@@ -14,8 +14,10 @@ export const LEGAL = {
   address: "Brgy. Hipusngo, Baybay City, Leyte 6521, Philippines" as string | null,
   /** Where privacy and legal requests go (both pages). Null uses SUPPORT_EMAIL. */
   privacyEmail: "support@devcomdigital.com" as string | null,
+  /** Working days to act on an emailed deletion request (/delete-account) */
+  deletionDays: 7,
   /** Shown as "Last updated" on both pages; change it whenever either page changes */
-  updated: "2026-09-28",
+  updated: "2026-09-29",
 };
 
 export const legalDate = (iso: string) =>

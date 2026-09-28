@@ -268,7 +268,7 @@ data has to be added here.
 | Does your app collect or share any of the required user data types? | Yes |
 | Is all user data encrypted in transit? | Yes (HTTPS only) |
 | Do you provide a way for users to request that their data is deleted? | Yes: in the app (Settings › Delete account, `DELETE /me`) and on the web |
-| Delete-account URL | `{APP_URL}/settings/data` *(confirm the route)* |
+| Delete-account URL | `https://www.eguard.family/delete-account` (public, no sign-in needed) |
 
 ### Data collected
 
@@ -426,8 +426,21 @@ App Store's "Made for Kids" category: **don't select it**. The customer is the p
 
 ## 12. Reviewer notes and demo account
 
-Both stores need working credentials. Don't use the seed accounts (`randy@example.com`), since production has no
-seed data. Instead:
+Both stores need working credentials. Don't use the seed accounts (`randy@example.com`), and never run
+`npm run db:seed` against production: it deletes every family.
+
+**Demo account (created).** `review@eguard.family` exists in the production database: Family Pro, with Mia, Lucas
+and Sophie, 5 devices, two weeks of screen time, alerts and history. Its alert emails are off. The password was
+printed once when it was created; keep it in your password manager. To refresh the data (the demo devices show as
+offline after about a day, because they don't sync) or reset the password, run:
+
+```
+DATABASE_URL=<production url> npm run seed:demo            # dry run
+DATABASE_URL=<production url> npm run seed:demo -- --apply # replace the demo family (new password unless DEMO_PASSWORD is set)
+```
+
+The script only ever touches the "eGuard Demo Family" and refuses if the email belongs to anything else. For the
+richest review, also pair real test devices as below:
 
 1. Create `review@eguard.family` in production with a strong password, and verify its email.
 2. Give the family **Family Pro** so reviewers can see every feature, location included.
@@ -474,7 +487,7 @@ App content › App access.
 | Terms of use URL | `https://www.eguard.family/terms` | Live |
 | Support URL | `https://www.eguard.family/help` | Live: the public Help Center, same articles as `GET /help` |
 | Marketing URL (App Store, optional) | `https://www.eguard.family` | Landing page exists |
-| Delete-account URL (Play) | `{APP_URL}/settings/…` | Exists behind sign-in; Play also accepts that |
+| Delete-account URL (Play) | `https://www.eguard.family/delete-account` | Live: steps for the web and app, an email request for people who can't sign in, what's deleted and kept |
 | Support email | `support@devcomdigital.com` (`SUPPORT_EMAIL`) | Set in production env |
 | Developer name, address, phone | DevCom Digital Marketing Services, Brgy. Hipusngo, Baybay City, Leyte 6521, Philippines | Must match the store accounts. Organization accounts must be verified (D-U-N-S for Apple) |
 

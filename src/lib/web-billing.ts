@@ -221,6 +221,30 @@ export async function cancelAutoRenew(actor: Actor, o: WebBillingOpts = {}) {
   return { endsAt: p.expiresAt };
 }
 
+/** PayMongo subscription states that can still charge. */
+const LIVE_SUBSCRIPTION = ["incomplete", "active", "past_due", "unpaid"];
+
+/**
+ * Cancels every PayMongo auto-renew the family still has, before the family is deleted: nothing may keep
+ * charging an account that no longer exists. Throws if one can't be cancelled, so the deletion stops.
+ */
+export async function cancelSubscriptionsBeforeDeletion(familyId: string, o: WebBillingOpts = {}) {
+  const subs = await db.storePurchase.findMany({ where: { familyId, store: STORE, purchaseToken: { startsWith: "subs_" }, state: { in: LIVE_SUBSCRIPTION } } });
+  if (!subs.length) return;
+  const stuck = () => conflict("We couldn't cancel your auto-renew with PayMongo, so your account wasn't deleted. Try again, or contact support.");
+  const cfg = cfgOf(o);
+  if (!cfg) throw stuck();
+  for (const p of subs) {
+    try {
+      await cancelSubscription(cfg, p.purchaseToken, o.fetch);
+    } catch {
+      // Already cancelled on PayMongo's side is fine; anything else stops the deletion
+      const s = (await getSubscription(cfg, p.purchaseToken, o.fetch).catch(() => null))?.attributes;
+      if (!s || LIVE_SUBSCRIPTION.includes(s.status)) throw stuck();
+    }
+  }
+}
+
 /* ---------- Sync, webhooks ---------- */
 
 /** Re-reads one PayMongo purchase (pass or auto-renew). The caller applies the entitlement. */
