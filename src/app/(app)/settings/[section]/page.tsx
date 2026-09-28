@@ -3,15 +3,19 @@ import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { getFamily, getFamilyGraph } from "@/lib/queries";
-import { dayTime, shortDate } from "@/lib/format";
+import { dayTime, peso, shortDate } from "@/lib/format";
 import { Icon } from "@/components/icon";
 import { Avatar, DeviceIcon } from "@/components/ui";
-import { ToastButton } from "@/components/flow";
 import {
   AccountForm, AddParentForm, DeleteAccountForm, PasswordForm, RemoveParentButton, SettingSwitch, SignOutOthersButton, UnlinkIdentityButton,
 } from "@/components/forms";
+import { BuyPlan, CancelAutoRenew } from "@/components/billing";
 import { SECTIONS } from "../sections";
 import { supportEmail } from "@/lib/support";
+import { currentPurchase, refreshPurchases } from "@/lib/billing";
+import { renewalWord } from "@/lib/entitlement";
+import { webPrice, webProduct } from "@/lib/plans";
+import { confirmReturn, passMethods, webBillingAvailable } from "@/lib/web-billing";
 
 export async function generateMetadata(props: PageProps<"/settings/[section]">) {
   const { section } = await props.params;
@@ -125,22 +129,62 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
     }
 
     case "subscription": {
-      const used = await db.device.count({ where: { familyId: u.familyId } });
-      const over = used > family.deviceLimit;
-      const pct = family.deviceLimit > 0 ? Math.min(100, Math.round((used / family.deviceLimit) * 100)) : 100;
+      const { ref } = await props.searchParams;
+      // Back from PayMongo: check the payment now instead of waiting for the webhook
+      const returned = admin && typeof ref === "string" ? await confirmReturn(u.familyId, ref) : null;
+      await refreshPurchases(u.familyId);
+      const [fam, used, purchase] = await Promise.all([
+        db.family.findUniqueOrThrow({ where: { id: u.familyId } }),
+        db.device.count({ where: { familyId: u.familyId } }),
+        currentPurchase(u.familyId),
+      ]);
+      const over = used > fam.deviceLimit;
+      const pct = fam.deviceLimit > 0 ? Math.min(100, Math.round((used / fam.deviceLimit) * 100)) : 100;
+      const paidUntil = purchase?.expiresAt ? shortDate(purchase.expiresAt, tz) : null;
+      const how = !purchase ? null : purchase.store === "GOOGLE_PLAY" ? "Google Play" : webProduct(purchase.productId)?.autoRenew ? (purchase.autoRenewing ? "Auto-renew" : "Auto-renew off") : "Prepaid pass";
+      const nextCharge = purchase?.autoRenewing ? webProduct(purchase.productId) : null;
       return (
         <>
           {head}
+          {returned?.status === "paid" ? (
+            <div className="form-ok" role="status" style={{ marginBottom: 16 }}><Icon name="circle-check" />Payment received. {returned.kind === "autorenew" ? "Auto-renew is on." : "Thank you!"} eGuard Family is active{returned.expiresAt ? ` until ${shortDate(returned.expiresAt, tz)}` : ""}.</div>
+          ) : returned?.status === "pending" ? (
+            <div className="verify-banner" role="status" style={{ marginBottom: 16 }}><Icon name="hourglass" /><p>We&apos;re waiting for PayMongo to confirm your payment. It usually takes a minute; reload this page to check. If it doesn&apos;t go through, you won&apos;t be charged.</p></div>
+          ) : returned?.status === "failed" ? (
+            <div className="form-error" role="alert" style={{ marginBottom: 16 }}><Icon name="triangle-alert" />The payment didn&apos;t go through, so nothing changed. You can try again below.</div>
+          ) : null}
           <div className="row" style={{ gap: 16, flexWrap: "wrap" }}>
             <span className="ico-tile" style={{ width: 52, height: 52 }}><Icon name="crown" /></span>
-            <div className="grow"><div className="t-title" style={{ fontSize: 18 }}>{family.plan}</div><div className="t-meta">{family.renewsAt ? `Renews ${shortDate(family.renewsAt, tz)}` : "No renewal date"} · up to {family.deviceLimit} devices</div></div>
-            <ToastButton className="btn btn-secondary" message="Upgrade or manage your plan in the eGuard app for Android (Settings › Subscription). Web and iPhone billing are coming soon.">Change plan</ToastButton>
+            <div className="grow">
+              <div className="t-title" style={{ fontSize: 18 }}>{fam.plan}</div>
+              <div className="t-meta">{fam.renewsAt ? `${renewalWord(purchase)} ${shortDate(fam.renewsAt, tz)}` : "No renewal date"} · up to {fam.deviceLimit} devices{how ? ` · ${how}` : ""}</div>
+            </div>
           </div>
           <div style={{ marginTop: 20 }}>
-            <div className="row" style={{ justifyContent: "space-between" }}><span className="t-meta">Devices</span><span className="t-meta num" style={over ? { color: "var(--warn-ink)" } : undefined}>{used} of {family.deviceLimit}</span></div>
-            <div className="meter" role="meter" aria-label="Devices used" aria-valuemin={0} aria-valuemax={family.deviceLimit} aria-valuenow={used}><span style={{ width: `${pct}%`, ...(over ? { background: "var(--warn)" } : {}) }} /></div>
-            {over ? <p className="t-meta" style={{ marginTop: 8 }}>{used - family.deviceLimit} more than your plan covers. They stay protected; remove some or change your plan to add more.</p> : null}
+            <div className="row" style={{ justifyContent: "space-between" }}><span className="t-meta">Devices</span><span className="t-meta num" style={over ? { color: "var(--warn-ink)" } : undefined}>{used} of {fam.deviceLimit}</span></div>
+            <div className="meter" role="meter" aria-label="Devices used" aria-valuemin={0} aria-valuemax={fam.deviceLimit} aria-valuenow={used}><span style={{ width: `${pct}%`, ...(over ? { background: "var(--warn)" } : {}) }} /></div>
+            {over ? <p className="t-meta" style={{ marginTop: 8 }}>{used - fam.deviceLimit} more than your plan covers. They stay protected; remove some or change your plan to add more.</p> : null}
           </div>
+          <hr className="divider" style={{ margin: "20px 0" }} />
+          {!admin ? (
+            <p className="t-meta">Only the family admin can change the plan.</p>
+          ) : purchase?.store === "GOOGLE_PLAY" ? (
+            <p className="t-meta">Your plan is billed through Google Play. Change or cancel it in the Play Store app.</p>
+          ) : !webBillingAvailable() ? (
+            <p className="t-meta">Online payment isn&apos;t available yet. To change your plan, contact <a className="link-btn" href={`mailto:${supportEmail()}`}>{supportEmail()}</a>.</p>
+          ) : purchase?.autoRenewing && nextCharge ? (
+            <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+              <div><div className="t-title">Auto-renew is on</div><div className="t-meta">{purchase.state === "past_due" ? "The last renewal payment failed. PayMongo will try again; check your card or Maya balance." : `Next charge ${peso(webPrice(nextCharge.interval))} on ${paidUntil}.`}</div></div>
+              <CancelAutoRenew endsOn={paidUntil ?? "the end of this period"} />
+            </div>
+          ) : (
+            <BuyPlan
+              prices={{ month: webPrice("month"), year: webPrice("year") }}
+              methods={passMethodLabel()}
+              payer={{ name: user.name, email: user.email }}
+              autoRenewBlocked={purchase && paidUntil ? `Available once your paid time ends on ${paidUntil}.` : null}
+            />
+          )}
         </>
       );
     }
@@ -208,6 +252,17 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
 function timeZones(current: string) {
   const zones = Intl.supportedValuesOf("timeZone");
   return [...new Set([current, "UTC", ...zones])].sort((a, b) => (a === "UTC" ? -1 : b === "UTC" ? 1 : a.localeCompare(b)));
+}
+
+const METHOD_NAMES: Record<string, string> = {
+  gcash: "GCash", paymaya: "Maya", card: "card", qrph: "QR Ph", grab_pay: "GrabPay", shopee_pay: "ShopeePay", billease: "BillEase", dob: "online banking", brankas: "online banking",
+};
+
+/** "GCash, Maya, card or QR Ph" */
+function passMethodLabel() {
+  const names = [...new Set(passMethods().map((m) => METHOD_NAMES[m] ?? m))];
+  const text = names.length > 1 ? `${names.slice(0, -1).join(", ")} or ${names.at(-1)}` : names[0] ?? "";
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 function summarizeAgent(ua: string | null) {

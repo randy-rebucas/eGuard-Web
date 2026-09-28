@@ -3,6 +3,7 @@ import type { Alert } from "@prisma/client";
 import { db } from "./db";
 import { ensureOfflineAlerts } from "./engine";
 import { familiesWithPurchases, refreshPurchases } from "./billing";
+import { sendPassReminders } from "./web-billing";
 import { appUrl } from "./email-verification";
 import { escapeHtml, sendMail } from "./mail";
 
@@ -98,7 +99,8 @@ export async function emailNewAlerts() {
 export async function runMaintenance() {
   const offlineFamilies = await raiseOfflineAlerts();
   const purchases = await refreshAllPurchases();
+  const passReminders = await sendPassReminders();
   const emails = await emailNewAlerts();
   const purged = await purgeExpiredData();
-  return { offlineFamilies, purchases, emails, purged };
+  return { offlineFamilies, purchases, passReminders, emails, purged };
 }

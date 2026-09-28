@@ -1,17 +1,17 @@
 import {
   AppWindow, ArrowRight, BadgeCheck, Bell, BellOff, BellRing, BookOpen, Calendar, ChartColumn, Check, CheckCheck,
-  ChevronDown, ChevronRight, CircleCheck, CircleDashed, CircleSlash, Copy, Crown, Database, Download, Eye, EyeOff,
+  ChevronDown, ChevronRight, CircleCheck, CreditCard, CircleDashed, CircleSlash, Copy, Crown, Database, Download, Eye, EyeOff,
   Film, Globe, History, Hourglass, House, Inbox, Info, KeyRound, LayoutGrid, LifeBuoy, ListChecks, LoaderCircle, Lock,
   LogOut, Mail, Map, MapPin, MapPinOff, Menu, MessageCircle, Monitor, Moon, OctagonAlert, Pencil, Plug, Plus, Receipt,
   RefreshCw, ScanSearch, Search, SearchX, Settings, Shield, ShieldAlert, ShieldCheck, Siren, SlidersHorizontal,
-  Smartphone, Sun, Table, Tablet, TabletSmartphone, Trash2, TriangleAlert, User, UserPlus, Users, WifiOff, X,
+  Smartphone, Sun, Table, Tablet, TabletSmartphone, Trash2, TriangleAlert, User, UserPlus, Users, Wallet, WifiOff, X,
   type LucideIcon,
 } from "lucide-react";
 
 const ICONS: Record<string, LucideIcon> = {
   "app-window": AppWindow, "arrow-right": ArrowRight, "badge-check": BadgeCheck, bell: Bell, "bell-off": BellOff,
   "bell-ring": BellRing, "book-open": BookOpen, calendar: Calendar, "chart-column": ChartColumn, check: Check,
-  "check-check": CheckCheck, "chevron-down": ChevronDown, "chevron-right": ChevronRight, "circle-check": CircleCheck,
+  "check-check": CheckCheck, "chevron-down": ChevronDown, "chevron-right": ChevronRight, "circle-check": CircleCheck, "credit-card": CreditCard,
   "circle-dashed": CircleDashed, "circle-slash": CircleSlash, copy: Copy, crown: Crown, database: Database,
   download: Download, eye: Eye, "eye-off": EyeOff, film: Film, globe: Globe, history: History, hourglass: Hourglass,
   house: House, inbox: Inbox, info: Info, "key-round": KeyRound, "layout-grid": LayoutGrid, "life-buoy": LifeBuoy,
@@ -21,7 +21,7 @@ const ICONS: Record<string, LucideIcon> = {
   "scan-search": ScanSearch, search: Search, "search-x": SearchX, settings: Settings, shield: Shield,
   "shield-alert": ShieldAlert, "shield-check": ShieldCheck, siren: Siren, "sliders-horizontal": SlidersHorizontal,
   smartphone: Smartphone, sun: Sun, table: Table, tablet: Tablet, "tablet-smartphone": TabletSmartphone,
-  trash: Trash2, "triangle-alert": TriangleAlert, user: User, "user-plus": UserPlus, users: Users, "wifi-off": WifiOff, x: X,
+  trash: Trash2, "triangle-alert": TriangleAlert, user: User, "user-plus": UserPlus, users: Users, wallet: Wallet, "wifi-off": WifiOff, x: X,
 };
 
 export function Icon({ name, className, style, size }: { name: string; className?: string; style?: React.CSSProperties; size?: number }) {

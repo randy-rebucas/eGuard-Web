@@ -156,12 +156,20 @@ existing account with exactly the same email gets linked (`src/lib/social-signin
 dots) are never linked. If that account never verified its email, whoever registered it is locked out first:
 their password is replaced and their sessions end.
 
-Google Play subscriptions (`src/lib/google-play.ts`, `src/lib/billing.ts`) are verified with the Play Developer API
-using a service account (`GOOGLE_PLAY_PACKAGE_NAME`, `GOOGLE_PLAY_SERVICE_ACCOUNT`), acknowledged by the server,
-re-checked when the paid period ends and once a day while active, and before a device pairs. Real-time Developer
-Notifications (renewals, cancellations, refunds) arrive at `POST /api/billing/google-play/notifications`. Point a
-Pub/Sub push subscription with authentication at it, and set `GOOGLE_PLAY_RTDN_AUDIENCE` and
-`GOOGLE_PLAY_RTDN_SERVICE_ACCOUNT`. Plans and product IDs are in `src/lib/plans.ts`.
+Plans are paid for on the web, in Settings › Subscription, through PayMongo (`src/lib/paymongo.ts`,
+`src/lib/web-billing.ts`). There are two ways to pay:
+
+- **Auto-renew**: card or Maya, charged every month or year.
+- **Pass**: pay once with GCash, Maya, card or QR Ph. It doesn't renew, and eGuard sends a reminder before it ends.
+
+Set `PAYMONGO_SECRET_KEY`, `PAYMONGO_PUBLIC_KEY` and `PAYMONGO_WEBHOOK_SECRET`, and register
+`/api/billing/paymongo/webhook` in the PayMongo dashboard. Prices are `PRICE_FAMILY_MONTHLY` and
+`PRICE_FAMILY_YEARLY`. The apps show the plan but don't sell it.
+
+The Google Play billing path (`src/lib/google-play.ts`, `POST /subscription/google-play`,
+`/api/billing/google-play/notifications`) is still there, and stays off while `GOOGLE_PLAY_*` is empty.
+
+Full details: [docs/subscriptions.md](docs/subscriptions.md).
 
 ## Background jobs
 
@@ -171,7 +179,7 @@ Cron sends the header itself when `CRON_SECRET` is set; elsewhere use any schedu
 - raises "device hasn't synced" alerts
 - emails parents (verified address, email alerts on) about protection changes, offline devices and anything that
   needs action
-- re-checks store subscriptions
+- re-checks subscriptions and passes, and emails a reminder 3 days before a pass ends
 - deletes activity older than each family's retention period (screen time, app usage, location visits, history,
   closed alerts), audit entries older than a year, and expired sessions, links and pairing codes
 
@@ -183,6 +191,7 @@ Without `CRON_SECRET` it only runs in development.
   use the entry the nearest proxy added. Set `TRUSTED_PROXY_HOPS` if more than one proxy is in front. Without a
   proxy, only per-account limits apply.
 - Set `SMTP_URL`, `APP_URL`, `SUPPORT_EMAIL` and `CRON_SECRET`, and schedule the maintenance job.
+- For payments, set the live PayMongo keys and webhook secret, and ask PayMongo support to enable Subscriptions (auto-renew).
 - `npm run build` runs `prisma migrate deploy`.
 
 ## Project layout
@@ -208,8 +217,8 @@ scripts/           end-to-end smoke test
 - **Setting a password while signed in.** Parents who signed up with Apple/Google set their first password through
   "Forgot password?". Until then, deleting a child or changing the email asks them to do that. Deleting the account
   takes typing DELETE instead.
-- **Billing on web and iOS.** Android upgrades go through Google Play. The web's "Change plan" and iOS (App Store /
-  StoreKit) purchases aren't built.
+- **Buying in the apps.** Plans are sold on the web only. Google Play billing is built but turned off, and App Store
+  (StoreKit) purchases aren't built. Changing the card for auto-renew isn't built either.
 - **Two-step verification.** Shown as "Coming soon".
 - **Realtime.** The UI polls (bell every 30s, workflows every ~1s). WebSockets or SSE would replace this.
 - **Family photography.** The hero has a CSS photo slot (`--hero-photo`, see `globals.css`) for licensed images.

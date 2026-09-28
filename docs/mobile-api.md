@@ -1036,19 +1036,27 @@ Settings › Family.
 
 - `status` is `ACTIVE` or `EXPIRED`.
 - Plan Usage "3 of 5 devices used" comes from `usage.devicesUsed` / `usage.deviceLimit`.
+- **Plans are paid for on the web for now** (PayMongo, in Settings › Subscription on the website). The apps show the
+  plan and usage but **don't sell it and don't link to the website**: store policies forbid steering users to
+  outside payment for digital subscriptions.
 - `billingAvailable` is `true` only when the request comes from the Android app (`X-eGuard-Client: android`) **and**
-  the server has Google Play configured. Show "Upgrade to Family" when all three hold:
+  the server has Google Play configured. It is `false` while payments are web-only. Show "Upgrade to Family" only
+  when all three hold:
   - `billingAvailable` is true
   - `upgrade` is non-null
   - `canManage` is true (only the family admin can buy)
 
-  Otherwise hide the button, or route it to Contact Support.
-- `store`, when set (`{ name: "GOOGLE_PLAY", productId, autoRenewing, expiresAt }`), means the plan was bought through
-  Google Play. If `autoRenewing` is false, `renewsLabel` reads "Ends on …". For "Manage Subscription", open
-  `https://play.google.com/store/account/subscriptions?sku={productId}&package={packageName}`.
-- Each call re-checks a Play subscription whose paid period has ended (at most every 10 minutes), so renewals,
-  cancellations and expiry show up here. When it lapses, the family goes back to eGuard Plus. Devices already added
-  stay, but no new ones can be paired over the limit.
+  Otherwise show no upgrade button.
+- `store`, when set, says how the current plan is paid: `{ name, productId, autoRenewing, expiresAt }`.
+  - `name` is `PAYMONGO` for a web purchase (a pass, or auto-renew) or `GOOGLE_PLAY`.
+  - If `autoRenewing` is false (a pass, or auto-renew turned off), `renewsLabel` reads "Ends on …".
+  - For a Google Play plan, "Manage Subscription" opens
+    `https://play.google.com/store/account/subscriptions?sku={productId}&package={packageName}`.
+- The server re-checks purchases on each call: one whose paid period has ended at most every 10 minutes, and an
+  active one once a day. It also learns about payments, renewals and refunds from PayMongo webhooks. When the plan
+  lapses, the family goes back to eGuard Plus. Devices already added stay, but no new ones can be paired over the
+  limit.
+- Server-side details (payment flows, sync, configuration): [subscriptions.md](subscriptions.md).
 
 #### `GET /subscription/plans`
 
@@ -1251,8 +1259,7 @@ These parts of the design aren't backed by the API yet. Plan the UI accordingly.
 |---|---|---|
 | "Gaming time 1 hour/day" (Recommended Setup) | No app categories exist, so there's no per-category limit | Leave it out, or use per-app limits (`PATCH /apps/{id}`) for game apps |
 | Push notifications | Tokens are stored (`/me/push-tokens`), but nothing sends pushes yet | Register tokens anyway; refresh with `/alerts/unread-count` on foreground |
-| Manage Subscription / "Upgrade to Family" on **iOS** | Only Google Play billing exists; App Store (StoreKit) purchases aren't verified yet, so iOS always gets `billingAvailable: false` | Hide the button on iOS or link to Contact Support |
-| Play subscription changes between app opens | No Real-time Developer Notifications (Pub/Sub) webhook yet. Renewals and expiry are picked up when `GET /subscription` is called after the paid period ends | Call `GET /subscription` on app launch |
+| "Upgrade to Family" / Manage Subscription in the apps | Plans are sold on the web only (PayMongo) for now; Google Play billing is turned off and App Store purchases aren't supported, so `billingAvailable` is `false` | Show the plan and usage without a buy button or a link to the website |
 | Password for Apple/Google accounts | Social accounts have no password, so they can't change one or confirm deleting a child | Hide "Change password" for social sign-ins; route child deletion to support |
 | Two-step verification | `twoFactor` is a stored flag only | Show "Coming soon" |
 | Realtime updates | No WebSocket/SSE | Poll as described in [Polling](#polling) |

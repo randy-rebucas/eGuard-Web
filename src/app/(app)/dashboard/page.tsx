@@ -10,6 +10,7 @@ import { AlertRow, ViewAll } from "@/components/alerts";
 import { ActivityPanel, WeeklyChart } from "@/components/charts";
 import { CheckButton, FlowButton } from "@/components/flow";
 import { LogoMark } from "@/components/logo";
+import { currentPurchase, renewalWord } from "@/lib/entitlement";
 
 export const metadata = { title: "Dashboard" };
 
@@ -18,10 +19,11 @@ export default async function Dashboard() {
   const family = await getFamily(u.familyId);
   const tz = family.timezone;
   const graph = await getFamilyGraph(u.familyId);
-  const [alerts, activity, weekly] = await Promise.all([
+  const [alerts, activity, weekly, purchase] = await Promise.all([
     getAlerts(u.familyId, u.id, { take: 4 }),
     todayActivity(graph, tz),
     weeklySeries(u.familyId, tz, graph),
+    currentPurchase(u.familyId),
   ]);
   const { familyHealth: health, children, devices, deviceStates } = graph;
   const issues = health.checks.filter((c) => c.status !== "PASS" && c.status !== "UNSUPPORTED").length;
@@ -112,7 +114,7 @@ export default async function Dashboard() {
           <div className="m-top"><span className="m-label">Active Plan</span><span className="ico-tile"><Icon name="crown" /></span></div>
           <div className="m-value" style={{ fontSize: 26 }}>{family.plan}</div>
           <div className="t-meta">Up to {family.deviceLimit} devices</div>
-          <div className="m-foot"><span className="muted num">{family.renewsAt ? `Renews ${shortDate(family.renewsAt, tz)}` : "No renewal date"}</span></div>
+          <div className="m-foot"><span className="muted num">{family.renewsAt ? `${renewalWord(purchase)} ${shortDate(family.renewsAt, tz)}` : "No renewal date"}</span></div>
         </Link>
       </section>
 

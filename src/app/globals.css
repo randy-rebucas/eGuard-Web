@@ -555,6 +555,11 @@ select.input{appearance:auto}
 .dev-banner{display:flex; align-items:center; gap:10px; padding:10px 14px; border-radius:12px; border:1px dashed var(--line-strong); color:var(--ink-3); font-size:13px}
 .skeleton{background:linear-gradient(90deg, var(--surface-2), var(--surface-3), var(--surface-2)); background-size:200% 100%; animation:shimmer 1.2s linear infinite; border-radius:12px}
 @keyframes shimmer{to{background-position:-200% 0}}
+.buy-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:12px}
+.buy-option{display:flex; flex-direction:column; gap:8px; padding:18px; border:1px solid var(--line); border-radius:var(--r); background:var(--surface-2)}
+.buy-option .price{font-family:var(--display); font-size:24px; font-weight:600; color:var(--ink)}
+.buy-option .price small{font-family:var(--font); font-size:13px; font-weight:500; color:var(--ink-3)}
+.buy-option .btn{margin-top:auto; align-self:flex-start}
 .pairing-code{font-family:var(--display); font-size:34px; font-weight:600; letter-spacing:.18em; text-align:center; padding:18px; border-radius:14px; background:var(--surface-2); border:1px dashed var(--line-strong)}
 
 

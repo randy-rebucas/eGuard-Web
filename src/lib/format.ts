@@ -30,6 +30,9 @@ export function ago(d: Date | null | undefined, tz: string, now = new Date()) {
 }
 
 export const longDate = (d: Date, tz: string) => fmt(tz, { weekday: "short", month: "short", day: "numeric", year: "numeric" }).format(d);
+/** "₱199" or "₱199.50", from centavos. */
+export const peso = (centavos: number) =>
+  new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", maximumFractionDigits: centavos % 100 ? 2 : 0 }).format(centavos / 100);
 export const shortDate = (d: Date, tz: string) => fmt(tz, { month: "short", day: "numeric", year: "numeric" }).format(d);
 export const dayLabel = (key: string) => {
   const d = new Date(`${key}T12:00:00Z`);

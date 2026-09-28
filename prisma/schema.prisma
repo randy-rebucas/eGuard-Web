@@ -98,6 +98,8 @@ model Family {
   plan          String   @default("eGuard Plus")
   deviceLimit   Int      @default(8)
   renewsAt      DateTime?
+  /// PayMongo customer (cus_…) that web subscriptions bill
+  paymongoCustomerId String? @unique
   // privacy & notification settings
   keepLocationHistory Boolean @default(false)
   shareAnalytics      Boolean @default(false)
@@ -210,23 +212,30 @@ model PushToken {
   @@index([userId])
 }
 
-/// An in-app subscription purchase, verified with the store. One purchase token belongs to one family.
+/// A plan purchase, verified with the store or payment provider. One purchase token belongs to one family.
 model StorePurchase {
   id            String   @id @default(cuid())
   familyId      String
   family        Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
-  store         String   // "GOOGLE_PLAY"
+  store         String   // "GOOGLE_PLAY" | "PAYMONGO"
   productId     String
+  /// Google Play purchase token; PayMongo checkout session id (cs_…) or subscription id (subs_…)
   purchaseToken String   @unique
-  /// store state, e.g. SUBSCRIPTION_STATE_ACTIVE; REPLACED when a newer purchase supersedes it
+  /// store state, e.g. SUBSCRIPTION_STATE_ACTIVE or PayMongo's active; REPLACED when a newer purchase supersedes it
   state         String
   autoRenewing  Boolean  @default(false)
+  /// end of the paid period
   expiresAt     DateTime?
+  /// PayMongo payment (pay_…) of a prepaid pass, to match refunds
+  paymentId     String?
+  /// when the "your pass ends soon" reminder went out
+  remindedAt    DateTime?
   checkedAt     DateTime @default(now())
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
   @@index([familyId])
+  @@index([paymentId])
 }
 
 model SupportTicket {
