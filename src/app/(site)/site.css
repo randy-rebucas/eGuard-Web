@@ -1,0 +1,137 @@
+/* ---------- Public pages: about, privacy, terms, blog ----------
+   Built on landing.css (tokens, header, footer, buttons) and scoped under .lp the same way. */
+
+.lp section[id]{scroll-margin-top:96px}
+
+/* Title band */
+.st-head{position:relative; isolation:isolate; overflow:hidden; padding:64px 0 56px; border-bottom:1px solid var(--line);
+  background:radial-gradient(70% 90% at 85% 0%, #D6EAFF 0%, transparent 60%), linear-gradient(180deg, #EEF5FE, #F6FAFF)}
+.st-head .lp-wrap{max-width:1180px}
+.st-head h1{font-size:clamp(32px, 4vw, 52px); line-height:1.08; letter-spacing:-.035em; margin-top:20px; max-width:18em}
+.st-lede{font-size:18px; color:var(--ink-2); margin-top:16px; max-width:40em}
+.st-meta{display:flex; flex-wrap:wrap; gap:8px 20px; margin-top:22px; font-size:14px; color:var(--ink-3)}
+.st-meta b{color:var(--ink-2); font-weight:600}
+
+/* Prose */
+.st-prose{min-width:0; max-width:46em; font-size:16.5px; line-height:1.7; color:var(--ink-2)}
+.st-prose > section + section{margin-top:44px}
+.st-prose h2{display:flex; align-items:baseline; gap:12px; font-size:clamp(21px, 2vw, 25px); line-height:1.25; letter-spacing:-.02em; margin:0 0 14px}
+.st-prose h3{font-size:17px; font-weight:600; letter-spacing:-.01em; margin:24px 0 8px}
+.st-prose p{margin:0}
+.st-prose p + p, .st-prose p + ul, .st-prose ul + p, .st-prose p + ol, .st-prose ol + p, .st-prose .st-note + p{margin-top:14px}
+.st-prose ul, .st-prose ol{margin:14px 0 0; padding-left:1.3em; display:flex; flex-direction:column; gap:8px}
+.st-prose ul{list-style:disc}
+.st-prose ol{list-style:decimal}
+.st-prose li::marker{color:var(--blue-2)}
+.st-prose a{color:var(--blue-2); text-decoration:underline; text-underline-offset:3px; text-decoration-thickness:1px}
+.st-prose a:hover{text-decoration-thickness:2px}
+.st-prose strong{color:var(--ink); font-weight:600}
+.st-num{flex:none; width:30px; height:30px; border-radius:50%; display:grid; place-items:center; align-self:center; background:var(--blue-soft); color:var(--blue-2); font-family:var(--font); font-size:14px; font-weight:700; letter-spacing:0}
+.st-note{margin-top:18px; padding:16px 20px; border-radius:14px; background:var(--blue-soft); border:1px solid var(--blue-soft-2); color:var(--ink-2); font-size:15.5px}
+.st-note b{color:var(--ink)}
+
+/* Tables (privacy policy) */
+.st-table{margin-top:16px; border:1px solid var(--line); border-radius:14px; overflow-x:auto; background:#fff}
+.st-table table{width:100%; border-collapse:collapse; font-size:15px; line-height:1.5}
+.st-table th, .st-table td{padding:12px 16px; text-align:left; vertical-align:top; border-top:1px solid var(--line)}
+.st-table thead th{border-top:0; background:#F3F8FE; color:var(--ink); font-weight:600; font-size:13.5px}
+.st-table td:first-child{color:var(--ink); font-weight:500; width:32%}
+
+/* Legal layout: contents beside the text */
+.st-legal{display:grid; grid-template-columns:240px minmax(0,1fr); gap:56px; max-width:1180px; padding-top:48px; padding-bottom:88px}
+.st-toc{position:sticky; top:100px; align-self:start; font-size:14px}
+.st-toc b{display:block; font-size:12.5px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-3); margin-bottom:10px}
+.st-toc ol{list-style:none; margin:0; padding:0; border-left:2px solid var(--line)}
+.st-toc a{display:block; padding:6px 0 6px 14px; margin-left:-2px; border-left:2px solid transparent; color:var(--ink-2); line-height:1.4}
+.st-toc a:hover{color:var(--blue-2); border-left-color:var(--blue)}
+
+/* Call to action band */
+.st-cta{margin-top:56px; padding:32px 36px; border-radius:20px; color:#fff; display:flex; align-items:center; justify-content:space-between; gap:24px; flex-wrap:wrap;
+  background:linear-gradient(100deg, #1478F0 0%, #2A95FF 55%, #69B8FF 100%); box-shadow:0 30px 60px -30px rgba(16,110,230,.6)}
+.st-cta h2{color:#fff; font-size:clamp(22px, 2.2vw, 28px); line-height:1.2; margin:0}
+.st-cta p{color:rgba(255,255,255,.88); margin-top:6px}
+
+/* ---------- About ---------- */
+.st-about{max-width:1180px; padding-top:64px; padding-bottom:88px}
+.st-split{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:56px; align-items:center}
+.st-split + .st-split, .st-split + .st-block, .st-block + .st-split, .st-block + .st-block{margin-top:80px}
+.st-split h2, .st-block > h2{font-size:clamp(26px, 2.8vw, 34px); line-height:1.15}
+.st-split p, .st-block > p{color:var(--ink-3); margin-top:14px; font-size:17px}
+.st-block > p a{color:var(--blue-2); font-weight:600; text-decoration:underline; text-underline-offset:3px}
+.st-photo{position:relative; aspect-ratio:4/3; border-radius:22px; overflow:hidden; box-shadow:var(--card-shadow)}
+.st-photo img{object-fit:cover}
+.st-flow{list-style:none; margin:0; padding:24px; display:flex; flex-direction:column; gap:0; background:#fff; border:1px solid var(--line); border-radius:20px; box-shadow:var(--card-shadow)}
+.st-flow li{position:relative; display:grid; grid-template-columns:40px minmax(0,1fr); gap:16px; padding:12px 0}
+.st-flow li:not(:last-child)::after{content:""; position:absolute; left:19px; top:52px; bottom:-12px; border-left:2px dotted #A9CCF2}
+.st-flow i{width:40px; height:40px; border-radius:50%; display:grid; place-items:center; background:var(--blue-soft); color:var(--blue-2)}
+.st-flow i .lucide{width:19px; height:19px}
+.st-flow .ok i{background:#E3F7EE; color:var(--ok)}
+.st-flow b{display:block; font-weight:600; color:var(--ink)}
+.st-flow span{font-size:14.5px; color:var(--ink-3)}
+.st-values{list-style:none; margin:32px 0 0; padding:0; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:20px}
+.st-values li{padding:26px 24px; background:#fff; border:1px solid var(--line); border-radius:18px; box-shadow:var(--card-shadow)}
+.st-values i{width:48px; height:48px; border-radius:14px; display:grid; place-items:center; background:var(--blue-soft); color:var(--blue-2); margin-bottom:16px}
+.st-values i .lucide{width:22px; height:22px}
+.st-values h3{font-size:17px; font-weight:600; letter-spacing:-.01em}
+.st-values p{font-size:15px; color:var(--ink-3); margin-top:8px}
+.st-facts{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:20px; margin-top:32px}
+.st-facts div{padding:22px 24px; border-radius:18px; background:linear-gradient(180deg, #fff, #F3F8FE); border:1px solid var(--line)}
+.st-facts b{display:block; font-family:var(--display); font-size:30px; font-weight:700; letter-spacing:-.03em; line-height:1.1; color:var(--ink)}
+.st-facts span{display:block; margin-top:6px; font-size:14.5px; color:var(--ink-3)}
+
+/* ---------- Blog ---------- */
+.st-posts{list-style:none; margin:0 auto; padding:48px var(--gutter) 88px; max-width:1180px; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:24px}
+.st-post-card{height:100%}
+.st-post-card a{height:100%; display:flex; flex-direction:column; padding:26px 26px 24px; background:#fff; border:1px solid var(--line); border-radius:20px; box-shadow:var(--card-shadow); transition:transform .22s var(--ease), box-shadow .22s var(--ease), border-color .2s}
+.st-post-card a:hover{transform:translateY(-3px); border-color:#BFDCFB; box-shadow:0 2px 4px rgba(11,35,72,.04), 0 22px 40px -18px rgba(20,80,160,.3)}
+.st-post-card:first-child{grid-column:1 / -1}
+.st-post-card:first-child a{padding:36px 40px}
+.st-post-card:first-child h2{font-size:clamp(24px, 2.6vw, 32px); max-width:22em}
+.st-post-card:first-child p{font-size:17px; max-width:42em}
+.st-tag{align-self:flex-start; height:26px; padding:0 11px; border-radius:13px; display:inline-flex; align-items:center; background:var(--blue-soft); color:var(--blue-2); font-size:12.5px; font-weight:600}
+.st-post-card h2{font-size:19px; line-height:1.3; letter-spacing:-.015em; margin-top:16px}
+.st-post-card p{color:var(--ink-3); font-size:15px; margin-top:10px}
+.st-post-meta{margin-top:auto; padding-top:20px; display:flex; align-items:center; gap:8px; font-size:13.5px; color:var(--ink-3)}
+.st-post-meta .lucide{width:16px; height:16px; margin-left:auto; color:var(--blue-2); transition:transform .2s var(--ease)}
+.st-post-card a:hover .st-post-meta .lucide{transform:translateX(3px)}
+
+.st-article{max-width:calc(46em + 2 * var(--gutter)); padding-top:48px; padding-bottom:88px}
+.st-article .st-prose{max-width:none}
+.st-article .st-prose h2{margin-top:36px}
+.st-back{display:inline-flex; align-items:center; gap:6px; font-size:14.5px; font-weight:600; color:var(--blue-2)}
+.st-back .lucide{width:16px; height:16px}
+.st-back:hover{text-decoration:underline; text-underline-offset:3px}
+.st-more{margin-top:56px; padding-top:32px; border-top:1px solid var(--line)}
+.st-more h2{font-size:20px}
+.st-more ul{list-style:none; margin:16px 0 0; padding:0; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px}
+.st-more a{display:block; height:100%; padding:18px 20px; border-radius:16px; background:#fff; border:1px solid var(--line); transition:border-color .2s}
+.st-more a:hover{border-color:#9CCBFF}
+.st-more b{display:block; font-family:var(--display); font-weight:600; font-size:16px; line-height:1.35; letter-spacing:-.01em; color:var(--ink)}
+.st-more span{display:block; margin-top:6px; font-size:13.5px; color:var(--ink-3)}
+
+/* ---------- Responsive ---------- */
+@media (max-width:1024px){
+  .st-legal{grid-template-columns:minmax(0,1fr); gap:32px}
+  .st-toc{position:static; padding:18px 20px; background:#fff; border:1px solid var(--line); border-radius:16px}
+  .st-toc ol{columns:2; column-gap:24px; border-left:0}
+  .st-toc a{padding-left:0; margin-left:0; border-left:0}
+  .st-split{grid-template-columns:minmax(0,1fr); gap:28px}
+  .st-split.st-flip > :first-child{order:2}
+  .st-values, .st-facts{grid-template-columns:minmax(0,1fr)}
+  .st-posts{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:720px){
+  .st-head{padding:40px 0 36px}
+  .st-lede{font-size:16.5px}
+  .st-toc ol{columns:1}
+  .st-toc a{min-height:40px; display:flex; align-items:center; padding:0}
+  .st-prose{font-size:16px}
+  .st-table td:first-child{width:auto}
+  .st-table th, .st-table td{padding:10px 12px}
+  .st-cta{padding:26px 22px}
+  .st-cta .lp-btn{width:100%}
+  .st-posts{grid-template-columns:minmax(0,1fr); padding-top:32px}
+  .st-post-card:first-child a{padding:26px 24px}
+  .st-more ul{grid-template-columns:minmax(0,1fr)}
+  .st-about, .st-legal, .st-article{padding-top:36px}
+}

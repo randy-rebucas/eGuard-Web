@@ -74,7 +74,7 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
       return (
         <>
           {head}
-          <SettingSwitch setting="notifyPush" title="Push notifications" desc={plan.realtimeAlerts ? "Protection changes and devices that need attention" : `Real-time alerts are included with ${planWith((e) => e.realtimeAlerts).name}. Alerts still show in eGuard and by email.`} checked={user.notifyPush && plan.realtimeAlerts} disabled={!plan.realtimeAlerts} />
+          <SettingSwitch setting="notifyPush" title="Push notifications" desc={plan.realtimeAlerts ? "Protection changes and devices that need attention" : `Push alerts are included with ${planWith((e) => e.realtimeAlerts).name}. Alerts still show in eGuard and by email.`} checked={user.notifyPush && plan.realtimeAlerts} disabled={!plan.realtimeAlerts} />
           <SettingSwitch setting="notifyEmail" title="Email alerts" desc="Protection changes, devices that stop syncing, and anything that needs action" checked={user.notifyEmail} />
           <SettingSwitch setting="notifyApproval" title="App approval requests" desc="When a child asks to install an app" checked={user.notifyApproval} />
           <SettingSwitch setting="weeklySummary" title="Weekly summary" desc="Every Sunday at 6 PM" checked={user.weeklySummary} />

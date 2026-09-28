@@ -13,7 +13,7 @@ export type Entitlements = {
   locationSharing: boolean;
   /** How many of a child's apps can be seen and managed; null for all */
   appMonitoringLimit: number | null;
-  /** Push notifications for alerts; without it alerts still show in the app and by email */
+  /** Push notifications for alerts (delivery not wired up yet); without it alerts still show in the app and by email */
   realtimeAlerts: boolean;
   /** 30-day and custom report ranges, and CSV export */
   advancedReports: boolean;
@@ -57,7 +57,7 @@ export const PLANS: Plan[] = [
       { key: "children", label: "Up to 5 children", included: true },
       { key: "protection", label: "Full protection features", included: true },
       { key: "verification", label: "Configuration verification", included: true },
-      { key: "alerts", label: "Real-time alerts", included: true },
+      { key: "alerts", label: "Push alerts (coming soon)", included: true },
       { key: "location", label: "Location sharing", included: true },
       { key: "support", label: "Priority support", included: true },
     ],

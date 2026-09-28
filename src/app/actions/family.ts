@@ -193,7 +193,7 @@ export async function setToggle(key: string, value: boolean): Promise<Result> {
   const u = await requireUser();
   return toResult(async () => {
     const plan = await familyEntitlements(u.familyId);
-    if (value && key === "notifyPush" && !plan.realtimeAlerts) throw planRequired(`Real-time alerts are included with ${planWith((e) => e.realtimeAlerts).name}.`);
+    if (value && key === "notifyPush" && !plan.realtimeAlerts) throw planRequired(`Push alerts are included with ${planWith((e) => e.realtimeAlerts).name}.`);
     if (value && key === "keepLocationHistory" && !plan.locationSharing) throw planRequired(LOCATION_UPGRADE);
     if ((USER_TOGGLES as readonly string[]).includes(key)) {
       await db.user.update({ where: { id: u.id }, data: { [key]: value } });

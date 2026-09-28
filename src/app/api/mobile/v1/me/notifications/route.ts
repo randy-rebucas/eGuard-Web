@@ -17,7 +17,7 @@ const Body = z.object({
 export const PATCH = authed(async ({ req, user }) => {
   const b = await body(req, Body);
   if (b.notifyPush && !(await familyEntitlements(user.familyId)).realtimeAlerts) {
-    throw planRequired(`Real-time alerts are included with ${planWith((e) => e.realtimeAlerts).name}.`);
+    throw planRequired(`Push alerts are included with ${planWith((e) => e.realtimeAlerts).name}.`);
   }
   return NextResponse.json(await db.user.update({ where: { id: user.id }, data: b, select }));
 });

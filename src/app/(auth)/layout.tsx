@@ -13,7 +13,7 @@ import avatar3 from "../../../public/landing/avatar-3.png";
 const POINTS = [
   { icon: "shield-check", label: "Easy setup and configuration" },
   { icon: "badge-check", label: "Verified protection" },
-  { icon: "bell-ring", label: "Real-time alerts" },
+  { icon: "bell-ring", label: "Instant email alerts" },
   { icon: "shield", label: "Peace of mind" },
 ];
 
@@ -38,12 +38,11 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         </div>
         <div className="auth-trust">
           <div>
-            <div className="auth-trust-title">Trusted by families</div>
-            <div className="auth-trust-sub">for a safer digital tomorrow.</div>
+            <div className="auth-trust-title">Free for 1 child</div>
+            <div className="auth-trust-sub">No card needed. Upgrade any time.</div>
           </div>
           <div className="auth-trust-avatars">
             {[avatar1, avatar2, avatar3].map((a, i) => <Image key={i} src={a} alt="" width={36} height={36} />)}
-            <span>50K+</span>
           </div>
         </div>
       </aside>

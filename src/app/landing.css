@@ -85,11 +85,8 @@
 .lp-checks .lucide{width:24px; height:24px; color:var(--blue-2)}
 .lp-hero-actions{display:flex; flex-wrap:wrap; gap:16px; margin-top:6px}
 .lp-hero-actions .lp-btn{min-width:212px}
-.lp-stores small{display:block; font-size:13px; color:var(--ink-3); margin-bottom:10px}
-.lp-stores div{display:flex; gap:12px; flex-wrap:wrap}
-.lp-stores a{display:block; border-radius:9px; transition:transform .18s var(--ease), box-shadow .18s}
-.lp-stores a:hover{transform:translateY(-2px); box-shadow:0 10px 22px -12px rgba(0,0,0,.5)}
-.lp-stores img{display:block; height:46px; width:auto}
+.lp-stores{display:flex; align-items:center; gap:10px; margin:0; font-size:14px; color:var(--ink-3)}
+.lp-stores .lucide{flex:none; width:18px; height:18px; color:var(--blue-2)}
 
 /* Floating glass cards */
 .lp-float{background:rgba(255,255,255,.86); backdrop-filter:blur(14px) saturate(1.3); -webkit-backdrop-filter:blur(14px) saturate(1.3); border:1px solid rgba(255,255,255,.9); border-radius:18px; box-shadow:var(--float-shadow)}
@@ -307,7 +304,7 @@
 
 /* ---------- Footer ---------- */
 .lp-footer .lp-wrap{padding-top:32px}
-.lp-foot-grid{display:grid; grid-template-columns:1.6fr repeat(3, .8fr) 2fr; gap:32px; padding-bottom:36px}
+.lp-foot-grid{display:grid; grid-template-columns:2fr repeat(3, 1fr); gap:32px; padding-bottom:36px}
 .lp-foot-grid h4{font-family:var(--font); font-size:15px; font-weight:600; letter-spacing:0; margin-bottom:12px}
 .lp-foot-grid ul{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px}
 .lp-foot-grid ul a{color:var(--ink-3); font-size:14.5px}
@@ -333,8 +330,6 @@
   .lp-hc-trust{right:0}
   .lp-steps{grid-template-columns:repeat(2,minmax(0,1fr))}
   .lp-step:nth-child(2)::after{display:none}
-  .lp-foot-grid{grid-template-columns:1.4fr repeat(3,1fr)}
-  .lp-foot-grid > :last-child{grid-column:1 / -1}
 }
 @media (max-width:1024px){
   .lp-hero .lp-wrap{grid-template-columns:minmax(0,1fr); min-height:0; padding-bottom:40px}
