@@ -12,22 +12,22 @@ import { WeeklyChart } from "@/components/charts";
 export const metadata = { title: "Reports" };
 
 const PERIODS: [Period, string][] = [["today", "Today"], ["7d", "7 Days"], ["30d", "30 Days"], ["custom", "Custom"]];
+const MAX_CHANGES = 500;
 
 export default async function ReportsPage(props: PageProps<"/reports">) {
   const u = await requireUser();
   const sp = await props.searchParams;
   const period = (PERIODS.find(([k]) => k === sp.period)?.[0] ?? "7d") as Period;
-  const family = await getFamily(u.familyId);
+  const [family, graph] = await Promise.all([getFamily(u.familyId), getFamilyGraph(u.familyId)]);
   const tz = family.timezone;
   const range = resolveRange(period, tz, sp.from as string | undefined, sp.to as string | undefined);
-  const graph = await getFamilyGraph(u.familyId);
-  const [data, weekly] = await Promise.all([reportData(u.familyId, range.from, range.to), weeklySeries(u.familyId, tz, graph)]);
-  const avg = Math.round(data.total / data.n);
-  const prevAvg = Math.round(data.prevTotal / data.n);
+  const [data, weekly] = await Promise.all([reportData(u.familyId, tz, range.from, range.to, { maxChanges: MAX_CHANGES }), weeklySeries(u.familyId, tz, graph)]);
+  const { avg, prevAvg } = data;
   const delta = prevAvg ? Math.round(((avg - prevAvg) / prevAvg) * 100) : null;
+  const h = graph.familyHealth;
   const healthy = Object.values(graph.deviceStates).filter((s) => s.key === "healthy").length;
   const offline = Object.values(graph.deviceStates).filter((s) => s.key === "offline").length;
-  const maxApp = data.apps[0]?._sum.minutes ?? 1;
+  const maxApp = data.apps[0]?._sum.minutes || 1;
   const rangeLabel = range.from === range.to ? dayLabel(range.from).date : `${dayLabel(range.from).date} – ${dayLabel(range.to).date}`;
   const exportHref = `/api/reports/export?period=${period}&from=${range.from}&to=${range.to}`;
 
@@ -54,13 +54,19 @@ export default async function ReportsPage(props: PageProps<"/reports">) {
       <section className="report-metrics">
         <div className="card metric" style={{ minHeight: 0 }}>
           <div className="m-top"><span className="m-label">Configuration health</span><span className="ico-tile"><Icon name="shield-check" /></span></div>
-          <div className="m-value num">{graph.familyHealth.score} / 10</div>
-          <div className="t-meta">{graph.familyHealth.score === 10 ? "Every check passing" : `${10 - graph.familyHealth.score} check${10 - graph.familyHealth.score > 1 ? "s" : ""} need review`}</div>
+          <div className="m-value num">{h.score} / {h.total}</div>
+          <div className="t-meta">{h.score === h.total ? "Every check passing" : `${h.total - h.score} check${h.total - h.score > 1 ? "s" : ""} need review`}</div>
         </div>
         <div className="card metric" style={{ minHeight: 0 }}>
           <div className="m-top"><span className="m-label">{period === "today" ? "Family screen time today" : "Avg. family screen time / day"}</span><span className="ico-tile"><Icon name="hourglass" /></span></div>
           <div className="m-value num">{fmtMinutesPadded(avg)}</div>
-          <div className="t-meta">{delta == null ? "No earlier data to compare" : `${delta <= 0 ? "Down" : "Up"} ${Math.abs(delta)}% from the period before`}</div>
+          <div className="t-meta">
+            {prevAvg == null ? "Day still in progress"
+              : delta == null ? "No earlier data to compare"
+              : delta === 0 ? "Same as the period before"
+              : `${delta < 0 ? "Down" : "Up"} ${Math.abs(delta)}% from the period before`}
+            {prevAvg != null && data.complete < data.n ? ". Complete days only" : ""}
+          </div>
         </div>
         <div className="card metric" style={{ minHeight: 0 }}>
           <div className="m-top"><span className="m-label">Protection changes</span><span className="ico-tile"><Icon name="history" /></span></div>
@@ -86,6 +92,7 @@ export default async function ReportsPage(props: PageProps<"/reports">) {
 
       <section className="card card-pad">
         <div className="card-head"><div><h2>Protection changes</h2><div className="sub">Configuration history for the whole family, {rangeLabel}</div></div></div>
+        {data.changes.length >= MAX_CHANGES ? <p className="t-meta" style={{ marginBottom: 12 }}>Showing the latest {MAX_CHANGES}. Export CSV for the full list.</p> : null}
         {data.changes.length ? <Timeline items={data.changes.map((h) => ({ id: h.id, icon: PROTECTION_BY_KEY[h.key]?.icon ?? "history", title: `${h.child.name}: ${h.title}`, by: h.actor, time: dayTime(h.createdAt, tz), from: h.fromValue, to: h.toValue }))} />
           : <EmptyState icon="history" title="No changes in this period" />}
       </section>

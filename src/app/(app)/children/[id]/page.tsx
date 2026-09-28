@@ -13,6 +13,7 @@ import { AlertRow } from "@/components/alerts";
 import { WeeklyChart } from "@/components/charts";
 import { FlowButton } from "@/components/flow";
 import { AppControls, ChildForm, DeleteChildForm } from "@/components/forms";
+import { requestedApps } from "@/lib/family-service";
 
 const TABS = [["overview", "Overview"], ["activity", "Activity"], ["apps", "Apps"], ["screen", "Screen Time"], ["protection", "Protection"], ["location", "Location"], ["devices", "Devices"], ["history", "History"]] as const;
 type Tab = (typeof TABS)[number][0];
@@ -54,7 +55,9 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
             <HealthRing score={c.health.score} small label={`${c.name}'s protection health`} />
             <div>
               <div className="eyebrow">Protection Health</div>
-              <div className="t-title" style={{ fontSize: 16, marginTop: 4 }}>{c.health.score === 10 ? "All checks verified" : `${10 - c.health.score} to review`}</div>
+              <div className="t-title" style={{ fontSize: 16, marginTop: 4 }}>{c.health.verified ? "All checks verified"
+                : c.health.score === c.health.total ? `${c.health.offline} ${c.health.offline === 1 ? "device" : "devices"} offline, last known state`
+                : `${c.health.total - c.health.score} to review`}</div>
               <Link className="link-btn" href={`/children/${c.id}?tab=protection`}>See checks <Icon name="arrow-right" /></Link>
             </div>
           </div>
@@ -154,7 +157,8 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
     const usage = await appMinutesOn([c!.id], today);
     const approval = c!.policies.find((p) => p.key === "APP_APPROVAL")?.config as { enabled?: boolean } | undefined;
     const label = { ALLOWED: "Allowed", ALWAYS_ALLOWED: "Always allowed", FILTERED: "Filtered", BLOCKED: "Blocked", PENDING: "Waiting for your approval" };
-    const pending = apps.filter((a) => a.approval === "PENDING");
+    const requested = await requestedApps(c!.id);
+    const pending = apps.filter((a) => a.approval === "PENDING" || requested.has(a.name));
     return (
       <section className="card card-pad">
         <div className="card-head">
@@ -167,8 +171,8 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
           return (
             <div className="setting-row" key={a.id} style={{ flexWrap: "wrap" }}>
               <span className="ico-tile"><Icon name="app-window" /></span>
-              <div className="grow" style={{ minWidth: 160 }}><div className="t-title">{a.name}</div><div className="t-meta">{label[a.approval]}{m != null ? ` · ${fmtMinutes(m)} today` : ""}{a.dailyLimitMinutes ? ` · limit ${fmtMinutes(a.dailyLimitMinutes)}` : ""}</div></div>
-              <AppControls app={{ id: a.id, name: a.name, approval: a.approval, dailyLimitMinutes: a.dailyLimitMinutes }} />
+              <div className="grow" style={{ minWidth: 160 }}><div className="t-title">{a.name}</div><div className="t-meta">{label[a.approval]}{a.approval === "BLOCKED" && requested.has(a.name) ? " · Asked again" : ""}{m != null ? ` · ${fmtMinutes(m)} today` : ""}{a.dailyLimitMinutes ? ` · limit ${fmtMinutes(a.dailyLimitMinutes)}` : ""}</div></div>
+              <AppControls app={{ id: a.id, name: a.name, approval: a.approval, dailyLimitMinutes: a.dailyLimitMinutes, requested: requested.has(a.name) }} />
             </div>
           );
         })}

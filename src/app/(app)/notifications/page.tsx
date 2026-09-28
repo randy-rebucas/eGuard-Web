@@ -9,19 +9,23 @@ import { MarkAllRead, NotificationItem } from "@/components/alerts";
 export const metadata = { title: "Notifications" };
 
 const FILTERS = [["ALL", "All"], ["PROTECTION", "Protection"], ["DEVICES", "Devices"], ["APPS", "Apps"], ["SCREEN_TIME", "Screen Time"], ["LOCATION", "Location"], ["SYSTEM", "System"]] as const;
+const PAGE = 200;
+const MAX = 2000;
 
 export default async function NotificationsPage(props: PageProps<"/notifications">) {
   const u = await requireUser();
   const sp = await props.searchParams;
   const filter = FILTERS.find(([k]) => k === String(sp.filter ?? "").toUpperCase())?.[0] ?? "ALL";
   const showResolved = sp.resolved === "1";
-  const family = await getFamily(u.familyId);
-  const [alerts, counts] = await Promise.all([
-    getAlerts(u.familyId, u.id, { category: filter, includeResolved: showResolved, take: 200 }),
+  const limit = Math.min(MAX, Math.max(PAGE, Math.ceil(Number(sp.limit) / PAGE) * PAGE || PAGE));
+  const [family, alerts, counts] = await Promise.all([
+    getFamily(u.familyId),
+    getAlerts(u.familyId, u.id, { category: filter, includeResolved: showResolved, take: limit }),
     db.alert.groupBy({ by: ["category"], where: { familyId: u.familyId, ...(showResolved ? {} : { resolvedAt: null }) }, _count: true }),
   ]);
   const total = counts.reduce((s, c) => s + c._count, 0);
-  const q = (f: string, r = showResolved) => `/notifications?filter=${f.toLowerCase()}${r ? "&resolved=1" : ""}`;
+  const inTab = filter === "ALL" ? total : counts.find((c) => c.category === filter)?._count ?? 0;
+  const q = (f: string, r = showResolved, n?: number) => `/notifications?filter=${f.toLowerCase()}${r ? "&resolved=1" : ""}${n ? `&limit=${n}` : ""}`;
 
   return (
     <>
@@ -39,6 +43,12 @@ export default async function NotificationsPage(props: PageProps<"/notifications
       <section className="card" style={{ padding: 8 }}>
         {alerts.length ? alerts.map((a) => <NotificationItem key={a.id} a={toAlertItem(a, family.timezone)} />)
           : <EmptyState icon="bell-off" title="Nothing here" text="There are no notifications in this category." />}
+        {alerts.length < inTab ? (
+          <div className="row t-meta" style={{ justifyContent: "space-between", gap: 10, flexWrap: "wrap", padding: "12px 8px 4px" }}>
+            <span>Showing {alerts.length} of {inTab}</span>
+            {limit < MAX ? <Link className="link-btn" href={q(filter, showResolved, limit + PAGE)} scroll={false}>Show more</Link> : null}
+          </div>
+        ) : null}
       </section>
     </>
   );

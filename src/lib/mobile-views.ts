@@ -2,12 +2,13 @@ import "server-only";
 import type { Alert, AlertCategory, ProtectionKey } from "@prisma/client";
 import { db } from "./db";
 import { dayTime } from "./format";
-import { appMinutesOn, dateFromKey, dayKey, getFamilyGraph, lastNDays, type ChildView, type DeviceView, type FamilyGraph } from "./queries";
+import { appMinutesOn, dateFromKey, dayKey, getFamilyGraph, lastNDays, limitOn, type ChildView, type DeviceView, type FamilyGraph } from "./queries";
 import { PROTECTION_BY_KEY, describeConfig, type ProtectionConfig } from "./protections";
 import { photoUrl } from "./mobile-api";
 import { ensureOfflineAlerts } from "./engine";
 import { touchSimulated } from "./simulator";
 import { notFound } from "./errors";
+import { requestedApps } from "./family-service";
 
 /**
  * JSON shapes for the parent mobile app. Values are raw (ISO dates, minutes) with a
@@ -20,8 +21,9 @@ export async function refreshFamily(familyId: string) {
   await ensureOfflineAlerts(familyId);
 }
 
-export function healthLabel(score: number, total: number) {
-  if (score === total) return "Fully protected";
+/** `offline`: devices counted by their last known state. "Fully protected" needs every one of them online. */
+export function healthLabel(score: number, total: number, offline = 0) {
+  if (score === total) return offline ? "Last known: all set" : "Fully protected";
   if (score >= total - 2) return "Good protection";
   if (score >= total / 2) return "Needs attention";
   return "Action required";
@@ -32,11 +34,7 @@ export async function photoVersions(childIds: string[]) {
   return new Map(rows.map((r) => [r.childId, r.updatedAt]));
 }
 
-const isWeekend = (key: string) => [0, 6].includes(new Date(`${key}T12:00:00Z`).getUTCDay());
-
-/** The limit that applies on a given day (weekend limit on Saturday and Sunday). */
-export const limitOn = (c: { dailyLimitMinutes: number; weekendLimitMinutes: number }, key: string) =>
-  isWeekend(key) ? c.weekendLimitMinutes : c.dailyLimitMinutes;
+export { limitOn };
 
 export async function todayMinutes(childIds: string[], tz: string) {
   const rows = await db.screenTimeDaily.groupBy({
@@ -197,7 +195,8 @@ export async function childOverview(graph: FamilyGraph, childId: string, tz: str
     photoVersions([c.id]),
     todayMinutes([c.id], tz),
     appMinutesOn([c.id], dateFromKey(todayKey)).then((rows) => rows.filter((r) => r.minutes > 0)),
-    db.childApp.count({ where: { childId: c.id, approval: "PENDING" } }),
+    Promise.all([db.childApp.findMany({ where: { childId: c.id, approval: "PENDING" }, select: { name: true } }), requestedApps(c.id)])
+      .then(([apps, requested]) => new Set([...apps.map((a) => a.name), ...requested]).size),
     db.configChange.findMany({ where: { childId: c.id }, orderBy: { createdAt: "desc" }, take: 5 }),
   ]);
   const policy = (key: ProtectionKey) => c.policies.find((p) => p.key === key)?.config as ProtectionConfig | undefined;
@@ -208,7 +207,10 @@ export async function childOverview(graph: FamilyGraph, childId: string, tz: str
 
   return {
     child: childJson(c, { photo: photos.get(c.id), todayMinutes: minutes.get(c.id), tz }),
-    health: { score: c.health.score, total: c.health.total, label: healthLabel(c.health.score, c.health.total), checks: c.health.checks },
+    health: {
+      score: c.health.score, total: c.health.total, offline: c.health.offline, verified: c.health.verified,
+      label: healthLabel(c.health.score, c.health.total, c.health.offline), checks: c.health.checks,
+    },
     today: {
       minutes: minutes.get(c.id) ?? 0,
       limitMinutes: limitOn(c, todayKey),

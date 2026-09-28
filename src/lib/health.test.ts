@@ -47,6 +47,42 @@ describe("computeHealth", () => {
     const h = computeHealth([]);
     expect(h.checks.every((c) => c.status === "NOT_CONFIGURED")).toBe(true);
   });
+
+  describe("offline devices", () => {
+    const offline = (id: string, protections = allPass(), platform: "ANDROID" | "IOS" = "ANDROID") =>
+      ({ ...dev(id, protections, platform), lastSeenAt: new Date(Date.now() - 3 * 864e5) });
+    const never = (id: string) => ({ ...dev(id), lastSeenAt: null });
+
+    it("scores by the last known state, but never calls it verified", () => {
+      const h = computeHealth([dev("phone"), offline("tab")]);
+      expect(h.score).toBe(10);
+      expect(h.offline).toBe(1);
+      expect(h.verified).toBe(false);
+      expect(h.checks[0].detail).toBe("Verified on 1 of 2 devices; 1 offline, last known state");
+    });
+    it("is verified only with every device online and every check passing", () => {
+      expect(computeHealth([dev("a"), dev("b")])).toMatchObject({ score: 10, offline: 0, verified: true });
+      expect(computeHealth([dev("a", allPass({ BEDTIME: "WARNING" }))]).verified).toBe(false);
+      expect(computeHealth([]).verified).toBe(false);
+    });
+    it("treats a device that never synced as offline", () => {
+      expect(computeHealth([never("new")])).toMatchObject({ offline: 1, verified: false });
+    });
+    it("still reports real failures on offline devices", () => {
+      const loc = computeHealth([offline("tab", allPass({ LOCATION: "ACTION_REQUIRED" }))]).checks.find((c) => c.key === "LOCATION")!;
+      expect(loc.status).toBe("ACTION_REQUIRED");
+      expect(loc.fixDeviceId).toBe("tab");
+    });
+    it("is verified again once the device syncs", () => {
+      expect(computeHealth([{ ...offline("tab"), lastSeenAt: new Date() }]).verified).toBe(true);
+    });
+    it("measures offline from the given time", () => {
+      const seen = new Date("2026-09-01T00:00:00Z");
+      const d = { ...dev("tab"), lastSeenAt: seen };
+      expect(computeHealth([d], { now: seen.getTime() + 3600_000 }).verified).toBe(true);
+      expect(computeHealth([d], { now: seen.getTime() + 2 * 864e5 }).verified).toBe(false);
+    });
+  });
 });
 
 describe("deviceState", () => {

@@ -12,6 +12,7 @@ import type { Actor } from "./config-service";
 import { conflict, forbidden, invalid, isUniqueViolation, notFound } from "./errors";
 import { requireVerifiedEmail } from "./email-verification";
 import { BASE_PLAN, planByName } from "./plans";
+import { LIMITS, enforce } from "./rate-limit";
 
 /** Family, children, apps and devices: shared by the web server actions and the mobile API. */
 
@@ -60,16 +61,34 @@ export const APPROVAL_LABEL: Record<AppApproval, string> = {
   ALLOWED: "Allowed", ALWAYS_ALLOWED: "Always allowed", FILTERED: "Filtered", BLOCKED: "Blocked", PENDING: "Pending",
 };
 
+/**
+ * Names of apps with an open approval request: new apps (PENDING), and blocked apps the child asked for
+ * again. A blocked app stays blocked; the parent approves or declines the request.
+ */
+export async function requestedApps(childId: string) {
+  const prefix = `APPREQ:${childId}:`;
+  const open = await db.alert.findMany({ where: { childId, resolveKey: { startsWith: prefix }, resolvedAt: null }, select: { resolveKey: true } });
+  return new Set(open.map((o) => o.resolveKey!.slice(prefix.length)));
+}
+
 async function appFor(familyId: string, appId: string) {
   const app = await db.childApp.findFirst({ where: { id: appId, child: { familyId } } });
   if (!app) throw notFound("App");
   return app;
 }
 
-/** Devices pick up app rules on their next sync. Resolves any open approval request for the app. */
+/**
+ * Devices pick up app rules on their next sync. Resolves any open approval request for the app, even when
+ * the approval doesn't change (declining a child's request for an app that is already blocked).
+ */
 export async function setAppApproval(actor: Actor, appId: string, approval: AppApproval, via: string) {
   const app = await appFor(actor.familyId, appId);
-  if (app.approval === approval) return app;
+  const resolveRequest = () =>
+    db.alert.updateMany({ where: { familyId: actor.familyId, resolveKey: `APPREQ:${app.childId}:${app.name}`, resolvedAt: null }, data: { resolvedAt: new Date() } });
+  if (app.approval === approval) {
+    await resolveRequest();
+    return app;
+  }
   const updated = await db.childApp.update({ where: { id: appId }, data: { approval } });
   await db.configChange.create({
     data: {
@@ -77,7 +96,7 @@ export async function setAppApproval(actor: Actor, appId: string, approval: AppA
       actor: `${actor.name} on ${via} · applies on next sync`, fromValue: APPROVAL_LABEL[app.approval], toValue: APPROVAL_LABEL[approval],
     },
   });
-  await db.alert.updateMany({ where: { familyId: actor.familyId, resolveKey: `APPREQ:${app.childId}:${app.name}`, resolvedAt: null }, data: { resolvedAt: new Date() } });
+  await resolveRequest();
   return updated;
 }
 
@@ -89,6 +108,10 @@ export async function setAppLimit(actor: Actor, appId: string, minutes: number |
 
 /* ---------- Devices ---------- */
 
+/**
+ * A one-time code the child's device exchanges for a device token. Only the newest code for a child works:
+ * getting another replaces it, so at most one guessable code per child is ever live.
+ */
 export async function createPairingCode(actor: Actor, childId: string) {
   // The device limit comes from the plan; make sure a lapsed or refunded subscription is reflected first
   await refreshPurchases(actor.familyId);
@@ -100,11 +123,51 @@ export async function createPairingCode(actor: Actor, childId: string) {
   if (!child) throw notFound("Child");
   await requireVerifiedEmail(actor.id);
   if (count >= family.deviceLimit) throw conflict(`Your plan covers ${family.deviceLimit} devices. Remove a device to add another.`);
+  await enforce(`paircode:${actor.id}`, LIMITS.pairCodeUser, "You've made several pairing codes. Wait a few minutes before making another.");
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   const code = Array.from({ length: 8 }, () => alphabet[randomInt(alphabet.length)]).join("");
   const expiresAt = new Date(Date.now() + 15 * 60_000);
-  await db.pairingCode.create({ data: { familyId: actor.familyId, childId, code, expiresAt } });
+  await db.$transaction([
+    db.pairingCode.deleteMany({ where: { childId, usedAt: null } }),
+    db.pairingCode.create({ data: { familyId: actor.familyId, childId, code, expiresAt } }),
+  ]);
   return { code, expiresAt, childName: child.name };
+}
+
+/**
+ * Whether a pairing code has been used yet, so the parent's screen can say "Paired" without a refresh.
+ * `device` is the device that joined the child with it (paired right after the code was claimed).
+ */
+export async function pairingCodeStatus(actor: Actor, code: string) {
+  const p = await db.pairingCode.findFirst({ where: { code, familyId: actor.familyId } });
+  if (!p) return { status: "replaced" as const };
+  if (!p.usedAt) return { status: p.expiresAt < new Date() ? ("expired" as const) : ("waiting" as const), expiresAt: p.expiresAt };
+  const device = await db.device.findFirst({
+    where: { childId: p.childId, createdAt: { gte: p.usedAt } }, orderBy: { createdAt: "asc" }, select: { id: true, name: true },
+  });
+  // Claimed but the device isn't created yet (or the plan was full and the code is about to be released)
+  return device ? { status: "paired" as const, device } : { status: "waiting" as const, expiresAt: p.expiresAt };
+}
+
+/**
+ * Removes a device from the family. Its token stops working and eGuard stops verifying it, which would also
+ * silence tamper alerts, so it needs the parent's password and tells the family (the alert is emailed).
+ */
+export async function removeDevice(actor: Actor, deviceId: string, password: string) {
+  const d = await db.device.findFirst({ where: { id: deviceId, familyId: actor.familyId }, include: { child: true } });
+  if (!d) throw notFound("Device");
+  await confirmPassword(actor.id, password);
+  await db.device.delete({ where: { id: d.id } });
+  const label = `${d.child.name}'s ${d.name}`;
+  await audit(actor.familyId, actor.name, "device.removed", label);
+  await db.alert.create({
+    data: {
+      familyId: actor.familyId, childId: d.childId, severity: "ATTENTION", category: "DEVICES", icon: "trash",
+      title: "Device removed", subject: label,
+      body: `${actor.name} removed ${d.name} from eGuard. Its protections stay on the device, but eGuard no longer verifies them or tells you if they change.`,
+    },
+  });
+  return d;
 }
 
 /* ---------- Account ---------- */

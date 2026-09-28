@@ -9,6 +9,29 @@ export function dayKey(d: Date, tz: string) {
 }
 export const dateFromKey = (k: string) => new Date(`${k}T00:00:00.000Z`);
 
+/** Milliseconds `tz` is ahead of UTC at instant `d`. */
+function tzOffset(d: Date, tz: string) {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", { timeZone: tz, hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric" })
+      .formatToParts(d).map((x) => [x.type, Number(x.value)]),
+  );
+  return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - Math.floor(d.getTime() / 1000) * 1000;
+}
+
+/** The instant a day (YYYY-MM-DD) starts in the family's timezone. */
+export function dayStart(k: string, tz: string) {
+  const utc = dateFromKey(k).getTime();
+  const guess = utc - tzOffset(new Date(utc), tz);
+  // Second pass settles days where a DST change sits between UTC midnight and local midnight
+  return new Date(utc - tzOffset(new Date(guess), tz));
+}
+
+const isWeekend = (key: string) => [0, 6].includes(new Date(`${key}T12:00:00Z`).getUTCDay());
+
+/** The child's screen-time limit on a day (YYYY-MM-DD): the weekend limit on Saturday and Sunday. */
+export const limitOn = (c: { dailyLimitMinutes: number; weekendLimitMinutes: number }, key: string) =>
+  isWeekend(key) ? c.weekendLimitMinutes : c.dailyLimitMinutes;
+
 export function lastNDays(n: number, tz: string, end = new Date()) {
   const todayKey = dayKey(end, tz);
   const base = dateFromKey(todayKey).getTime();
@@ -43,7 +66,8 @@ export const getFamilyGraph = cache(async (familyId: string) => {
       devices: devs,
       primary: devs[0] ?? null,
       health,
-      status: !devs.length ? ("notconfigured" as const) : health.score === health.total ? ("protected" as const) : ("attention" as const),
+      // An offline device needs attention even when its last known state passes: it can't be verified
+      status: !devs.length ? ("notconfigured" as const) : health.verified ? ("protected" as const) : ("attention" as const),
     };
   });
   const familyHealth = computeHealth(devices);

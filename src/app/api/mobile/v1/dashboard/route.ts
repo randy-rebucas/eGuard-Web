@@ -11,7 +11,7 @@ export const GET = authed(async ({ user }) => {
   const [me, family, graph, alerts, unread] = await Promise.all([
     meJson(user.id), getFamily(user.familyId), getFamilyGraph(user.familyId), getAlerts(user.familyId, user.id, { take: 3 }), unreadCount(user.familyId, user.id),
   ]);
-  const { score, total } = graph.familyHealth;
+  const { score, total, offline, verified } = graph.familyHealth;
   const needsAttention = graph.children.filter((c) => c.status === "attention").length;
   return NextResponse.json({
     user: me,
@@ -19,7 +19,7 @@ export const GET = authed(async ({ user }) => {
     summary: !graph.children.length ? "Add your first child to get started."
       : needsAttention ? `${needsAttention} ${needsAttention === 1 ? "child needs" : "children need"} attention.`
       : "Your family's digital safety looks good today.",
-    health: { score, total, label: healthLabel(score, total) },
+    health: { score, total, offline, verified, label: healthLabel(score, total, offline) },
     children: await childrenJson(graph, family.timezone),
     deviceCount: graph.devices.length,
     recentAlerts: alerts.map((a) => alertJson(a, family.timezone)),

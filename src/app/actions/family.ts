@@ -93,7 +93,7 @@ export async function createPairingCode(childId: string) {
     const p = await family.createPairingCode(u, childId);
     return { code: p.code, expiresAt: p.expiresAt.toISOString(), childName: p.childName };
   } catch (e) {
-    if (e instanceof ServiceError && (e.status === 409 || e.code === "email_unverified")) return { error: e.message };
+    if (e instanceof ServiceError) return { error: e.message };
     throw e;
   }
 }
@@ -108,13 +108,25 @@ export async function renameDevice(deviceId: string, _: FormState, form: FormDat
   return { ok: "Saved." };
 }
 
-export async function removeDevice(deviceId: string) {
+export async function removeDevice(deviceId: string, _: FormState, form: FormData): Promise<FormState> {
   const u = await requireUser();
-  const d = await db.device.findFirst({ where: { id: deviceId, familyId: u.familyId }, include: { child: true } });
-  if (!d) throw new Error("Device not found.");
-  await db.device.delete({ where: { id: d.id } });
-  await audit(u.familyId, u.name, "device.removed", `${d.child.name}'s ${d.name}`);
+  try {
+    await family.removeDevice(u, deviceId, String(form.get("password") ?? ""));
+  } catch (e) {
+    // Already removed (another tab, another parent): nothing left to do here
+    if (e instanceof ServiceError && e.status === 404) return { error: "This device was already removed.", fields: { gone: "1" } };
+    return failed(e);
+  }
+  revalidatePath("/", "layout");
   redirect("/devices");
+}
+
+/** Polled while a pairing code is on screen. */
+export async function pairingStatus(code: string) {
+  const u = await requireUser();
+  const s = await family.pairingCodeStatus(u, code);
+  if (s.status === "paired") revalidatePath("/", "layout");
+  return s;
 }
 
 /* ---------- Settings ---------- */

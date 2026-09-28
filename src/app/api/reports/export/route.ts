@@ -19,7 +19,7 @@ export async function GET(req: Request) {
   const period = (["today", "7d", "30d", "custom"].includes(p.get("period") ?? "") ? p.get("period") : "7d") as Period;
   const family = await getFamily(u.familyId);
   const range = resolveRange(period, family.timezone, p.get("from") ?? undefined, p.get("to") ?? undefined);
-  const data = await reportData(u.familyId, range.from, range.to);
+  const data = await reportData(u.familyId, family.timezone, range.from, range.to);
   const name = (id: string) => data.children.find((c) => c.id === id)?.name ?? id;
 
   const rows: unknown[][] = [

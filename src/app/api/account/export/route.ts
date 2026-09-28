@@ -1,8 +1,12 @@
 import { getUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 
-/** Full export of the family's data (no password hashes, tokens or purchase tokens). */
-export async function GET() {
+/**
+ * Full export of the family's data (no password hashes, tokens or purchase tokens).
+ * POST, since it writes to the audit log: a GET could be fired by a link or prefetch. The session cookie
+ * is SameSite=Lax, so another site can't submit this for the parent.
+ */
+export async function POST() {
   const u = await getUser();
   if (!u) return new Response("Unauthorized", { status: 401 });
   const family = await db.family.findUniqueOrThrow({

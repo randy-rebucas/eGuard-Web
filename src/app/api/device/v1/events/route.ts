@@ -13,6 +13,8 @@ const Body = z.discriminatedUnion("type", [
 
 /** Repeated attempts to open the same blocked app raise one alert per this window. */
 const BLOCKED_ALERT_WINDOW_MS = 60 * 60_000;
+/** A child asking again for an app the parent blocked raises one alert per this window. */
+const DECLINED_REQUEST_WINDOW_MS = 24 * 60 * 60_000;
 /** A device repeating "limit reached" (e.g. after a restart) raises one alert per this window. */
 const LIMIT_ALERT_WINDOW_MS = 12 * 60 * 60_000;
 
@@ -36,12 +38,24 @@ export async function POST(req: Request) {
     }
   } else if (e.type === "APP_REQUESTED") {
     const app = await db.childApp.findUnique({ where: { childId_name: { childId: device.childId, name: e.app } } });
-    // A request never overrides the parent's decision to allow an app. Asking again for a blocked app is
-    // allowed (it stays blocked until the parent approves); an open request isn't repeated.
+    // A request never overrides the parent's decision. An allowed app has nothing to ask for.
     if (app?.approval === "ALLOWED" || app?.approval === "ALWAYS_ALLOWED" || app?.approval === "FILTERED") {
       return NextResponse.json({ ok: true, approval: app.approval });
     }
     const resolveKey = `APPREQ:${device.childId}:${e.app}`;
+    if (app?.approval === "BLOCKED") {
+      // A blocked app stays blocked. Asking again is passed on, but at most once per window, so a
+      // declined request can't be turned into a stream of alerts.
+      const recent = await db.alert.findFirst({
+        where: { familyId: device.familyId, resolveKey, OR: [{ resolvedAt: null }, { createdAt: { gt: new Date(Date.now() - DECLINED_REQUEST_WINDOW_MS) } }] },
+      });
+      if (!recent) {
+        await db.alert.create({ data: { ...base, severity: "ATTENTION", category: "APPS", icon: "app-window", title: "App approval requested",
+          body: `${device.child.name} asked again for ${e.app}, which you blocked.`, subject: `${e.app} · ${who}`, resolveKey } });
+      }
+      await db.device.update({ where: { id: device.id }, data: { lastSeenAt: new Date() } });
+      return NextResponse.json({ ok: true, approval: app.approval });
+    }
     await db.childApp.upsert({
       where: { childId_name: { childId: device.childId, name: e.app } },
       create: { childId: device.childId, name: e.app, approval: "PENDING" },

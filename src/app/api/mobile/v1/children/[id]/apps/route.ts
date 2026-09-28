@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { AppApproval } from "@prisma/client";
 import { db } from "@/lib/db";
 import { childFor } from "@/lib/config-service";
-import { APPROVAL_LABEL, audit } from "@/lib/family-service";
+import { APPROVAL_LABEL, audit, requestedApps } from "@/lib/family-service";
 import { conflict } from "@/lib/errors";
 import { appMinutesOn, dateFromKey, dayKey, getFamily } from "@/lib/queries";
 import { authed, body, clientLabel, query } from "@/lib/mobile-api";
@@ -11,24 +11,31 @@ import { authed, body, clientLabel, query } from "@/lib/mobile-api";
 const APPROVALS = ["ALLOWED", "ALWAYS_ALLOWED", "FILTERED", "BLOCKED", "PENDING"] as const;
 const Query = z.object({ filter: z.enum(["all", "installed", "blocked", "pending"]).default("all") });
 
-/** App Management. `installed` = everything not blocked; `pending` = waiting for the parent's approval. */
+/**
+ * App Management. `installed` = everything not blocked; `pending` = waiting for the parent's approval
+ * (new apps, and blocked apps the child asked for again, which stay blocked and have `requested: true`).
+ */
 export const GET = authed<{ id: string }>(async ({ req, user, params }) => {
   const { filter } = query(req, Query);
   const child = await childFor(user.familyId, params.id);
   const family = await getFamily(user.familyId);
+  const requested = await requestedApps(child.id);
   const where = filter === "blocked" ? { approval: "BLOCKED" as AppApproval }
-    : filter === "pending" ? { approval: "PENDING" as AppApproval }
+    : filter === "pending" ? { OR: [{ approval: "PENDING" as AppApproval }, { name: { in: [...requested] } }] }
     : filter === "installed" ? { approval: { not: "BLOCKED" as AppApproval } } : {};
-  const [apps, usage, counts] = await Promise.all([
+  const [apps, usage, counts, pending] = await Promise.all([
     db.childApp.findMany({ where: { childId: child.id, ...where }, orderBy: [{ approval: "asc" }, { name: "asc" }] }),
     appMinutesOn([child.id], dateFromKey(dayKey(new Date(), family.timezone))),
     db.childApp.groupBy({ by: ["approval"], where: { childId: child.id }, _count: true }),
+    db.childApp.count({ where: { childId: child.id, OR: [{ approval: "PENDING" }, { name: { in: [...requested] } }] } }),
   ]);
   const count = (a: AppApproval) => counts.find((c) => c.approval === a)?._count ?? 0;
   return NextResponse.json({
-    counts: { all: counts.reduce((s, c) => s + c._count, 0), blocked: count("BLOCKED"), pending: count("PENDING"), installed: counts.reduce((s, c) => s + c._count, 0) - count("BLOCKED") },
+    counts: { all: counts.reduce((s, c) => s + c._count, 0), blocked: count("BLOCKED"), pending, installed: counts.reduce((s, c) => s + c._count, 0) - count("BLOCKED") },
     apps: apps.map((a) => ({
       id: a.id, name: a.name, approval: a.approval, approvalLabel: APPROVAL_LABEL[a.approval],
+      /** true while the child's request waits for the parent (approve with ALLOWED, decline with BLOCKED) */
+      requested: a.approval === "PENDING" || requested.has(a.name),
       /** convenience for the on/off switch */
       allowed: a.approval !== "BLOCKED" && a.approval !== "PENDING",
       dailyLimitMinutes: a.dailyLimitMinutes, todayMinutes: usage.find((u) => u.app === a.name)?.minutes ?? 0,

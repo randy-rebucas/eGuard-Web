@@ -574,7 +574,7 @@ describe("family isolation", () => {
       ["GET", `/children/${miaId}/location`], ["GET", `/children/${miaId}/photo`], ["GET", `/children/${miaId}/protections`],
       ["PUT", `/children/${miaId}/protections/LOCATION`, { sharing: false }], ["POST", `/children/${miaId}/pairing-code`],
       ["PATCH", `/apps/${app.id}`, { approval: "BLOCKED" }], ["GET", `/devices/${android.deviceId}`],
-      ["DELETE", `/devices/${android.deviceId}`], ["POST", "/checks", { deviceId: android.deviceId }],
+      ["DELETE", `/devices/${android.deviceId}`, { password: PASSWORD }], ["POST", "/checks", { deviceId: android.deviceId }],
     ];
     for (const [m, path, b] of checks) {
       const r = await call(m, path, { token: t, body: b });
@@ -641,11 +641,15 @@ describe("Android design additions (public/android.png)", () => {
 });
 
 describe("removing things", () => {
-  it("removes a device; its token stops working", async () => {
+  it("removes a device with the parent's password; its token stops working and the family is told", async () => {
     const leo = (await call("GET", "/children", { token })).data.children.find((c: { name: string }) => c.name === "Leo");
     const ipad = (await call("GET", "/devices", { token })).data.devices.find((d: { childId: string }) => d.childId === leo.id);
-    expect((await call("DELETE", `/devices/${ipad.id}`, { token })).status).toBe(200);
+    expect((await call("DELETE", `/devices/${ipad.id}`, { token })).data.code).toBe("wrong_password");
+    expect((await call("DELETE", `/devices/${ipad.id}`, { token, body: { password: "nope" } })).status).toBe(403);
+    expect((await call("DELETE", `/devices/${ipad.id}`, { token, body: { password: PASSWORD } })).status).toBe(200);
     expect((await call("GET", `/devices/${ipad.id}`, { token })).status).toBe(404);
+    const alerts = (await call("GET", "/alerts?filter=DEVICES", { token })).data.alerts;
+    expect(alerts.some((a: { title: string }) => a.title === "Device removed")).toBe(true);
   });
 
   it("deleting a child needs the admin's password", async () => {

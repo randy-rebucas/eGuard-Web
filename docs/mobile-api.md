@@ -155,7 +155,7 @@ Used in the children list, the dashboard and the family screen.
 
 | Field | Notes |
 |---|---|
-| `status` | `protected` (all checks pass), `attention` (something to fix), `notconfigured` (no devices yet). Design labels: "Protected" / "Attention" |
+| `status` | `protected` (all checks pass on devices that are all online), `attention` (something to fix, or a device offline), `notconfigured` (no devices yet). Design labels: "Protected" / "Attention" |
 | `photoUrl?` | Path relative to the host. Load it **with the bearer header**. The `?v=` query changes when the photo changes, so cache by URL |
 | `todayLimitMinutes` | The limit that applies today (weekday or weekend) |
 
@@ -478,7 +478,7 @@ One call for the whole Home tab.
   "user": { …User },
   "greeting": "Good afternoon,",
   "summary": "1 child needs attention.",
-  "health": { "score": 8, "total": 10, "label": "Good protection" },
+  "health": { "score": 8, "total": 10, "offline": 1, "verified": false, "label": "Good protection" },
   "children": [ …ChildSummary ],
   "deviceCount": 5,
   "recentAlerts": [ …Alert (up to 3) ],
@@ -498,10 +498,12 @@ Configuration Health. There are 10 checks, one per protection, and each shows th
 {
   "score": 8,
   "total": 10,
+  "offline": 1,
+  "verified": false,
   "label": "Good protection",
   "checks": [
     { "key": "SCREEN_TIME", "name": "Screen Time", "icon": "hourglass", "status": "PASS",
-      "detail": "Verified on 5 of 5 devices (1 offline, last known state)" },
+      "detail": "Verified on 4 of 5 devices; 1 offline, last known state" },
     { "key": "BEDTIME", "name": "Bedtime", "icon": "moon", "status": "NOT_CONFIGURED",
       "detail": "Not configured on Sophie's iPhone 13",
       "fixDeviceId": "cmujeonbc00d5ncgs3k2m4glb", "fixChildId": "cmujeon8u00cfncgs77ksjr1g" }
@@ -518,6 +520,9 @@ Configuration Health. There are 10 checks, one per protection, and each shows th
 
 - The design's "Fix 2 settings" button is `toFix.length`. Each item opens `FIX_SETTING` for `childId` + `key`.
 - `label`: 10/10 "Fully protected", 8–9 "Good protection", 5–7 "Needs attention", below 5 "Action required".
+  10/10 with a device offline is "Last known: all set".
+- `offline` counts devices that haven't synced in over a day. They're scored by their last known state, which isn't a
+  verification: only say "verified" or "protected" when `verified` is true (every check passes and no device is offline).
 - With `?childId=`, the score covers that child only and `children` is omitted.
 - Check statuses and suggested colors: `PASS` green, `WARNING` amber, `ACTION_REQUIRED` red, `NOT_CONFIGURED` grey,
   `UNSUPPORTED` grey (with the label "Not supported").
@@ -682,7 +687,9 @@ device, which calls `POST /api/device/v1/pair`.
 { "code": "FJZM7J7H", "expiresAt": "2026-09-27T06:14:58.928Z", "childName": "Mia" }
 ```
 
-The code is 8 characters, single-use, and valid for 15 minutes. `409` means the plan's device limit has been reached. `403 email_unverified` means the parent hasn't verified their email yet (see Email verification).
+The code is 8 characters, single-use, and valid for 15 minutes. Only a child's newest code works: asking for another
+replaces the previous one, so show only the latest. `409` means the plan's device limit has been reached. `403 email_unverified` means the parent hasn't verified their email yet (see Email verification).
+`429 rate_limited` means the parent made more than 20 codes in an hour.
 After pairing, `GET /children/{id}` shows the device, and a first full check runs automatically.
 
 ### 4.7 Protections and configuration batches
@@ -794,18 +801,21 @@ Cancels everything in the batch that isn't verified yet. Response: `{ "cancelled
 #### `GET /children/{id}/apps?filter=all|installed|blocked|pending`
 
 - `installed` means everything that isn't blocked (the design's "Installed" tab).
-- `pending` means requests waiting for the parent's approval.
+- `pending` means requests waiting for the parent's approval: new apps (`PENDING`), and blocked apps the
+  child asked for again. A request never unblocks an app; it stays `BLOCKED` with `requested: true`.
 
 ```json
 {
   "counts": { "all": 4, "blocked": 0, "pending": 0, "installed": 4 },
   "apps": [
     { "id": "cmujeom2c0008ncgsgn8kylmz", "name": "Roblox", "approval": "ALLOWED", "approvalLabel": "Allowed",
-      "allowed": true, "dailyLimitMinutes": null, "todayMinutes": 42, "installedAt": "2026-09-27T00:56:40.499Z" }
+      "requested": false, "allowed": true, "dailyLimitMinutes": null, "todayMinutes": 42, "installedAt": "2026-09-27T00:56:40.499Z" }
   ]
 }
 ```
 
+- `requested` is true while a request waits for the parent. Show Approve (`PATCH /apps/{id}` with `ALLOWED`) and
+  Decline (`BLOCKED`); either one resolves the request, even when the app is already blocked.
 - `allowed` drives the on/off switch. It's false for `BLOCKED` and `PENDING`.
 - The design's subtitle maps as follows:
   - `ALWAYS_ALLOWED` → "Always allowed"
@@ -842,10 +852,11 @@ about 5 minutes).
 {
   "childId": "cmujeom2c0006ncgsd9tlg8pp",
   "sharing": true,
+  "state": "located",
   "current": {
     "deviceId": "cmujeom5j000wncgs0ylb00q4", "deviceName": "Galaxy A54",
     "lat": 14.6507, "lng": 121.0494, "accuracyM": 25, "placeLabel": "Home",
-    "locatedAt": "2026-09-27T05:28:40.136Z", "updatedLabel": "Today, 1:28 PM"
+    "locatedAt": "2026-09-27T05:28:40.136Z", "updatedLabel": "Today, 1:28 PM", "fresh": true, "approximate": false
   },
   "devices": [ { "id": "cmujeom5j000wncgs0ylb00q4", "name": "Galaxy A54", "sharing": true, "hasLocation": true } ],
   "history": {
@@ -858,7 +869,12 @@ about 5 minutes).
 }
 ```
 
-- `current` is `null` when sharing is off or no location has arrived yet.
+- `current` is `null` when sharing is off or no location has arrived yet. `state` is the same as in `GET /locations`.
+- `fresh` is true when the location is under 15 minutes old and the device is still syncing. Otherwise show it as
+  "Last seen {updatedLabel}", never as live. `approximate` is true when `accuracyM` is over 200 m (e.g. a cell-tower
+  fix): draw the accuracy circle and say "approximate".
+- When sharing is turned off, eGuard deletes the device's last position, and locations it sends while sharing is off
+  aren't stored.
 - The banner at the top of the screen reads "Location sharing Enabled" when `sharing` is true.
 - `history.visits` covers today and yesterday, newest first, and is empty unless `history.enabled`. The admin turns
   history on with `PATCH /family/privacy { keepLocationHistory: true }`. When it's off, show a prompt instead of the
@@ -895,12 +911,13 @@ The family map, one entry per child:
   "children": [
     { "childId": "…", "name": "Mia", "hue": 205, "photoUrl": null, "sharing": true, "state": "located",
       "location": { "deviceId": "…", "deviceName": "Galaxy A54", "lat": 14.6507, "lng": 121.0494, "accuracyM": 25,
-                    "placeLabel": "Home", "locatedAt": "…", "updatedLabel": "Today, 1:28 PM" } }
+                    "placeLabel": "Home", "locatedAt": "…", "updatedLabel": "Today, 1:28 PM", "fresh": true, "approximate": false } }
   ]
 }
 ```
 
-`state` is `located`, `waiting` (sharing on, no location yet), `sharing_off` or `no_devices`.
+`state` is `located`, `waiting` (sharing on, no location yet), `sharing_off` (also when the device reported sharing off
+before sending any location) or `no_devices`. `fresh` and `approximate` work as in `GET /children/{id}/location`.
 
 ### 4.11 Alerts
 
@@ -943,7 +960,7 @@ a batch completes.
 | `GET /devices` | none | `{ devices: [ …Device ], limit: 8 }` |
 | `GET /devices/{id}` | none | `Device` + `protections: [{ key, name, icon, capability, capabilityLabel, status, reportedLabel, message, lastVerifiedAt }]` (all 10) |
 | `PATCH /devices/{id}` | `{ name }` (1–60 chars) | Same as GET |
-| `DELETE /devices/{id}` | none | `{ ok }`. The device is unpaired and its token stops working |
+| `DELETE /devices/{id}` | `{ password }` | `{ ok }`. The device is unpaired and its token stops working. `403 wrong_password` without the parent's password (`403 password_not_set` for Apple/Google accounts without one). The family gets a "Device removed" alert, emailed to parents, since eGuard stops verifying the device |
 | `POST /checks` | `{ deviceId? }` (omit for all devices) | `202 { runId }` |
 | `GET /checks/{runId}` | none | See below. Poll until `done` |
 
@@ -1219,7 +1236,7 @@ Age-rating tiers used by the profiles: 4, 9, 13, 16, 18.
 | request `mode` | `APPLY`, `GUIDED` |
 | alert `severity` | `INFO`, `ATTENTION`, `ACTION_REQUIRED`, `CRITICAL` |
 | alert `category` | `PROTECTION`, `DEVICES`, `APPS`, `SCREEN_TIME`, `LOCATION`, `SYSTEM` |
-| alert titles you'll see | "Protection setting changed", "Location sharing turned off", "Device hasn't synced in over a day", "New device synchronized", "New app installed", "App approval requested", "App blocked", "Screen time limit reached", "Welcome to eGuard Family", "eGuard Family ended" |
+| alert titles you'll see | "Protection setting changed", "Location sharing turned off", "Device hasn't synced in over a day", "New device synchronized", "Device removed", "New app installed", "App approval requested", "App blocked", "Screen time limit reached", "Welcome to eGuard Family", "eGuard Family ended" |
 | app `approval` | `ALLOWED`, `ALWAYS_ALLOWED`, `FILTERED`, `BLOCKED`, `PENDING` |
 | child `status` | `protected`, `attention`, `notconfigured` |
 | device `state` | `healthy`, `issues`, `offline` |

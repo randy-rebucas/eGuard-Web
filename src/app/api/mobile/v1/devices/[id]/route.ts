@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { audit } from "@/lib/family-service";
+import { removeDevice } from "@/lib/family-service";
 import { notFound } from "@/lib/errors";
 import { CAPABILITY_META, PROTECTIONS, describeConfig } from "@/lib/protections";
 import { getFamily } from "@/lib/queries";
@@ -36,11 +36,13 @@ export const PATCH = authed<{ id: string }>(async ({ req, user, params }) => {
   return NextResponse.json(await detail(user.familyId, params.id));
 });
 
-/** Removes the device from the family. Its token stops working immediately. */
-export const DELETE = authed<{ id: string }>(async ({ user, params }) => {
-  const d = await db.device.findFirst({ where: { id: params.id, familyId: user.familyId }, include: { child: true } });
-  if (!d) throw notFound("Device");
-  await db.device.delete({ where: { id: d.id } });
-  await audit(user.familyId, user.name, "device.removed", `${d.child.name}'s ${d.name}`);
+/**
+ * Removes the device from the family. Its token stops working immediately. Needs the parent's password,
+ * and the family gets a "Device removed" alert (emailed), since eGuard stops verifying the device.
+ */
+export const DELETE = authed<{ id: string }>(async ({ req, user, params }) => {
+  // A missing password gets 403 wrong_password (after the 404 check), like a wrong one
+  const b = await body(req, z.object({ password: z.string().optional() }));
+  await removeDevice(user, params.id, b.password ?? "");
   return NextResponse.json({ ok: true });
 });

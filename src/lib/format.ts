@@ -6,6 +6,8 @@ function dayIndex(d: Date, tz: string) {
 }
 
 const time = (d: Date, tz: string) => fmt(tz, { hour: "numeric", minute: "2-digit" }).format(d);
+/** "2:32 PM" in the family's time zone */
+export const clockTime = time;
 
 /** "Today, 2:32 PM" / "Yesterday, 8:14 PM" / "Wed, 6:10 PM" / "Sep 21" */
 export function dayTime(d: Date | null | undefined, tz: string, now = new Date()) {

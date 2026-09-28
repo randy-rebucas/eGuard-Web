@@ -535,10 +535,13 @@ button.check-item:hover{border-color:var(--line-strong); background:var(--surfac
 .field-error{font-size:12.5px; color:var(--crit-ink)}
 select.input{appearance:auto}
 .leaflet-host{position:absolute; inset:0; z-index:0}
-.leaflet-container{font-family:var(--font); background:var(--surface-2)}
 .map-pin{position:relative; display:flex; flex-direction:column; align-items:center; gap:4px; transform:translate(-50%,-100%)}
 .map-pin .avatar{width:44px; height:44px; box-shadow:0 0 0 3px var(--accent), var(--shadow)}
-.map-pin .pin-label{background:var(--surface); color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:2px 8px; font-size:12px; font-weight:600; white-space:nowrap}
+.map-pin .pin-label{background:var(--surface); color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:2px 8px; font-size:12px; font-weight:600; white-space:nowrap; text-align:center}
+.map-pin .pin-label small{display:block; font-weight:500; color:var(--ink-3); font-size:11px}
+/* Last seen a while ago: faded, with a grey ring instead of the accent "live" one */
+.map-pin.stale .avatar{opacity:.72; box-shadow:0 0 0 3px var(--surface), 0 0 0 5px var(--ink-3), var(--shadow)}
+.map-pin.stale .pin-label small{color:var(--warn-ink)}
 .verify-banner{display:flex; align-items:center; gap:12px; padding:12px 14px; border-radius:12px; background:var(--warn-soft); color:var(--warn-ink); font-size:14px; flex-wrap:wrap}
 .verify-banner > .lucide{width:20px; height:20px; flex:none}
 .verify-banner p{flex:1 1 240px; margin:0}

@@ -5,6 +5,7 @@ import { dayTime } from "@/lib/format";
 import { getFamily } from "@/lib/queries";
 import { authed } from "@/lib/mobile-api";
 import { dayGroup } from "@/lib/mobile-views";
+import { childLocation, deviceSharing } from "@/lib/location";
 
 /**
  * Location: where the child is now, and today's and yesterday's visits when the family keeps
@@ -14,12 +15,11 @@ export const GET = authed<{ id: string }>(async ({ user, params }) => {
   const child = await childFor(user.familyId, params.id);
   const family = await getFamily(user.familyId);
   const tz = family.timezone;
-  const devices = await db.device.findMany({ where: { childId: child.id }, include: { location: true }, orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }] });
-  const sharing = devices.some((d) => d.location?.sharing);
-  const withFix = devices
-    .filter((d) => d.location?.sharing && d.location.lat != null && d.location.lng != null)
-    .sort((a, b) => (b.location!.locatedAt?.getTime() ?? 0) - (a.location!.locatedAt?.getTime() ?? 0));
-  const latest = withFix[0];
+  const devices = await db.device.findMany({
+    where: { childId: child.id }, include: { location: true, protections: { where: { key: "LOCATION" } } }, orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+  });
+  const l = childLocation(devices);
+  const latest = l.device;
 
   // 72 hours always covers "yesterday" in the family's time zone; the day filter below trims the rest
   const visits = family.keepLocationHistory
@@ -29,14 +29,15 @@ export const GET = authed<{ id: string }>(async ({ user, params }) => {
 
   return NextResponse.json({
     childId: child.id,
-    sharing,
+    sharing: l.sharing,
+    state: l.state,
     current: latest ? {
       deviceId: latest.id, deviceName: latest.name,
       lat: latest.location!.lat, lng: latest.location!.lng, accuracyM: latest.location!.accuracyM,
       placeLabel: latest.location!.placeLabel,
-      locatedAt: latest.location!.locatedAt, updatedLabel: dayTime(latest.location!.locatedAt, tz),
+      locatedAt: l.locatedAt, updatedLabel: dayTime(l.locatedAt, tz), fresh: l.fresh, approximate: l.approximate,
     } : null,
-    devices: devices.map((d) => ({ id: d.id, name: d.name, sharing: !!d.location?.sharing, hasLocation: d.location?.lat != null })),
+    devices: devices.map((d) => ({ id: d.id, name: d.name, sharing: deviceSharing(d) === true, hasLocation: d.location?.lat != null })),
     history: {
       enabled: family.keepLocationHistory,
       visits: shown.map((v) => ({

@@ -29,9 +29,15 @@ export function ChildCard({ c }: { c: ChildView }) {
 }
 
 export function DeviceCard({ d, state, tz }: { d: DeviceView; state: DeviceState; tz: string }) {
-  const badge = state.key === "healthy" ? <StatusBadge status="healthy" /> : state.key === "offline" ? <StatusBadge status="offline" /> : <StatusBadge status="issues" count={state.issues} />;
+  const issues = state.issues ? <StatusBadge status="issues" count={state.issues} /> : null;
+  const badge = state.key === "healthy" ? <StatusBadge status="healthy" /> : state.key === "offline" ? <span className="row" style={{ gap: 6 }}><StatusBadge status="offline" />{issues}</span> : issues;
+  const status = [
+    state.key === "healthy" ? "Healthy" : state.key === "offline" ? "Offline" : null,
+    state.issues ? `${state.issues} ${state.issues === 1 ? "issue" : "issues"}` : null,
+  ].filter(Boolean).join(", ");
   return (
-    <Link href={`/devices/${d.id}`} className="card device-card interactive" aria-label={`${d.name}, ${d.child.name}'s device`}>
+    // The label replaces the card's text for screen readers, so it carries the status and last sync too
+    <Link href={`/devices/${d.id}`} className="card device-card interactive" aria-label={`${d.name}, ${d.child.name}'s device, ${status}, last synced ${dayTime(d.lastSeenAt, tz)}`}>
       <div className="device-visual">
         <DeviceIcon kind={d.kind} />
         <span className="pill tone-muted plat-chip" style={{ background: "var(--surface)" }}>{platformName(d.platform)}</span>

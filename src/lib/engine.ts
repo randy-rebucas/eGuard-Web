@@ -15,7 +15,14 @@ export type DeviceReport = {
   full?: boolean;
 };
 
-const deviceLabel = (d: { name: string; child: { name: string } }) => `${d.child.name}'s ${d.name}`;
+/**
+ * While a parent's change is in flight, a device reporting something other than the current policy is
+ * expected (it's mid-change), so no tamper alert. Only for this long: requests can stay open indefinitely
+ * (an offline device, a guided setup never finished), and must not silence tampering forever.
+ */
+export const CHANGE_GRACE_MS = 6 * 3600_000;
+
+const deviceLabel =(d: { name: string; child: { name: string } }) => `${d.child.name}'s ${d.name}`;
 
 function messageFor(status: CheckStatus, key: ProtectionKey, label: string, reported: unknown) {
   if (isPassing(status)) return null;
@@ -126,7 +133,7 @@ export async function processReport(deviceId: string, report: DeviceReport) {
     const rk = `${rp.key}:${deviceId}`;
     if (isPassing(status)) {
       await resolveAlerts(device.familyId, rk);
-    } else if (prev && isPassing(prev.status) && !open.length) {
+    } else if (prev && isPassing(prev.status) && !open.some((r) => now.getTime() - r.createdAt.getTime() < CHANGE_GRACE_MS)) {
       const prevCfg = prev.reported;
       const isLocation = rp.key === "LOCATION" && !isConfigured(reported);
       await db.alert.create({
@@ -156,11 +163,13 @@ export async function processReport(deviceId: string, report: DeviceReport) {
   }
 
   if (rpHasLocation(report)) {
-    const loc = report.protections.find((p) => p.key === "LOCATION")!;
+    const sharing = !!report.protections.find((p) => p.key === "LOCATION")!.config.sharing;
+    // Sharing off: forget where the device was, so no stale position is kept, shown or exported
+    const cleared = sharing ? {} : { lat: null, lng: null, accuracyM: null, placeLabel: null, locatedAt: null };
     await db.deviceLocation.upsert({
       where: { deviceId },
-      create: { deviceId, sharing: !!loc.config.sharing },
-      update: { sharing: !!loc.config.sharing },
+      create: { deviceId, sharing },
+      update: { sharing, ...cleared },
     });
   }
 

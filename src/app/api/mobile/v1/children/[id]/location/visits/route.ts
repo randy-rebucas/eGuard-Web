@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { db } from "@/lib/db";
 import { childFor } from "@/lib/config-service";
+import { visitsPage } from "@/lib/location";
 import { dayTime } from "@/lib/format";
 import { getFamily } from "@/lib/queries";
 import { authed, query } from "@/lib/mobile-api";
@@ -17,20 +17,16 @@ export const GET = authed<{ id: string }>(async ({ req, user, params }) => {
   const q = query(req, Query);
   const child = await childFor(user.familyId, params.id);
   const family = await getFamily(user.familyId);
-  const rows = family.keepLocationHistory
-    ? await db.locationVisit.findMany({
-        where: { childId: child.id, ...(q.before ? { arrivedAt: { lt: new Date(q.before) } } : {}) },
-        orderBy: { arrivedAt: "desc" }, take: q.limit + 1, include: { device: { select: { name: true } } },
-      })
-    : [];
-  const page = rows.slice(0, q.limit);
+  const { visits, nextBefore } = family.keepLocationHistory
+    ? await visitsPage(child.id, { before: q.before ? new Date(q.before) : undefined, limit: q.limit })
+    : { visits: [], nextBefore: null };
   return NextResponse.json({
     enabled: family.keepLocationHistory,
     retentionDays: family.retentionDays,
-    visits: page.map((v) => ({
+    visits: visits.map((v) => ({
       id: v.id, deviceName: v.device.name, lat: v.lat, lng: v.lng, placeLabel: v.placeLabel,
       arrivedAt: v.arrivedAt, lastSeenAt: v.lastSeenAt, timeLabel: dayTime(v.arrivedAt, family.timezone), day: dayGroup(v.arrivedAt, family.timezone),
     })),
-    nextBefore: rows.length > q.limit ? page[page.length - 1].arrivedAt : null,
+    nextBefore,
   });
 });

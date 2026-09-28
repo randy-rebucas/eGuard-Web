@@ -56,11 +56,13 @@ export default async function Dashboard() {
           <span className="greet">{greeting(tz)}</span>
           <h1 id="hero-title">{firstName}</h1>
           <p className="lede">
-            {issues === 0 ? <>Every protection is verified.<br />Your family is set.</> : <>Your family&apos;s digital safety<br />{health.score >= 8 ? "looks good today." : "needs a little attention."}</>}
+            {issues === 0 && health.verified ? <>Every protection is verified.<br />Your family is set.</>
+              : issues === 0 ? <>Every protection matched when devices last synced.<br />{health.offline} {health.offline === 1 ? "device is" : "devices are"} offline, so we can&apos;t verify {health.offline === 1 ? "it" : "them"} now.</>
+              : <>Your family&apos;s digital safety<br />{health.score >= 8 ? "looks good today." : "needs a little attention."}</>}
           </p>
           <div className="hero-stats">
             <span className="hero-stat"><Icon name="shield-check" /><span className="num">{protectedKids}</span>&nbsp;{protectedKids === 1 ? "child" : "children"} protected</span>
-            <span className="hero-stat"><Icon name="tablet-smartphone" /><span className="num">{devices.length}</span>&nbsp;devices connected</span>
+            <span className="hero-stat"><Icon name="tablet-smartphone" /><span className="num">{devices.length}</span>&nbsp;{devices.length === 1 ? "device" : "devices"} connected{health.offline ? `, ${health.offline} offline` : ""}</span>
             {issues ? <Link className="hero-stat warn" href="/protection"><Icon name="triangle-alert" /><span className="num">{issues}</span>&nbsp;{issues === 1 ? "setting needs" : "settings need"} attention</Link> : null}
           </div>
         </div>
@@ -88,7 +90,7 @@ export default async function Dashboard() {
           <div className="m-value num">{health.score}<small> / 10</small></div>
           <SegMeter score={health.score} />
           <div className="m-foot">
-            <span className={`pill ${health.score >= 9 ? "tone-ok" : "tone-accent"}`}><Icon name={health.score >= 9 ? "circle-check" : "shield"} />{health.score === 10 ? "All verified" : health.score >= 8 ? "Good protection" : "Needs review"}</span>
+            <span className={`pill ${health.score >= 9 ? "tone-ok" : "tone-accent"}`}><Icon name={health.score >= 9 ? "circle-check" : "shield"} />{health.verified ? "All verified" : health.score === health.total ? "Last known: all set" : health.score >= 8 ? "Good protection" : "Needs review"}</span>
             <span className="muted"><Icon name="arrow-right" /></span>
           </div>
         </Link>

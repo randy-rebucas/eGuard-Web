@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "./db";
 import { ago, dayLabel, dayTime } from "./format";
-import { appMinutesOn, dateFromKey, dayKey, getScreenTime, type FamilyGraph } from "./queries";
+import { appMinutesOn, dateFromKey, dayKey, getScreenTime, limitOn, type FamilyGraph } from "./queries";
 import { alertAction } from "@/components/cards";
 import type { AlertItem } from "@/components/alerts";
 import type { ActivityChild, Series } from "@/components/charts";
@@ -45,7 +45,7 @@ export async function todayActivity(graph: FamilyGraph, tz: string): Promise<Act
     return {
       id: c.id, name: c.name, hue: c.hue, deviceName: c.primary?.name ?? "No device",
       used: usage.find((u) => u.childId === c.id)?._sum.minutes ?? 0,
-      limit: c.dailyLimitMinutes,
+      limit: limitOn(c, dayKey(new Date(), tz)),
       apps: rest > 0 ? [...top, ["Others", rest]] : top,
       location: { available: !!loc && anySharing, place: loc?.placeLabel ?? null, updated: loc ? ago((loc.locatedAt ?? loc.updatedAt), tz) : null },
       devices: c.devices.map((d) => ({ name: d.name, state: graph.deviceStates[d.id].key, issues: graph.deviceStates[d.id].issues })),

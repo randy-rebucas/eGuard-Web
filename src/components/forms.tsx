@@ -1,12 +1,14 @@
 "use client";
 
-import { useActionState, useState, useTransition } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useActionState, useEffect, useState, useTransition } from "react";
 import type { AppApproval } from "@prisma/client";
 import { Icon } from "./icon";
 import { useFlow } from "./flow";
 import type { FormState } from "@/app/actions/auth";
 import {
-  addParent, changePassword, createChild, createPairingCode, deleteAccount, deleteChildData, removeDevice, removeParent, renameDevice,
+  addParent, changePassword, createChild, createPairingCode, deleteAccount, deleteChildData, pairingStatus, removeDevice, removeParent, renameDevice,
   setAppApproval, setAppLimit, setToggle, signOutOthers, unlinkIdentity, updateAccount, updateChild,
 } from "@/app/actions/family";
 
@@ -53,13 +55,13 @@ export function DeleteChildForm({ childId, name }: { childId: string; name: stri
 
 const APPROVALS: [AppApproval, string][] = [["ALLOWED", "Allowed"], ["ALWAYS_ALLOWED", "Always allowed"], ["FILTERED", "Filtered"], ["BLOCKED", "Blocked"], ["PENDING", "Pending"]];
 
-export function AppControls({ app }: { app: { id: string; name: string; approval: AppApproval; dailyLimitMinutes: number | null } }) {
+export function AppControls({ app }: { app: { id: string; name: string; approval: AppApproval; dailyLimitMinutes: number | null; requested?: boolean } }) {
   const [pending, start] = useTransition();
   const { toast } = useFlow();
   const [limit, setLimit] = useState(app.dailyLimitMinutes ? String(app.dailyLimitMinutes) : "");
   return (
     <div className="row" style={{ gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-      {app.approval === "PENDING" ? (
+      {app.approval === "PENDING" || app.requested ? (
         <>
           <button className="btn btn-primary btn-sm" disabled={pending} onClick={() => start(async () => { await setAppApproval(app.id, "ALLOWED"); toast(`${app.name} approved. It applies on the device's next sync.`); })}>Approve</button>
           <button className="btn btn-secondary btn-sm" disabled={pending} onClick={() => start(async () => { await setAppApproval(app.id, "BLOCKED"); toast(`${app.name} declined.`); })}>Decline</button>
@@ -81,30 +83,89 @@ export function AppControls({ app }: { app: { id: string; name: string; approval
   );
 }
 
-export function PairDevice({ kids: children }: { kids: { id: string; name: string }[] }) {
+type PairResult = { code?: string; expiresAt?: string; childName?: string; error?: string };
+type PairState = { status: "waiting" | "expired" | "replaced" } | { status: "paired"; device: { id: string; name: string } };
+
+const mmss = (ms: number) => { const s = Math.max(0, Math.ceil(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
+
+/** How often the parent's screen asks whether the code has been used. */
+const PAIR_POLL_MS = 3000;
+
+export function PairDevice({ kids: children, used, limit }: { kids: { id: string; name: string }[]; used: number; limit: number }) {
   const [childId, setChildId] = useState(children[0]?.id ?? "");
-  const [result, setResult] = useState<{ code?: string; expiresAt?: string; childName?: string; error?: string } | null>(null);
+  const [result, setResult] = useState<PairResult | null>(null);
+  const [pair, setPair] = useState<PairState | null>(null);
+  const [now, setNow] = useState(() => Date.now());
   const [pending, start] = useTransition();
   const { toast } = useFlow();
+  const router = useRouter();
+  const code = result?.code;
+  const full = used >= limit;
+
+  // While a code is on screen: tick the countdown, and ask every few seconds whether a device used it
+  useEffect(() => {
+    if (!code) return;
+    const tick = setInterval(() => setNow(Date.now()), 1000);
+    let stop = false;
+    const poll = async () => {
+      while (!stop) {
+        await new Promise((r) => setTimeout(r, PAIR_POLL_MS));
+        if (stop) return;
+        try {
+          const s = await pairingStatus(code);
+          if (stop) return;
+          if (s.status !== "waiting") {
+            setPair(s);
+            if (s.status === "paired") router.refresh();
+            return;
+          }
+        } catch { /* offline for a moment: keep asking */ }
+      }
+    };
+    poll();
+    return () => { stop = true; clearInterval(tick); };
+  }, [code, router]);
+
+  const getCode = () => start(async () => {
+    setPair(null);
+    try { setResult(await createPairingCode(childId)); } catch { setResult({ error: "Couldn't create a pairing code. Try again." }); }
+    setNow(Date.now());
+  });
+
   if (!children.length) return <p className="t-meta">Add a child before pairing a device.</p>;
+  const left = result?.expiresAt ? new Date(result.expiresAt).getTime() - now : 0;
+  const expired = pair?.status === "expired" || (!!code && !pair && left <= 0);
   return (
     <div className="dash-col" style={{ gap: 14 }}>
+      <p className="t-meta">
+        <span className="num">{used} of {limit}</span> devices on your plan used.
+        {full ? <> Remove a device or <Link className="inline-link" href="/settings/subscription">change your plan</Link> to add another.</> : null}
+      </p>
       <div className="row" style={{ flexWrap: "wrap", alignItems: "flex-end" }}>
         <div className="field grow" style={{ minWidth: 180 }}>
           <label htmlFor="pair-child">Device belongs to</label>
-          <select id="pair-child" className="input" value={childId} onChange={(e) => { setChildId(e.target.value); setResult(null); }}>
+          <select id="pair-child" className="input" value={childId} disabled={full} onChange={(e) => { setChildId(e.target.value); setResult(null); setPair(null); }}>
             {children.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </div>
-        <button className="btn btn-primary" disabled={pending} onClick={() => start(async () => setResult(await createPairingCode(childId)))}><Icon name="plus" />Get pairing code</button>
+        <button className="btn btn-primary" disabled={pending || full} onClick={getCode}><Icon name="plus" />{code ? "Get a new code" : "Get pairing code"}</button>
       </div>
-      {result?.error ? <div className="form-error"><Icon name="triangle-alert" />{result.error}</div> : null}
-      {result?.code ? (
+      {result?.error ? <div className="form-error" role="alert"><Icon name="triangle-alert" />{result.error}</div> : null}
+      {pair?.status === "paired" ? (
+        <div className="form-ok" role="status"><Icon name="circle-check" />{pair.device.name} is paired with {result?.childName}. eGuard is checking its protections now. <Link className="inline-link" href={`/devices/${pair.device.id}`}>View device</Link></div>
+      ) : pair?.status === "replaced" ? (
+        <div className="form-error" role="alert"><Icon name="triangle-alert" />This code was replaced by a newer one (another parent or tab). Get a new code.</div>
+      ) : expired ? (
+        <div className="form-error" role="alert"><Icon name="triangle-alert" />This code expired. Get a new code and enter it within 15 minutes.</div>
+      ) : code ? (
         <div className="dash-col" style={{ gap: 10 }}>
-          <div className="pairing-code num" aria-label={`Pairing code ${result.code.split("").join(" ")}`}>{result.code}</div>
+          <div className="pairing-code num" aria-label={`Pairing code ${code.split("").join(" ")}`}>{code}</div>
           <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
-            <span className="t-meta">Open the eGuard app on {result.childName}&apos;s phone or tablet, choose <b>Pair with parent</b>, and enter this code. It expires in 15 minutes.</span>
-            <button className="btn btn-secondary btn-sm" onClick={async () => { try { await navigator.clipboard.writeText(result.code!); toast("Code copied."); } catch { toast("Select the code to copy it."); } }}><Icon name="copy" />Copy</button>
+            <span className="t-meta">
+              Open the eGuard app on {result?.childName}&apos;s phone or tablet, choose <b>Pair with parent</b>, and enter this code.{" "}
+              <span className="num">Expires in {mmss(left)}.</span> This page updates when the device pairs.
+            </span>
+            <button className="btn btn-secondary btn-sm" onClick={async () => { try { await navigator.clipboard.writeText(code); toast("Code copied."); } catch { toast("Select the code to copy it."); } }}><Icon name="copy" />Copy</button>
           </div>
         </div>
       ) : null}
@@ -126,32 +187,58 @@ export function RenameDeviceForm({ deviceId, name }: { deviceId: string; name: s
 }
 
 export function RemoveDeviceButton({ deviceId, name }: { deviceId: string; name: string }) {
-  const [confirm, setConfirm] = useState(false);
-  const [pending, start] = useTransition();
-  if (!confirm) return <button className="btn btn-secondary btn-sm" style={{ color: "var(--crit-ink)" }} onClick={() => setConfirm(true)}><Icon name="trash" />Remove device</button>;
+  const [open, setOpen] = useState(false);
+  const [state, action, pending] = useActionState(removeDevice.bind(null, deviceId), undefined);
+  if (!open) return <button className="btn btn-secondary btn-sm" style={{ color: "var(--crit-ink)" }} onClick={() => setOpen(true)}><Icon name="trash" />Remove device</button>;
+  if (state?.fields?.gone) {
+    return <div className="form-error" role="alert"><Icon name="triangle-alert" />{state.error} <Link className="inline-link" href="/devices">Back to devices</Link></div>;
+  }
   return (
-    <div className="dash-col" style={{ gap: 10 }}>
-      <p className="t-meta" style={{ color: "var(--ink-2)" }}>Removing {name} stops eGuard managing it. Protections already on the device stay until someone changes them there.</p>
-      <div className="row"><button className="btn btn-ghost btn-sm" onClick={() => setConfirm(false)}>Cancel</button>
-        <button className="btn btn-primary btn-sm" style={{ background: "var(--crit)" }} disabled={pending} onClick={() => start(() => removeDevice(deviceId))}>Remove {name}</button></div>
-    </div>
+    <form action={action} className="dash-col" style={{ gap: 10 }}>
+      <p className="t-meta" style={{ color: "var(--ink-2)" }}>
+        Removing {name} stops eGuard verifying it, so you won&apos;t hear if its protections change. Protections already on the device stay until someone changes them there. Other parents in your family are told. Enter your password to confirm.
+      </p>
+      <Feedback state={state} />
+      <div className="field"><label htmlFor="rm-dev-pw">Your password</label><input className="input" id="rm-dev-pw" name="password" type="password" required autoComplete="current-password" /></div>
+      <div className="row"><button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpen(false)}>Cancel</button>
+        <button className="btn btn-primary btn-sm" style={{ background: "var(--crit)" }} disabled={pending}>Remove {name}</button></div>
+    </form>
   );
 }
 
-export function SettingSwitch({ setting, title, desc, checked, disabled }: { setting: string; title: string; desc: string; checked: boolean; disabled?: boolean }) {
+/** `confirmOff`: turning it off can't be undone, so it asks first with this text. */
+export function SettingSwitch({ setting, title, desc, checked, disabled, confirmOff }: { setting: string; title: string; desc: string; checked: boolean; disabled?: boolean; confirmOff?: string }) {
   const [on, setOn] = useState(checked);
+  const [confirming, setConfirming] = useState(false);
   const [pending, start] = useTransition();
+  const { toast } = useFlow();
   const id = `sw-${setting}`;
+  const save = (v: boolean) => {
+    setOn(v);
+    setConfirming(false);
+    start(async () => {
+      try { await setToggle(setting, v); } catch { setOn(!v); toast(`Couldn't change “${title}”. Try again.`); }
+    });
+  };
   return (
-    <div className="setting-row">
+    <div className="setting-row" style={{ flexWrap: "wrap" }}>
       <div className="grow"><div className="t-title" id={id}>{title}</div><div className="t-meta">{desc}</div></div>
-      <button type="button" className="switch" role="switch" aria-checked={on} aria-labelledby={id} disabled={pending || disabled}
-        onClick={() => { const v = !on; setOn(v); start(async () => { try { await setToggle(setting, v); } catch { setOn(!v); } }); }} />
+      <button type="button" className="switch" role="switch" aria-checked={on} aria-labelledby={id} disabled={pending || disabled || confirming}
+        onClick={() => (on && confirmOff ? setConfirming(true) : save(!on))} />
+      {confirming ? (
+        <div className="row" role="alert" style={{ width: "100%", gap: 10, flexWrap: "wrap", justifyContent: "space-between" }}>
+          <span className="t-meta" style={{ color: "var(--ink-2)" }}>{confirmOff}</span>
+          <span className="row" style={{ gap: 6 }}>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setConfirming(false)}>Cancel</button>
+            <button type="button" className="btn btn-primary btn-sm" style={{ background: "var(--crit)" }} onClick={() => save(false)}>Turn off and delete</button>
+          </span>
+        </div>
+      ) : null}
     </div>
   );
 }
 
-export function AccountForm({ name, email, timezone, zones, canSetTimezone, hasPassword }: { name: string; email: string; timezone: string; zones: string[]; canSetTimezone: boolean; hasPassword: boolean }) {
+export function AccountForm({ name, email, timezone, zones, canSetTimezone, hasPassword, linkedSignIns }: { name: string; email: string; timezone: string; zones: string[]; canSetTimezone: boolean; hasPassword: boolean; linkedSignIns: number }) {
   const [state, action, pending] = useActionState(updateAccount, undefined);
   const [newEmail, setNewEmail] = useState(email);
   const changingEmail = newEmail.trim().toLowerCase() !== email;
@@ -160,12 +247,20 @@ export function AccountForm({ name, email, timezone, zones, canSetTimezone, hasP
       <Feedback state={state} />
       <div className="form-grid">
         <div className="field"><label htmlFor="fn">Full name</label><input className="input" id="fn" name="name" defaultValue={name} autoComplete="name" /></div>
-        <div className="field"><label htmlFor="em">Email</label><input className="input" id="em" name="email" type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} autoComplete="email" /></div>
-        {changingEmail ? (
+        <div className="field">
+          <label htmlFor="em">Email</label>
+          {/* Changing the email needs the password, so without one it can't be changed here */}
+          <input className="input" id="em" name="email" type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} autoComplete="email" readOnly={!hasPassword} aria-describedby={hasPassword ? undefined : "em-hint"} />
+          {!hasPassword ? <span className="field-hint" id="em-hint">You signed up with Apple or Google. To change your email, sign out and use “Forgot password?” to set a password first.</span> : null}
+        </div>
+        {changingEmail && hasPassword ? (
           <div className="field">
             <label htmlFor="em-pw">Current password</label>
             <input className="input" id="em-pw" name="password" type="password" autoComplete="current-password" required />
-            <span className="field-hint">{hasPassword ? "Needed to change your email." : "You signed up with Apple or Google. Sign out and use “Forgot password” to set one first."}</span>
+            <span className="field-hint">
+              Needed to change your email.
+              {linkedSignIns ? ` Your Apple or Google sign-in will be unlinked; sign in with ${newEmail.trim() || "the new email"} and your password afterwards.` : ""}
+            </span>
           </div>
         ) : null}
         <div className="field">

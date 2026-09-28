@@ -29,8 +29,10 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
   const head = <div className="card-head"><h2>{meta[1]}</h2></div>;
 
   switch (section) {
-    case "account":
-      return (<>{head}<AccountForm name={user.name} email={user.email} timezone={tz} zones={Intl.supportedValuesOf("timeZone")} canSetTimezone={admin} hasPassword={user.passwordSet} /></>);
+    case "account": {
+      const linkedSignIns = await db.oAuthIdentity.count({ where: { userId: u.id } });
+      return (<>{head}<AccountForm name={user.name} email={user.email} timezone={tz} zones={timeZones(tz)} canSetTimezone={admin} hasPassword={user.passwordSet} linkedSignIns={linkedSignIns} /></>);
+    }
 
     case "family": {
       const [members, graph] = await Promise.all([db.user.findMany({ where: { familyId: u.familyId }, orderBy: { createdAt: "asc" } }), getFamilyGraph(u.familyId)]);
@@ -39,7 +41,7 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
           {head}
           {members.map((m) => (
             <div className="setting-row" key={m.id}>
-              <span className="avatar" style={{ ["--h" as string]: m.role === "FAMILY_ADMIN" ? 212 : 25 }}>{m.name.split(" ").map((p) => p[0]).slice(0, 2).join("")}</span>
+              <Avatar name={m.name} hue={m.role === "FAMILY_ADMIN" ? 212 : 25} />
               <div className="grow"><div className="t-title">{m.name}{m.id === u.id ? " (you)" : ""}</div><div className="t-meta">{m.role === "FAMILY_ADMIN" ? "Family Admin" : "Parent"} · {m.email}</div></div>
               {admin && m.role === "PARENT" ? <RemoveParentButton userId={m.id} name={m.name.split(" ")[0]} /> : null}
             </div>
@@ -78,7 +80,8 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
       return (
         <>
           {head}
-          <SettingSwitch setting="keepLocationHistory" title="Keep location history" desc={family.keepLocationHistory ? "On: recent locations are kept for the retention period" : "Off: only the current location is stored"} checked={family.keepLocationHistory} disabled={!admin} />
+          <SettingSwitch setting="keepLocationHistory" title="Keep location history" desc={family.keepLocationHistory ? "On: recent locations are kept for the retention period. Turning it off deletes the history already kept" : "Off: only the current location is stored"} checked={family.keepLocationHistory} disabled={!admin}
+            confirmOff="This deletes every child's location history now. It can't be undone. Current locations keep working." />
           <SettingSwitch setting="shareAnalytics" title="Share anonymous product analytics" desc="Helps improve eGuard. Never includes children's data" checked={family.shareAnalytics} disabled={!admin} />
           <div className="setting-row"><div className="grow"><div className="t-title">What children can see</div><div className="t-meta">Children see which protections are on and can request more time or new apps</div></div></div>
           <div className="setting-row"><div className="grow"><div className="t-title">Data retention</div><div className="t-meta">Screen time, app usage, alerts, change history and location visits are deleted after {family.retentionDays} days</div></div><span className="pill tone-accent">{family.retentionDays} days</span></div>
@@ -123,7 +126,8 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
 
     case "subscription": {
       const used = await db.device.count({ where: { familyId: u.familyId } });
-      const pct = Math.round((used / family.deviceLimit) * 100);
+      const over = used > family.deviceLimit;
+      const pct = family.deviceLimit > 0 ? Math.min(100, Math.round((used / family.deviceLimit) * 100)) : 100;
       return (
         <>
           {head}
@@ -133,8 +137,9 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
             <ToastButton className="btn btn-secondary" message="Upgrade or manage your plan in the eGuard app for Android (Settings › Subscription). Web and iPhone billing are coming soon.">Change plan</ToastButton>
           </div>
           <div style={{ marginTop: 20 }}>
-            <div className="row" style={{ justifyContent: "space-between" }}><span className="t-meta">Devices</span><span className="t-meta num">{used} of {family.deviceLimit}</span></div>
-            <div className="meter"><span style={{ width: `${pct}%` }} /></div>
+            <div className="row" style={{ justifyContent: "space-between" }}><span className="t-meta">Devices</span><span className="t-meta num" style={over ? { color: "var(--warn-ink)" } : undefined}>{used} of {family.deviceLimit}</span></div>
+            <div className="meter" role="meter" aria-label="Devices used" aria-valuemin={0} aria-valuemax={family.deviceLimit} aria-valuenow={used}><span style={{ width: `${pct}%`, ...(over ? { background: "var(--warn)" } : {}) }} /></div>
+            {over ? <p className="t-meta" style={{ marginTop: 8 }}>{used - family.deviceLimit} more than your plan covers. They stay protected; remove some or change your plan to add more.</p> : null}
           </div>
         </>
       );
@@ -163,9 +168,9 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
       return (
         <>
           {head}
-          <div className="setting-row"><span className="ico-tile"><Icon name="smartphone" /></span><div className="grow"><div className="t-title">Android device management</div><div className="t-meta">eGuard Android app with device admin permissions · {android} device{android === 1 ? "" : "s"}</div></div>{android ? <span className="pill tone-ok"><Icon name="circle-check" />Connected</span> : <span className="pill tone-muted">No devices</span>}</div>
-          <div className="setting-row"><span className="ico-tile"><Icon name="tablet-smartphone" /></span><div className="grow"><div className="t-title">Apple Screen Time (Family Controls)</div><div className="t-meta">eGuard iOS app authorized through Family Sharing · {ios} device{ios === 1 ? "" : "s"}</div></div>{ios ? <span className="pill tone-ok"><Icon name="circle-check" />Authorized</span> : <span className="pill tone-muted">No devices</span>}</div>
-          <div className="setting-row"><span className="ico-tile"><Icon name="plug" /></span><div className="grow"><div className="t-title">Device API</div><div className="t-meta">Mobile apps sync through <code>/api/device/v1</code>. See the README for the contract.</div></div></div>
+          <div className="setting-row"><span className="ico-tile"><Icon name="smartphone" /></span><div className="grow"><div className="t-title">Android device management</div><div className="t-meta">eGuard Android app with device admin permissions</div></div><span className={`pill ${android ? "tone-accent" : "tone-muted"}`}>{android ? `${android} paired` : "No devices"}</span></div>
+          <div className="setting-row"><span className="ico-tile"><Icon name="tablet-smartphone" /></span><div className="grow"><div className="t-title">Apple Screen Time (Family Controls)</div><div className="t-meta">eGuard iOS app authorized through Family Sharing</div></div><span className={`pill ${ios ? "tone-accent" : "tone-muted"}`}>{ios ? `${ios} paired` : "No devices"}</span></div>
+          <p className="t-meta" style={{ marginTop: 12 }}>Whether each protection is actually active on a device is checked on the <Link className="link-btn" href="/protection">Protection</Link> page.</p>
         </>
       );
     }
@@ -174,7 +179,7 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
       return (
         <>
           {head}
-          <div className="setting-row"><div className="grow"><div className="t-title">Export family data</div><div className="t-meta">Settings, children, devices, configuration history and activity summaries as JSON</div></div><a className="btn btn-secondary btn-sm" href="/api/account/export" download><Icon name="download" />Download</a></div>
+          <div className="setting-row"><div className="grow"><div className="t-title">Export family data</div><div className="t-meta">Settings, children, devices, configuration history and activity summaries as JSON</div></div><form method="post" action="/api/account/export"><button className="btn btn-secondary btn-sm"><Icon name="download" />Download</button></form></div>
           <div className="setting-row"><div className="grow"><div className="t-title">Delete a child&apos;s data</div><div className="t-meta">Open the child&apos;s page, then Profile. Needs your password.</div></div><Link className="btn btn-secondary btn-sm" href="/children">Choose child</Link></div>
           <div className="setting-row" style={{ flexDirection: "column", alignItems: "stretch" }}>
             <div><div className="t-title">Delete your account</div><div className="t-meta">{admin ? "Deletes your family and everything eGuard stores about it." : "Removes you from the family. The family admin keeps the family."}</div></div>
@@ -193,6 +198,16 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
       );
   }
   notFound();
+}
+
+/**
+ * Zones for the picker, always including the family's own. The runtime's list leaves out "UTC" and uses
+ * older names ("Asia/Calcutta", not "Asia/Kolkata"), while phones send the modern ones. A zone missing
+ * from the list would leave the select on its first option, and saving would move the family there.
+ */
+function timeZones(current: string) {
+  const zones = Intl.supportedValuesOf("timeZone");
+  return [...new Set([current, "UTC", ...zones])].sort((a, b) => (a === "UTC" ? -1 : b === "UTC" ? 1 : a.localeCompare(b)));
 }
 
 function summarizeAgent(ua: string | null) {
