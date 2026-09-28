@@ -9,7 +9,7 @@ const Body = z.object({
 });
 
 /**
- * "Upgrade to Family" on Android: after Play Billing reports the purchase, send its token here.
+ * Upgrading on Android (eguard_plus or eguard_pro): after Play Billing reports the purchase, send its token here.
  * eGuard verifies it with Google, upgrades the family, and acknowledges it (don't acknowledge in the app).
  * Also use it to restore purchases: re-sending a token already linked to this family is safe.
  */

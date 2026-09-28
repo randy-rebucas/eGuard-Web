@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { getFamily } from "@/lib/queries";
 import { authed } from "@/lib/mobile-api";
 import { childrenJson, getFamilyGraph } from "@/lib/mobile-views";
+import { entitlementsFor } from "@/lib/plans";
 
 /** Settings › Family: parents, children and devices. */
 export const GET = authed(async ({ user }) => {
@@ -16,6 +17,8 @@ export const GET = authed(async ({ user }) => {
     members: members.map((m) => ({ ...m, you: m.id === user.id })),
     children: await childrenJson(graph, family.timezone),
     deviceCount: graph.devices.length, deviceLimit: family.deviceLimit,
+    childCount: graph.children.length, childLimit: entitlementsFor(family.plan).childLimit,
+    plan: family.plan, entitlements: entitlementsFor(family.plan),
     canManage: user.role === "FAMILY_ADMIN",
   });
 });

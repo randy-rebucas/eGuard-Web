@@ -1,86 +1,143 @@
-/** Plans, what each includes, and the products that sell them. The family's current limit lives on Family. */
+/**
+ * Plans, what each includes, and the products that sell them. Family.plan holds the plan's name and
+ * Family.deviceLimit its device cap (both set by applyEntitlement); everything else comes from here.
+ */
+export type PlanId = "FREE" | "PLUS" | "PRO";
+export type PaidPlanId = Exclude<PlanId, "FREE">;
+
+/** What a plan unlocks. Checked on the server; the apps get it to hide or badge features. */
+export type Entitlements = {
+  childLimit: number;
+  deviceLimit: number;
+  /** Current location and location history */
+  locationSharing: boolean;
+  /** How many of a child's apps can be seen and managed; null for all */
+  appMonitoringLimit: number | null;
+  /** Push notifications for alerts; without it alerts still show in the app and by email */
+  realtimeAlerts: boolean;
+  /** 30-day and custom report ranges, and CSV export */
+  advancedReports: boolean;
+  /** Organization API access, set up with support for now */
+  apiAccess: boolean;
+};
+
 export type PlanFeature = { key: string; label: string; included: boolean };
 
 export type Plan = {
-  id: string;
+  id: PlanId;
   name: string;
-  deviceLimit: number;
-  /** Google Play subscription product id; null for the plan every family starts on */
+  blurb: string;
+  /** Web price in pesos per month (PRICE_PLUS_MONTHLY / PRICE_PRO_MONTHLY override it); 0 for Free */
+  monthlyPesos: number;
+  /** Google Play subscription product id; null for Free */
   googlePlayProductId: string | null;
-  features: Omit<PlanFeature, "label">[];
+  entitlements: Entitlements;
+  /** In display order; `label` is what the pricing card says */
+  features: PlanFeature[];
 };
 
-export const BASE_PLAN = "eGuard Plus";
+export const FREE_APP_LIMIT = 5;
 
 export const PLANS: Plan[] = [
   {
-    id: "PLUS", name: BASE_PLAN, deviceLimit: 8, googlePlayProductId: null,
+    id: "FREE", name: "Free", blurb: "Get started with essential protection tools.", monthlyPesos: 0, googlePlayProductId: null,
+    entitlements: { childLimit: 1, deviceLimit: 2, locationSharing: false, appMonitoringLimit: FREE_APP_LIMIT, realtimeAlerts: false, advancedReports: false, apiAccess: false },
     features: [
-      { key: "children", included: true },
-      { key: "devices", included: true },
-      { key: "health_checks", included: true },
-      { key: "alerts", included: true },
-      { key: "reports", included: true },
-      { key: "priority_support", included: false },
+      { key: "children", label: "Up to 1 child", included: true },
+      { key: "protection", label: "Basic protection setup", included: true },
+      { key: "screen_time", label: "Screen time management", included: true },
+      { key: "apps", label: "App monitoring (limited)", included: true },
+      { key: "support", label: "Email support", included: true },
     ],
   },
   {
-    id: "FAMILY", name: "eGuard Family", deviceLimit: 15, googlePlayProductId: "eguard_family",
+    id: "PLUS", name: "eGuard Plus", blurb: "Complete protection for growing families.", monthlyPesos: 149, googlePlayProductId: "eguard_plus",
+    entitlements: { childLimit: 5, deviceLimit: 10, locationSharing: true, appMonitoringLimit: null, realtimeAlerts: true, advancedReports: false, apiAccess: false },
     features: [
-      { key: "children", included: true },
-      { key: "devices", included: true },
-      { key: "health_checks", included: true },
-      { key: "alerts", included: true },
-      { key: "reports", included: true },
-      { key: "priority_support", included: true },
+      { key: "children", label: "Up to 5 children", included: true },
+      { key: "protection", label: "Full protection features", included: true },
+      { key: "verification", label: "Configuration verification", included: true },
+      { key: "alerts", label: "Real-time alerts", included: true },
+      { key: "location", label: "Location sharing", included: true },
+      { key: "support", label: "Priority support", included: true },
+    ],
+  },
+  {
+    id: "PRO", name: "Family Pro", blurb: "Advanced features for larger families.", monthlyPesos: 249, googlePlayProductId: "eguard_pro",
+    entitlements: { childLimit: 10, deviceLimit: 20, locationSharing: true, appMonitoringLimit: null, realtimeAlerts: true, advancedReports: true, apiAccess: true },
+    features: [
+      { key: "children", label: "Up to 10 children", included: true },
+      { key: "plus", label: "All Plus features", included: true },
+      { key: "reports", label: "Advanced reports", included: true },
+      { key: "api", label: "API access (schools/organizations)", included: true },
+      { key: "support", label: "Dedicated support", included: true },
     ],
   },
 ];
 
-const LABELS: Record<string, (deviceLimit: number) => string> = {
-  children: () => "Unlimited children",
-  devices: (n) => `Up to ${n} devices`,
-  health_checks: () => "Configuration health checks",
-  alerts: () => "Protection alerts",
-  reports: () => "Advanced reports",
-  priority_support: () => "Priority support",
-};
+/** The plan every family starts on, and goes back to when a paid plan ends. */
+export const BASE_PLAN = "Free";
+
+const byId = (id: PlanId) => PLANS.find((p) => p.id === id)!;
+export const planById = byId;
+/** Unknown names (including plans retired before these) fall back to Free. */
+export const planByName = (name: string) => PLANS.find((p) => p.name === name) ?? byId("FREE");
+export const entitlementsFor = (planName: string) => planByName(planName).entitlements;
+
+/** The next plan up from this one, if any: what "Upgrade" offers. */
+export function nextPlan(planName: string) {
+  const i = PLANS.indexOf(planByName(planName));
+  return PLANS[i + 1] ?? null;
+}
+
+/**
+ * Google Play products that grant a plan. `eguard_family` was sold before these plans (15 devices);
+ * its subscribers keep what they paid for as Family Pro.
+ */
+const LEGACY_GOOGLE_PLAY: Record<string, PaidPlanId> = { eguard_family: "PRO" };
+export function planByGoogleProduct(productId: string) {
+  const plan = PLANS.find((p) => p.googlePlayProductId === productId);
+  if (plan) return plan;
+  return LEGACY_GOOGLE_PLAY[productId] ? byId(LEGACY_GOOGLE_PLAY[productId]) : null;
+}
 
 export type Interval = "month" | "year";
 
 /**
- * What the web sells through PayMongo. Auto-renew charges a card or Maya every period (PayMongo
+ * What the web sells through PayMongo, monthly only. Auto-renew charges a card or Maya every month (PayMongo
  * Subscriptions); a pass is paid once with any method (GCash, QR Ph, …) and doesn't renew.
- * Prices come from env (PRICE_FAMILY_MONTHLY / PRICE_FAMILY_YEARLY), see webPrice().
+ * `legacy` products were sold before these plans; purchases of them still grant Family Pro but they aren't sold.
  */
-export type WebProduct = { id: string; plan: string; interval: Interval; autoRenew: boolean };
+export type WebProduct = { id: string; plan: PaidPlanId; interval: Interval; autoRenew: boolean; legacy?: true };
 
 export const WEB_PRODUCTS: WebProduct[] = [
-  { id: "family_monthly", plan: "eGuard Family", interval: "month", autoRenew: true },
-  { id: "family_yearly", plan: "eGuard Family", interval: "year", autoRenew: true },
-  { id: "family_pass_month", plan: "eGuard Family", interval: "month", autoRenew: false },
-  { id: "family_pass_year", plan: "eGuard Family", interval: "year", autoRenew: false },
+  { id: "plus_monthly", plan: "PLUS", interval: "month", autoRenew: true },
+  { id: "plus_pass_month", plan: "PLUS", interval: "month", autoRenew: false },
+  { id: "pro_monthly", plan: "PRO", interval: "month", autoRenew: true },
+  { id: "pro_pass_month", plan: "PRO", interval: "month", autoRenew: false },
+  { id: "family_monthly", plan: "PRO", interval: "month", autoRenew: true, legacy: true },
+  { id: "family_yearly", plan: "PRO", interval: "year", autoRenew: true, legacy: true },
+  { id: "family_pass_month", plan: "PRO", interval: "month", autoRenew: false, legacy: true },
+  { id: "family_pass_year", plan: "PRO", interval: "year", autoRenew: false, legacy: true },
 ];
 
 export const webProduct = (id: string) => WEB_PRODUCTS.find((p) => p.id === id) ?? null;
-export const webProductFor = (interval: Interval, autoRenew: boolean) => WEB_PRODUCTS.find((p) => p.interval === interval && p.autoRenew === autoRenew)!;
+export const webProductFor = (plan: PaidPlanId, autoRenew: boolean) => WEB_PRODUCTS.find((p) => p.plan === plan && p.autoRenew === autoRenew && !p.legacy)!;
 
-/** Price in centavos. Configurable so it can change without a release; the defaults are placeholders. */
-export function webPrice(interval: Interval, env: Record<string, string | undefined> = process.env) {
-  const raw = interval === "month" ? env.PRICE_FAMILY_MONTHLY : env.PRICE_FAMILY_YEARLY;
-  const pesos = Number(raw?.trim() || (interval === "month" ? 199 : 1990));
-  if (!Number.isFinite(pesos) || pesos < 1) throw new Error(`Invalid price for ${interval}: ${raw}`);
+/** Monthly web price in centavos. Configurable so it can change without a release. */
+export function webPrice(plan: PaidPlanId, env: Record<string, string | undefined> = process.env) {
+  const raw = plan === "PLUS" ? env.PRICE_PLUS_MONTHLY : env.PRICE_PRO_MONTHLY;
+  const pesos = Number(raw?.trim() || byId(plan).monthlyPesos);
+  if (!Number.isFinite(pesos) || pesos < 1) throw new Error(`Invalid price for ${plan}: ${raw}`);
   return Math.round(pesos * 100);
 }
 
-export const planByName = (name: string) => PLANS.find((p) => p.name === name) ?? PLANS[0];
-export const planByGoogleProduct = (productId: string) => PLANS.find((p) => p.googlePlayProductId === productId) ?? null;
 /** The plan a store product grants (Google Play or web). */
 export function planByProduct(productId: string) {
   const web = webProduct(productId);
-  return web ? planByName(web.plan) : planByGoogleProduct(productId);
+  return web ? byId(web.plan) : planByGoogleProduct(productId);
 }
 
-export function planFeatures(plan: string, deviceLimit: number): PlanFeature[] {
-  return planByName(plan).features.map((f) => ({ ...f, label: LABELS[f.key](deviceLimit) }));
+export function planFeatures(planName: string): PlanFeature[] {
+  return planByName(planName).features;
 }

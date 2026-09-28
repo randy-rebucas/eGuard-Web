@@ -61,7 +61,7 @@ describe("signInWithIdentity", () => {
     expect(r.isNew).toBe(true);
     const u = await db.user.findUniqueOrThrow({ where: { id: r.userId }, include: { family: true } });
     expect(u).toMatchObject({ name: "Nia Cruz", passwordSet: false, role: "FAMILY_ADMIN" });
-    expect(u.family).toMatchObject({ name: "Cruz Family", plan: "eGuard Plus", renewsAt: null });
+    expect(u.family).toMatchObject({ name: "Cruz Family", plan: "Free", renewsAt: null });
   });
 
   it("needs a verified email from the provider", async () => {

@@ -8,7 +8,7 @@ import type { Actor } from "./config-service";
 import { appUrl } from "./email-verification";
 import { escapeHtml, sendMail } from "./mail";
 import { shortDate } from "./format";
-import { type Interval, webPrice, webProduct, webProductFor } from "./plans";
+import { BASE_PLAN, type Interval, type PaidPlanId, planById, planByName, planByProduct, webPrice, webProduct, webProductFor } from "./plans";
 import { applyEntitlement, currentPurchase, isEntitled } from "./entitlement";
 import {
   type PaymongoConfig, type WebhookEvent, cancelSubscription, createCheckoutSession, createSubscription, customerFor, endOfBillingDay,
@@ -18,9 +18,11 @@ import {
 /**
  * Web payments through PayMongo, the only way to buy a plan for now (the apps show the plan but don't sell it).
  *
+ * Plans are eGuard Plus and Family Pro, monthly.
+ *
  * - Pass: one payment through PayMongo's hosted Checkout, any method (GCash, Maya, QR Ph, card, …).
- *   Adds a month or a year; buying another while one runs extends it. Reminded by email before it ends.
- * - Auto-renew: a PayMongo Subscription, card or Maya only. PayMongo charges every period; the first
+ *   Adds a month; buying another of the same plan while one runs extends it. Reminded by email before it ends.
+ * - Auto-renew: a PayMongo Subscription, card or Maya only. PayMongo charges every month; the first
  *   payment is made in the browser, which sends the card straight to PayMongo with the public key.
  *
  * Every change is re-read from PayMongo (after checkout, from webhooks, and by the maintenance job)
@@ -38,6 +40,8 @@ const ABANDONED_MS = 24 * 3600_000;
 const RESUMABLE_MS = 23 * 3600_000;
 /** Passes get a reminder this long before they end. */
 const REMIND_BEFORE_MS = 3 * 864e5;
+
+const FREE_LIMITS = `${planByName(BASE_PLAN).entitlements.childLimit} child, no location sharing`;
 
 /** Payment methods offered for passes. Each must be activated on the PayMongo account. */
 export const passMethods = (env: Record<string, string | undefined> = process.env) =>
@@ -71,32 +75,35 @@ export function addInterval(from: Date, interval: Interval) {
 
 /**
  * One way of paying at a time: nothing over a Google Play plan or an auto-renew that's on, and
- * auto-renew only once any paid time has run out (it charges straight away). A pass over a pass extends it.
+ * auto-renew only once any paid time has run out (it charges straight away). A pass over a pass of the
+ * same plan extends it; another plan waits until the paid time ends, so no paid days are lost.
  */
-async function assertCanBuy(familyId: string, autoRenew: boolean) {
+async function assertCanBuy(familyId: string, plan: PaidPlanId, autoRenew: boolean) {
   const current = await currentPurchase(familyId);
   if (!current) return;
   if (current.store === "GOOGLE_PLAY") throw conflict("Your plan is billed through Google Play. Change it in the Play Store app.");
-  if (current.autoRenewing) throw conflict("Auto-renew is already on. Turn it off first to switch to a pass.");
-  if (autoRenew) {
-    const family = await db.family.findUniqueOrThrow({ where: { id: familyId } });
-    throw conflict(`Your plan is paid until ${shortDate(current.expiresAt!, family.timezone)}. Turn on auto-renew after that, or buy a pass to extend it.`);
-  }
+  if (current.autoRenewing) throw conflict("Auto-renew is already on. Turn it off first to switch to a pass or another plan.");
+  const family = await db.family.findUniqueOrThrow({ where: { id: familyId } });
+  const until = shortDate(current.expiresAt!, family.timezone);
+  if (autoRenew) throw conflict(`Your plan is paid until ${until}. Turn on auto-renew after that, or buy a pass to extend it.`);
+  const now = planByProduct(current.productId);
+  if (now && now.id !== plan) throw conflict(`Your ${now.name} pass runs until ${until}. Switch to ${planById(plan).name} after that, or buy another ${now.name} month to extend it.`);
 }
 
 /* ---------- Pass (Checkout) ---------- */
 
-export async function buyPass(actor: Actor, interval: Interval, o: WebBillingOpts = {}) {
+export async function buyPass(actor: Actor, planId: PaidPlanId, o: WebBillingOpts = {}) {
   requireAdmin(actor);
   const cfg = requireConfig(o);
-  await assertCanBuy(actor.familyId, false);
-  const product = webProductFor(interval, false);
+  await assertCanBuy(actor.familyId, planId, false);
+  const product = webProductFor(planId, false);
+  const plan = planById(planId);
   const user = await db.user.findUniqueOrThrow({ where: { id: actor.id } });
   const id = randomUUID();
   const cs = await createCheckoutSession(cfg, {
-    name: interval === "month" ? "eGuard Family: 1 month" : "eGuard Family: 1 year",
-    description: `Up to 15 devices for your family, ${interval === "month" ? "for one month" : "for one year"}. Doesn't renew automatically.`,
-    amount: webPrice(interval),
+    name: `${plan.name}: 1 month`,
+    description: `Up to ${plan.entitlements.childLimit} children for one month. Doesn't renew automatically.`,
+    amount: webPrice(planId),
     methods: passMethods(),
     email: user.email,
     reference: id,
@@ -116,7 +123,9 @@ async function syncPass(p: StorePurchase, cfg: PaymongoConfig, f: Fetch | undefi
   const pay = paidPayment(cs);
   if (pay) {
     // Starts when the family's current paid time ends, so an early renewal loses nothing
-    const others = await db.storePurchase.findMany({ where: { familyId: p.familyId, id: { not: p.id } } });
+    // Only time on the same plan counts; another plan over paid time is refused (assertCanBuy)
+    const plan = planByProduct(p.productId);
+    const others = (await db.storePurchase.findMany({ where: { familyId: p.familyId, id: { not: p.id } } })).filter((x) => planByProduct(x.productId) === plan);
     const paidUntil = Math.max(now.getTime(), ...others.filter((x) => isEntitled(x, now.getTime())).map((x) => x.expiresAt!.getTime()));
     const expiresAt = addInterval(new Date(paidUntil), webProduct(p.productId)!.interval);
     // Conditional, so the webhook and the parent's return from checkout can't both extend the plan
@@ -145,12 +154,12 @@ async function firstPayment(cfg: PaymongoConfig, p: StorePurchase, paymentIntent
  * Starts auto-renew and returns what the browser needs to make the first payment. Retrying picks up the
  * unfinished one instead of creating another; one for a different period is cancelled.
  */
-export async function startAutoRenew(actor: Actor, interval: Interval, o: WebBillingOpts = {}): Promise<FirstPayment> {
+export async function startAutoRenew(actor: Actor, planId: PaidPlanId, o: WebBillingOpts = {}): Promise<FirstPayment> {
   requireAdmin(actor);
   const cfg = requireConfig(o);
   const now = o.now ?? new Date();
-  await assertCanBuy(actor.familyId, true);
-  const product = webProductFor(interval, true);
+  await assertCanBuy(actor.familyId, planId, true);
+  const product = webProductFor(planId, true);
 
   // An old subscription whose renewals went unpaid would keep its open invoice collectible: close it
   for (const p of await db.storePurchase.findMany({ where: { familyId: actor.familyId, store: STORE, state: "unpaid" } })) {
@@ -175,8 +184,8 @@ export async function startAutoRenew(actor: Actor, interval: Interval, o: WebBil
     customerId = await customerFor(cfg, { name: user.name, email: user.email }, o.fetch);
     await db.family.update({ where: { id: family.id }, data: { paymongoCustomerId: customerId } });
   }
-  const planId = await planFor(cfg, interval, webPrice(interval), o.fetch);
-  const sub = await createSubscription(cfg, customerId, planId, o.fetch);
+  const paymongoPlan = await planFor(cfg, planById(planId).name, webPrice(planId), o.fetch);
+  const sub = await createSubscription(cfg, customerId, paymongoPlan, o.fetch);
   const p = await db.storePurchase.create({
     data: { familyId: actor.familyId, store: STORE, productId: product.id, purchaseToken: sub.id, state: sub.attributes.status, checkedAt: now },
   });
@@ -304,6 +313,7 @@ export async function sendPassReminders(now = new Date()) {
     if (!claimed.count) continue;
     const family = await db.family.findUniqueOrThrow({ where: { id: p.familyId }, include: { users: { where: { role: "FAMILY_ADMIN", emailVerifiedAt: { not: null } } } } });
     const ends = shortDate(p.expiresAt!, family.timezone);
+    const plan = planByProduct(p.productId)?.name ?? family.plan;
     const link = `${appUrl()}/settings/subscription`;
     await db.alert.create({
       data: {
@@ -315,10 +325,10 @@ export async function sendPassReminders(now = new Date()) {
       try {
         await sendMail({
           to: u.email,
-          subject: `Your eGuard Family pass ends on ${ends}`,
-          text: `Hi ${u.name.split(/\s+/)[0]},\n\nYour eGuard Family pass ends on ${ends}. After that your family goes back to eGuard Plus (up to 8 devices). Devices already added stay protected.\n\nTo keep eGuard Family, buy another pass or turn on auto-renew:\n${link}\n\n— eGuard`,
-          html: `<p>Hi ${escapeHtml(u.name.split(/\s+/)[0])},</p><p>Your eGuard Family pass ends on <b>${escapeHtml(ends)}</b>. After that your family goes back to eGuard Plus (up to 8 devices). Devices already added stay protected.</p>`
-            + `<p><a href="${link}" style="display:inline-block;padding:12px 20px;border-radius:10px;background:#1a73e8;color:#fff;text-decoration:none;font-weight:600">Keep eGuard Family</a></p>`,
+          subject: `Your ${plan} pass ends on ${ends}`,
+          text: `Hi ${u.name.split(/\s+/)[0]},\n\nYour ${plan} pass ends on ${ends}. After that your family goes back to ${BASE_PLAN} (${FREE_LIMITS}). Children and devices already added stay protected.\n\nTo keep ${plan}, buy another pass or turn on auto-renew:\n${link}\n\n— eGuard`,
+          html: `<p>Hi ${escapeHtml(u.name.split(/\s+/)[0])},</p><p>Your ${escapeHtml(plan)} pass ends on <b>${escapeHtml(ends)}</b>. After that your family goes back to ${BASE_PLAN} (${FREE_LIMITS}). Children and devices already added stay protected.</p>`
+            + `<p><a href="${link}" style="display:inline-block;padding:12px 20px;border-radius:10px;background:#1a73e8;color:#fff;text-decoration:none;font-weight:600">Keep ${escapeHtml(plan)}</a></p>`,
         });
         sent++;
       } catch (err) {

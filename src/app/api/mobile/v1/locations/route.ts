@@ -5,9 +5,11 @@ import { authed } from "@/lib/mobile-api";
 import { getFamilyGraph, photoVersions } from "@/lib/mobile-views";
 import { photoUrl } from "@/lib/mobile-api";
 import { childLocation } from "@/lib/location";
+import { requireLocationSharing } from "@/lib/plan-access";
 
-/** Family map: each child's latest location, or why there isn't one. */
+/** Family map: each child's latest location, or why there isn't one. 403 `plan_required` on Free. */
 export const GET = authed(async ({ user }) => {
+  await requireLocationSharing(user.familyId);
   const [family, graph] = await Promise.all([getFamily(user.familyId), getFamilyGraph(user.familyId)]);
   const photos = await photoVersions(graph.children.map((c) => c.id));
   return NextResponse.json({

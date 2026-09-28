@@ -3,8 +3,10 @@ import { requireUser } from "@/lib/auth";
 import { getFamily, getFamilyGraph } from "@/lib/queries";
 import { ago } from "@/lib/format";
 import { childLocation, recentVisits } from "@/lib/location";
+import { entitlementsFor } from "@/lib/plans";
+import { LOCATION_UPGRADE } from "@/lib/plan-access";
 import { Icon } from "@/components/icon";
-import { Avatar, PageHead } from "@/components/ui";
+import { Avatar, PageHead, UpgradeNote } from "@/components/ui";
 import { FlowButton } from "@/components/flow";
 import type { MapPerson } from "@/components/family-map";
 import { LazyMap, LocationRefresh } from "./lazy-map";
@@ -13,8 +15,15 @@ export const metadata = { title: "Location" };
 
 export default async function LocationPage() {
   const u = await requireUser();
-  const family = await getFamily(u.familyId);
-  const { children } = await getFamilyGraph(u.familyId);
+  const [family, { children }] = await Promise.all([getFamily(u.familyId), getFamilyGraph(u.familyId)]);
+  if (!entitlementsFor(family.plan).locationSharing) {
+    return (
+      <>
+        <PageHead title="Family Location" text="Where your children are, when they share their location." />
+        <section className="card card-pad"><UpgradeNote icon="map-pin-off" title="Location sharing isn't on your plan" text={`${LOCATION_UPGRADE} ${family.plan} keeps protections and screen time; location stays off.`} /></section>
+      </>
+    );
+  }
   const tz = family.timezone;
   const rows = children.map((c) => ({ c, l: childLocation(c.devices) }));
   // History on: each child's last few places from the past day, with a link to all of them

@@ -7,15 +7,18 @@ import { BottomNav, Sidebar, TopHeader } from "@/components/shell";
 import { FlowProvider } from "@/components/flow";
 import { VerifyEmailBanner } from "@/components/verify-email-banner";
 import { hasPendingVerification } from "@/lib/email-verification";
+import { entitlementsFor, nextPlan } from "@/lib/plans";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
   await touchSimulated(user.familyId);
   await ensureOfflineAlerts(user.familyId);
-  const [family, graph, unread, jar] = await Promise.all([getFamily(user.familyId), getFamilyGraph(user.familyId), unreadCount(user.familyId, user.id), cookies()]);
+  const [family, graph, unread, jar, linkSent] = await Promise.all([
+    getFamily(user.familyId), getFamilyGraph(user.familyId), unreadCount(user.familyId, user.id), cookies(),
+    !user.emailVerified && hasPendingVerification(user.id, user.email),
+  ]);
   const attention = Object.values(graph.deviceStates).filter((s) => s.key !== "healthy").length;
-  const plan = { plan: family.plan, used: graph.devices.length, limit: family.deviceLimit };
-  const linkSent = !user.emailVerified && await hasPendingVerification(user.id, user.email);
+  const plan = { plan: family.plan, used: graph.children.length, limit: entitlementsFor(family.plan).childLimit, upgrade: !!nextPlan(family.plan) };
   return (
     <FlowProvider>
       <div className="app">

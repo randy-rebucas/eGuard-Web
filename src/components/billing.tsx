@@ -2,12 +2,10 @@
 
 import { useState, useTransition } from "react";
 import { Icon } from "./icon";
-import { useFlow } from "./flow";
+import { FAILED, useAction } from "./flow";
 import { peso } from "@/lib/format";
 import { buyPass, cancelAutoRenew, startAutoRenew } from "@/app/actions/billing";
 import type { FirstPayment } from "@/lib/web-billing";
-
-type Interval = "month" | "year";
 
 /** Calls PayMongo from the browser with the public key, so card details never pass through eGuard. */
 async function paymongo(path: string, publicKey: string, attributes: unknown) {
@@ -34,110 +32,131 @@ async function payFirstInvoice(p: FirstPayment, method: "card" | "paymaya", card
   else throw new Error(a.last_payment_error?.failed_message ?? "The payment didn't go through. Check the details or use another card.");
 }
 
-export function BuyPlan({ prices, methods, payer, autoRenewBlocked }: {
-  prices: Record<Interval, number>;
+export type PlanCard = { id: "FREE" | "PLUS" | "PRO"; name: string; blurb: string; price: number; features: string[] };
+
+export function BuyPlan({ plans, current, methods, payer, autoRenewBlocked, passOnly }: {
+  /** Free first, then the paid plans; price in centavos per month */
+  plans: PlanCard[];
+  current: PlanCard["id"];
   methods: string;
   payer: { name: string; email: string };
   /** Why auto-renew can't start yet (paid time left), or null */
   autoRenewBlocked: string | null;
+  /** While a pass runs, only more of the same plan can be bought: that plan, and why */
+  passOnly: { plan: PlanCard["id"]; reason: string } | null;
 }) {
-  const [interval, setPeriod] = useState<Interval>("month");
-  const [paying, setPaying] = useState<"autorenew" | null>(null);
+  const [paying, setPaying] = useState<PlanCard | null>(null);
+  const [busyWith, setBusyWith] = useState<string | null>(null);
   const [method, setMethod] = useState<"card" | "paymaya">("card");
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
-  const price = prices[interval];
-  const per = interval === "month" ? "month" : "year";
-  const saving = Math.round((1 - prices.year / (prices.month * 12)) * 100);
 
-  const pass = () => start(async () => {
-    setError(null);
-    const r = await buyPass(interval); // redirects to PayMongo on success
-    if (r?.error) setError(r.error);
+  const pass = (plan: PlanCard) => start(async () => {
+    setError(null); setBusyWith(plan.id);
+    try {
+      const r = await buyPass(plan.id); // redirects to PayMongo on success
+      if (r?.error) setError(r.error);
+    } catch {
+      setError(FAILED);
+    }
   });
 
   const autoRenew = (form: FormData) => start(async () => {
+    if (!paying) return;
     setError(null);
-    const r = await startAutoRenew(interval);
+    let r: Awaited<ReturnType<typeof startAutoRenew>>;
+    try { r = await startAutoRenew(paying.id); } catch { setError(FAILED); return; }
     if ("error" in r) { setError(r.error); return; }
     try {
       await payFirstInvoice(r.payment, method, Object.fromEntries([...form].map(([k, v]) => [k, String(v)])), payer);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "The payment didn't go through.");
+      // A network failure reaching PayMongo is a TypeError with a browser-specific message
+      setError(e instanceof Error && !(e instanceof TypeError) ? e.message : "Couldn't reach PayMongo. Check your connection; you haven't been charged.");
     }
   });
+
+  if (paying) {
+    return (
+      <form action={autoRenew} className="buy-option" style={{ gap: 14 }}>
+        {error ? <div className="form-error" role="alert"><Icon name="triangle-alert" />{error}</div> : null}
+        <div className="t-title">Auto-renew {paying.name}: {peso(paying.price)} every month</div>
+        <div className="seg" role="group" aria-label="Pay with">
+          <button type="button" aria-pressed={method === "card"} onClick={() => setMethod("card")}>Card</button>
+          <button type="button" aria-pressed={method === "paymaya"} onClick={() => setMethod("paymaya")}>Maya</button>
+        </div>
+        {method === "card" ? (
+          <div className="form-grid">
+            <div className="field"><label htmlFor="cc-num">Card number</label><input className="input" id="cc-num" name="number" inputMode="numeric" autoComplete="cc-number" required placeholder="1234 5678 9012 3456" /></div>
+            <div className="field"><label htmlFor="cc-exp">Expiry (MM/YY)</label><input className="input" id="cc-exp" name="expiry" autoComplete="cc-exp" required pattern="\s*\d{1,2}\s*/\s*\d{2,4}\s*" placeholder="12/29" /></div>
+            <div className="field"><label htmlFor="cc-cvc">CVC</label><input className="input" id="cc-cvc" name="cvc" inputMode="numeric" autoComplete="cc-csc" required maxLength={4} /></div>
+            <div className="field"><label htmlFor="cc-name">Name on card</label><input className="input" id="cc-name" name="name" autoComplete="cc-name" defaultValue={payer.name} /></div>
+          </div>
+        ) : <p className="t-meta">You&apos;ll sign in to Maya to approve this payment and future renewals.</p>}
+        <div className="row t-meta" style={{ gap: 8, alignItems: "flex-start" }}>
+          <Icon name="lock" size={14} style={{ flex: "none", marginTop: 3 }} />
+          <span>Your {method === "card" ? "card details go" : "payment goes"} straight to PayMongo; eGuard never sees them. You&apos;re charged {peso(paying.price)} now and every month until you turn auto-renew off.</span>
+        </div>
+        <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+          <button type="button" className="btn btn-ghost" disabled={pending} onClick={() => { setPaying(null); setError(null); }}>Back</button>
+          <button className="btn btn-primary" disabled={pending}>{pending ? <><Icon name="loader-circle" className="spin" />Processing…</> : `Pay ${peso(paying.price)} and turn on auto-renew`}</button>
+        </div>
+      </form>
+    );
+  }
 
   return (
     <div className="dash-col" style={{ gap: 14 }}>
       <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
-        <h3 style={{ fontSize: 16 }}>Get eGuard Family: up to 15 devices</h3>
-        <div className="seg" role="group" aria-label="Billing period">
-          <button type="button" aria-pressed={interval === "month"} onClick={() => setPeriod("month")}>Monthly</button>
-          <button type="button" aria-pressed={interval === "year"} onClick={() => setPeriod("year")}>Yearly{saving > 0 ? ` · save ${saving}%` : ""}</button>
-        </div>
+        <h3 style={{ fontSize: 16 }}>Plans</h3>
+        <span className="t-meta">Billed monthly. {methods} for one-month passes; card or Maya for auto-renew.</span>
       </div>
       {error ? <div className="form-error" role="alert"><Icon name="triangle-alert" />{error}</div> : null}
-
-      {paying === "autorenew" ? (
-        <form action={autoRenew} className="buy-option" style={{ gap: 14 }}>
-          <div className="t-title">Auto-renew: {peso(price)} every {per}</div>
-          <div className="seg" role="group" aria-label="Pay with">
-            <button type="button" aria-pressed={method === "card"} onClick={() => setMethod("card")}>Card</button>
-            <button type="button" aria-pressed={method === "paymaya"} onClick={() => setMethod("paymaya")}>Maya</button>
-          </div>
-          {method === "card" ? (
-            <div className="form-grid">
-              <div className="field"><label htmlFor="cc-num">Card number</label><input className="input" id="cc-num" name="number" inputMode="numeric" autoComplete="cc-number" required placeholder="1234 5678 9012 3456" /></div>
-              <div className="field"><label htmlFor="cc-exp">Expiry (MM/YY)</label><input className="input" id="cc-exp" name="expiry" autoComplete="cc-exp" required pattern="\s*\d{1,2}\s*/\s*\d{2,4}\s*" placeholder="12/29" /></div>
-              <div className="field"><label htmlFor="cc-cvc">CVC</label><input className="input" id="cc-cvc" name="cvc" inputMode="numeric" autoComplete="cc-csc" required maxLength={4} /></div>
-              <div className="field"><label htmlFor="cc-name">Name on card</label><input className="input" id="cc-name" name="name" autoComplete="cc-name" defaultValue={payer.name} /></div>
-            </div>
-          ) : <p className="t-meta">You&apos;ll sign in to Maya to approve this payment and future renewals.</p>}
-          <div className="row t-meta" style={{ gap: 8, alignItems: "flex-start" }}>
-            <Icon name="lock" size={14} style={{ flex: "none", marginTop: 3 }} />
-            <span>Your {method === "card" ? "card details go" : "payment goes"} straight to PayMongo; eGuard never sees them. You&apos;re charged {peso(price)} now and every {per} until you turn auto-renew off.</span>
-          </div>
-          <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-            <button type="button" className="btn btn-ghost" onClick={() => { setPaying(null); setError(null); }}>Back</button>
-            <button className="btn btn-primary" disabled={pending}>{pending ? "Processing…" : `Pay ${peso(price)} and turn on auto-renew`}</button>
-          </div>
-        </form>
-      ) : (
-        <div className="buy-grid">
-          <div className="buy-option">
-            <div className="row" style={{ gap: 8 }}><Icon name="refresh-cw" /><span className="t-title">Auto-renew</span></div>
-            <div className="price">{peso(price)} <small>/ {per}</small></div>
-            <p className="t-meta">Card or Maya. Renews every {per} until you turn it off.</p>
-            {autoRenewBlocked ? <p className="t-meta">{autoRenewBlocked}</p> : null}
-            <button type="button" className="btn btn-primary" disabled={pending || !!autoRenewBlocked} onClick={() => setPaying("autorenew")}><Icon name="credit-card" />Turn on auto-renew</button>
-          </div>
-          <div className="buy-option">
-            <div className="row" style={{ gap: 8 }}><Icon name="wallet" /><span className="t-title">Pay once</span></div>
-            <div className="price">{peso(price)} <small>for 1 {per}</small></div>
-            <p className="t-meta">{methods}. Doesn&apos;t renew; we&apos;ll email you before it ends. Buying again adds another {per}.</p>
-            <button type="button" className="btn btn-secondary" disabled={pending} onClick={pass}>{pending ? "Opening checkout…" : `Pay ${peso(price)}`}</button>
-          </div>
-        </div>
-      )}
+      {passOnly ? <p className="t-meta">{passOnly.reason}</p> : null}
+      <div className="plan-grid">
+        {plans.map((p) => {
+          const isCurrent = p.id === current;
+          const locked = !!passOnly && passOnly.plan !== p.id;
+          return (
+            <article key={p.id} className="plan-option" aria-current={isCurrent ? "true" : undefined}>
+              <div className="row" style={{ justifyContent: "space-between", gap: 8 }}>
+                <span className="t-title">{p.name}</span>
+                {isCurrent ? <span className="pill tone-accent">Current plan</span> : null}
+              </div>
+              <div className="price">{p.price ? peso(p.price) : "Free"}{p.price ? <small> / month</small> : null}</div>
+              <p className="t-meta">{p.blurb}</p>
+              <ul>{p.features.map((f) => <li key={f}><Icon name="check" />{f}</li>)}</ul>
+              {p.id === "FREE" ? null : (
+                <div className="dash-col" style={{ gap: 8, marginTop: "auto" }}>
+                  <button type="button" className="btn btn-primary" disabled={pending || !!autoRenewBlocked || locked} onClick={() => { setError(null); setPaying(p); }}>
+                    <Icon name="refresh-cw" />Auto-renew monthly
+                  </button>
+                  <button type="button" className="btn btn-secondary" disabled={pending || locked} onClick={() => pass(p)}>
+                    {pending && busyWith === p.id ? <><Icon name="loader-circle" className="spin" />Opening checkout…</> : isCurrent ? "Add a month" : "Pay for 1 month"}
+                  </button>
+                </div>
+              )}
+            </article>
+          );
+        })}
+      </div>
+      {autoRenewBlocked ? <p className="t-meta">Auto-renew: {autoRenewBlocked}</p> : null}
     </div>
   );
 }
 
-export function CancelAutoRenew({ endsOn }: { endsOn: string }) {
+export function CancelAutoRenew({ plan, endsOn }: { plan: string; endsOn: string }) {
   const [confirm, setConfirm] = useState(false);
-  const [pending, start] = useTransition();
-  const { toast } = useFlow();
+  const [pending, run] = useAction();
   if (!confirm) return <button className="btn btn-secondary btn-sm" onClick={() => setConfirm(true)}>Turn off auto-renew</button>;
   return (
     <div className="row" role="alert" style={{ gap: 10, flexWrap: "wrap" }}>
-      <span className="t-meta" style={{ color: "var(--ink-2)" }}>You keep eGuard Family until {endsOn}. After that your family goes back to eGuard Plus.</span>
+      <span className="t-meta" style={{ color: "var(--ink-2)" }}>You keep {plan} until {endsOn}. After that your family goes back to Free: 1 child, no location sharing. Children and devices already added stay protected.</span>
       <span className="row" style={{ gap: 6 }}>
-        <button className="btn btn-ghost btn-sm" onClick={() => setConfirm(false)}>Keep it on</button>
-        <button className="btn btn-primary btn-sm" disabled={pending} onClick={() => start(async () => {
-          const r = await cancelAutoRenew();
-          toast(r.error ?? `Auto-renew is off. eGuard Family stays until ${endsOn}.`);
-          setConfirm(false);
-        })}>Turn off</button>
+        <button className="btn btn-ghost btn-sm" disabled={pending} onClick={() => setConfirm(false)}>Keep it on</button>
+        <button className="btn btn-primary btn-sm" disabled={pending} onClick={() => run(cancelAutoRenew, {
+          ok: `Auto-renew is off. ${plan} stays until ${endsOn}.`,
+          onOk: () => setConfirm(false),
+        })}>{pending ? <><Icon name="loader-circle" className="spin" />Turning off…</> : "Turn off"}</button>
       </span>
     </div>
   );

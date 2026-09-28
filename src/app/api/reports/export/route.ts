@@ -1,5 +1,7 @@
 import { getUser } from "@/lib/auth";
 import { getFamily } from "@/lib/queries";
+import { entitlementsFor } from "@/lib/plans";
+import { REPORTS_UPGRADE } from "@/lib/plan-access";
 import { reportData, resolveRange, type Period } from "@/lib/reports";
 
 /**
@@ -18,6 +20,7 @@ export async function GET(req: Request) {
   const p = new URL(req.url).searchParams;
   const period = (["today", "7d", "30d", "custom"].includes(p.get("period") ?? "") ? p.get("period") : "7d") as Period;
   const family = await getFamily(u.familyId);
+  if (!entitlementsFor(family.plan).advancedReports) return new Response(REPORTS_UPGRADE, { status: 403 });
   const range = resolveRange(period, family.timezone, p.get("from") ?? undefined, p.get("to") ?? undefined);
   const data = await reportData(u.familyId, family.timezone, range.from, range.to);
   const name = (id: string) => data.children.find((c) => c.id === id)?.name ?? id;

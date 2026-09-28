@@ -14,7 +14,8 @@ import { SECTIONS } from "../sections";
 import { supportEmail } from "@/lib/support";
 import { currentPurchase, refreshPurchases } from "@/lib/billing";
 import { renewalWord } from "@/lib/entitlement";
-import { webPrice, webProduct } from "@/lib/plans";
+import { PLANS, entitlementsFor, planByName, planByProduct, webPrice, webProduct } from "@/lib/plans";
+import { LOCATION_UPGRADE, planWith } from "@/lib/plan-access";
 import { confirmReturn, passMethods, webBillingAvailable } from "@/lib/web-billing";
 
 export async function generateMetadata(props: PageProps<"/settings/[section]">) {
@@ -30,6 +31,7 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
   const [user, family] = await Promise.all([db.user.findUniqueOrThrow({ where: { id: u.id } }), getFamily(u.familyId)]);
   const tz = family.timezone;
   const admin = u.role === "FAMILY_ADMIN";
+  const plan = entitlementsFor(family.plan);
   const head = <div className="card-head"><h2>{meta[1]}</h2></div>;
 
   switch (section) {
@@ -72,7 +74,7 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
       return (
         <>
           {head}
-          <SettingSwitch setting="notifyPush" title="Push notifications" desc="Protection changes and devices that need attention" checked={user.notifyPush} />
+          <SettingSwitch setting="notifyPush" title="Push notifications" desc={plan.realtimeAlerts ? "Protection changes and devices that need attention" : `Real-time alerts are included with ${planWith((e) => e.realtimeAlerts).name}. Alerts still show in eGuard and by email.`} checked={user.notifyPush && plan.realtimeAlerts} disabled={!plan.realtimeAlerts} />
           <SettingSwitch setting="notifyEmail" title="Email alerts" desc="Protection changes, devices that stop syncing, and anything that needs action" checked={user.notifyEmail} />
           <SettingSwitch setting="notifyApproval" title="App approval requests" desc="When a child asks to install an app" checked={user.notifyApproval} />
           <SettingSwitch setting="weeklySummary" title="Weekly summary" desc="Every Sunday at 6 PM" checked={user.weeklySummary} />
@@ -84,7 +86,7 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
       return (
         <>
           {head}
-          <SettingSwitch setting="keepLocationHistory" title="Keep location history" desc={family.keepLocationHistory ? "On: recent locations are kept for the retention period. Turning it off deletes the history already kept" : "Off: only the current location is stored"} checked={family.keepLocationHistory} disabled={!admin}
+          <SettingSwitch setting="keepLocationHistory" title="Keep location history" desc={!plan.locationSharing ? LOCATION_UPGRADE : family.keepLocationHistory ? "On: recent locations are kept for the retention period. Turning it off deletes the history already kept" : "Off: only the current location is stored"} checked={family.keepLocationHistory} disabled={!admin || (!plan.locationSharing && !family.keepLocationHistory)}
             confirmOff="This deletes every child's location history now. It can't be undone. Current locations keep working." />
           <SettingSwitch setting="shareAnalytics" title="Share anonymous product analytics" desc="Helps improve eGuard. Never includes children's data" checked={family.shareAnalytics} disabled={!admin} />
           <div className="setting-row"><div className="grow"><div className="t-title">What children can see</div><div className="t-meta">Children see which protections are on and can request more time or new apps</div></div></div>
@@ -133,21 +135,34 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
       // Back from PayMongo: check the payment now instead of waiting for the webhook
       const returned = admin && typeof ref === "string" ? await confirmReturn(u.familyId, ref) : null;
       await refreshPurchases(u.familyId);
-      const [fam, used, purchase] = await Promise.all([
+      const [fam, devicesUsed, childrenUsed, purchase] = await Promise.all([
         db.family.findUniqueOrThrow({ where: { id: u.familyId } }),
         db.device.count({ where: { familyId: u.familyId } }),
+        db.child.count({ where: { familyId: u.familyId } }),
         currentPurchase(u.familyId),
       ]);
-      const over = used > fam.deviceLimit;
-      const pct = fam.deviceLimit > 0 ? Math.min(100, Math.round((used / fam.deviceLimit) * 100)) : 100;
+      const current = planByName(fam.plan);
       const paidUntil = purchase?.expiresAt ? shortDate(purchase.expiresAt, tz) : null;
       const how = !purchase ? null : purchase.store === "GOOGLE_PLAY" ? "Google Play" : webProduct(purchase.productId)?.autoRenew ? (purchase.autoRenewing ? "Auto-renew" : "Auto-renew off") : "Prepaid pass";
       const nextCharge = purchase?.autoRenewing ? webProduct(purchase.productId) : null;
+      // Plans retired before these keep billing at the price they were bought at, which only PayMongo knows
+      const nextAmount = nextCharge && !nextCharge.legacy ? peso(webPrice(nextCharge.plan)) : null;
+      const runningPass = purchase && !purchase.autoRenewing && purchase.store !== "GOOGLE_PLAY" ? planByProduct(purchase.productId) : null;
+      const usage = (label: string, used: number, limit: number) => {
+        const over = used > limit;
+        return (
+          <div>
+            <div className="row" style={{ justifyContent: "space-between" }}><span className="t-meta">{label}</span><span className="t-meta num" style={over ? { color: "var(--warn-ink)" } : undefined}>{used} of {limit}</span></div>
+            <div className="meter" role="meter" aria-label={`${label} used`} aria-valuemin={0} aria-valuemax={limit} aria-valuenow={used}><span style={{ width: `${limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 100}%`, ...(over ? { background: "var(--warn)" } : {}) }} /></div>
+            {over ? <p className="t-meta" style={{ marginTop: 6 }}>{used - limit} more than {fam.plan} covers. They stay protected; to add more, remove some or upgrade.</p> : null}
+          </div>
+        );
+      };
       return (
         <>
           {head}
           {returned?.status === "paid" ? (
-            <div className="form-ok" role="status" style={{ marginBottom: 16 }}><Icon name="circle-check" />Payment received. {returned.kind === "autorenew" ? "Auto-renew is on." : "Thank you!"} eGuard Family is active{returned.expiresAt ? ` until ${shortDate(returned.expiresAt, tz)}` : ""}.</div>
+            <div className="form-ok" role="status" style={{ marginBottom: 16 }}><Icon name="circle-check" />Payment received. {returned.kind === "autorenew" ? "Auto-renew is on." : "Thank you!"} {fam.plan} is active{returned.expiresAt ? ` until ${shortDate(returned.expiresAt, tz)}` : ""}.</div>
           ) : returned?.status === "pending" ? (
             <div className="verify-banner" role="status" style={{ marginBottom: 16 }}><Icon name="hourglass" /><p>We&apos;re waiting for PayMongo to confirm your payment. It usually takes a minute; reload this page to check. If it doesn&apos;t go through, you won&apos;t be charged.</p></div>
           ) : returned?.status === "failed" ? (
@@ -157,14 +172,20 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
             <span className="ico-tile" style={{ width: 52, height: 52 }}><Icon name="crown" /></span>
             <div className="grow">
               <div className="t-title" style={{ fontSize: 18 }}>{fam.plan}</div>
-              <div className="t-meta">{fam.renewsAt ? `${renewalWord(purchase)} ${shortDate(fam.renewsAt, tz)}` : "No renewal date"} · up to {fam.deviceLimit} devices{how ? ` · ${how}` : ""}</div>
+              <div className="t-meta">{current.monthlyPesos ? (fam.renewsAt ? `${renewalWord(purchase)} ${shortDate(fam.renewsAt, tz)}` : "No renewal date") : "Free forever"}{how ? ` · ${how}` : ""}</div>
             </div>
           </div>
-          <div style={{ marginTop: 20 }}>
-            <div className="row" style={{ justifyContent: "space-between" }}><span className="t-meta">Devices</span><span className="t-meta num" style={over ? { color: "var(--warn-ink)" } : undefined}>{used} of {fam.deviceLimit}</span></div>
-            <div className="meter" role="meter" aria-label="Devices used" aria-valuemin={0} aria-valuemax={fam.deviceLimit} aria-valuenow={used}><span style={{ width: `${pct}%`, ...(over ? { background: "var(--warn)" } : {}) }} /></div>
-            {over ? <p className="t-meta" style={{ marginTop: 8 }}>{used - fam.deviceLimit} more than your plan covers. They stay protected; remove some or change your plan to add more.</p> : null}
+          <div className="form-grid" style={{ marginTop: 20 }}>
+            {usage("Children", childrenUsed, current.entitlements.childLimit)}
+            {usage("Devices", devicesUsed, fam.deviceLimit)}
           </div>
+          {current.entitlements.apiAccess ? (
+            <div className="setting-row" style={{ marginTop: 12 }}>
+              <span className="ico-tile"><Icon name="plug" /></span>
+              <div className="grow"><div className="t-title">API access for schools and organizations</div><div className="t-meta">Included with {current.name}. We set up access with you: tell us who needs it and what for.</div></div>
+              <a className="btn btn-secondary btn-sm" href={`mailto:${supportEmail()}?subject=${encodeURIComponent(`${current.name} API access`)}`}>Request access</a>
+            </div>
+          ) : null}
           <hr className="divider" style={{ margin: "20px 0" }} />
           {!admin ? (
             <p className="t-meta">Only the family admin can change the plan.</p>
@@ -174,15 +195,17 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
             <p className="t-meta">Online payment isn&apos;t available yet. To change your plan, contact <a className="link-btn" href={`mailto:${supportEmail()}`}>{supportEmail()}</a>.</p>
           ) : purchase?.autoRenewing && nextCharge ? (
             <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-              <div><div className="t-title">Auto-renew is on</div><div className="t-meta">{purchase.state === "past_due" ? "The last renewal payment failed. PayMongo will try again; check your card or Maya balance." : `Next charge ${peso(webPrice(nextCharge.interval))} on ${paidUntil}.`}</div></div>
-              <CancelAutoRenew endsOn={paidUntil ?? "the end of this period"} />
+              <div><div className="t-title">Auto-renew is on</div><div className="t-meta">{purchase.state === "past_due" ? "The last renewal payment failed. PayMongo will try again; check your card or Maya balance." : `Next charge${nextAmount ? ` ${nextAmount}` : ""} on ${paidUntil}. To switch plans, turn auto-renew off; you keep ${fam.plan} until then.`}</div></div>
+              <CancelAutoRenew plan={fam.plan} endsOn={paidUntil ?? "the end of this period"} />
             </div>
           ) : (
             <BuyPlan
-              prices={{ month: webPrice("month"), year: webPrice("year") }}
+              plans={PLANS.map((p) => ({ id: p.id, name: p.name, blurb: p.blurb, price: p.id === "FREE" ? 0 : webPrice(p.id), features: p.features.map((f) => f.label) }))}
+              current={current.id}
               methods={passMethodLabel()}
               payer={{ name: user.name, email: user.email }}
-              autoRenewBlocked={purchase && paidUntil ? `Available once your paid time ends on ${paidUntil}.` : null}
+              autoRenewBlocked={purchase && paidUntil ? `available once your paid time ends on ${paidUntil}.` : null}
+              passOnly={runningPass && paidUntil ? { plan: runningPass.id, reason: `Your ${runningPass.name} pass runs until ${paidUntil}. You can add months to it now, or switch plans after it ends.` } : null}
             />
           )}
         </>

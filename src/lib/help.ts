@@ -55,11 +55,13 @@ export const HELP_ARTICLES: HelpArticle[] = [
     ],
   },
   {
-    slug: "upgrade-plan", category: "FAQ", title: "Upgrade to eGuard Family",
-    summary: "More devices and priority support, billed through Google Play.",
+    slug: "upgrade-plan", category: "FAQ", title: "Plans: Free, eGuard Plus and Family Pro",
+    summary: "What each plan includes, and how to upgrade.",
     body: [
-      "eGuard Family covers up to 15 devices and includes priority support. On Android, tap Upgrade to Family in Settings › Subscription and pay with Google Play.",
-      "You can cancel any time in the Google Play Store under Payments & subscriptions. Your plan stays active until the end of the paid period.",
+      "Free covers 1 child with basic protection setup, screen time management, limited app monitoring and email support.",
+      "eGuard Plus (₱149 a month) covers up to 5 children and adds location sharing, real-time alerts, full app monitoring and priority support. Family Pro (₱249 a month) covers up to 10 children and adds advanced reports, API access for schools and organizations, and dedicated support.",
+      "Upgrade in Settings › Subscription: on the web with a card, Maya, GCash or QR Ph, or on Android with Google Play. If you move to a smaller plan, children and devices you already added stay protected; you just can't add more until you upgrade.",
+      "You can cancel any time. Your plan stays active until the end of the paid period.",
       "Only the family admin can change the plan.",
     ],
   },

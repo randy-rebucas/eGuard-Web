@@ -9,9 +9,9 @@ import { audit } from "./audit";
 import { profileConfigs, type ProfileId } from "./profiles";
 import type { ProtectionConfig } from "./protections";
 import type { Actor } from "./config-service";
-import { conflict, forbidden, invalid, isUniqueViolation, notFound } from "./errors";
+import { conflict, forbidden, invalid, isUniqueViolation, notFound, planLimit } from "./errors";
 import { requireVerifiedEmail } from "./email-verification";
-import { BASE_PLAN, planByName } from "./plans";
+import { BASE_PLAN, nextPlan, planByName } from "./plans";
 import { LIMITS, enforce } from "./rate-limit";
 
 /** Family, children, apps and devices: shared by the web server actions and the mobile API. */
@@ -28,9 +28,24 @@ export const ChildSchema = z.object({
 });
 const HUES = [205, 160, 330, 28, 265, 190];
 
+/** Why the family can't add another child, or null if it can. Families over the limit keep the children they have. */
+export function childLimitReached(plan: string, count: number) {
+  const limit = planByName(plan).entitlements.childLimit;
+  if (count < limit) return null;
+  const up = nextPlan(plan);
+  return `${plan} covers ${limit} ${limit === 1 ? "child" : "children"}.${up ? ` Upgrade to ${up.name} to add up to ${up.entitlements.childLimit}.` : ""}`;
+}
+
 /** Creates a child with a full policy from the chosen profile (Protected by default). */
 export async function createChild(actor: Actor, input: { name: string; birthYear: number; profile?: ProfileId }) {
-  const count = await db.child.count({ where: { familyId: actor.familyId } });
+  // The limit comes from the plan; make sure a lapsed or refunded subscription is reflected first
+  await refreshPurchases(actor.familyId);
+  const [count, family] = await Promise.all([
+    db.child.count({ where: { familyId: actor.familyId } }),
+    db.family.findUniqueOrThrow({ where: { id: actor.familyId }, select: { plan: true } }),
+  ]);
+  const full = childLimitReached(family.plan, count);
+  if (full) throw planLimit(full);
   const age = new Date().getFullYear() - input.birthYear;
   const configs = profileConfigs(input.profile ?? "PROTECTED", age);
   const screen = configs.find((c) => c.key === "SCREEN_TIME") as Extract<ProtectionConfig, { key: "SCREEN_TIME" }>;
@@ -122,7 +137,10 @@ export async function createPairingCode(actor: Actor, childId: string) {
   ]);
   if (!child) throw notFound("Child");
   await requireVerifiedEmail(actor.id);
-  if (count >= family.deviceLimit) throw conflict(`Your plan covers ${family.deviceLimit} devices. Remove a device to add another.`);
+  if (count >= family.deviceLimit) {
+    const up = nextPlan(family.plan);
+    throw planLimit(`${family.plan} covers ${family.deviceLimit} devices. Remove a device${up ? ` or upgrade to ${up.name}` : ""} to add another.`);
+  }
   await enforce(`paircode:${actor.id}`, LIMITS.pairCodeUser, "You've made several pairing codes. Wait a few minutes before making another.");
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   const code = Array.from({ length: 8 }, () => alphabet[randomInt(alphabet.length)]).join("");
@@ -295,7 +313,7 @@ export async function createFamily(input: { name: string; familyName: string; em
   // The base plan is free and has no renewal date; a store purchase sets one.
   const family = await db.family.create({
     data: {
-      name: input.familyName, plan: BASE_PLAN, deviceLimit: planByName(BASE_PLAN).deviceLimit, renewsAt: null,
+      name: input.familyName, plan: BASE_PLAN, deviceLimit: planByName(BASE_PLAN).entitlements.deviceLimit, renewsAt: null,
       users: { create: {
         name: input.name, email: input.email, passwordHash: input.passwordHash, role: "FAMILY_ADMIN",
         emailVerifiedAt: input.emailVerified ? new Date() : null, passwordSet: input.passwordSet ?? true,

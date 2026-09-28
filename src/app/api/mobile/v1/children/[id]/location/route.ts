@@ -6,13 +6,16 @@ import { getFamily } from "@/lib/queries";
 import { authed } from "@/lib/mobile-api";
 import { dayGroup } from "@/lib/mobile-views";
 import { childLocation, deviceSharing } from "@/lib/location";
+import { requireLocationSharing } from "@/lib/plan-access";
 
 /**
  * Location: where the child is now, and today's and yesterday's visits when the family keeps
  * location history (`history.enabled`). Turn sharing on or off with PUT /protections/LOCATION.
+ * 403 `plan_required` on plans without location sharing (Free).
  */
 export const GET = authed<{ id: string }>(async ({ user, params }) => {
   const child = await childFor(user.familyId, params.id);
+  await requireLocationSharing(user.familyId);
   const family = await getFamily(user.familyId);
   const tz = family.timezone;
   const devices = await db.device.findMany({

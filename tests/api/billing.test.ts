@@ -16,7 +16,7 @@ let admin: Actor, parent: Actor, other: Actor;
 async function family(name: string) {
   const f = await db.family.create({
     data: {
-      name, plan: "eGuard Plus", deviceLimit: 8,
+      name, plan: "Free", deviceLimit: 2,
       users: { create: [
         { name: `${name} Admin`, email: `admin.${name.toLowerCase()}.${RUN}@billing-test.example`, passwordHash: "x", role: "FAMILY_ADMIN" },
         { name: `${name} Parent`, email: `parent.${name.toLowerCase()}.${RUN}@billing-test.example`, passwordHash: "x", role: "PARENT" },
@@ -76,17 +76,17 @@ describe("redeemGooglePlay", () => {
   it("upgrades the family, stores the purchase and acknowledges it", async () => {
     play.subs.set("tok-1", playSub({ accountId: acct() }));
     const r = await redeemGooglePlay(admin, "eguard_family", "tok-1", opts);
-    expect(r).toMatchObject({ plan: "eGuard Family", autoRenewing: true });
-    expect(await fam()).toMatchObject({ plan: "eGuard Family", deviceLimit: 15 });
+    expect(r).toMatchObject({ plan: "Family Pro", autoRenewing: true });
+    expect(await fam()).toMatchObject({ plan: "Family Pro", deviceLimit: 20 });
     expect((await fam()).renewsAt?.getTime()).toBe(r.expiresAt?.getTime());
     expect(play.acknowledged).toEqual(["tok-1"]);
-    expect(await db.alert.count({ where: { familyId: admin.familyId, title: "Welcome to eGuard Family" } })).toBe(1);
+    expect(await db.alert.count({ where: { familyId: admin.familyId, title: "Welcome to Family Pro" } })).toBe(1);
   });
 
   it("is safe to retry (restore purchases): no second acknowledgement or alert", async () => {
     await redeemGooglePlay(admin, "eguard_family", "tok-1", opts);
     expect(play.acknowledged).toEqual(["tok-1"]);
-    expect(await db.alert.count({ where: { familyId: admin.familyId, title: "Welcome to eGuard Family" } })).toBe(1);
+    expect(await db.alert.count({ where: { familyId: admin.familyId, title: "Welcome to Family Pro" } })).toBe(1);
     expect(await db.storePurchase.count({ where: { familyId: admin.familyId } })).toBe(1);
   });
 
@@ -143,7 +143,7 @@ describe("refreshPurchases", () => {
     play.subs.set("tok-2", playSub({ accountId: acct(), ack: true, expiresInMs: 60 * 864e5 }));
     await refreshPurchases(admin.familyId, opts);
     const f = await fam();
-    expect(f.plan).toBe("eGuard Family");
+    expect(f.plan).toBe("Family Pro");
     expect(f.renewsAt!.getTime()).toBeGreaterThan(Date.now() + 50 * 864e5);
   });
 
@@ -151,8 +151,8 @@ describe("refreshPurchases", () => {
     await lapse();
     play.subs.set("tok-2", playSub({ accountId: acct(), ack: true, state: "SUBSCRIPTION_STATE_EXPIRED", expiresInMs: -1000 }));
     await refreshPurchases(admin.familyId, opts);
-    expect(await fam()).toMatchObject({ plan: "eGuard Plus", deviceLimit: 8, renewsAt: null });
-    expect(await db.alert.count({ where: { familyId: admin.familyId, title: "eGuard Family ended" } })).toBe(1);
+    expect(await fam()).toMatchObject({ plan: "Free", deviceLimit: 2, renewsAt: null });
+    expect(await db.alert.count({ where: { familyId: admin.familyId, title: "Family Pro ended" } })).toBe(1);
   });
 
   it("checks a lapsed purchase at most every 10 minutes", async () => {
@@ -163,7 +163,7 @@ describe("refreshPurchases", () => {
 
   it("leaves families without store purchases alone", async () => {
     await refreshPurchases(other.familyId, opts);
-    expect(await db.family.findUniqueOrThrow({ where: { id: other.familyId } })).toMatchObject({ plan: "eGuard Plus", deviceLimit: 8 });
+    expect(await db.family.findUniqueOrThrow({ where: { id: other.familyId } })).toMatchObject({ plan: "Free", deviceLimit: 2 });
   });
 });
 
@@ -171,7 +171,7 @@ describe("refunds and Real-time Developer Notifications", () => {
   const redeem = async (token: string) => {
     play.subs.set(token, playSub({ accountId: acct(), ack: true }));
     await redeemGooglePlay(admin, "eguard_family", token, opts);
-    expect((await fam()).plan).toBe("eGuard Family");
+    expect((await fam()).plan).toBe("Family Pro");
   };
 
   it("re-checks an active purchase once a day, so a revoked one ends before its paid period", async () => {
@@ -179,22 +179,22 @@ describe("refunds and Real-time Developer Notifications", () => {
     play.subs.set("tok-3", playSub({ accountId: acct(), ack: true, state: "SUBSCRIPTION_STATE_EXPIRED", expiresInMs: -1000 }));
     // Checked recently: nothing happens yet
     await refreshPurchases(admin.familyId, opts);
-    expect((await fam()).plan).toBe("eGuard Family");
+    expect((await fam()).plan).toBe("Family Pro");
     await db.storePurchase.updateMany({ where: { purchaseToken: "tok-3" }, data: { checkedAt: new Date(Date.now() - RECHECK_ACTIVE_MS - 1000) } });
     await refreshPurchases(admin.familyId, opts);
-    expect(await fam()).toMatchObject({ plan: "eGuard Plus", deviceLimit: 8 });
+    expect(await fam()).toMatchObject({ plan: "Free", deviceLimit: 2 });
   });
 
   it("a refund notification ends the plan right away, and the token can't be redeemed again", async () => {
     await redeem("tok-4");
     expect(await handlePlayNotification({ purchaseToken: "tok-4", voided: true }, opts)).toEqual({ handled: true });
-    expect(await fam()).toMatchObject({ plan: "eGuard Plus", deviceLimit: 8 });
+    expect(await fam()).toMatchObject({ plan: "Free", deviceLimit: 2 });
     expect((await db.storePurchase.findUniqueOrThrow({ where: { purchaseToken: "tok-4" } })).state).toBe("VOIDED");
     await expect(redeemGooglePlay(admin, "eguard_family", "tok-4", opts)).rejects.toMatchObject({ status: 409 });
     // A later routine refresh doesn't bring it back
     await db.storePurchase.updateMany({ where: { purchaseToken: "tok-4" }, data: { checkedAt: new Date(0) } });
     await refreshPurchases(admin.familyId, opts);
-    expect((await fam()).plan).toBe("eGuard Plus");
+    expect((await fam()).plan).toBe("Free");
   });
 
   it("a renewal notification moves the renewal date", async () => {

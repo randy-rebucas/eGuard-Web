@@ -100,16 +100,16 @@ type Customer = { email: string };
 const planCache = new Map<string, string>();
 
 /** The PayMongo plan for this price, created on first use, so changing the price in env needs no dashboard work. */
-export async function planFor(cfg: PaymongoConfig, interval: "month" | "year", amount: number, f: Fetch = fetch) {
-  const name = `eGuard Family ${interval === "month" ? "monthly" : "yearly"} ${(amount / 100).toFixed(2)} PHP`;
+export async function planFor(cfg: PaymongoConfig, planName: string, amount: number, f: Fetch = fetch) {
+  const name = `${planName} monthly ${(amount / 100).toFixed(2)} PHP`;
   const key = `${cfg.secretKey.slice(-8)}:${name}`;
   const hit = planCache.get(key);
   if (hit) return hit;
   const list = (await callList<Plan>(cfg, `/v1/subscriptions/plans?name=${encodeURIComponent(name)}&limit=100`, f))
     .find((p) => p.attributes.name === name && p.attributes.amount === amount && p.attributes.interval_count === 1);
   const plan = list ?? await call<Plan>(cfg, "POST", "/v1/subscriptions/plans", {
-    name, description: `eGuard Family, billed ${interval === "month" ? "every month" : "every year"}`,
-    amount, currency: "PHP", interval: interval === "month" ? "monthly" : "yearly", interval_count: 1,
+    name, description: `${planName}, billed every month`,
+    amount, currency: "PHP", interval: "monthly", interval_count: 1,
   }, f);
   planCache.set(key, plan.id);
   return plan.id;

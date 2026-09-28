@@ -1,0 +1,61 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useTransition } from "react";
+import { catchError, type ErrorInfo } from "next/error";
+import { Icon } from "./icon";
+
+type Failure = Error & { digest?: string };
+
+/** Production hides server error messages, so the parent gets a plain explanation and a reference for support. */
+function reason(error: Failure) {
+  return process.env.NODE_ENV === "production" ? null : error.message;
+}
+
+function useRetry(error: Failure, retry: () => void) {
+  const [pending, start] = useTransition();
+  useEffect(() => { console.error(error); }, [error]);
+  return [pending, () => start(() => retry())] as const;
+}
+
+/** Whole-page failure: the body of `error.tsx` files. */
+export function ErrorPanel({ error, retry, title = "This page couldn't load", home = "/dashboard" }: { error: Failure; retry: () => void; title?: string; home?: string }) {
+  const [pending, again] = useRetry(error, retry);
+  return (
+    <section className="card card-pad" role="alert">
+      <div className="empty">
+        <span className="ico-tile crit"><Icon name="triangle-alert" /></span>
+        <h3>{title}</h3>
+        <p>{reason(error) ?? "Something went wrong on our side. Your protections on devices aren't affected."}</p>
+        {error.digest ? <p className="t-meta num">Reference: {error.digest}</p> : null}
+        <div className="row" style={{ gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
+          <button className="btn btn-primary" onClick={again} disabled={pending}>
+            {pending ? <><Icon name="loader-circle" className="spin" />Trying again…</> : <><Icon name="refresh-cw" />Try again</>}
+          </button>
+          <Link className="btn btn-ghost" href={home}>Go to dashboard</Link>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function SectionError({ title, error, retry }: { title: string; error: Failure; retry: () => void }) {
+  const [pending, again] = useRetry(error, retry);
+  return (
+    <section className="card section-error" role="alert">
+      <span className="ico-tile crit"><Icon name="triangle-alert" /></span>
+      <div className="grow">
+        <div className="t-title">{title} couldn&apos;t load</div>
+        <div className="t-meta">{reason(error) ?? "The rest of the page is fine. Try this part again."}</div>
+      </div>
+      <button className="btn btn-secondary btn-sm" onClick={again} disabled={pending}>
+        {pending ? <><Icon name="loader-circle" className="spin" />Retrying…</> : <><Icon name="refresh-cw" />Retry</>}
+      </button>
+    </section>
+  );
+}
+
+/** Contains a failure to one part of a page, so a broken chart doesn't take the page down with it. */
+export const SectionBoundary = catchError((props: { title: string }, { error, retry }: ErrorInfo) => (
+  <SectionError title={props.title} error={error instanceof Error ? error : new Error(String(error))} retry={retry} />
+));

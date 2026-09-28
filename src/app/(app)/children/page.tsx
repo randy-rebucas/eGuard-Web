@@ -4,23 +4,25 @@ import { dateFromKey, dayKey, getFamily, getFamilyGraph } from "@/lib/queries";
 import { db } from "@/lib/db";
 import { fmtMinutes, fmtMinutesPadded } from "@/lib/protections";
 import { Icon } from "@/components/icon";
-import { EmptyState, PageHead } from "@/components/ui";
+import { EmptyState, PageHead, UpgradeNote } from "@/components/ui";
+import { childLimitReached } from "@/lib/family-service";
 import { ChildCard } from "@/components/cards";
 
 export const metadata = { title: "Children" };
 
 export default async function ChildrenPage() {
   const u = await requireUser();
-  const family = await getFamily(u.familyId);
-  const { children } = await getFamilyGraph(u.familyId);
+  const [family, { children }] = await Promise.all([getFamily(u.familyId), getFamilyGraph(u.familyId)]);
+  const full = childLimitReached(family.plan, children.length);
   const today = dateFromKey(dayKey(new Date(), family.timezone));
   const usage = await db.screenTimeDaily.groupBy({ by: ["childId"], where: { child: { familyId: u.familyId }, date: today }, _sum: { minutes: true } });
 
   return (
     <>
       <PageHead title="Children" text="Each child's protection status and devices. Select a child to adjust their protections.">
-        <Link className="btn btn-primary" href="/children/new"><Icon name="plus" />Add child</Link>
+        {full ? <Link className="btn btn-secondary" href="/settings/subscription"><Icon name="crown" />Upgrade to add more</Link> : <Link className="btn btn-primary" href="/children/new"><Icon name="plus" />Add child</Link>}
       </PageHead>
+      {full ? <UpgradeNote compact title="Child limit" text={full} /> : null}
       {children.length ? (
         <>
           <div className="children-grid">{children.map((c) => <ChildCard key={c.id} c={c} />)}</div>

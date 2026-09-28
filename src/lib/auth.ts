@@ -6,7 +6,7 @@ import { cache } from "react";
 import bcrypt from "bcryptjs";
 import type { Role } from "@prisma/client";
 import { db } from "./db";
-import { ServiceError } from "./errors";
+import { ServiceError, forbidden } from "./errors";
 import { LIMITS, clearLimit, hit, ipKey, isLimited } from "./rate-limit";
 
 const COOKIE = "eg_session";
@@ -93,7 +93,7 @@ export async function requireUser() {
 
 export async function requireAdmin() {
   const u = await requireUser();
-  if (u.role !== "FAMILY_ADMIN") throw new Error("Only the family admin can do this.");
+  if (u.role !== "FAMILY_ADMIN") throw forbidden();
   return u;
 }
 

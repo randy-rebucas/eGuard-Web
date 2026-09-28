@@ -5,8 +5,10 @@ import { db } from "@/lib/db";
 import { getFamily } from "@/lib/queries";
 import { clockTime } from "@/lib/format";
 import { visitsPage } from "@/lib/location";
+import { entitlementsFor } from "@/lib/plans";
+import { LOCATION_UPGRADE } from "@/lib/plan-access";
 import { dayGroup } from "@/lib/mobile-views";
-import { Avatar, EmptyState, PageHead, Timeline } from "@/components/ui";
+import { Avatar, EmptyState, PageHead, Timeline, UpgradeNote } from "@/components/ui";
 
 const PAGE = 50;
 
@@ -22,9 +24,16 @@ export default async function LocationHistoryPage(props: PageProps<"/location/[c
   const u = await requireUser();
   const { childId } = await props.params;
   const sp = await props.searchParams;
-  const child = await db.child.findFirst({ where: { id: childId, familyId: u.familyId } });
+  const [child, family] = await Promise.all([db.child.findFirst({ where: { id: childId, familyId: u.familyId } }), getFamily(u.familyId)]);
   if (!child) notFound();
-  const family = await getFamily(u.familyId);
+  if (!entitlementsFor(family.plan).locationSharing) {
+    return (
+      <>
+        <PageHead crumbs={[{ href: "/location", label: "Location" }]} title={`${child.name}'s places`} />
+        <section className="card card-pad"><UpgradeNote icon="map-pin-off" title="Location sharing isn't on your plan" text={`${LOCATION_UPGRADE} ${family.plan} keeps protections and screen time; location stays off.`} /></section>
+      </>
+    );
+  }
   const tz = family.timezone;
   const before = typeof sp.before === "string" && !Number.isNaN(Date.parse(sp.before)) ? new Date(sp.before) : undefined;
   const { visits, nextBefore } = family.keepLocationHistory ? await visitsPage(child.id, { before, limit: PAGE }) : { visits: [], nextBefore: null };

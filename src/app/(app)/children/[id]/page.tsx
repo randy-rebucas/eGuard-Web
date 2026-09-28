@@ -7,13 +7,15 @@ import { ago, dayTime } from "@/lib/format";
 import { toAlertItem, weeklySeries } from "@/lib/views";
 import { PROTECTION_BY_KEY, describeConfig, fmtMinutes, fmtMinutesPadded, type ProtectionConfig } from "@/lib/protections";
 import { Icon } from "@/components/icon";
-import { Avatar, CheckBadge, DeviceIcon, EmptyState, HealthRing, StatusBadge, Timeline, platformName } from "@/components/ui";
+import { Avatar, CheckBadge, DeviceIcon, EmptyState, HealthRing, StatusBadge, Timeline, UpgradeNote, platformName } from "@/components/ui";
 import { DeviceCard } from "@/components/cards";
 import { AlertRow } from "@/components/alerts";
 import { WeeklyChart } from "@/components/charts";
 import { FlowButton } from "@/components/flow";
 import { AppControls, ChildForm, DeleteChildForm } from "@/components/forms";
 import { requestedApps } from "@/lib/family-service";
+import { entitlementsFor } from "@/lib/plans";
+import { APPS_UPGRADE, LOCATION_UPGRADE, visibleApps } from "@/lib/plan-access";
 
 const TABS = [["overview", "Overview"], ["activity", "Activity"], ["apps", "Apps"], ["screen", "Screen Time"], ["protection", "Protection"], ["location", "Location"], ["devices", "Devices"], ["history", "History"]] as const;
 type Tab = (typeof TABS)[number][0];
@@ -30,9 +32,8 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
   const { id } = await props.params;
   const sp = await props.searchParams;
   const tab: Tab = (TABS.find(([k]) => k === sp.tab)?.[0] ?? "overview");
-  const family = await getFamily(u.familyId);
+  const [family, graph] = await Promise.all([getFamily(u.familyId), getFamilyGraph(u.familyId)]);
   const tz = family.timezone;
-  const graph = await getFamilyGraph(u.familyId);
   const c = graph.children.find((x) => x.id === id);
   if (!c) notFound();
   const d = c.primary;
@@ -152,13 +153,14 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
   }
 
   async function Apps() {
-    const apps = await db.childApp.findMany({ where: { childId: c!.id }, orderBy: [{ approval: "desc" }, { name: "asc" }] });
+    const all = await db.childApp.findMany({ where: { childId: c!.id }, orderBy: [{ approval: "desc" }, { name: "asc" }] });
     const today = dateFromKey(dayKey(new Date(), tz));
     const usage = await appMinutesOn([c!.id], today);
     const approval = c!.policies.find((p) => p.key === "APP_APPROVAL")?.config as { enabled?: boolean } | undefined;
     const label = { ALLOWED: "Allowed", ALWAYS_ALLOWED: "Always allowed", FILTERED: "Filtered", BLOCKED: "Blocked", PENDING: "Waiting for your approval" };
     const requested = await requestedApps(c!.id);
-    const pending = apps.filter((a) => a.approval === "PENDING" || requested.has(a.name));
+    const pending = all.filter((a) => a.approval === "PENDING" || requested.has(a.name));
+    const { apps, hidden } = visibleApps(all, entitlementsFor(family.plan).appMonitoringLimit, { requested, minutes: (n) => usage.find((x) => x.app === n)?.minutes ?? 0 });
     return (
       <section className="card card-pad">
         <div className="card-head">
@@ -176,6 +178,7 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
             </div>
           );
         })}
+        {hidden ? <div style={{ marginTop: 12 }}><UpgradeNote compact icon="app-window" title="More apps" text={`${hidden} more app${hidden > 1 ? "s" : ""} not shown. ${family.plan} shows apps waiting for approval and the most used. ${APPS_UPGRADE}`} /></div> : null}
         {!apps.length ? <EmptyState icon="app-window" title="No apps reported yet" text="Apps appear here once a device syncs." /> : null}
       </section>
     );
@@ -210,6 +213,9 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
   }
 
   function Location() {
+    if (!entitlementsFor(family.plan).locationSharing) {
+      return <section className="card card-pad"><UpgradeNote icon="map-pin-off" title="Location sharing isn't on your plan" text={LOCATION_UPGRADE} /></section>;
+    }
     const withLoc = c!.devices.find((x) => x.location?.sharing && x.location.lat != null);
     const sharingOff = c!.devices.find((x) => x.location && !x.location.sharing);
     return (

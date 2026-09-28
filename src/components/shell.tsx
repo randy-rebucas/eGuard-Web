@@ -23,16 +23,17 @@ function useActive() {
   return (href: string) => (href === "/dashboard" ? path === "/dashboard" || path === "/notifications" : path.startsWith(href));
 }
 
-export type PlanInfo = { plan: string; used: number; limit: number };
+/** The sidebar plan card: children on the plan, and whether there's a bigger plan to offer */
+export type PlanInfo = { plan: string; used: number; limit: number; upgrade: boolean };
 
 function PlanCard({ plan }: { plan: PlanInfo }) {
-  const pct = Math.round((plan.used / plan.limit) * 100);
+  const pct = Math.min(100, Math.round((plan.used / plan.limit) * 100));
   return (
     <div className="plan">
       <div className="plan-top"><Icon name="crown" />{plan.plan}</div>
-      <p className="num">{plan.used} of {plan.limit} devices used</p>
-      <div className="meter" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Devices used"><span style={{ width: `${pct}%` }} /></div>
-      <Link className="link-btn" href="/settings/subscription">Manage plan <Icon name="arrow-right" /></Link>
+      <p className="num">{plan.used} of {plan.limit} {plan.limit === 1 ? "child" : "children"}</p>
+      <div className="meter" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Children on your plan"><span style={{ width: `${pct}%` }} /></div>
+      <Link className="link-btn" href="/settings/subscription">{plan.upgrade ? <>Upgrade <Icon name="arrow-right" /></> : <>Manage plan <Icon name="arrow-right" /></>}</Link>
     </div>
   );
 }
@@ -104,6 +105,7 @@ function SearchBar() {
   const router = useRouter();
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<Hit[] | null>(null);
+  const [searchFailed, setSearchFailed] = useState(false);
   const [sel, setSel] = useState(0);
   const [openMobile, setOpenMobile] = useState(false);
   const input = useRef<HTMLInputElement>(null);
@@ -116,8 +118,11 @@ function SearchBar() {
     const t = setTimeout(async () => {
       try {
         const r = await fetch(`/api/search?q=${encodeURIComponent(term)}`, { signal: ctrl.signal });
-        if (r.ok) { setHits((await r.json()).results); setSel(0); }
-      } catch { /* aborted */ }
+        if (!r.ok) throw new Error(String(r.status));
+        setHits((await r.json()).results); setSel(0); setSearchFailed(false);
+      } catch {
+        if (!ctrl.signal.aborted) { setHits([]); setSearchFailed(true); }
+      }
     }, 150);
     return () => { clearTimeout(t); ctrl.abort(); };
   }, [q]);
@@ -168,7 +173,9 @@ function SearchBar() {
                 </div>
               );
             }) : (
-              <div className="empty" style={{ padding: 24 }}><Icon name="search-x" /><p>No matches for “{q}”. Try a child&apos;s name, a device, or a setting.</p></div>
+              searchFailed
+                ? <div className="empty" role="alert" style={{ padding: 24 }}><Icon name="wifi-off" /><p>Search isn&apos;t available right now. Check your connection and try again.</p></div>
+                : <div className="empty" style={{ padding: 24 }}><Icon name="search-x" /><p>No matches for “{q}”. Try a child&apos;s name, a device, or a setting.</p></div>
             )}
           </div>
         ) : null}
@@ -214,7 +221,8 @@ function ProfileMenu({ name, email, role, theme }: { name: string; email: string
     setCurrent(t);
     if (t === "system") document.documentElement.removeAttribute("data-theme");
     else document.documentElement.setAttribute("data-theme", t);
-    start(() => setTheme(t));
+    // The theme is already applied on this page; if saving fails it only resets on the next visit
+    start(async () => { try { await setTheme(t); } catch { /* offline */ } });
   };
   const initials = name.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase();
   return (

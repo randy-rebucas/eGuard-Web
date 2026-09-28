@@ -6,6 +6,7 @@ import {
   ClipboardCheck, Laptop, Menu, Plus, Settings, ShieldCheck, Smartphone, Sparkles, Star, Tablet, Users, type LucideIcon,
 } from "lucide-react";
 import { getUser } from "@/lib/auth";
+import { PLANS as PLAN_CATALOG, webPrice } from "@/lib/plans";
 import { LogoMark } from "@/components/logo";
 import { PhoneDashboard, PhoneScreenTime } from "@/components/landing-phones";
 import "./landing.css";
@@ -72,17 +73,17 @@ const STEPS: [LucideIcon, string, string][] = [
   [ChartNoAxesColumnIncreasing, "Build Healthy Habits", "Manage screen time, apps, and location settings."],
 ];
 
-const PLANS = [
-  { name: "Free", blurb: "Get started with essential protection tools.", price: "0",
-    perks: ["Up to 1 child", "Basic protection setup", "Screen time management", "App monitoring (limited)", "Email support"],
-    cta: "Get Started", style: "lp-btn-soft" },
-  { name: "eGuard Plus", blurb: "Complete protection for growing families.", price: "149", featured: true,
-    perks: ["Up to 5 children", "Full protection features", "Configuration verification", "Real-time alerts", "Location sharing", "Priority support"],
-    cta: "Start 7-Day Free Trial", style: "lp-btn-primary" },
-  { name: "Family Pro", blurb: "Advanced features for larger families.", price: "249",
-    perks: ["Up to 10 children", "All Plus features", "Advanced reports", "API access (schools/organizations)", "Dedicated support"],
-    cta: "Get Started", style: "lp-btn-outline" },
-];
+/** Names, perks and prices come from the plan catalogue, so this page always matches what's sold. */
+const PLAN_LOOK = {
+  FREE: { cta: "Get Started", style: "lp-btn-soft", featured: false },
+  PLUS: { cta: "Get eGuard Plus", style: "lp-btn-primary", featured: true },
+  PRO: { cta: "Get Family Pro", style: "lp-btn-outline", featured: false },
+} as const;
+const pesos = (centavos: number) => (centavos % 100 ? (centavos / 100).toFixed(2) : String(centavos / 100));
+const PLANS = PLAN_CATALOG.map((p) => ({
+  name: p.name, blurb: p.blurb, price: p.id === "FREE" ? "0" : pesos(webPrice(p.id)),
+  perks: p.features.map((f) => f.label), ...PLAN_LOOK[p.id],
+}));
 
 const FAQS = [
   ["How does eGuard work?",

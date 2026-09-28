@@ -441,7 +441,28 @@ button.check-item:hover{border-color:var(--line-strong); background:var(--surfac
 .check input{width:20px; height:20px; margin:1px 0 0; accent-color:var(--accent-btn)}
 .toasts{position:fixed; right:24px; bottom:calc(24px + env(safe-area-inset-bottom,0px)); z-index:80; display:flex; flex-direction:column; gap:10px; max-width:min(380px, calc(100vw - 32px))}
 .toast{display:flex; gap:10px; align-items:flex-start; padding:14px 16px; border-radius:14px; background:var(--ink); color:var(--bg); box-shadow:var(--shadow-lg); font-size:14px; animation:rise .25s var(--ease)}
-.toast .lucide{color:var(--accent)}
+.toast .lucide{color:var(--accent); flex:none; margin-top:1px}
+.toast.ok .lucide{color:var(--ok)}
+.toast.error{box-shadow:inset 3px 0 0 var(--crit), var(--shadow-lg)}
+.toast.error .lucide{color:var(--crit)}
+.toast .toast-x{display:grid; place-items:center; width:24px; height:24px; margin:-2px -6px 0 0; border:0; border-radius:8px; background:none; color:inherit; opacity:.6; cursor:pointer}
+.toast .toast-x:hover,.toast .toast-x:focus-visible{opacity:1}
+.toast .toast-x .lucide{color:inherit; margin:0}
+.btn .spin{flex:none}
+.upgrade-note{display:flex; gap:10px; align-items:center; flex-wrap:wrap; padding:12px 14px; border-radius:12px; background:var(--accent-soft); color:var(--ink-2); font-size:14px}
+.upgrade-note > .lucide{color:var(--accent-ink); flex:none}
+.upgrade-note .grow{min-width:180px}
+.plan-grid{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px}
+.plan-option{display:flex; flex-direction:column; gap:10px; padding:18px; border:1px solid var(--line); border-radius:var(--r); background:var(--surface-2)}
+.plan-option[aria-current="true"]{border-color:var(--accent); box-shadow:inset 0 0 0 1px var(--accent)}
+.plan-option ul{list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:6px; font-size:14px; color:var(--ink-2)}
+.plan-option li{display:flex; gap:8px; align-items:flex-start}
+.plan-option li .lucide{color:var(--ok); flex:none; margin-top:2px; width:16px; height:16px}
+.plan-option .price{font-family:var(--display); font-size:26px; font-weight:600; color:var(--ink)}
+.plan-option .price small{font-size:14px; font-weight:500; color:var(--ink-3)}
+@media (max-width: 900px){ .plan-grid{grid-template-columns:minmax(0,1fr)} }
+.section-error{display:flex; gap:12px; align-items:center; flex-wrap:wrap; padding:18px 20px}
+.section-error .grow{min-width:180px}
 .drawer-scrim{position:fixed; inset:0; z-index:70; background:rgba(7,18,38,.45); animation:fade .2s}
 .drawer{position:fixed; left:0; top:0; bottom:0; width:min(300px, 86vw); z-index:71; background:var(--surface); padding:calc(20px + env(safe-area-inset-top,0px)) 16px 20px; display:flex; flex-direction:column; gap:22px; animation:slide .25s var(--ease); overflow:auto}
 .bottom-nav{display:none}

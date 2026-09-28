@@ -1,19 +1,20 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { ProtectionKey } from "@prisma/client";
 import { Icon } from "./icon";
-import { Avatar, CheckBadge, HealthRing } from "./ui";
+import { Avatar, CheckBadge, HealthRing, Loading } from "./ui";
 import { cancelBatch, confirmGuided, getFlowChildren, getFlowContext, startCheck, submitConfig, type FlowContext } from "@/app/actions/config";
 import { CAPABILITY_META, PROTECTIONS, PROTECTION_BY_KEY, describeConfig, type Capability, type ProtectionConfig } from "@/lib/protections";
 
 /* ================= Context ================= */
 
+export type ToastTone = "info" | "ok" | "error";
 type Ctx = {
   openFlow: (o?: { key?: ProtectionKey; childId?: string }) => void;
   runCheck: (deviceId?: string) => void;
-  toast: (msg: string) => void;
+  toast: (msg: string, tone?: ToastTone) => void;
 };
 const FlowCtx = createContext<Ctx | null>(null);
 export const useFlow = () => {
@@ -22,27 +23,66 @@ export const useFlow = () => {
   return c;
 };
 
+/** Shown when an action fails for a reason the server didn't explain (offline, server error). */
+export const FAILED = "Something went wrong. Check your connection and try again.";
+
+const TOAST_ICON: Record<ToastTone, string> = { info: "info", ok: "circle-check", error: "triangle-alert" };
+
+/**
+ * Runs a server action in a transition with the app's feedback rules:
+ * `{ error }` or a thrown failure shows an error toast (and calls `onError` to roll back),
+ * success shows `ok` if given. A throw never reaches the page's error boundary.
+ */
+export function useAction() {
+  const [pending, start] = useTransition();
+  const { toast } = useFlow();
+  const run = useCallback(<T,>(fn: () => Promise<T>, o: { ok?: string | ((r: T) => string); onOk?: (r: T) => void; onError?: () => void } = {}) =>
+    start(async () => {
+      let r: T;
+      try {
+        r = await fn();
+      } catch {
+        o.onError?.();
+        toast(FAILED, "error");
+        return;
+      }
+      const error = (r as { error?: string } | undefined)?.error;
+      if (error) { o.onError?.(); toast(error, "error"); return; }
+      o.onOk?.(r);
+      const msg = typeof o.ok === "function" ? o.ok(r) : o.ok;
+      if (msg) toast(msg, "ok");
+    }), [toast]);
+  return [pending, run] as const;
+}
+
 export function FlowProvider({ children }: { children: React.ReactNode }) {
   const [flow, setFlow] = useState<{ key?: ProtectionKey; childId?: string; n: number } | null>(null);
   const [check, setCheck] = useState<{ deviceId?: string; n: number } | null>(null);
-  const [toasts, setToasts] = useState<{ id: number; msg: string }[]>([]);
-  const toast = useCallback((msg: string) => {
+  const [toasts, setToasts] = useState<{ id: number; msg: string; tone: ToastTone }[]>([]);
+  const dismiss = useCallback((id: number) => setToasts((t) => t.filter((x) => x.id !== id)), []);
+  const toast = useCallback((msg: string, tone: ToastTone = "info") => {
     const id = Date.now() + Math.random();
-    setToasts((t) => [...t, { id, msg }]);
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4500);
-  }, []);
-  const value: Ctx = {
+    // The same message twice in a row (a double click) replaces the first rather than stacking
+    setToasts((t) => [...t.filter((x) => x.msg !== msg), { id, msg, tone }].slice(-3));
+    setTimeout(() => dismiss(id), tone === "error" ? 8000 : 4500);
+  }, [dismiss]);
+  const value = useMemo<Ctx>(() => ({
     openFlow: (o) => setFlow({ ...o, n: Date.now() }),
     runCheck: (deviceId) => setCheck({ deviceId, n: Date.now() }),
     toast,
-  };
+  }), [toast]);
   return (
     <FlowCtx.Provider value={value}>
       {children}
       {flow ? <ConfigFlow key={flow.n} initialKey={flow.key} initialChild={flow.childId} onClose={() => setFlow(null)} /> : null}
       {check ? <CheckDialog key={check.n} deviceId={check.deviceId} onClose={() => setCheck(null)} /> : null}
       <div className="toasts" aria-live="polite">
-        {toasts.map((t) => <div className="toast" key={t.id}><Icon name="info" /><span>{t.msg}</span></div>)}
+        {toasts.map((t) => (
+          <div className={`toast ${t.tone}`} key={t.id} role={t.tone === "error" ? "alert" : "status"}>
+            <Icon name={TOAST_ICON[t.tone]} /><span className="grow">{t.msg}</span>
+            <button type="button" className="toast-x" aria-label="Dismiss" onClick={() => dismiss(t.id)}><Icon name="x" size={16} /></button>
+          </div>
+        ))}
       </div>
     </FlowCtx.Provider>
   );
@@ -121,38 +161,60 @@ function ConfigFlow({ initialKey, initialChild, onClose }: { initialKey?: Protec
   const [batchId, setBatchId] = useState<string | null>(null);
   const [batch, setBatch] = useState<BatchState | null>(null);
   const [guidedDone, setGuidedDone] = useState(false);
+  /** Loading the flow failed: nothing to show but the reason and a retry */
   const [error, setError] = useState<string | null>(null);
+  /** An action failed: shown above the current step, which stays usable */
+  const [notice, setNotice] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [offline, setOffline] = useState(false);
   const startedAt = useRef(0);
   const [timedOut, setTimedOut] = useState(false);
 
   // Load children when needed
-  useEffect(() => { if (!childId) getFlowChildren().then(setKids).catch((e) => setError(String(e.message ?? e))); }, [childId]);
+  useEffect(() => {
+    if (childId) return;
+    let alive = true;
+    getFlowChildren().then((k) => alive && setKids(k)).catch(() => alive && setError(FAILED));
+    return () => { alive = false; };
+  }, [childId, attempt]);
   // Load context once protection + child are known
   useEffect(() => {
     if (!key || !childId) return;
+    let alive = true;
     getFlowContext(childId, key)
-      .then((c) => { setCtx(c); setDraft(c.policy); setStep(1); })
-      .catch((e) => setError(String(e.message ?? e)));
-  }, [key, childId]);
+      .then((c) => {
+        if (!alive) return;
+        if (c.error !== undefined) { setError(c.error); return; }
+        setCtx(c); setDraft(c.policy); setStep(1);
+      })
+      .catch(() => alive && setError(FAILED));
+    return () => { alive = false; };
+  }, [key, childId, attempt]);
 
   // Poll batch status during apply/verify
   useEffect(() => {
     if (!batchId || step < 3 || step > 4) return;
-    let alive = true;
+    let alive = true, misses = 0;
     const tick = async () => {
       try {
         const r = await fetch(`/api/flow/${batchId}`);
-        if (!r.ok) return;
+        if (!alive) return;
+        if (r.status === 404) { clearInterval(t); setError("This change is no longer available. It may have been cancelled."); return; }
+        if (!r.ok) throw new Error(String(r.status));
         const data: BatchState = await r.json();
         if (!alive) return;
+        misses = 0; setOffline(false);
         setBatch(data);
         const awaitingParent = data.requests.some((x) => x.status === "AWAITING_PARENT");
         const open = data.requests.some((x) => OPEN.includes(x.status) && x.status !== "AWAITING_PARENT");
         if (step === 3 && !awaitingParent) setStep(4);
         if (step === 4 && !open && !awaitingParent) { setStep(5); router.refresh(); }
         if (step === 4 && Date.now() - startedAt.current > 20_000) setTimedOut(true);
-      } catch { /* retry next tick */ }
+      } catch {
+        // Keep polling; after a few misses in a row, say so rather than spinning silently
+        if (alive && ++misses >= 4) setOffline(true);
+      }
     };
     tick();
     const t = setInterval(tick, 1200);
@@ -162,14 +224,37 @@ function ConfigFlow({ initialKey, initialChild, onClose }: { initialKey?: Protec
   const def = key ? PROTECTION_BY_KEY[key] : null;
   const supported = ctx?.devices.filter((d) => d.capability !== "UNSUPPORTED") ?? [];
 
+  const retry = () => { setError(null); setNotice(null); setCtx(null); setKids(null); setBatchId(null); setBatch(null); setStep(0); setAttempt((n) => n + 1); };
+
+  /** Runs one of the flow's actions; a failure becomes the inline notice. */
+  const act = async <T,>(fn: () => Promise<T | { error: string }>): Promise<T | null> => {
+    setBusy(true); setNotice(null);
+    try {
+      const r = await fn();
+      if (r && typeof r === "object" && "error" in r && typeof r.error === "string") { setNotice(r.error); return null; }
+      return r as T;
+    } catch {
+      setNotice(FAILED);
+      return null;
+    } finally { setBusy(false); }
+  };
+
   const submit = async () => {
     if (!ctx || !draft) return;
-    setBusy(true); setError(null);
-    try {
-      const { batchId } = await submitConfig(ctx.child.id, draft);
-      setBatchId(batchId); startedAt.current = Date.now(); setStep(3); setConfirming(false);
-    } catch (e) { setError(e instanceof Error ? e.message : "Couldn't send the change."); setConfirming(false); }
-    finally { setBusy(false); }
+    const r = await act(() => submitConfig(ctx.child.id, draft));
+    setConfirming(false);
+    if (!r?.batchId) return;
+    setBatchId(r.batchId); startedAt.current = Date.now(); setStep(3);
+  };
+
+  const cancelChange = async () => {
+    if (!batchId) return onClose();
+    if (await act(() => cancelBatch(batchId))) { toast("Change cancelled. Nothing was changed on the device.", "ok"); onClose(); }
+  };
+
+  const verifyGuided = async () => {
+    if (!batchId) return;
+    if (await act(() => confirmGuided(batchId))) { startedAt.current = Date.now(); setStep(4); }
   };
 
   const resume = (id: string) => { setBatchId(id); startedAt.current = Date.now(); setStep(3); };
@@ -194,7 +279,7 @@ function ConfigFlow({ initialKey, initialChild, onClose }: { initialKey?: Protec
         </div>
         <div className="dialog-foot">
           <button className="btn btn-ghost" onClick={() => setConfirming(false)}>Cancel</button>
-          <button className="btn btn-primary" onClick={submit} disabled={busy} data-autofocus>{busy ? "Sending…" : "Continue"}</button>
+          <button className="btn btn-primary" onClick={submit} disabled={busy} data-autofocus>{busy ? <><Icon name="loader-circle" className="spin" />Sending…</> : "Continue"}</button>
         </div>
       </Dialog>
     );
@@ -221,7 +306,7 @@ function ConfigFlow({ initialKey, initialChild, onClose }: { initialKey?: Protec
 
   if (error) {
     body = <div className="form-error" role="alert"><Icon name="triangle-alert" />{error}</div>;
-    foot = <button className="btn btn-primary" onClick={onClose}>Close</button>;
+    foot = <><button className="btn btn-ghost" onClick={onClose}>Close</button><button className="btn btn-primary" onClick={retry} data-autofocus><Icon name="refresh-cw" />Try again</button></>;
   } else if (!key) {
     body = (
       <>
@@ -234,7 +319,7 @@ function ConfigFlow({ initialKey, initialChild, onClose }: { initialKey?: Protec
       </>
     );
   } else if (!childId) {
-    body = !kids ? <div className="skeleton" style={{ height: 120 }} /> : kids.length ? (
+    body = !kids ? <Loading height={120} label="Loading children" /> : kids.length ? (
       <>
         <p className="muted" style={{ marginBottom: 12 }}>Which child is this for?</p>
         {kids.map((c) => (
@@ -248,7 +333,7 @@ function ConfigFlow({ initialKey, initialChild, onClose }: { initialKey?: Protec
       </>
     ) : <p className="muted">Add a child first.</p>;
   } else if (!ctx || !draft) {
-    body = <div className="skeleton" style={{ height: 140 }} />;
+    body = <Loading height={140} label="Loading current settings" />;
   } else if (step === 1) {
     body = (
       <>
@@ -293,9 +378,11 @@ function ConfigFlow({ initialKey, initialChild, onClose }: { initialKey?: Protec
         ) : null}
         <div className="progress-list">
           {(batch?.requests ?? []).map((r) => <RequestRow key={r.id} r={r} />)}
-          {!batch ? <div className="skeleton" style={{ height: 80 }} /> : null}
+          {!batch ? <Loading height={80} label="Sending to devices" /> : null}
         </div>
-        {timedOut ? (
+        {offline ? (
+          <p className="form-error" role="alert" style={{ marginTop: 12 }}><Icon name="wifi-off" />Can&apos;t reach eGuard right now. Still trying; the change stays queued either way.</p>
+        ) : timedOut ? (
           <p className="form-ok" style={{ marginTop: 12 }}><Icon name="info" />Some devices haven&apos;t answered yet. eGuard keeps the change waiting and verifies it when they sync. You can close this.</p>
         ) : (
           <p className="t-meta" style={{ marginTop: 10 }}>Devices must be online. This usually takes a few seconds.</p>
@@ -304,8 +391,8 @@ function ConfigFlow({ initialKey, initialChild, onClose }: { initialKey?: Protec
     );
     foot = step === 3 && guided.length ? (
       <>
-        <button className="btn btn-ghost" onClick={async () => { if (batchId) await cancelBatch(batchId); onClose(); }}>Cancel change</button>
-        <button className="btn btn-primary" disabled={!guidedDone || busy} onClick={async () => { setBusy(true); await confirmGuided(batchId!); setBusy(false); startedAt.current = Date.now(); setStep(4); }}>Verify now</button>
+        <button className="btn btn-ghost" disabled={busy} onClick={cancelChange}>Cancel change</button>
+        <button className="btn btn-primary" disabled={!guidedDone || busy} onClick={verifyGuided}>{busy ? <><Icon name="loader-circle" className="spin" />Working…</> : "Verify now"}</button>
       </>
     ) : (
       <><button className="btn btn-secondary" onClick={close}>{timedOut ? "Close" : "Continue in background"}</button><button className="btn btn-primary" disabled>Verifying…</button></>
@@ -343,7 +430,10 @@ function ConfigFlow({ initialKey, initialChild, onClose }: { initialKey?: Protec
     <Dialog labelledBy="flow-title" onClose={close}>
       {head}
       {ctx && !error ? stepper : null}
-      <div className="dialog-body">{body}</div>
+      <div className="dialog-body">
+        {notice && !error ? <div className="form-error" role="alert" style={{ marginBottom: 12 }}><Icon name="triangle-alert" />{notice}</div> : null}
+        {body}
+      </div>
       {foot ? <div className="dialog-foot">{foot}</div> : null}
     </Dialog>
   );
@@ -441,16 +531,31 @@ function CheckDialog({ deviceId, onClose }: { deviceId?: string; onClose: () => 
   const [state, setState] = useState<CheckState | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => { startCheck(deviceId).then((r) => setRunId(r.runId)).catch((e) => setError(e.message)); }, [deviceId]);
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    let alive = true;
+    startCheck(deviceId)
+      .then((r) => { if (alive) { if (r.error !== undefined) setError(r.error); else setRunId(r.runId); } })
+      .catch(() => alive && setError(FAILED));
+    return () => { alive = false; };
+  }, [deviceId, attempt]);
   useEffect(() => {
     if (!runId) return;
-    let alive = true;
+    let alive = true, misses = 0;
     const tick = async () => {
-      const r = await fetch(`/api/checks/${runId}`);
-      if (!r.ok || !alive) return;
-      const data: CheckState = await r.json();
-      setState(data);
-      if (data.status === "COMPLETED") { clearInterval(t); router.refresh(); }
+      try {
+        const r = await fetch(`/api/checks/${runId}`);
+        if (!alive) return;
+        if (!r.ok) throw new Error(String(r.status));
+        const data: CheckState = await r.json();
+        if (!alive) return;
+        misses = 0; setError(null);
+        setState(data);
+        if (data.status === "COMPLETED") { clearInterval(t); router.refresh(); }
+      } catch {
+        if (alive && ++misses >= 5) setError("Can't reach eGuard right now. Still trying; the check keeps running on the devices.");
+      }
     };
     const t = setInterval(tick, 900);
     tick();
@@ -458,6 +563,8 @@ function CheckDialog({ deviceId, onClose }: { deviceId?: string; onClose: () => 
   }, [runId, router]);
 
   const done = state?.status === "COMPLETED";
+  // Starting the check failed: nothing is running, so offer to start again
+  const failedToStart = !!error && !runId;
   return (
     <Dialog labelledBy="rc-title" onClose={onClose}>
       <div className="dialog-head">
@@ -466,7 +573,7 @@ function CheckDialog({ deviceId, onClose }: { deviceId?: string; onClose: () => 
         <button className="icon-btn" data-close aria-label="Close" onClick={onClose}><Icon name="x" /></button>
       </div>
       <div className="dialog-body">
-        {error ? <div className="form-error"><Icon name="triangle-alert" />{error}</div> : null}
+        {error ? <div className="form-error" role="alert" style={{ marginBottom: 12 }}><Icon name={runId ? "wifi-off" : "triangle-alert"} />{error}</div> : null}
         <div className="progress-list">
           {state?.results.map((r) => (
             <div className="pl" key={r.deviceId}>
@@ -477,7 +584,7 @@ function CheckDialog({ deviceId, onClose }: { deviceId?: string; onClose: () => 
                 : r.reachable === false ? <span className="pill tone-muted">Couldn&apos;t reach</span> : <span className="t-meta">Checking…</span>}
             </div>
           ))}
-          {!state && !error ? <div className="skeleton" style={{ height: 120 }} /> : null}
+          {!state && !failedToStart ? <Loading height={120} label="Starting the check" /> : null}
         </div>
         {done && state ? (
           <div aria-live="polite">
@@ -492,7 +599,16 @@ function CheckDialog({ deviceId, onClose }: { deviceId?: string; onClose: () => 
           </div>
         ) : null}
       </div>
-      <div className="dialog-foot"><button className="btn btn-primary" onClick={onClose} disabled={!done && !error}>Done</button></div>
+      <div className="dialog-foot">
+        {failedToStart ? (
+          <><button className="btn btn-ghost" onClick={onClose}>Close</button><button className="btn btn-primary" onClick={() => { setError(null); setAttempt((n) => n + 1); }}><Icon name="refresh-cw" />Try again</button></>
+        ) : done ? (
+          <button className="btn btn-primary" onClick={onClose}>Done</button>
+        ) : (
+          // Closing mid-check is fine: the run finishes and the result shows on the Protection page
+          <><button className="btn btn-secondary" onClick={onClose}>Continue in background</button><button className="btn btn-primary" disabled><Icon name="loader-circle" className="spin" />Checking…</button></>
+        )}
+      </div>
     </Dialog>
   );
 }

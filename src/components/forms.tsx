@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useState, useTransition } from "react";
 import type { AppApproval } from "@prisma/client";
 import { Icon } from "./icon";
-import { useFlow } from "./flow";
+import { useAction, useFlow } from "./flow";
 import type { FormState } from "@/app/actions/auth";
 import {
   addParent, changePassword, createChild, createPairingCode, deleteAccount, deleteChildData, pairingStatus, removeDevice, removeParent, renameDevice,
@@ -48,7 +48,7 @@ export function DeleteChildForm({ childId, name }: { childId: string; name: stri
       <p className="t-meta" style={{ color: "var(--ink-2)" }}>This deletes {name}&apos;s activity, history and devices from eGuard. Protections on the devices stop being managed. Enter your password to confirm.</p>
       <Feedback state={state} />
       <div className="field"><label htmlFor="del-pw">Your password</label><input className="input" id="del-pw" name="password" type="password" required autoComplete="current-password" /></div>
-      <div className="row"><button type="button" className="btn btn-ghost" onClick={() => setOpen(false)}>Cancel</button><button className="btn btn-primary" style={{ background: "var(--crit)" }} disabled={pending}>Delete {name}&apos;s data</button></div>
+      <div className="row"><button type="button" className="btn btn-ghost" disabled={pending} onClick={() => setOpen(false)}>Cancel</button><button className="btn btn-primary" style={{ background: "var(--crit)" }} disabled={pending}>{pending ? "Deleting…" : <>Delete {name}&apos;s data</>}</button></div>
     </form>
   );
 }
@@ -56,27 +56,47 @@ export function DeleteChildForm({ childId, name }: { childId: string; name: stri
 const APPROVALS: [AppApproval, string][] = [["ALLOWED", "Allowed"], ["ALWAYS_ALLOWED", "Always allowed"], ["FILTERED", "Filtered"], ["BLOCKED", "Blocked"], ["PENDING", "Pending"]];
 
 export function AppControls({ app }: { app: { id: string; name: string; approval: AppApproval; dailyLimitMinutes: number | null; requested?: boolean } }) {
-  const [pending, start] = useTransition();
-  const { toast } = useFlow();
-  const [limit, setLimit] = useState(app.dailyLimitMinutes ? String(app.dailyLimitMinutes) : "");
+  const [pending, run] = useAction();
+  const saved = app.dailyLimitMinutes ? String(app.dailyLimitMinutes) : "";
+  const [limit, setLimit] = useState(saved);
+  // Shown immediately; the server's value takes over once the page refreshes, or comes back on failure
+  const [approval, setApproval] = useState<AppApproval | null>(null);
+  const approve = (to: AppApproval, ok: string) => {
+    setApproval(to);
+    run(() => setAppApproval(app.id, to), { ok, onError: () => setApproval(null), onOk: () => setApproval(null) });
+  };
+  const saveLimit = () => {
+    if (limit === saved) return;
+    const minutes = limit ? Number(limit) : null;
+    if (minutes != null && (!Number.isFinite(minutes) || minutes < 0)) { setLimit(saved); return; }
+    run(() => setAppLimit(app.id, minutes), {
+      ok: minutes ? `${app.name} limited to ${minutes} minutes a day.` : `Daily limit removed for ${app.name}.`,
+      onError: () => setLimit(saved),
+    });
+  };
   return (
-    <div className="row" style={{ gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+    <div className="row" style={{ gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }} aria-busy={pending}>
       {app.approval === "PENDING" || app.requested ? (
         <>
-          <button className="btn btn-primary btn-sm" disabled={pending} onClick={() => start(async () => { await setAppApproval(app.id, "ALLOWED"); toast(`${app.name} approved. It applies on the device's next sync.`); })}>Approve</button>
-          <button className="btn btn-secondary btn-sm" disabled={pending} onClick={() => start(async () => { await setAppApproval(app.id, "BLOCKED"); toast(`${app.name} declined.`); })}>Decline</button>
+          <button className="btn btn-primary btn-sm" disabled={pending} onClick={() => approve("ALLOWED", `${app.name} approved. It applies on the device's next sync.`)}>
+            {pending && approval === "ALLOWED" ? <><Icon name="loader-circle" className="spin" />Approving…</> : "Approve"}
+          </button>
+          <button className="btn btn-secondary btn-sm" disabled={pending} onClick={() => approve("BLOCKED", `${app.name} declined.`)}>
+            {pending && approval === "BLOCKED" ? <><Icon name="loader-circle" className="spin" />Declining…</> : "Decline"}
+          </button>
         </>
       ) : (
         <>
           <label className="sr-only" htmlFor={`ap-${app.id}`}>Access for {app.name}</label>
-          <select id={`ap-${app.id}`} className="input" style={{ height: 36 }} value={app.approval} disabled={pending}
-            onChange={(e) => start(async () => { await setAppApproval(app.id, e.target.value as AppApproval); toast(`${app.name} updated. It applies on the device's next sync.`); })}>
+          <select id={`ap-${app.id}`} className="input" style={{ height: 36 }} value={approval ?? app.approval} disabled={pending}
+            onChange={(e) => approve(e.target.value as AppApproval, `${app.name} updated. It applies on the device's next sync.`)}>
             {APPROVALS.filter(([k]) => k !== "PENDING").map(([k, l]) => <option key={k} value={k}>{l}</option>)}
           </select>
           <label className="sr-only" htmlFor={`lim-${app.id}`}>Daily limit for {app.name} in minutes</label>
           <input id={`lim-${app.id}`} className="input" style={{ height: 36, width: 110 }} type="number" min={0} step={15} placeholder="No limit" value={limit}
             onChange={(e) => setLimit(e.target.value)}
-            onBlur={() => start(async () => { await setAppLimit(app.id, limit ? Number(limit) : null); })} />
+            onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+            onBlur={saveLimit} />
         </>
       )}
     </div>
@@ -148,7 +168,7 @@ export function PairDevice({ kids: children, used, limit }: { kids: { id: string
             {children.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </div>
-        <button className="btn btn-primary" disabled={pending || full} onClick={getCode}><Icon name="plus" />{code ? "Get a new code" : "Get pairing code"}</button>
+        <button className="btn btn-primary" disabled={pending || full} onClick={getCode}>{pending ? <><Icon name="loader-circle" className="spin" />Creating code…</> : <><Icon name="plus" />{code ? "Get a new code" : "Get pairing code"}</>}</button>
       </div>
       {result?.error ? <div className="form-error" role="alert"><Icon name="triangle-alert" />{result.error}</div> : null}
       {pair?.status === "paired" ? (
@@ -180,7 +200,7 @@ export function RenameDeviceForm({ deviceId, name }: { deviceId: string; name: s
       <Feedback state={state} />
       <div className="row" style={{ alignItems: "flex-end", flexWrap: "wrap" }}>
         <div className="field grow"><label htmlFor="dev-name">Device name</label><input className="input" id="dev-name" name="name" defaultValue={name} maxLength={60} /></div>
-        <button className="btn btn-secondary" disabled={pending}>Rename</button>
+        <button className="btn btn-secondary" disabled={pending}>{pending ? "Saving…" : "Rename"}</button>
       </div>
     </form>
   );
@@ -201,7 +221,7 @@ export function RemoveDeviceButton({ deviceId, name }: { deviceId: string; name:
       <Feedback state={state} />
       <div className="field"><label htmlFor="rm-dev-pw">Your password</label><input className="input" id="rm-dev-pw" name="password" type="password" required autoComplete="current-password" /></div>
       <div className="row"><button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpen(false)}>Cancel</button>
-        <button className="btn btn-primary btn-sm" style={{ background: "var(--crit)" }} disabled={pending}>Remove {name}</button></div>
+        <button className="btn btn-primary btn-sm" style={{ background: "var(--crit)" }} disabled={pending}>{pending ? "Removing…" : `Remove ${name}`}</button></div>
     </form>
   );
 }
@@ -210,15 +230,13 @@ export function RemoveDeviceButton({ deviceId, name }: { deviceId: string; name:
 export function SettingSwitch({ setting, title, desc, checked, disabled, confirmOff }: { setting: string; title: string; desc: string; checked: boolean; disabled?: boolean; confirmOff?: string }) {
   const [on, setOn] = useState(checked);
   const [confirming, setConfirming] = useState(false);
-  const [pending, start] = useTransition();
-  const { toast } = useFlow();
+  const [pending, run] = useAction();
   const id = `sw-${setting}`;
   const save = (v: boolean) => {
     setOn(v);
     setConfirming(false);
-    start(async () => {
-      try { await setToggle(setting, v); } catch { setOn(!v); toast(`Couldn't change “${title}”. Try again.`); }
-    });
+    // The switch itself shows success; only a failure needs saying
+    run(() => setToggle(setting, v), { onError: () => setOn(!v) });
   };
   return (
     <div className="setting-row" style={{ flexWrap: "wrap" }}>
@@ -285,7 +303,7 @@ export function PasswordForm() {
         <div className="field"><label htmlFor="pw-c">Current password</label><input className="input" id="pw-c" name="current" type="password" autoComplete="current-password" /></div>
         <div className="field"><label htmlFor="pw-n">New password</label><input className="input" id="pw-n" name="next" type="password" minLength={10} autoComplete="new-password" /></div>
       </div>
-      <div><button className="btn btn-secondary" disabled={pending}>Change password</button></div>
+      <div><button className="btn btn-secondary" disabled={pending}>{pending ? "Changing…" : "Change password"}</button></div>
     </form>
   );
 }
@@ -307,7 +325,7 @@ export function DeleteAccountForm({ isAdmin, hasPassword }: { isAdmin: boolean; 
       ) : (
         <div className="field"><label htmlFor="da-ph">Type DELETE to confirm</label><input className="input" id="da-ph" name="phrase" required autoComplete="off" /></div>
       )}
-      <div className="row"><button type="button" className="btn btn-ghost" onClick={() => setOpen(false)}>Cancel</button><button className="btn btn-primary" style={{ background: "var(--crit)" }} disabled={pending}>{isAdmin ? "Delete family and account" : "Delete my account"}</button></div>
+      <div className="row"><button type="button" className="btn btn-ghost" onClick={() => setOpen(false)}>Cancel</button><button className="btn btn-primary" style={{ background: "var(--crit)" }} disabled={pending}>{pending ? "Deleting…" : isAdmin ? "Delete family and account" : "Delete my account"}</button></div>
     </form>
   );
 }
@@ -322,30 +340,39 @@ export function AddParentForm() {
         <div className="field"><label htmlFor="ap-e">Email</label><input className="input" id="ap-e" name="email" type="email" /></div>
         <div className="field"><label htmlFor="ap-p">Temporary password</label><input className="input" id="ap-p" name="password" type="text" minLength={10} autoComplete="off" /></div>
       </div>
-      <div><button className="btn btn-secondary" disabled={pending}><Icon name="user-plus" />Add parent</button></div>
+      <div><button className="btn btn-secondary" disabled={pending}>{pending ? "Adding…" : <><Icon name="user-plus" />Add parent</>}</button></div>
     </form>
   );
 }
 
 export function RemoveParentButton({ userId, name }: { userId: string; name: string }) {
-  const [pending, start] = useTransition();
+  const [pending, run] = useAction();
   const [confirm, setConfirm] = useState(false);
   return confirm ? (
     <div className="row" style={{ gap: 6 }}>
-      <button className="btn btn-ghost btn-sm" onClick={() => setConfirm(false)}>Cancel</button>
-      <button className="btn btn-primary btn-sm" style={{ background: "var(--crit)" }} disabled={pending} onClick={() => start(() => removeParent(userId))}>Remove {name}</button>
+      <button className="btn btn-ghost btn-sm" disabled={pending} onClick={() => setConfirm(false)}>Cancel</button>
+      <button className="btn btn-primary btn-sm" style={{ background: "var(--crit)" }} disabled={pending}
+        onClick={() => run(() => removeParent(userId), { ok: `${name} was removed from your family.`, onError: () => setConfirm(false) })}>
+        {pending ? <><Icon name="loader-circle" className="spin" />Removing…</> : `Remove ${name}`}
+      </button>
     </div>
   ) : <button className="btn btn-secondary btn-sm" onClick={() => setConfirm(true)}>Remove</button>;
 }
 
 export function SignOutOthersButton() {
-  const [pending, start] = useTransition();
-  const { toast } = useFlow();
-  return <button className="btn btn-secondary btn-sm" disabled={pending} onClick={() => start(async () => { await signOutOthers(); toast("Other sessions were signed out."); })}>Sign out other sessions</button>;
+  const [pending, run] = useAction();
+  return (
+    <button className="btn btn-secondary btn-sm" disabled={pending} onClick={() => run(signOutOthers, { ok: "Other sessions were signed out." })}>
+      {pending ? <><Icon name="loader-circle" className="spin" />Signing out…</> : "Sign out other sessions"}
+    </button>
+  );
 }
 
 export function UnlinkIdentityButton({ identityId, provider }: { identityId: string; provider: string }) {
-  const [pending, start] = useTransition();
-  const { toast } = useFlow();
-  return <button className="btn btn-secondary btn-sm" disabled={pending} onClick={() => start(async () => { const r = await unlinkIdentity(identityId); toast(r.error ?? `${provider} sign-in removed.`); })}>Unlink</button>;
+  const [pending, run] = useAction();
+  return (
+    <button className="btn btn-secondary btn-sm" disabled={pending} onClick={() => run(() => unlinkIdentity(identityId), { ok: `${provider} sign-in removed.` })}>
+      {pending ? <><Icon name="loader-circle" className="spin" />Unlinking…</> : "Unlink"}
+    </button>
+  );
 }

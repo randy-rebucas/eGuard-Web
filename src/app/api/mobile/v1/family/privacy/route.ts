@@ -3,6 +3,8 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { audit } from "@/lib/family-service";
 import { authed, body, requireAdminUser } from "@/lib/mobile-api";
+import { LOCATION_UPGRADE, familyEntitlements } from "@/lib/plan-access";
+import { planRequired } from "@/lib/errors";
 
 const select = { keepLocationHistory: true, shareAnalytics: true, retentionDays: true } as const;
 
@@ -14,6 +16,7 @@ const Body = z.object({ keepLocationHistory: z.boolean(), shareAnalytics: z.bool
 export const PATCH = authed(async ({ req, user }) => {
   requireAdminUser(user);
   const b = await body(req, Body);
+  if (b.keepLocationHistory && !(await familyEntitlements(user.familyId)).locationSharing) throw planRequired(LOCATION_UPGRADE);
   const family = await db.family.update({ where: { id: user.familyId }, data: b, select });
   for (const [k, v] of Object.entries(b)) await audit(user.familyId, user.name, `privacy.${k}`, String(v));
   // Turning history off deletes the history already kept

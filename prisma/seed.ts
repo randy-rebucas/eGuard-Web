@@ -70,7 +70,8 @@ async function main() {
   await db.family.deleteMany();
 
   const family = await db.family.create({
-    data: { name: "Cruz Family", timezone: TZ, plan: "eGuard Plus", deviceLimit: 8, renewsAt: null },
+    // On Family Pro so the demo shows every feature (several children, location, advanced reports)
+    data: { name: "Cruz Family", timezone: TZ, plan: "Family Pro", deviceLimit: 20, renewsAt: null },
   });
   const pw = await bcrypt.hash("ChangeMe123!", 12);
   await db.user.create({ data: { familyId: family.id, email: "randy@example.com", name: "Randy Cruz", passwordHash: pw, role: "FAMILY_ADMIN", twoFactor: true, emailVerifiedAt: new Date() } });

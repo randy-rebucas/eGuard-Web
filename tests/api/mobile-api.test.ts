@@ -121,6 +121,8 @@ describe("3. Create account / sign in", () => {
 
 describe("3b. Verify email", () => {
   let kidId = "";
+  // Free covers one child: make sure Pip is gone before section 4 adds Mia, even if a test below fails
+  afterAll(async () => { if (kidId) await db.child.deleteMany({ where: { id: kidId } }); });
 
   it("a new parent starts unverified and can't pair a device yet", async () => {
     expect((await call("GET", "/me", { token })).data.emailVerified).toBe(false);
@@ -185,6 +187,19 @@ describe("4–6. Add child, protection profile, recommended setup", () => {
     miaId = r.data.id;
     expect((await call("POST", "/children", { token, body: { name: "Old", age: 19 } })).status).toBe(400);
     expect((await call("POST", "/children", { token, body: { name: "NoAge" } })).data.error).toMatch(/age/);
+  });
+
+  it("Free covers one child and no location; the rest of this flow runs on eGuard Plus", async () => {
+    const second = await call("POST", "/children", { token, body: { name: "Leo", age: 8 } });
+    expect(second.status).toBe(409);
+    expect(second.data).toMatchObject({ code: "plan_limit", error: expect.stringContaining("Upgrade to eGuard Plus") });
+    const loc = await call("GET", "/locations", { token });
+    expect(loc.status).toBe(403);
+    expect(loc.data.code).toBe("plan_required");
+    const fam = (await call("GET", "/family", { token })).data;
+    expect(fam).toMatchObject({ plan: "Free", childCount: 1, childLimit: 1, entitlements: { locationSharing: false, appMonitoringLimit: 5 } });
+    // As if the family bought Plus (purchases themselves are covered in billing.test.ts and web-billing.test.ts)
+    await db.family.update({ where: { id: fam.id }, data: { plan: "eGuard Plus", deviceLimit: 10 } });
   });
 
   it("offers profiles with Protected recommended for a 12 year old", async () => {
@@ -538,10 +553,11 @@ describe("16–17. Settings and subscription", () => {
 
   it("shows the plan, renewal, features and device usage", async () => {
     const r = await call("GET", "/subscription", { token });
-    expect(r.data).toMatchObject({ plan: "eGuard Plus", status: "ACTIVE", usage: { devicesUsed: 2, deviceLimit: 8, children: 2 } });
-    // The free base plan doesn't renew (it used to show a date that later read as "expired")
+    expect(r.data).toMatchObject({ plan: "eGuard Plus", planId: "PLUS", status: "ACTIVE", usage: { devicesUsed: 2, deviceLimit: 10, children: 2, childLimit: 5 } });
+    // Set directly in this test, so there's no purchase and no renewal date
     expect(r.data).toMatchObject({ renewsAt: null, renewsLabel: null });
-    expect(r.data.features.find((f: { key: string }) => f.key === "devices").label).toBe("Up to 8 devices");
+    expect(r.data.features.find((f: { key: string }) => f.key === "children").label).toBe("Up to 5 children");
+    expect(r.data.entitlements).toMatchObject({ locationSharing: true, realtimeAlerts: true, advancedReports: false });
   });
 
   it("files a support request", async () => {
@@ -620,15 +636,15 @@ describe("Android design additions (public/android.png)", () => {
     expect(r.data.articles.map((a: { slug: string }) => a.slug)).toContain("android-family-link");
   });
 
-  it("17. lists plans with the Google Play product for 'Upgrade to Family'", async () => {
+  it("17. lists Free, Plus and Family Pro with the Google Play product for the upgrade", async () => {
     const r = await call("GET", "/subscription/plans", android_(token));
-    expect(r.data.plans.map((p: { id: string; current: boolean }) => [p.id, p.current])).toEqual([["PLUS", true], ["FAMILY", false]]);
-    const family = r.data.plans.find((p: { id: string }) => p.id === "FAMILY");
-    expect(family).toMatchObject({ name: "eGuard Family", deviceLimit: 15, googlePlayProductId: "eguard_family" });
-    expect(family.features.find((f: { key: string }) => f.key === "priority_support").included).toBe(true);
+    expect(r.data.plans.map((p: { id: string; current: boolean }) => [p.id, p.current])).toEqual([["FREE", false], ["PLUS", true], ["PRO", false]]);
+    const pro = r.data.plans.find((p: { id: string }) => p.id === "PRO");
+    expect(pro).toMatchObject({ name: "Family Pro", monthlyPesos: 249, childLimit: 10, googlePlayProductId: "eguard_pro" });
+    expect(pro.features.map((f: { label: string }) => f.label)).toContain("Advanced reports");
 
     const sub = await call("GET", "/subscription", android_(token));
-    expect(sub.data).toMatchObject({ plan: "eGuard Plus", store: null, upgrade: { planId: "FAMILY", googlePlayProductId: "eguard_family" } });
+    expect(sub.data).toMatchObject({ plan: "eGuard Plus", store: null, upgrade: { planId: "PRO", googlePlayProductId: "eguard_pro" } });
   });
 
   it("17. purchase verification refuses bad input and reports when Play billing isn't configured", async () => {

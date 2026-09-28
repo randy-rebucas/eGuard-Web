@@ -147,7 +147,7 @@ follow the same rules. In particular, a change counts only once each device has 
 | Alerts | `GET /alerts?filter=ALL\|PROTECTION\|APPS\|SCREEN_TIME\|DEVICES\|LOCATION\|SYSTEM&before=` · `GET /alerts/unread-count` · `POST /alerts/{id}/read` · `POST /alerts/read-all` · `POST /alerts/{id}/dismiss` (info only). Each alert has `day` for section headers and a typed `action` |
 | Devices, checks | `GET /devices` · `GET`/`PATCH`/`DELETE /devices/{id}` · `POST /checks` `{ deviceId? }` → poll `GET /checks/{runId}` |
 | Settings | `GET`/`PATCH /me` (email change needs `password`) · `DELETE /me` (delete account) · `GET /me/identities`, `DELETE /me/identities/{id}` · `POST /me/password` · `GET`/`PATCH /me/notifications` · `POST`/`DELETE /me/push-tokens` · `GET`/`DELETE /me/sessions` · `GET /family` · `POST /family/members`, `DELETE /family/members/{id}` · `GET`/`PATCH /family/privacy` (admin) |
-| Subscription | `GET /subscription`: plan, renewal, features, devices used of the limit · `GET /subscription/plans` · `POST /subscription/google-play` `{ productId, purchaseToken }` (Android "Upgrade to Family") |
+| Subscription | `GET /subscription`: plan, renewal, features, entitlements, children and devices used of the limits · `GET /subscription/plans` (Free, eGuard Plus, Family Pro) · `POST /subscription/google-play` `{ productId, purchaseToken }` |
 | Help & support | `GET /help?q=&category=` and `GET /help/{slug}` (no auth) · `GET`/`POST /support/tickets` |
 
 Apple and Google ID tokens are verified against the providers' published keys (`src/lib/social-auth.ts`); set
@@ -163,8 +163,8 @@ Plans are paid for on the web, in Settings › Subscription, through PayMongo (`
 - **Pass**: pay once with GCash, Maya, card or QR Ph. It doesn't renew, and eGuard sends a reminder before it ends.
 
 Set `PAYMONGO_SECRET_KEY`, `PAYMONGO_PUBLIC_KEY` and `PAYMONGO_WEBHOOK_SECRET`, and register
-`/api/billing/paymongo/webhook` in the PayMongo dashboard. Prices are `PRICE_FAMILY_MONTHLY` and
-`PRICE_FAMILY_YEARLY`. The apps show the plan but don't sell it.
+`/api/billing/paymongo/webhook` in the PayMongo dashboard. Plans are Free, eGuard Plus (₱149/month) and Family Pro (₱249/month);
+prices are `PRICE_PLUS_MONTHLY` and `PRICE_PRO_MONTHLY`. See [docs/subscriptions.md](docs/subscriptions.md). The apps show the plan but don't sell it.
 
 The Google Play billing path (`src/lib/google-play.ts`, `POST /subscription/google-play`,
 `/api/billing/google-play/notifications`) is still there, and stays off while `GOOGLE_PLAY_*` is empty.

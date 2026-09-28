@@ -7,6 +7,7 @@ import { APPROVAL_LABEL, audit, requestedApps } from "@/lib/family-service";
 import { conflict } from "@/lib/errors";
 import { appMinutesOn, dateFromKey, dayKey, getFamily } from "@/lib/queries";
 import { authed, body, clientLabel, query } from "@/lib/mobile-api";
+import { APPS_UPGRADE, familyEntitlements, visibleApps } from "@/lib/plan-access";
 
 const APPROVALS = ["ALLOWED", "ALWAYS_ALLOWED", "FILTERED", "BLOCKED", "PENDING"] as const;
 const Query = z.object({ filter: z.enum(["all", "installed", "blocked", "pending"]).default("all") });
@@ -14,6 +15,7 @@ const Query = z.object({ filter: z.enum(["all", "installed", "blocked", "pending
 /**
  * App Management. `installed` = everything not blocked; `pending` = waiting for the parent's approval
  * (new apps, and blocked apps the child asked for again, which stay blocked and have `requested: true`).
+ * On Free only a few apps are listed (waiting ones first, then the most used); `limited` says how many more there are.
  */
 export const GET = authed<{ id: string }>(async ({ req, user, params }) => {
   const { filter } = query(req, Query);
@@ -23,12 +25,14 @@ export const GET = authed<{ id: string }>(async ({ req, user, params }) => {
   const where = filter === "blocked" ? { approval: "BLOCKED" as AppApproval }
     : filter === "pending" ? { OR: [{ approval: "PENDING" as AppApproval }, { name: { in: [...requested] } }] }
     : filter === "installed" ? { approval: { not: "BLOCKED" as AppApproval } } : {};
-  const [apps, usage, counts, pending] = await Promise.all([
+  const [all, usage, counts, pending, plan] = await Promise.all([
     db.childApp.findMany({ where: { childId: child.id, ...where }, orderBy: [{ approval: "asc" }, { name: "asc" }] }),
     appMinutesOn([child.id], dateFromKey(dayKey(new Date(), family.timezone))),
     db.childApp.groupBy({ by: ["approval"], where: { childId: child.id }, _count: true }),
     db.childApp.count({ where: { childId: child.id, OR: [{ approval: "PENDING" }, { name: { in: [...requested] } }] } }),
+    familyEntitlements(user.familyId),
   ]);
+  const { apps, hidden } = visibleApps(all, plan.appMonitoringLimit, { requested, minutes: (n) => usage.find((u) => u.app === n)?.minutes ?? 0 });
   const count = (a: AppApproval) => counts.find((c) => c.approval === a)?._count ?? 0;
   return NextResponse.json({
     counts: { all: counts.reduce((s, c) => s + c._count, 0), blocked: count("BLOCKED"), pending, installed: counts.reduce((s, c) => s + c._count, 0) - count("BLOCKED") },
@@ -41,6 +45,7 @@ export const GET = authed<{ id: string }>(async ({ req, user, params }) => {
       dailyLimitMinutes: a.dailyLimitMinutes, todayMinutes: usage.find((u) => u.app === a.name)?.minutes ?? 0,
       installedAt: a.installedAt,
     })),
+    limited: hidden ? { hidden, message: APPS_UPGRADE } : null,
   });
 });
 

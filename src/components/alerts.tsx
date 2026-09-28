@@ -2,11 +2,10 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useTransition } from "react";
 import type { AlertSeverity } from "@prisma/client";
 import { Icon } from "./icon";
 import { SEVERITY, SeverityLabel } from "./ui";
-import { useFlow } from "./flow";
+import { useAction, useFlow } from "./flow";
 import type { AlertAction } from "./cards";
 import { dismissAlert, markAlertRead, markAllRead } from "@/app/actions/family";
 
@@ -48,7 +47,7 @@ export function AlertRow({ a }: { a: AlertItem }) {
 /** Full notification entry for the notification center. */
 export function NotificationItem({ a }: { a: AlertItem }) {
   const act = useAct(a);
-  const [pending, start] = useTransition();
+  const [pending, run] = useAction();
   return (
     <article className="alert-row" style={{ padding: 16, borderBottom: "1px solid var(--line)", borderRadius: 0, opacity: a.resolved ? 0.62 : 1 }}>
       <span className={`ico-tile ${SEVERITY[a.severity].tile}`}><Icon name={a.icon} /></span>
@@ -68,10 +67,10 @@ export function NotificationItem({ a }: { a: AlertItem }) {
       <div className="row" style={{ gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
         {a.action ? <button className="btn btn-secondary btn-sm" onClick={act}>{a.action.label}</button> : null}
         {isUnread(a) ? (
-          <button className="icon-btn" aria-label={`Mark ${a.title} as read`} title="Mark as read" disabled={pending} onClick={() => start(() => markAlertRead(a.id))}><Icon name="check" /></button>
+          <button className="icon-btn" aria-label={`Mark ${a.title} as read`} title="Mark as read" disabled={pending} onClick={() => run(() => markAlertRead(a.id))}><Icon name={pending ? "loader-circle" : "check"} className={pending ? "spin" : undefined} /></button>
         ) : null}
         {a.severity === "INFO" && !a.resolved ? (
-          <button className="icon-btn" aria-label={`Dismiss ${a.title}`} disabled={pending} onClick={() => start(() => dismissAlert(a.id))}><Icon name="x" /></button>
+          <button className="icon-btn" aria-label={`Dismiss ${a.title}`} disabled={pending} onClick={() => run(() => dismissAlert(a.id))}><Icon name={pending ? "loader-circle" : "x"} className={pending ? "spin" : undefined} /></button>
         ) : null}
       </div>
     </article>
@@ -79,11 +78,10 @@ export function NotificationItem({ a }: { a: AlertItem }) {
 }
 
 export function MarkAllRead() {
-  const [pending, start] = useTransition();
-  const { toast } = useFlow();
+  const [pending, run] = useAction();
   return (
-    <button className="btn btn-secondary" disabled={pending} onClick={() => start(async () => { await markAllRead(); toast("All notifications marked as read."); })}>
-      <Icon name="check-check" />Mark all as read
+    <button className="btn btn-secondary" disabled={pending} onClick={() => run(markAllRead, { ok: "All notifications marked as read." })}>
+      {pending ? <><Icon name="loader-circle" className="spin" />Marking…</> : <><Icon name="check-check" />Mark all as read</>}
     </button>
   );
 }

@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
 import { PROTECTION_BY_KEY, defaultConfig, describeConfig, type ProtectionConfig } from "@/lib/protections";
 import { startCheckRun } from "@/lib/engine";
+import { notFound, toResult, type Result } from "@/lib/errors";
 import {
   ConfigSchema, cancelBatch as cancelConfigBatch, childFor, confirmGuided as confirmGuidedBatch, requestConfigs,
 } from "@/lib/config-service";
@@ -30,9 +31,13 @@ export async function getFlowChildren() {
   return kids.map((k) => ({ id: k.id, name: k.name, hue: k.hue, devices: k.devices.map((d) => ({ name: d.name, platform: d.platform })) }));
 }
 
-export async function getFlowContext(childId: string, key: ProtectionKey): Promise<FlowContext> {
+export async function getFlowContext(childId: string, key: ProtectionKey): Promise<Result<FlowContext>> {
   const u = await requireUser();
-  const child = await childFor(u.familyId, childId);
+  return toResult(() => flowContext(u.familyId, childId, key));
+}
+
+async function flowContext(familyId: string, childId: string, key: ProtectionKey): Promise<FlowContext> {
+  const child = await childFor(familyId, childId);
   const def = PROTECTION_BY_KEY[key];
   const age = new Date().getFullYear() - child.birthYear;
   const [policyRow, devices, open] = await Promise.all([
@@ -66,33 +71,35 @@ export async function getFlowContext(childId: string, key: ProtectionKey): Promi
  * APPLY devices get it on next sync; GUIDED/VERIFY_ONLY wait for the parent.
  * Nothing is marked successful here — only processReport() can verify.
  */
-export async function submitConfig(childId: string, desiredInput: unknown) {
+export async function submitConfig(childId: string, desiredInput: unknown): Promise<Result<{ batchId: string }>> {
   const u = await requireUser();
-  const desired = ConfigSchema.parse(desiredInput);
-  const { batchId } = await requestConfigs(u, childId, [desired], "web", { strict: true });
-  return { batchId: batchId! };
+  return toResult(async () => {
+    const desired = ConfigSchema.parse(desiredInput);
+    const { batchId } = await requestConfigs(u, childId, [desired], "web", { strict: true });
+    return { batchId: batchId! };
+  });
 }
 
 /** Guided setup: parent says the steps are done; ask the device to report. */
-export async function confirmGuided(batchId: string) {
+export async function confirmGuided(batchId: string): Promise<Result> {
   const u = await requireUser();
-  await confirmGuidedBatch(u.familyId, batchId);
-  return { ok: true };
+  return toResult(async () => { await confirmGuidedBatch(u.familyId, batchId); return {}; });
 }
 
-export async function cancelBatch(batchId: string) {
+export async function cancelBatch(batchId: string): Promise<Result> {
   const u = await requireUser();
-  await cancelConfigBatch(u.familyId, batchId);
-  return { ok: true };
+  return toResult(async () => { await cancelConfigBatch(u.familyId, batchId); return {}; });
 }
 
-export async function startCheck(deviceId?: string) {
+export async function startCheck(deviceId?: string): Promise<Result<{ runId: string }>> {
   const u = await requireUser();
-  if (deviceId) {
-    const d = await db.device.findFirst({ where: { id: deviceId, familyId: u.familyId } });
-    if (!d) throw new Error("Device not found.");
-  }
-  const run = await startCheckRun(u.familyId, deviceId ? [deviceId] : undefined);
-  await db.auditLog.create({ data: { familyId: u.familyId, actor: u.name, action: "check.started", detail: deviceId ?? "all devices" } });
-  return { runId: run.id };
+  return toResult(async () => {
+    if (deviceId) {
+      const d = await db.device.findFirst({ where: { id: deviceId, familyId: u.familyId } });
+      if (!d) throw notFound("Device");
+    }
+    const run = await startCheckRun(u.familyId, deviceId ? [deviceId] : undefined);
+    await db.auditLog.create({ data: { familyId: u.familyId, actor: u.name, action: "check.started", detail: deviceId ?? "all devices" } });
+    return { runId: run.id };
+  });
 }

@@ -1,30 +1,51 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
-import { getAlerts, getFamily, getFamilyGraph } from "@/lib/queries";
+import { getAlerts, getFamily, getFamilyGraph, type FamilyGraph } from "@/lib/queries";
 import { greeting, longDate, shortDate, dayTime } from "@/lib/format";
 import { todayActivity, toAlertItem, weeklySeries } from "@/lib/views";
 import { Icon } from "@/components/icon";
-import { Avatar, AvatarGroup, EmptyState, SegMeter, statusLabel } from "@/components/ui";
+import { Avatar, AvatarGroup, EmptyState, Loading, SegMeter, statusLabel } from "@/components/ui";
 import { ChildCard, DeviceCard } from "@/components/cards";
 import { AlertRow, ViewAll } from "@/components/alerts";
 import { ActivityPanel, WeeklyChart } from "@/components/charts";
 import { CheckButton, FlowButton } from "@/components/flow";
 import { LogoMark } from "@/components/logo";
+import { SectionBoundary } from "@/components/boundary";
 import { currentPurchase, renewalWord } from "@/lib/entitlement";
+import { entitlementsFor, nextPlan } from "@/lib/plans";
 
 export const metadata = { title: "Dashboard" };
 
+/* The slower panels stream in after the summary, each with its own skeleton and error boundary. */
+
+async function Activity({ graph, tz }: { graph: FamilyGraph; tz: string }) {
+  return <ActivityPanel kids={await todayActivity(graph, tz)} dateLabel={`Today, ${longDate(new Date(), tz)}`} />;
+}
+
+async function Weekly({ familyId, graph, tz }: { familyId: string; graph: FamilyGraph; tz: string }) {
+  const weekly = await weeklySeries(familyId, tz, graph);
+  return <WeeklyChart series={weekly.series} days={weekly.days} subtitle={`Daily totals, ${weekly.range}. Today is still in progress.`} />;
+}
+
+async function RecentAlerts({ familyId, userId, tz }: { familyId: string; userId: string; tz: string }) {
+  const alerts = await getAlerts(familyId, userId, { take: 4 });
+  return alerts.length ? alerts.map((a) => <AlertRow key={a.id} a={toAlertItem(a, tz)} />) : <EmptyState icon="bell" title="You're all caught up" text="New alerts will appear here." />;
+}
+
+function Streamed({ title, height, children }: { title: string; height: number; children: React.ReactNode }) {
+  return (
+    <SectionBoundary title={title}>
+      <Suspense fallback={<Loading height={height} radius={20} label={`Loading ${title.toLowerCase()}`} />}>{children}</Suspense>
+    </SectionBoundary>
+  );
+}
+
 export default async function Dashboard() {
   const u = await requireUser();
-  const family = await getFamily(u.familyId);
+  // Cached per request, so these reuse what the app layout already loaded
+  const [family, graph, purchase] = await Promise.all([getFamily(u.familyId), getFamilyGraph(u.familyId), currentPurchase(u.familyId)]);
   const tz = family.timezone;
-  const graph = await getFamilyGraph(u.familyId);
-  const [alerts, activity, weekly, purchase] = await Promise.all([
-    getAlerts(u.familyId, u.id, { take: 4 }),
-    todayActivity(graph, tz),
-    weeklySeries(u.familyId, tz, graph),
-    currentPurchase(u.familyId),
-  ]);
   const { familyHealth: health, children, devices, deviceStates } = graph;
   const issues = health.checks.filter((c) => c.status !== "PASS" && c.status !== "UNSUPPORTED").length;
   const attention = Object.values(deviceStates).filter((s) => s.key !== "healthy").length;
@@ -113,8 +134,8 @@ export default async function Dashboard() {
         <Link className="card metric interactive" href="/settings/subscription">
           <div className="m-top"><span className="m-label">Active Plan</span><span className="ico-tile"><Icon name="crown" /></span></div>
           <div className="m-value" style={{ fontSize: 26 }}>{family.plan}</div>
-          <div className="t-meta">Up to {family.deviceLimit} devices</div>
-          <div className="m-foot"><span className="muted num">{family.renewsAt ? `${renewalWord(purchase)} ${shortDate(family.renewsAt, tz)}` : "No renewal date"}</span></div>
+          <div className="t-meta">Up to {entitlementsFor(family.plan).childLimit} {entitlementsFor(family.plan).childLimit === 1 ? "child" : "children"} · {family.deviceLimit} devices</div>
+          <div className="m-foot"><span className="muted num">{family.renewsAt ? `${renewalWord(purchase)} ${shortDate(family.renewsAt, tz)}` : nextPlan(family.plan) ? `Upgrade to ${nextPlan(family.plan)!.name}` : "No renewal date"}</span></div>
         </Link>
       </section>
 
@@ -125,7 +146,7 @@ export default async function Dashboard() {
             <div className="children-grid">{children.map((c) => <ChildCard key={c.id} c={c} />)}</div>
           </section>
 
-          <ActivityPanel kids={activity} dateLabel={`Today, ${longDate(new Date(), tz)}`} />
+          <Streamed title="Today's activity" height={340}><Activity graph={graph} tz={tz} /></Streamed>
 
           <section className="card card-pad" aria-labelledby="dev-title">
             <div className="card-head">
@@ -135,14 +156,18 @@ export default async function Dashboard() {
             <div className="devices-grid">{devices.map((d) => <DeviceCard key={d.id} d={d} state={deviceStates[d.id]} tz={tz} />)}</div>
           </section>
 
-          <WeeklyChart series={weekly.series} days={weekly.days} subtitle={`Daily totals, ${weekly.range}. Today is still in progress.`} />
+          <Streamed title="Weekly screen time" height={380}><Weekly familyId={u.familyId} graph={graph} tz={tz} /></Streamed>
         </div>
 
         <aside className="dash-col dash-aside" aria-label="Alerts and actions">
           <section className="card card-pad">
             <div className="card-head"><h2 style={{ fontSize: 18 }}>Recent Alerts</h2><ViewAll href="/notifications" /></div>
             <div style={{ display: "flex", flexDirection: "column", gap: 2, margin: "0 -12px" }}>
-              {alerts.length ? alerts.map((a) => <AlertRow key={a.id} a={toAlertItem(a, tz)} />) : <EmptyState icon="bell" title="You're all caught up" text="New alerts will appear here." />}
+              <SectionBoundary title="Recent alerts">
+                <Suspense fallback={<div className="dash-col" role="status" aria-label="Loading alerts" style={{ gap: 8, padding: "0 12px" }}>{[0, 1, 2].map((i) => <div key={i} className="skeleton" style={{ height: 56 }} />)}</div>}>
+                  <RecentAlerts familyId={u.familyId} userId={u.id} tz={tz} />
+                </Suspense>
+              </SectionBoundary>
             </div>
           </section>
           <section className="card card-pad">

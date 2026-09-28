@@ -63,39 +63,64 @@ mobile API's request and response shapes, see [mobile-api.md › 4.14 Subscripti
 
 Defined in code in [src/lib/plans.ts](../src/lib/plans.ts). There is no plans table.
 
-| Plan | Device limit | Priority support | Sold as |
-|---|---|---|---|
-| **eGuard Plus** (base plan) | 8 | ✗ | Free; every family starts here and falls back here |
-| **eGuard Family** | 15 | ✓ | The four web products below |
+| Plan | Price | Children | Devices | Google Play product |
+|---|---|---|---|---|
+| **Free** (base plan) | ₱0 | 1 | 2 | none; every family starts here and falls back here |
+| **eGuard Plus** | ₱149 / month | 5 | 10 | `eguard_plus` |
+| **Family Pro** | ₱249 / month | 10 | 20 | `eguard_pro` |
 
-Both plans include unlimited children, configuration health checks, protection alerts and advanced reports.
+What each plan unlocks is its `entitlements`, checked on the server and returned to the apps
+(`GET /subscription`, `GET /family`):
+
+| Entitlement | Free | Plus | Pro | Where it's enforced |
+|---|---|---|---|---|
+| `childLimit` | 1 | 5 | 10 | `createChild` (409 `plan_limit`); "Add child" becomes "Upgrade" on the web |
+| `deviceLimit` | 2 | 10 | 20 | Pairing codes and `/device/v1/pair` (stored on `Family.deviceLimit`) |
+| `locationSharing` | ✗ | ✓ | ✓ | Fixes aren't stored on Free; location pages and `/locations`, `/children/{id}/location…` return 403 `plan_required`; location history can't be turned on |
+| `appMonitoringLimit` | 5 | all | all | Apps lists show apps waiting for approval, then the most used; `limited` says how many are hidden |
+| `realtimeAlerts` | ✗ | ✓ | ✓ | Push notifications can't be turned on (alerts still show in the app and by email) |
+| `advancedReports` | ✗ | ✗ | ✓ | 30-day and custom report ranges, CSV export (403 otherwise) |
+| `apiAccess` | ✗ | ✗ | ✓ | Listed only: Pro admins get a "Request access" link to support. There's no organization API yet. |
+
+Configuration verification and health checks run on every plan, so protections stay honest on Free too.
+
+**Going to a smaller plan** (a pass ends, a refund, auto-renew lapses) never removes anything: children and devices
+over the new limit stay protected, but no more can be added. Current locations are cleared when location sharing
+ends; location history is kept but hidden until the family upgrades.
+
+**Plans before September 2026** were a free "eGuard Plus" (8 devices, unlimited children) and a paid "eGuard Family"
+(15 devices). Migration `20260928130000_pricing_tiers` moved free families to Free and eGuard Family to Family Pro.
+Old products (`family_*` on the web, `eguard_family` on Google Play) still grant Family Pro for as long as they're
+paid, at the price they were bought at, but aren't sold.
 
 ### Web products (`WEB_PRODUCTS`)
 
-| `productId` | Kind | Period |
+Monthly only.
+
+| `productId` | Plan | Kind |
 |---|---|---|
-| `family_monthly` | Auto-renew | Month |
-| `family_yearly` | Auto-renew | Year |
-| `family_pass_month` | Pass | Month |
-| `family_pass_year` | Pass | Year |
+| `plus_monthly` | eGuard Plus | Auto-renew |
+| `plus_pass_month` | eGuard Plus | Pass (one month) |
+| `pro_monthly` | Family Pro | Auto-renew |
+| `pro_pass_month` | Family Pro | Pass (one month) |
 
 ### Prices
 
 Prices come from env, in pesos, and are the same for auto-renew and passes:
 
-| Variable | Default (placeholder) |
+| Variable | Default |
 |---|---|
-| `PRICE_FAMILY_MONTHLY` | `199` |
-| `PRICE_FAMILY_YEARLY` | `1990` |
+| `PRICE_PLUS_MONTHLY` | `149` |
+| `PRICE_PRO_MONTHLY` | `249` |
 
-`webPrice(interval)` returns centavos, which is what PayMongo expects. An invalid value throws, so a typo fails
-loudly instead of charging the wrong amount.
+`webPrice(plan)` returns centavos, which is what PayMongo expects. An invalid value throws, so a typo fails
+loudly instead of charging the wrong amount. The landing page's prices come from the same place.
 
 **Changing a price:**
 
 - **Passes** use the new price immediately.
 - **Auto-renew** needs a PayMongo *plan* per price. `planFor()` looks for a plan named
-  `eGuard Family monthly 199.00 PHP` and creates it if it doesn't exist, so a new price creates a new plan on first
+  `eGuard Plus monthly 149.00 PHP` and creates it if it doesn't exist, so a new price creates a new plan on first
   use. **Existing subscribers stay on their old plan and price.** PayMongo applies plan changes only at the next
   cycle, and eGuard doesn't migrate anyone automatically.
 
@@ -166,7 +191,7 @@ page load ──► confirmReturn()
                                 GET /v1/checkout_sessions/cs_… ─────────►
                                 ◄───────────────────────── payments[status=paid]
                                 PAID, expiresAt = start + 1 period
-                                applyEntitlement → eGuard Family
+                                applyEntitlement → Family Pro
 ◄── "Payment received …"
                                 ◄── webhook checkout_session.payment.paid (same check; no-op if already PAID)
 ```
@@ -214,7 +239,7 @@ back to /settings/subscription?ref=<row id> ──► confirmReturn()
                                      GET /v1/subscriptions/subs_… ───────────►
                                      active + latest invoice paid →
                                        expiresAt = end of next_billing_schedule (PH time)
-                                     applyEntitlement → eGuard Family
+                                     applyEntitlement → Family Pro
                                      ◄── webhooks subscription.activated, subscription.invoice.paid, …
 ```
 
@@ -236,7 +261,7 @@ failed, never adds time.
 ### Turning auto-renew off
 
 `cancelAutoRenew` calls `POST /v1/subscriptions/{id}/cancel`, which takes effect immediately at PayMongo. The row
-becomes `cancelled` with `autoRenewing: false`, and **the family keeps eGuard Family until `expiresAt`**. The page
+becomes `cancelled` with `autoRenewing: false`, and **the family keeps its plan until `expiresAt`**. The page
 then shows "Ends on …".
 
 ### Retries
@@ -263,11 +288,11 @@ This is the only function that changes a family's plan after sign-up.
 
 1. Load the family's purchases (except `REPLACED`), with the latest `expiresAt` first.
 2. If there are none, stop. Families that never bought anything are never touched.
-3. Take the first purchase that gives access:
+3. Of the purchases that give access, take the one for the highest plan:
    - **found:** the plan comes from its product, and `renewsAt = expiresAt`
-   - **none:** the family goes back to eGuard Plus (8 devices), with `renewsAt = null`
-4. If the plan name changed, write an audit entry and an INFO alert ("Welcome to eGuard Family" or
-   "eGuard Family ended").
+   - **none:** the family goes back to Free (1 child, 2 devices), with `renewsAt = null`
+4. If the plan name changed, write an audit entry and an INFO alert ("Welcome to Family Pro" or
+   "Family Pro ended"). Moving to a plan without location sharing clears current locations.
 
 ### One way of paying at a time
 
@@ -351,8 +376,8 @@ PayMongo errors keep the last known state.
   families whose pass just ran out
 - `sendPassReminders()`: sends a reminder once per pass, **3 days before it ends**, unless the family has already
   extended or subscribed. The reminder is:
-  - an INFO alert: "eGuard Family ends on …"
-  - an email to family admins with a verified email address, with a "Keep eGuard Family" button
+  - an INFO alert: "<plan> ends on …"
+  - an email to family admins with a verified email address, with a "Keep <plan>" button
 
 ---
 
@@ -409,7 +434,7 @@ online payment isn't available and links to support.
 | `PAYMONGO_PUBLIC_KEY` | `pk_test_…` or `pk_live_…`. Sent to the browser for the auto-renew payment. It must be the same mode as the secret key, or billing stays off. |
 | `PAYMONGO_WEBHOOK_SECRET` | The webhook endpoint's secret key |
 | `PAYMONGO_PASS_METHODS` | Methods offered for passes. Default `gcash,paymaya,card,qrph`. Other values: `grab_pay`, `shopee_pay`, `billease`, `dob`, `brankas`. |
-| `PRICE_FAMILY_MONTHLY`, `PRICE_FAMILY_YEARLY` | Prices in pesos |
+| `PRICE_PLUS_MONTHLY`, `PRICE_PRO_MONTHLY` | Monthly prices in pesos |
 | `APP_URL` | Used for checkout success, cancel and return URLs, and in reminder emails. Must be the public HTTPS URL in production. |
 | `CRON_SECRET` | Maintenance job (refresh and reminders) |
 

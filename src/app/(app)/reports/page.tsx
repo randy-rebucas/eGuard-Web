@@ -6,19 +6,26 @@ import { reportData, resolveRange, type Period } from "@/lib/reports";
 import { weeklySeries } from "@/lib/views";
 import { PROTECTION_BY_KEY, fmtMinutes, fmtMinutesPadded } from "@/lib/protections";
 import { Icon } from "@/components/icon";
-import { EmptyState, PageHead, Timeline } from "@/components/ui";
+import { EmptyState, PageHead, Timeline, UpgradeNote } from "@/components/ui";
+import { entitlementsFor } from "@/lib/plans";
+import { REPORTS_UPGRADE } from "@/lib/plan-access";
 import { WeeklyChart } from "@/components/charts";
 
 export const metadata = { title: "Reports" };
 
 const PERIODS: [Period, string][] = [["today", "Today"], ["7d", "7 Days"], ["30d", "30 Days"], ["custom", "Custom"]];
+/** Longer and custom ranges are advanced reports */
+const ADVANCED: Period[] = ["30d", "custom"];
 const MAX_CHANGES = 500;
 
 export default async function ReportsPage(props: PageProps<"/reports">) {
   const u = await requireUser();
   const sp = await props.searchParams;
-  const period = (PERIODS.find(([k]) => k === sp.period)?.[0] ?? "7d") as Period;
   const [family, graph] = await Promise.all([getFamily(u.familyId), getFamilyGraph(u.familyId)]);
+  const advanced = entitlementsFor(family.plan).advancedReports;
+  const asked = (PERIODS.find(([k]) => k === sp.period)?.[0] ?? "7d") as Period;
+  const locked = !advanced && ADVANCED.includes(asked);
+  const period = locked ? "7d" : asked;
   const tz = family.timezone;
   const range = resolveRange(period, tz, sp.from as string | undefined, sp.to as string | undefined);
   const [data, weekly] = await Promise.all([reportData(u.familyId, tz, range.from, range.to, { maxChanges: MAX_CHANGES }), weeklySeries(u.familyId, tz, graph)]);
@@ -35,10 +42,16 @@ export default async function ReportsPage(props: PageProps<"/reports">) {
     <>
       <PageHead title="Reports" text="Family Digital Safety Summary: how protections held up and how screen time is trending.">
         <nav className="seg" aria-label="Period">
-          {PERIODS.map(([k, l]) => <Link key={k} href={`/reports?period=${k}`} aria-current={period === k ? "page" : undefined}>{l}</Link>)}
+          {PERIODS.map(([k, l]) => (
+            <Link key={k} href={`/reports?period=${k}`} aria-current={period === k && !locked ? "page" : undefined}>
+              {!advanced && ADVANCED.includes(k) ? <><Icon name="lock" size={13} /> </> : null}{l}
+            </Link>
+          ))}
         </nav>
-        <a className="btn btn-secondary" href={exportHref} download><Icon name="download" />Export CSV</a>
+        {advanced ? <a className="btn btn-secondary" href={exportHref} download><Icon name="download" />Export CSV</a> : null}
       </PageHead>
+
+      {locked || !advanced ? <UpgradeNote compact title="Advanced reports" text={locked ? `${REPORTS_UPGRADE} Showing the last 7 days.` : REPORTS_UPGRADE} /> : null}
 
       {period === "custom" ? (
         <form className="card card-pad form-grid" style={{ maxWidth: 620, alignItems: "end" }} action="/reports">

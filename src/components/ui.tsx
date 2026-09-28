@@ -85,6 +85,50 @@ export function EmptyState({ icon, title, text, children }: { icon: string; titl
   );
 }
 
+/** Where a plan doesn't include something: says what, and links to the plans. `compact` for inline use in a list. */
+export function UpgradeNote({ title, text, icon = "crown", compact }: { title: string; text: string; icon?: string; compact?: boolean }) {
+  if (compact) {
+    return (
+      <div className="upgrade-note">
+        <Icon name={icon} /><span className="grow">{text}</span>
+        <Link className="link-btn" href="/settings/subscription">See plans <Icon name="arrow-right" /></Link>
+      </div>
+    );
+  }
+  return (
+    <EmptyState icon={icon} title={title} text={text}>
+      <Link className="btn btn-primary" href="/settings/subscription"><Icon name="crown" />See plans</Link>
+    </EmptyState>
+  );
+}
+
+/** A placeholder while something loads; announced to screen readers once. */
+export function Loading({ height, label = "Loading", radius, style }: { height: number; label?: string; radius?: number; style?: React.CSSProperties }) {
+  return <div className="skeleton" role="status" aria-label={label} style={{ height, borderRadius: radius, ...style }} />;
+}
+
+/** Page-level skeleton pieces for route `loading.tsx` files. */
+export function PageHeadSkeleton({ action }: { action?: boolean }) {
+  return (
+    <div className="page-head" aria-hidden="true">
+      <div className="dash-col" style={{ gap: 10, flex: 1 }}>
+        <div className="skeleton" style={{ height: 34, width: "min(280px, 60%)" }} />
+        <div className="skeleton" style={{ height: 16, width: "min(460px, 85%)" }} />
+      </div>
+      {action ? <div className="skeleton" style={{ height: 42, width: 130, borderRadius: 999 }} /> : null}
+    </div>
+  );
+}
+
+export function PageSkeleton({ label, action, children }: { label: string; action?: boolean; children: React.ReactNode }) {
+  return (
+    <div role="status" aria-busy="true" aria-label={label} className="dash-col" style={{ gap: 20 }}>
+      <PageHeadSkeleton action={action} />
+      <div aria-hidden="true" className="dash-col" style={{ gap: 20 }}>{children}</div>
+    </div>
+  );
+}
+
 export function PageHead({ title, text, children, crumbs }: { title: string; text?: string; children?: React.ReactNode; crumbs?: { href: string; label: string }[] }) {
   return (
     <div className="page-head">

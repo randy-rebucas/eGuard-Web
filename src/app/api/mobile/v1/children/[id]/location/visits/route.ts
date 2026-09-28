@@ -6,16 +6,18 @@ import { dayTime } from "@/lib/format";
 import { getFamily } from "@/lib/queries";
 import { authed, query } from "@/lib/mobile-api";
 import { dayGroup } from "@/lib/mobile-views";
+import { requireLocationSharing } from "@/lib/plan-access";
 
 const Query = z.object({ limit: z.coerce.number().int().min(1).max(100).default(50), before: z.string().datetime().optional() });
 
 /**
  * Location › "View All": every visit kept (up to the family's retention period), newest first.
- * Empty with `enabled: false` unless the family keeps location history.
+ * Empty with `enabled: false` unless the family keeps location history. 403 `plan_required` on Free.
  */
 export const GET = authed<{ id: string }>(async ({ req, user, params }) => {
   const q = query(req, Query);
   const child = await childFor(user.familyId, params.id);
+  await requireLocationSharing(user.familyId);
   const family = await getFamily(user.familyId);
   const { visits, nextBefore } = family.keepLocationHistory
     ? await visitsPage(child.id, { before: q.before ? new Date(q.before) : undefined, limit: q.limit })

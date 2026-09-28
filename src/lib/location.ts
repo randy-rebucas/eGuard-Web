@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { isOffline } from "./health";
 import { isConfigured } from "./protections";
+import { entitlementsFor } from "./plans";
 
 /** A new report within this distance of the last visit extends that visit instead of starting a new one. */
 export const SAME_PLACE_M = 150;
@@ -91,14 +92,18 @@ type Fix = { lat: number; lng: number; accuracyM?: number; placeLabel?: string }
 export async function recordLocation(device: { id: string; childId: string; familyId: string }, fix: Fix, now = new Date()) {
   // Whether sharing is on comes from the device's LOCATION protection report (engine.processReport), never
   // from a fix arriving. A fix sent while sharing is off isn't stored at all: the parent was told it's off.
-  const current = await db.deviceLocation.findUnique({ where: { deviceId: device.id }, select: { sharing: true } });
+  const [current, family] = await Promise.all([
+    db.deviceLocation.findUnique({ where: { deviceId: device.id }, select: { sharing: true } }),
+    db.family.findUniqueOrThrow({ where: { id: device.familyId }, select: { plan: true, keepLocationHistory: true, retentionDays: true } }),
+  ]);
   if (current && !current.sharing) return;
+  // Location sharing is a paid feature: on Free, fixes aren't kept at all
+  if (!entitlementsFor(family.plan).locationSharing) return;
   await db.deviceLocation.upsert({
     where: { deviceId: device.id },
     create: { deviceId: device.id, sharing: true, locatedAt: now, ...fix },
     update: { locatedAt: now, ...fix },
   });
-  const family = await db.family.findUniqueOrThrow({ where: { id: device.familyId }, select: { keepLocationHistory: true, retentionDays: true } });
   if (!family.keepLocationHistory) return;
 
   const last = await db.locationVisit.findFirst({ where: { deviceId: device.id }, orderBy: { arrivedAt: "desc" } });

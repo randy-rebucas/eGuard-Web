@@ -95,8 +95,8 @@ model Family {
   id            String   @id @default(cuid())
   name          String
   timezone      String   @default("Asia/Manila")
-  plan          String   @default("eGuard Plus")
-  deviceLimit   Int      @default(8)
+  plan          String   @default("Free")
+  deviceLimit   Int      @default(2)
   renewsAt      DateTime?
   /// PayMongo customer (cus_…) that web subscriptions bill
   paymongoCustomerId String? @unique

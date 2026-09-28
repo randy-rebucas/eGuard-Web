@@ -8,8 +8,7 @@ export const metadata = { title: "Devices" };
 
 export default async function DevicesPage() {
   const u = await requireUser();
-  const family = await getFamily(u.familyId);
-  const { children, devices, deviceStates } = await getFamilyGraph(u.familyId);
+  const [family, { children, devices, deviceStates }] = await Promise.all([getFamily(u.familyId), getFamilyGraph(u.familyId)]);
   return (
     <>
       <PageHead title="Devices" text={devices.length > family.deviceLimit

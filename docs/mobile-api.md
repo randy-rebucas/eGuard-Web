@@ -297,7 +297,7 @@ Returned by `PUT /children/{id}/protections/{KEY}`, `POST /children/{id}/setup` 
 | 14 | Location | `GET /children/{id}/location`, "View All" → `GET /children/{id}/location/visits`, `GET /locations` |
 | 15 | Alerts | `GET /alerts?filter=`, `POST /alerts/{id}/read`, `/read-all`, `/dismiss`, `GET /alerts/unread-count` (includes "App blocked") |
 | 16 | Settings | `GET /family`, `/me`, `/me/notifications`, `/family/privacy`, `/me/sessions`, `/me/password`, `POST /auth/logout` |
-| 17 | Subscription | `GET /subscription`. Android "Upgrade to Family": `GET /subscription/plans` → Play Billing → `POST /subscription/google-play` |
+| 17 | Subscription | `GET /subscription`. Android upgrade: `GET /subscription/plans` → Play Billing → `POST /subscription/google-play` |
 | 18 | Help & Support | `GET /help?q=`, `GET /help/{slug}`, `POST /support/tickets` |
 | — | Tab-bar badge | `GET /alerts/unread-count` |
 | — | Push registration | `POST /me/push-tokens` after sign-in, `DELETE` / `logout?pushToken=` on sign-out |
@@ -1015,32 +1015,47 @@ Settings › Family.
 ```json
 {
   "plan": "eGuard Plus",
+  "planId": "PLUS",
   "status": "ACTIVE",
   "renewsAt": "2026-10-11T16:00:00.000Z",
   "renewsLabel": "Renews on Oct 12, 2026",
   "features": [
-    { "key": "children", "included": true, "label": "Unlimited children" },
-    { "key": "devices", "included": true, "label": "Up to 8 devices" },
-    { "key": "health_checks", "included": true, "label": "Configuration health checks" },
-    { "key": "alerts", "included": true, "label": "Protection alerts" },
-    { "key": "reports", "included": true, "label": "Advanced reports" },
-    { "key": "priority_support", "included": false, "label": "Priority support" }
+    { "key": "children", "included": true, "label": "Up to 5 children" },
+    { "key": "protection", "included": true, "label": "Full protection features" },
+    { "key": "verification", "included": true, "label": "Configuration verification" },
+    { "key": "alerts", "included": true, "label": "Real-time alerts" },
+    { "key": "location", "included": true, "label": "Location sharing" },
+    { "key": "support", "included": true, "label": "Priority support" }
   ],
-  "usage": { "devicesUsed": 5, "deviceLimit": 8, "children": 3 },
+  "entitlements": {
+    "childLimit": 5, "deviceLimit": 10, "locationSharing": true, "appMonitoringLimit": null,
+    "realtimeAlerts": true, "advancedReports": false, "apiAccess": false
+  },
+  "usage": { "devicesUsed": 5, "deviceLimit": 10, "children": 3, "childLimit": 5 },
   "canManage": true,
   "billingAvailable": false,
   "store": null,
-  "upgrade": { "planId": "FAMILY", "name": "eGuard Family", "googlePlayProductId": "eguard_family" }
+  "upgrade": { "planId": "PRO", "name": "Family Pro", "googlePlayProductId": "eguard_pro" }
 }
 ```
 
+- Plans are **Free** (1 child), **eGuard Plus** (₱149/month, 5 children) and **Family Pro** (₱249/month, 10 children).
+  `upgrade` is the next plan up, or `null` on Family Pro.
 - `status` is `ACTIVE` or `EXPIRED`.
-- Plan Usage "3 of 5 devices used" comes from `usage.devicesUsed` / `usage.deviceLimit`.
+- Plan Usage "3 of 5 children" comes from `usage.children` / `usage.childLimit`; devices from `usage.devicesUsed` / `usage.deviceLimit`.
+- Use `entitlements` to hide or badge what the plan doesn't include (also on `GET /family`). The server enforces
+  them either way:
+  - at `childLimit`, `POST /children` → `409 { code: "plan_limit" }`; pairing past `deviceLimit` is refused the same way
+  - without `locationSharing`, `/locations` and `/children/{id}/location…` → `403 { code: "plan_required" }`, and
+    turning on location history is refused
+  - with an `appMonitoringLimit`, `GET /children/{id}/apps` lists that many (apps waiting for approval first, then the
+    most used) and `limited: { hidden, message }` says how many more there are
+  - without `realtimeAlerts`, turning on `notifyPush` → `403 plan_required`
 - **Plans are paid for on the web for now** (PayMongo, in Settings › Subscription on the website). The apps show the
   plan and usage but **don't sell it and don't link to the website**: store policies forbid steering users to
   outside payment for digital subscriptions.
 - `billingAvailable` is `true` only when the request comes from the Android app (`X-eGuard-Client: android`) **and**
-  the server has Google Play configured. It is `false` while payments are web-only. Show "Upgrade to Family" only
+  the server has Google Play configured. It is `false` while payments are web-only. Show an upgrade button only
   when all three hold:
   - `billingAvailable` is true
   - `upgrade` is non-null
@@ -1054,21 +1069,25 @@ Settings › Family.
     `https://play.google.com/store/account/subscriptions?sku={productId}&package={packageName}`.
 - The server re-checks purchases on each call: one whose paid period has ended at most every 10 minutes, and an
   active one once a day. It also learns about payments, renewals and refunds from PayMongo webhooks. When the plan
-  lapses, the family goes back to eGuard Plus. Devices already added stay, but no new ones can be paired over the
-  limit.
+  lapses, the family goes back to Free. Children and devices already added stay, but no new ones can be added over
+  the limits.
 - Server-side details (payment flows, sync, configuration): [subscriptions.md](subscriptions.md).
 
 #### `GET /subscription/plans`
 
-The upgrade screen. Prices aren't returned: show the localized price from Play Billing `ProductDetails`.
+The upgrade screen: Free, eGuard Plus and Family Pro, in that order. Where Play Billing is available, show the
+localized price from `ProductDetails`; `monthlyPesos` is the web price.
 
 ```json
 {
   "plans": [
-    { "id": "PLUS", "name": "eGuard Plus", "deviceLimit": 8, "current": true,
-      "features": [ { "key": "devices", "included": true, "label": "Up to 8 devices" } ], "googlePlayProductId": null },
-    { "id": "FAMILY", "name": "eGuard Family", "deviceLimit": 15, "current": false,
-      "features": [ { "key": "priority_support", "included": true, "label": "Priority support" } ], "googlePlayProductId": "eguard_family" }
+    { "id": "FREE", "name": "Free", "blurb": "Get started with essential protection tools.", "monthlyPesos": 0, "current": false,
+      "childLimit": 1, "deviceLimit": 2, "entitlements": { "…": "…" },
+      "features": [ { "key": "children", "included": true, "label": "Up to 1 child" } ], "googlePlayProductId": null },
+    { "id": "PLUS", "name": "eGuard Plus", "monthlyPesos": 149, "current": true, "childLimit": 5, "deviceLimit": 10, "…": "…",
+      "googlePlayProductId": "eguard_plus" },
+    { "id": "PRO", "name": "Family Pro", "monthlyPesos": 249, "current": false, "childLimit": 10, "deviceLimit": 20, "…": "…",
+      "googlePlayProductId": "eguard_pro" }
   ],
   "googlePlay": { "packageName": "app.eguard.android", "obfuscatedAccountId": "9f2c…(64 hex chars)" },
   "canManage": true
@@ -1082,17 +1101,19 @@ The upgrade screen. Prices aren't returned: show the localized price from Play B
 Send the purchase to eGuard after Play Billing reports it.
 
 ```json
-{ "productId": "eguard_family", "purchaseToken": "<Purchase.getPurchaseToken()>" }
+{ "productId": "eguard_pro", "purchaseToken": "<Purchase.getPurchaseToken()>" }
 ```
 
-→ `200 { "plan": "eGuard Family", "expiresAt": "2026-10-27T…Z", "autoRenewing": true, "test": false }`
+→ `200 { "plan": "Family Pro", "expiresAt": "2026-10-27T…Z", "autoRenewing": true, "test": false }`
+
+`eguard_family`, sold before these plans, is still accepted and grants Family Pro.
 
 The server does the following:
 - verifies the token with Google
 - checks the purchase was made for this family
-- upgrades the plan (device limit 15)
+- upgrades the plan (Family Pro: 10 children, 20 devices)
 - **acknowledges the purchase**, so the app must **not** call `acknowledgePurchase` itself
-- raises an INFO alert "Welcome to eGuard Family"
+- raises an INFO alert "Welcome to Family Pro"
 
 The call is idempotent: send it again for "Restore purchases" or after a network error.
 
@@ -1244,7 +1265,7 @@ Age-rating tiers used by the profiles: 4, 9, 13, 16, 18.
 | request `mode` | `APPLY`, `GUIDED` |
 | alert `severity` | `INFO`, `ATTENTION`, `ACTION_REQUIRED`, `CRITICAL` |
 | alert `category` | `PROTECTION`, `DEVICES`, `APPS`, `SCREEN_TIME`, `LOCATION`, `SYSTEM` |
-| alert titles you'll see | "Protection setting changed", "Location sharing turned off", "Device hasn't synced in over a day", "New device synchronized", "Device removed", "New app installed", "App approval requested", "App blocked", "Screen time limit reached", "Welcome to eGuard Family", "eGuard Family ended" |
+| alert titles you'll see | "Protection setting changed", "Location sharing turned off", "Device hasn't synced in over a day", "New device synchronized", "Device removed", "New app installed", "App approval requested", "App blocked", "Screen time limit reached", "Welcome to eGuard Plus" / "Welcome to Family Pro", "eGuard Plus ended" / "Family Pro ended" |
 | app `approval` | `ALLOWED`, `ALWAYS_ALLOWED`, `FILTERED`, `BLOCKED`, `PENDING` |
 | child `status` | `protected`, `attention`, `notconfigured` |
 | device `state` | `healthy`, `issues`, `offline` |
@@ -1259,7 +1280,7 @@ These parts of the design aren't backed by the API yet. Plan the UI accordingly.
 |---|---|---|
 | "Gaming time 1 hour/day" (Recommended Setup) | No app categories exist, so there's no per-category limit | Leave it out, or use per-app limits (`PATCH /apps/{id}`) for game apps |
 | Push notifications | Tokens are stored (`/me/push-tokens`), but nothing sends pushes yet | Register tokens anyway; refresh with `/alerts/unread-count` on foreground |
-| "Upgrade to Family" / Manage Subscription in the apps | Plans are sold on the web only (PayMongo) for now; Google Play billing is turned off and App Store purchases aren't supported, so `billingAvailable` is `false` | Show the plan and usage without a buy button or a link to the website |
+| Upgrade / Manage Subscription in the apps | Plans are sold on the web only (PayMongo) for now; Google Play billing is turned off and App Store purchases aren't supported, so `billingAvailable` is `false` | Show the plan and usage without a buy button or a link to the website |
 | Password for Apple/Google accounts | Social accounts have no password, so they can't change one or confirm deleting a child | Hide "Change password" for social sign-ins; route child deletion to support |
 | Two-step verification | `twoFactor` is a stored flag only | Show "Coming soon" |
 | Realtime updates | No WebSocket/SSE | Poll as described in [Polling](#polling) |

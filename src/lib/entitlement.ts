@@ -1,7 +1,8 @@
 import "server-only";
 import { db } from "./db";
 import { audit } from "./audit";
-import { BASE_PLAN, planByName, planByProduct } from "./plans";
+import { BASE_PLAN, PLANS, entitlementsFor, planByName, planByProduct } from "./plans";
+import { clearCurrentLocations } from "./plan-access";
 import { ENTITLED_STATES as PLAY_ENTITLED } from "./google-play";
 
 /**
@@ -34,21 +35,24 @@ export function isEntitled(p: { state: string; expiresAt: Date | null }, now = D
 export async function applyEntitlement(familyId: string) {
   const purchases = await db.storePurchase.findMany({ where: { familyId, state: { not: "REPLACED" } }, orderBy: { expiresAt: "desc" } });
   if (!purchases.length) return;
-  const active = purchases.find((p) => isEntitled(p));
+  const active = bestPurchase(purchases);
   const plan = active ? planByProduct(active.productId) : null;
   const family = await db.family.findUniqueOrThrow({ where: { id: familyId } });
   const next = plan
-    ? { plan: plan.name, deviceLimit: plan.deviceLimit, renewsAt: active!.expiresAt }
-    : { plan: BASE_PLAN, deviceLimit: planByName(BASE_PLAN).deviceLimit, renewsAt: null };
+    ? { plan: plan.name, deviceLimit: plan.entitlements.deviceLimit, renewsAt: active!.expiresAt }
+    : { plan: BASE_PLAN, deviceLimit: planByName(BASE_PLAN).entitlements.deviceLimit, renewsAt: null };
   if (family.plan === next.plan && family.deviceLimit === next.deviceLimit && family.renewsAt?.getTime() === next.renewsAt?.getTime()) return;
   await db.family.update({ where: { id: familyId }, data: next });
+  if (entitlementsFor(family.plan).locationSharing && !entitlementsFor(next.plan).locationSharing) await clearCurrentLocations(familyId);
   if (family.plan !== next.plan) {
     await audit(familyId, active?.store === "GOOGLE_PLAY" ? "Google Play" : active ? "PayMongo" : "eGuard", "plan.changed", `${family.plan} → ${next.plan}`);
     await db.alert.create({
       data: {
         familyId, severity: "INFO", category: "SYSTEM", icon: "crown",
         title: plan ? `Welcome to ${next.plan}` : `${family.plan} ended`,
-        body: plan ? `Your family can now protect up to ${next.deviceLimit} devices.` : `Your family is back on ${next.plan}. Devices already added stay protected.`,
+        body: plan
+          ? `Your family can now protect up to ${plan.entitlements.childLimit} children on ${plan.entitlements.deviceLimit} devices.`
+          : `Your family is back on ${next.plan}. Children and devices already added stay protected.`,
         subject: "Subscription",
       },
     });
@@ -67,10 +71,16 @@ export async function familiesWithPurchases() {
   return rows.map((r) => r.familyId);
 }
 
+/** Of the purchases active now, the one for the highest plan (then the one lasting longest). Rows come latest-ending first. */
+function bestPurchase<P extends { productId: string; state: string; expiresAt: Date | null }>(rows: P[]) {
+  const rank = (p: P) => { const plan = planByProduct(p.productId); return plan ? PLANS.indexOf(plan) : -1; };
+  return rows.filter((p) => isEntitled(p)).reduce<P | null>((best, p) => (!best || rank(p) > rank(best) ? p : best), null);
+}
+
 /** The purchase the family's plan currently comes from, if any. */
 export async function currentPurchase(familyId: string) {
   const rows = await db.storePurchase.findMany({ where: { familyId, state: { not: "REPLACED" } }, orderBy: { expiresAt: "desc" } });
-  return rows.find((p) => isEntitled(p)) ?? null;
+  return bestPurchase(rows);
 }
 
 /** "Renews on …" for an auto-renewing purchase, "Ends on …" for one that won't (a pass, or auto-renew turned off). */

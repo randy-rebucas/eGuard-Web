@@ -20,9 +20,8 @@ export async function generateMetadata(props: PageProps<"/devices/[id]">) {
 export default async function DevicePage(props: PageProps<"/devices/[id]">) {
   const u = await requireUser();
   const { id } = await props.params;
-  const family = await getFamily(u.familyId);
+  const [family, graph] = await Promise.all([getFamily(u.familyId), getFamilyGraph(u.familyId)]);
   const tz = family.timezone;
-  const graph = await getFamilyGraph(u.familyId);
   const d = graph.devices.find((x) => x.id === id);
   if (!d) notFound();
   const child = graph.children.find((c) => c.id === d.childId)!;

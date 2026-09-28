@@ -8,8 +8,9 @@ import type { AppApproval } from "@prisma/client";
 import { db } from "@/lib/db";
 import { clearSessionCookie, requireAdmin, requireUser } from "@/lib/auth";
 import { sendVerificationEmailLater } from "@/lib/email-verification";
-import { ServiceError } from "@/lib/errors";
+import { ServiceError, invalid, notFound, planRequired, toResult, type Result } from "@/lib/errors";
 import * as family from "@/lib/family-service";
+import { LOCATION_UPGRADE, familyEntitlements, planWith } from "@/lib/plan-access";
 import type { FormState } from "./auth";
 
 const { audit, ChildSchema } = family;
@@ -49,8 +50,13 @@ export async function createChild(_: FormState, form: FormData): Promise<FormSta
   const u = await requireUser();
   const parsed = ChildSchema.safeParse({ name: form.get("name"), birthYear: form.get("birthYear") });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
-  const child = await family.createChild(u, parsed.data);
-  redirect(`/children/${child.id}`);
+  let childId: string;
+  try {
+    childId = (await family.createChild(u, parsed.data)).id;
+  } catch (e) {
+    return failed(e);
+  }
+  redirect(`/children/${childId}`);
 }
 
 export async function updateChild(childId: string, _: FormState, form: FormData): Promise<FormState> {
@@ -64,25 +70,30 @@ export async function updateChild(childId: string, _: FormState, form: FormData)
 }
 
 export async function deleteChildData(childId: string, _: FormState, form: FormData): Promise<FormState> {
-  const u = await requireAdmin();
   try {
-    await family.deleteChild(u, childId, String(form.get("password") ?? ""));
+    await family.deleteChild(await requireAdmin(), childId, String(form.get("password") ?? ""));
   } catch (e) {
     return failed(e);
   }
   redirect("/children");
 }
 
-export async function setAppApproval(appId: string, approval: AppApproval) {
+export async function setAppApproval(appId: string, approval: AppApproval): Promise<Result> {
   const u = await requireUser();
-  const app = await family.setAppApproval(u, appId, approval, "web");
-  revalidatePath(`/children/${app.childId}`);
+  return toResult(async () => {
+    const app = await family.setAppApproval(u, appId, approval, "web");
+    revalidatePath(`/children/${app.childId}`);
+    return {};
+  });
 }
 
-export async function setAppLimit(appId: string, minutes: number | null) {
+export async function setAppLimit(appId: string, minutes: number | null): Promise<Result> {
   const u = await requireUser();
-  const app = await family.setAppLimit(u, appId, minutes);
-  revalidatePath(`/children/${app.childId}`);
+  return toResult(async () => {
+    const app = await family.setAppLimit(u, appId, minutes);
+    revalidatePath(`/children/${app.childId}`);
+    return {};
+  });
 }
 
 /* ---------- Devices ---------- */
@@ -178,27 +189,32 @@ export async function changePassword(_: FormState, form: FormData): Promise<Form
 const USER_TOGGLES = ["notifyPush", "notifyEmail", "notifyApproval", "weeklySummary"] as const;
 const FAMILY_TOGGLES = ["keepLocationHistory", "shareAnalytics"] as const;
 
-export async function setToggle(key: string, value: boolean) {
+export async function setToggle(key: string, value: boolean): Promise<Result> {
   const u = await requireUser();
-  if ((USER_TOGGLES as readonly string[]).includes(key)) {
-    await db.user.update({ where: { id: u.id }, data: { [key]: value } });
-  } else if ((FAMILY_TOGGLES as readonly string[]).includes(key)) {
-    await requireAdmin();
-    await db.family.update({ where: { id: u.familyId }, data: { [key]: value } });
-    await audit(u.familyId, u.name, `privacy.${key}`, String(value));
-    // Turning history off deletes the history already kept
-    if (key === "keepLocationHistory" && !value) await db.locationVisit.deleteMany({ where: { child: { familyId: u.familyId } } });
-  } else throw new Error("Unknown setting.");
-  revalidatePath("/settings", "layout");
+  return toResult(async () => {
+    const plan = await familyEntitlements(u.familyId);
+    if (value && key === "notifyPush" && !plan.realtimeAlerts) throw planRequired(`Real-time alerts are included with ${planWith((e) => e.realtimeAlerts).name}.`);
+    if (value && key === "keepLocationHistory" && !plan.locationSharing) throw planRequired(LOCATION_UPGRADE);
+    if ((USER_TOGGLES as readonly string[]).includes(key)) {
+      await db.user.update({ where: { id: u.id }, data: { [key]: value } });
+    } else if ((FAMILY_TOGGLES as readonly string[]).includes(key)) {
+      await requireAdmin();
+      await db.family.update({ where: { id: u.familyId }, data: { [key]: value } });
+      await audit(u.familyId, u.name, `privacy.${key}`, String(value));
+      // Turning history off deletes the history already kept
+      if (key === "keepLocationHistory" && !value) await db.locationVisit.deleteMany({ where: { child: { familyId: u.familyId } } });
+    } else throw invalid("Unknown setting.");
+    revalidatePath("/settings", "layout");
+    return {};
+  });
 }
 
 export async function addParent(_: FormState, form: FormData): Promise<FormState> {
-  const u = await requireAdmin();
   const parsed = family.ParentSchema.safeParse({ name: form.get("name"), email: form.get("email"), password: form.get("password") });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   let parentId: string;
   try {
-    parentId = (await family.addParent(u, parsed.data)).id;
+    parentId = (await family.addParent(await requireAdmin(), parsed.data)).id;
   } catch (e) {
     return failed(e);
   }
@@ -207,24 +223,25 @@ export async function addParent(_: FormState, form: FormData): Promise<FormState
   return { ok: `${parsed.data.name} can now sign in with the temporary password. Ask them to change it.` };
 }
 
-export async function removeParent(userId: string) {
-  const u = await requireAdmin();
-  if (userId === u.id) throw new Error("You can't remove yourself.");
-  const r = await db.user.deleteMany({ where: { id: userId, familyId: u.familyId, role: "PARENT" } });
-  if (r.count) await audit(u.familyId, u.name, "member.removed", userId);
-  revalidatePath("/settings/family");
+export async function removeParent(userId: string): Promise<Result> {
+  return toResult(async () => {
+    const u = await requireAdmin();
+    if (userId === u.id) throw invalid("You can't remove yourself.");
+    const r = await db.user.deleteMany({ where: { id: userId, familyId: u.familyId, role: "PARENT" } });
+    if (!r.count) throw notFound("Parent");
+    await audit(u.familyId, u.name, "member.removed", userId);
+    revalidatePath("/settings/family");
+    return {};
+  });
 }
 
-export async function unlinkIdentity(identityId: string): Promise<{ error?: string }> {
+export async function unlinkIdentity(identityId: string): Promise<Result> {
   const u = await requireUser();
-  try {
+  return toResult(async () => {
     await family.unlinkIdentity(u, identityId);
-  } catch (e) {
-    if (e instanceof ServiceError) return { error: e.message };
-    throw e;
-  }
-  revalidatePath("/settings/security");
-  return {};
+    revalidatePath("/settings/security");
+    return {};
+  });
 }
 
 export async function signOutOthers() {
