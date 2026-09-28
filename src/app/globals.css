@@ -4,6 +4,7 @@
 
 :root{
   --bg:#F5FAFF; --surface:#FFFFFF; --surface-2:#F3F8FE; --surface-3:#E9F3FD;
+  --page-art:url("/web/page-bg.jpg");
   --line:#E2ECF7; --line-strong:#CCDDEF;
   --ink:#0B2348; --ink-2:#34496A; --ink-3:#62769A;
   --accent:#2498F3; --accent-ink:#1570C0; --accent-btn:#1673C4; --accent-btn-hover:#0F63AC;
@@ -26,6 +27,7 @@
   :root:not([data-theme="light"]){
     color-scheme:dark;
     --bg:#071226; --surface:#0E1C35; --surface-2:#12233F; --surface-3:#172C4E;
+    --page-art:none;
     --line:#1D3256; --line-strong:#2A4470;
     --ink:#EAF3FF; --ink-2:#B6C7E0; --ink-3:#8A9EBE;
     --accent:#4AA8F5; --accent-ink:#79BFF8; --accent-btn:#1E7AD0; --accent-btn-hover:#2A88DE;
@@ -43,6 +45,7 @@
 :root[data-theme="dark"]{
   color-scheme:dark;
   --bg:#071226; --surface:#0E1C35; --surface-2:#12233F; --surface-3:#172C4E;
+  --page-art:none;
   --line:#1D3256; --line-strong:#2A4470;
   --ink:#EAF3FF; --ink-2:#B6C7E0; --ink-3:#8A9EBE;
   --accent:#4AA8F5; --accent-ink:#79BFF8; --accent-btn:#1E7AD0; --accent-btn-hover:#2A88DE;
@@ -92,7 +95,8 @@ p{margin:0}
 .meter > span{display:block; height:100%; border-radius:6px; background:var(--accent)}
 .plan .link-btn{margin-top:12px}
 
-.main{min-width:0; display:flex; flex-direction:column}
+/* Fixed so the soft art stays put behind long pages instead of stretching */
+.main{min-width:0; display:flex; flex-direction:column; background:var(--bg) var(--page-art) center/cover fixed no-repeat}
 .topbar{position:sticky; top:env(safe-area-inset-top,0px); z-index:30; display:flex; align-items:center; gap:16px; padding:14px 32px; background:color-mix(in srgb, var(--bg) 86%, transparent); backdrop-filter:saturate(1.4) blur(10px); -webkit-backdrop-filter:saturate(1.4) blur(10px); border-bottom:1px solid transparent}
 .topbar.scrolled{border-bottom-color:var(--line)}
 .mobile-brand{display:none}
@@ -206,38 +210,33 @@ button.list-row:hover .chev{transform:translateX(2px); color:var(--accent-ink)}
 .interactive:hover{transform:translateY(-2px); box-shadow:var(--shadow); border-color:var(--line-strong)}
 
 /* ---------- Hero ---------- */
-.hero{position:relative; overflow:hidden; border-radius:24px; color:#fff; min-height:280px; display:grid; grid-template-columns:minmax(0,1.2fr) minmax(0,1fr); gap:24px; padding:40px 44px; isolation:isolate;
-  background:
-    radial-gradient(60% 90% at 88% 20%, rgba(255,214,170,.38), transparent 60%),
-    radial-gradient(40% 60% at 70% 85%, rgba(91,184,247,.45), transparent 70%),
-    linear-gradient(118deg, #0B2348 0%, #102B57 38%, #1B4E8C 72%, #3AA7F5 120%);}
-/* PHOTO SLOT: set --hero-photo to url(family.jpg) in production; the gradient overlay below integrates it */
-.hero::before{content:""; position:absolute; inset:0; z-index:-2; background:var(--hero-photo, none) center/cover no-repeat}
+/* Banner art is light in both themes, so hero colors are fixed navy rather than --ink (which flips in dark mode) */
+.hero{position:relative; overflow:hidden; border-radius:24px; color:#0B2348; min-height:280px; display:grid; grid-template-columns:minmax(0,1.2fr) minmax(0,1fr); gap:24px; padding:40px 44px; isolation:isolate;
+  background:#DCEBFB url("/web/dashboard-hero.jpg") right center/cover no-repeat;}
+/* Soft wash on the left keeps the copy legible over the landscape */
 .hero::after{content:""; position:absolute; inset:0; z-index:-1; pointer-events:none;
-  background:
-    linear-gradient(90deg, rgba(11,35,72,.92) 0%, rgba(11,35,72,.55) 45%, rgba(11,35,72,.05) 100%),
-    repeating-linear-gradient(105deg, rgba(255,255,255,.035) 0 2px, transparent 2px 90px);}
+  background:linear-gradient(90deg, rgba(236,245,255,.85) 0%, rgba(236,245,255,.5) 40%, rgba(236,245,255,0) 65%);}
 .hero .light{position:absolute; border-radius:50%; filter:blur(2px); z-index:-1; pointer-events:none}
 .hero-copy{display:flex; flex-direction:column; justify-content:center; gap:10px; max-width:520px}
-.hero .greet{font-size:15px; color:rgba(255,255,255,.72); font-weight:500}
-.hero h1{color:#fff; font-size:44px; font-weight:600; line-height:1.05}
-.hero .lede{font-family:var(--display); font-size:22px; font-weight:500; line-height:1.3; color:rgba(255,255,255,.92); margin-top:6px; letter-spacing:-.01em}
+.hero .greet{font-size:15px; color:#34496A; font-weight:500}
+.hero h1{color:#0B2348; font-size:44px; font-weight:600; line-height:1.05}
+.hero .lede{font-family:var(--display); font-size:22px; font-weight:500; line-height:1.3; color:#102B57; margin-top:6px; letter-spacing:-.01em}
 .hero-stats{display:flex; flex-wrap:wrap; gap:10px; margin-top:18px}
-.hero-stat{display:inline-flex; align-items:center; gap:8px; min-height:36px; padding:0 14px; border-radius:18px; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.16); font-size:13.5px; font-weight:500; color:#fff}
-button.hero-stat:hover{background:rgba(255,255,255,.18)}
+.hero-stat{display:inline-flex; align-items:center; gap:8px; min-height:36px; padding:0 14px; border-radius:18px; background:rgba(255,255,255,.7); border:1px solid rgba(11,35,72,.1); font-size:13.5px; font-weight:500; color:#0B2348; backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px)}
+button.hero-stat:hover{background:rgba(255,255,255,.9)}
 .hero-stat .lucide{width:16px; height:16px}
-.hero-stat.warn .lucide{color:#FFC76A}
+.hero-stat.warn .lucide{color:#C77A00}
 .hero-side{align-self:center; justify-self:end; width:100%; max-width:340px; display:flex; flex-direction:column; gap:10px}
-.glass{background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.18); border-radius:16px; padding:14px 16px; backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px)}
+.glass{background:rgba(255,255,255,.78); border:1px solid rgba(255,255,255,.9); border-radius:16px; padding:14px 16px; box-shadow:0 8px 24px rgba(11,35,72,.12); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px)}
 .glass .row{gap:10px}
-.glass .t-meta{color:rgba(255,255,255,.7)}
-.glass .t-title{color:#fff}
-.glass-child{display:flex; align-items:center; gap:10px; width:100%; text-align:left; color:#fff; padding:6px 4px; border-radius:10px}
-.glass-child:hover{background:rgba(255,255,255,.08)}
+.glass .t-meta{color:#62769A}
+.glass .t-title{color:#0B2348}
+.glass-child{display:flex; align-items:center; gap:10px; width:100%; text-align:left; color:#0B2348; padding:6px 4px; border-radius:10px}
+.glass-child:hover{background:rgba(11,35,72,.06)}
 .glass-child .avatar{width:32px; height:32px; font-size:13px; border-color:transparent}
 .glass-child .state{margin-left:auto; display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600}
 .glass-child .state .lucide{width:15px; height:15px}
-.st-ok{color:#7BE3A7} .st-warn{color:#FFC76A} .st-off{color:rgba(255,255,255,.65)}
+.st-ok{color:#12804A} .st-warn{color:#B36B00} .st-off{color:#62769A}
 
 /* ---------- Metric cards ---------- */
 .metrics{display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:16px}
@@ -477,6 +476,8 @@ button.check-item:hover{border-color:var(--line-strong); background:var(--surfac
 @media (max-width:767px){
   body{font-size:15px}
   .app{grid-template-columns:minmax(0,1fr)}
+  /* iOS ignores fixed backgrounds; pin the art to the top and let --bg carry the rest */
+  .main{background-attachment:scroll; background-size:100% auto; background-position:top center}
   .sidebar{display:none}
   .topbar{padding:10px 16px; gap:8px}
   .mobile-brand{display:flex; align-items:center; gap:8px; font-family:var(--display); font-weight:700; font-size:18px}
@@ -492,6 +493,7 @@ button.check-item:hover{border-color:var(--line-strong); background:var(--surfac
   .content{padding:4px 16px calc(96px + env(safe-area-inset-bottom,0px)); gap:22px}
   .page-head h1{font-size:28px}
   .hero{grid-template-columns:minmax(0,1fr); padding:28px 22px; min-height:0; border-radius:20px}
+  .hero::after{background:linear-gradient(180deg, rgba(236,245,255,.9) 0%, rgba(236,245,255,.7) 100%)}
   .hero h1{font-size:34px}
   .hero .lede{font-size:18px}
   .hero-side{justify-self:stretch; max-width:none}
@@ -527,7 +529,6 @@ button.check-item:hover{border-color:var(--line-strong); background:var(--surfac
 @media (max-width:767px){.search-toggle{display:grid !important}}
 
 /* ---------- Next.js app additions ---------- */
-/* Photo slot: add public/images/family-hero.jpg and set .hero{--hero-photo:url("/images/family-hero.jpg")} */
 .promo{background-image:linear-gradient(180deg, rgba(11,35,72,.1), rgba(11,35,72,.1)), var(--promo-photo, none), radial-gradient(70% 60% at 80% 10%, rgba(255,210,160,.45), transparent 65%), radial-gradient(60% 70% at 10% 30%, rgba(91,184,247,.5), transparent 70%), linear-gradient(180deg, #173766 0%, #0B2348 100%); background-size:cover; background-position:center}
 .form-error{display:flex; gap:8px; align-items:flex-start; padding:12px 14px; border-radius:12px; background:var(--crit-soft); color:var(--crit-ink); font-size:14px}
 .form-ok{display:flex; gap:8px; align-items:flex-start; padding:12px 14px; border-radius:12px; background:var(--ok-soft); color:var(--ok-ink); font-size:14px}
@@ -578,7 +579,7 @@ select.input{appearance:auto}
 .check-item{font:inherit; color:inherit; cursor:default}
 button.check-item{cursor:pointer}
 .list-row{font:inherit; color:inherit; background:none; border:0; cursor:pointer}
-a.hero-stat:hover{background:rgba(255,255,255,.18)}
+a.hero-stat:hover{background:rgba(255,255,255,.9)}
 code{font-family:ui-monospace,"SF Mono",Consolas,monospace; font-size:.92em; background:var(--surface-2); padding:1px 5px; border-radius:6px}
 @media (max-width:767px){
   .bottom-nav a{display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; min-height:52px; border-radius:12px; font-size:11.5px; font-weight:600; color:var(--ink-3)}
