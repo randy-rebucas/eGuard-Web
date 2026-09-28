@@ -14,7 +14,7 @@ function transporter() {
 
 export type Mail = { to: string; subject: string; text: string; html: string; replyTo?: string };
 
-const mailFrom = () => process.env.MAIL_FROM || "eGuard <no-reply@eguard.app>";
+const mailFrom = () => process.env.MAIL_FROM || "eGuard <no-reply@eguard.family>";
 
 /** Sends through Resend's HTTP API. RESEND_FROM must be on a domain verified in Resend (defaults to MAIL_FROM). */
 async function sendWithResend(mail: Mail, apiKey: string) {

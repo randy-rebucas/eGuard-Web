@@ -3,7 +3,7 @@ import type { SupportTicket } from "@prisma/client";
 import { escapeHtml, sendMail } from "./mail";
 
 /** Where parents' support requests go, and the address the apps show. Set SUPPORT_EMAIL in production. */
-export const supportEmail = () => process.env.SUPPORT_EMAIL?.trim() || "support@eguard.app";
+export const supportEmail = () => process.env.SUPPORT_EMAIL?.trim() || "support@devcomdigital.com";
 
 /** Forwards a new ticket to the support inbox, with Reply-To set to the parent. */
 export async function forwardTicket(t: SupportTicket, from: { name: string; email: string; familyId: string }) {

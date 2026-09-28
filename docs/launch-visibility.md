@@ -4,9 +4,11 @@ What to fix on the public website before announcing eGuard, how to make it finda
 shared, and a 30-day plan for reaching parents in the Philippines. App store submission is covered separately in
 [app-listing.md](app-listing.md).
 
-The audit in section 1 was made against the live site, `https://e-guard-web.vercel.app`, on 28 September 2026.
-Statuses were updated the same day after the section 2 fixes landed in the codebase. The live site shows them only
-after the next deploy, so re-run these checks once it's out.
+eGuard is a product of **DevCom Digital Marketing Services**. The site's address is **`https://www.eguard.family`**.
+
+The audit in section 1 was first made against `https://e-guard-web.vercel.app` on 28 September 2026. Statuses were
+updated the same day as the fixes in sections 2, 4 and 5 landed in the codebase. The live site shows them only after
+the next deploy, so re-run these checks on `www.eguard.family` once it's out.
 
 ## Contents
 
@@ -27,269 +29,144 @@ after the next deploy, so re-run these checks once it's out.
 Status uses eGuard's own words: **Verified** means it works, **Needs attention** means it costs visibility, and
 **Action required** means fix it before telling anyone about the site.
 
-| Check | What the live site returns | Status |
+| Check | What the site returns | Status |
 |---|---|---|
-| Privacy policy and terms | `/privacy` and `/terms` are live and linked from the footer, but no Data Protection Officer or business address is named yet (`src/lib/legal.ts`) | **Action required** |
-| Ratings and user claims | Rating card, "thousands of parents" and "trusted by" copy removed or rewritten, on the landing page and the sign-in panel | Verified |
+| Domain | `www.eguard.family` is the default in code; not yet connected in Vercel, and `APP_URL` not yet set (section 3) | Needs attention |
+| Privacy policy and terms | Live at `/privacy` and `/terms`. DevCom Digital Marketing Services is named as the controller, with its Data Protection Officer, address and privacy email | Verified |
+| Ratings and user claims | No rating, "thousands of parents" or "trusted by" claims on the landing page or the sign-in panel | Verified |
 | App store badges | Replaced with "Android and iOS apps coming soon" | Verified |
-| Dead links | None point to `#`. About, Privacy, Terms and Blog are real pages; Download App and the social icons are removed until they exist | Verified |
-| "Real-time alerts" on Plus | Plus card says "Push alerts (coming soon)"; the landing page describes instant email alerts | Verified |
+| Dead links | None point to `#`. Download App and the social icons are removed until they exist | Verified |
+| Alerts copy | Plus lists "Push alerts (coming soon)"; the landing page describes instant email alerts | Verified |
 | Newsletter box | Removed: it didn't save addresses | Verified |
-| Domain | Served from a `vercel.app` subdomain | Needs attention |
-| `robots.txt` | Served from `src/app/robots.ts`; blocks `/api/`, points to the sitemap | Verified |
+| `robots.txt` | Blocks `/api/`, points to the sitemap | Verified |
 | `sitemap.xml` | 21 public URLs: home, about, blog and posts, help and all 10 articles, sign-up, sign-in, privacy, terms | Verified |
-| Link previews (Open Graph, X) | Every public page has its own title, description and a 1200 × 630 share image; blog posts and help articles get one with their title | Verified |
+| Link previews (Open Graph, X) | Every public page has its own title, description and a 1200 × 630 share image; posts and help articles get one with their title | Verified |
 | Canonical URL | Set on every public page, from `APP_URL` | Verified |
 | Structured data | Organization, WebSite and WebApplication (peso offers, no rating) on the home page; BlogPosting and TechArticle with breadcrumbs on posts and articles | Verified |
-| Signed-in pages | The whole signed-in group, forgot-password, reset-password and verify-email are `noindex` | Verified |
-| Title and description | "eGuard · A Safer Digital World for Their Brighter Tomorrow", plus a clear description | Verified |
-| Headings | One H1, eight H2 sections in a sensible order | Verified |
-| Icons | `favicon.ico`, SVG icon and 180px Apple touch icon | Verified |
+| Signed-in pages | The signed-in group, forgot-password, reset-password and verify-email are `noindex` | Verified |
+| Title and description | "eGuard · Parental controls you can verify, for families in the Philippines", with pesos in the description | Verified |
+| Headings | One H1 per page, sections in a sensible order | Verified |
+| Icons | `favicon.ico`, SVG icon, 180px Apple touch icon and a web manifest | Verified |
 | Language and HTTPS | `lang="en"`, HTTPS on Vercel | Verified |
 | Image alt text | Photos are described; decorative icons use empty alt | Verified |
-| Phones and tablets | No sideways scrolling at 320–1280px across all 33 screens | Verified |
+| Phones and tablets | No sideways scrolling at 320–1280px | Verified |
 
-Totals: 1 action required, 1 needs attention (the domain), 17 verified.
+Totals: 0 action required, 1 needs attention (the domain), 18 verified.
 
 ---
 
 ## 2. Fix before launch
 
-Parents are deciding whether to trust eGuard with their children's devices. Anything on the page that turns out
-not to be true costs that trust. It also gets the site flagged by ad platforms and app store reviewers.
+**All done.** Parents are deciding whether to trust eGuard with their children's devices, so anything on the site
+that isn't true costs that trust, and gets the site flagged by ad platforms and app store reviewers. Keep it that
+way: add a claim only once you can back it up.
 
-### 2.1 Remove the 4.8 rating and the "thousands of parents" line
+| Fix | What changed | Where it lives |
+|---|---|---|
+| 2.1 Made-up rating and user claims | "4.8 (2.5K+ reviews)" became "Free for 1 child · No card needed". "Trusted by…", "thousands of parents" and the sign-in panel's "50K+" are gone; the audience band now says "Built for Families, Schools and Communities" | [src/app/page.tsx](../src/app/page.tsx), [src/app/(auth)/layout.tsx](../src/app/%28auth%29/layout.tsx) |
+| 2.2 Privacy policy and terms | Written against what the code stores and deletes: the 90-day retention, opt-in location history, PayMongo, export and deletion, RA 10173 rights. DevCom is the controller | [src/app/(site)/privacy](../src/app/%28site%29/privacy/page.tsx), [terms](../src/app/%28site%29/terms/page.tsx), details in [src/lib/legal.ts](../src/lib/legal.ts) |
+| 2.3 Dead links | Store badges became "apps coming soon"; "Watch Video" became "See How It Works"; About, Blog and Help became real pages; Download App and the social icons were removed | [src/components/site-chrome.tsx](../src/components/site-chrome.tsx) |
+| 2.4 Alerts copy | Every plan gets email and in-app alerts, so Plus lists "Push alerts (coming soon)" instead of "Real-time alerts" | [src/lib/plans.ts](../src/lib/plans.ts) |
+| 2.5 Newsletter box | Removed: it sent visitors to the register page, which ignored the address. Bring it back as the app waitlist once there's a mailing list | [src/components/site-chrome.tsx](../src/components/site-chrome.tsx) |
 
-**Done.** The rating card now says "Free for 1 child". The "50K+" on the sign-in panel is gone too.
+Still to do on these pages:
 
-eGuard has no public reviews yet, so "4.8 (2.5K+ reviews)" is a made-up figure. Showing invented ratings breaks the
-Philippines' Consumer Act rules on misleading advertising and Meta and Google ad policies, and a reviewer can check
-it in seconds. Replace the card with something true, such as "Free for 1 child · no card needed". Add real numbers
-once you have them.
-
-Also soften "Trusted by modern families", "Trusted by Parents, Supported by Communities" and the FAQ line
-"Schools, communities and employers use eGuard" until someone actually does. "Built for families, schools and
-communities" says the same thing honestly.
-
-Where: [src/app/page.tsx](../src/app/page.tsx) lines 183, 236–241, 252 and 380, and the FAQ copy.
-
-### 2.2 Publish a privacy policy and terms of use
-
-**Pages live; DPO still to name.** Fill in `dpoName` and `address` in `src/lib/legal.ts`, and have a lawyer
-review both pages, especially the refund and liability terms.
-
-This matters more for eGuard than for most sites: it collects children's location and app usage. You need
-`/privacy` and `/terms` as real pages before you run ads, list in a directory or submit to either app store. Under
-the Data Privacy Act (RA 10173), the policy has to name a Data Protection Officer and a contact for privacy
-requests.
-
-The content already exists. "What data eGuard keeps" in the help articles and
-[app-listing.md › 7](app-listing.md#7-google-play-data-safety-form) list what's collected, the 90-day retention,
-opt-in location history and PayMongo as the payment processor.
-
-### 2.3 Stop linking to things that don't exist
-
-**Done.** Blog and About became real pages instead of being hidden. Download App and the social icons are removed;
-add them back to `src/components/site-chrome.tsx` once they exist.
-
-Clicking a store badge that does nothing is the fastest way to lose a parent's trust. Until the apps ship, replace
-the two badges with "Android and iOS apps coming soon" and an email sign-up. Hide Blog, About and Download App, and
-any social icon without an account behind it. "Watch Video" scrolls to How It Works; rename it to "See how it
-works" or record the video.
-
-Where: [src/app/page.tsx](../src/app/page.tsx) lines 135–136 and the footer.
-
-### 2.4 Describe alerts the way they work today
-
-**Done.** Every plan gets email and in-app alerts, so the Plus card says "Push alerts (coming soon)" rather than
-listing email alerts as a Plus perk.
-
-The Plus plan lists "Real-time alerts", but push notifications aren't connected yet (README, "Not built yet"). The
-dashboard checks for new alerts every 30 seconds, and alerts go out by email. Until push ships, write "Instant email
-and in-app alerts" on the pricing card and in the FAQ.
-
-### 2.5 Make the newsletter box do something
-
-**Done: removed.** It sent visitors to the register page, which ignored the address.
-
-"Stay Updated" collects an email address in the footer. Check that it saves the address and sends a confirmation.
-If it doesn't, remove it for now. It becomes useful later as the waitlist for the mobile apps.
+- **Legal review.** Have a lawyer read both legal pages, especially the refund and liability terms in the Terms.
+- **Name the DPO with the NPC.** The site lists "DevCom's Data Protection Officer"; the National Privacy Commission
+  still expects a named person on file when DevCom registers.
+- **Update the "Last updated" date** in `src/lib/legal.ts` whenever either page changes.
 
 ---
 
 ## 3. Domain and email
 
-Search engines treat a domain change as a new site, so switch before you build up any search ranking or backlinks,
-not after. Parents are also more wary of a `vercel.app` address, and it looks like a demo.
+Search engines treat a domain change as a new site, so connect `www.eguard.family` before you build up any search
+ranking or backlinks. Parents are also more wary of a `vercel.app` address, which looks like a demo.
 
-**Buy and connect**
+**Connect the domain**
 
-- Register the domain (the listing draft uses `eguard.app`; also secure the `.ph` or `.com.ph` version if the name
-  is free).
-- In Vercel › Project › Domains, add it as the primary domain. Make `e-guard-web.vercel.app` redirect to it with a
-  permanent (308) redirect.
-- Set `APP_URL` in Production to the new address. Verification links, map tiles and the metadata in section 4 read
-  it.
+- In Vercel › Project › Domains, add **`www.eguard.family`** as the primary domain.
+- Add `eguard.family` and set it to redirect to `www`. Make `e-guard-web.vercel.app` redirect too. Both redirects
+  are permanent (308).
+- Set `APP_URL=https://www.eguard.family` in Production. Verification links, map tiles, canonical URLs, the
+  sitemap, share tags and structured data all read it. (The code falls back to the same address if it's unset.)
+- Consider securing a `.ph` or `.com.ph` version of the name if it's free.
 
 **Make email land in the inbox**
 
-- Verification and alert emails come from SMTP, with Resend as fallback. Add SPF, DKIM and DMARC records for the
-  new domain in both.
+- Verification and alert emails go out over SMTP, with Resend as fallback. Add SPF, DKIM and DMARC records for
+  `eguard.family` in both.
 - Start DMARC at `p=none` with reports, then move to `quarantine` once reports come back clean.
-- Send from a real address such as `hello@`, and make `SUPPORT_EMAIL` an inbox someone actually reads.
+- Set `MAIL_FROM="eGuard <no-reply@eguard.family>"` once the domain passes SPF and DKIM. Until then, keep the
+  current sender.
+- Set `SUPPORT_EMAIL=support@devcomdigital.com`, the inbox someone reads. The legal pages already use it.
 
 ---
 
 ## 4. Search and link previews
 
-**Status: built.** Everything in 4.1–4.4 is in the codebase, with a few differences from the snippets below:
-titles, canonical URLs and share tags come from `pageMetadata()` in `src/lib/site.ts`; the share image is drawn in
-code (`src/app/opengraph-image.tsx`, with per-post and per-article versions); and the sitemap is generated from the
-blog posts and help articles. What's left is 4.5, which needs the live domain.
+**Built.** Everything is in the codebase and reads the site address from `APP_URL`.
 
-Five small files cover everything flagged as Needs attention in section 1. They follow the Next.js 16 conventions in
-`node_modules/next/dist/docs` and read the site address from `APP_URL`.
+| What | How | Where |
+|---|---|---|
+| Base URL, title template, default share tags | Root layout metadata | [src/app/layout.tsx](../src/app/layout.tsx) |
+| Per-page title, description, canonical, Open Graph and X tags | `pageMetadata()`. Metadata merges shallowly, so a page that sets `openGraph` would lose the root's; the helper builds the whole object each time | [src/lib/site.ts](../src/lib/site.ts) |
+| Share images (1200 × 630) | Drawn in code: logo, "Protections you set once, verified on every device", navy-to-sky gradient, no children's faces. Posts and help articles get their own with their title | [src/lib/og.tsx](../src/lib/og.tsx), `opengraph-image.tsx` files |
+| `robots.txt` | Allows everything but `/api/`; points to the sitemap | [src/app/robots.ts](../src/app/robots.ts) |
+| `sitemap.xml` | Built from the blog posts and help articles, so new ones appear automatically | [src/app/sitemap.ts](../src/app/sitemap.ts) |
+| `noindex` | The signed-in group, forgot-password, reset-password and verify-email | `src/app/(app)/layout.tsx` and the auth pages |
+| Structured data | Organization (with DevCom as parent), WebSite and WebApplication with peso offers on the home page; BlogPosting / TechArticle and breadcrumbs on posts and articles. No `aggregateRating` until there are real reviews, and no FAQ markup (Google shows FAQ results only for government and health sites) | [src/app/page.tsx](../src/app/page.tsx), the post and article pages |
+| Web manifest | Name, colors and icons for installing the site | [src/app/manifest.ts](../src/app/manifest.ts) |
 
-### 4.1 Site-wide defaults and link previews
+When adding a public page, export `metadata = pageMetadata({ title, description, path })` and add the path to the
+sitemap. Pages with their own `opengraph-image` pass `ownImage: true`.
 
-Most parents in the Philippines will first see eGuard as a link in Messenger or a Facebook group. With no Open Graph
-tags, that link shows up bare. Add a base URL and share defaults to the root layout:
-
-```ts
-// src/app/layout.tsx
-export const metadata: Metadata = {
-  metadataBase: new URL(process.env.APP_URL ?? "https://e-guard-web.vercel.app"),
-  title: { default: "eGuard", template: "%s · eGuard" },
-  description: "Digital Safety for Brighter Tomorrows. Configure, manage and verify protections on your children's devices.",
-  openGraph: { type: "website", siteName: "eGuard", locale: "en_PH" },
-  twitter: { card: "summary_large_image" },
-};
-```
-
-Add to the landing page's existing metadata:
-
-```ts
-// src/app/page.tsx
-  alternates: { canonical: "/" },
-  openGraph: {
-    title: "eGuard: parental controls you can verify",
-    description: "Set screen time, bedtime and app rules on your child's phone, and see each one confirmed on the device. Free for 1 child.",
-    url: "/",
-  },
-```
-
-Then add a 1200 × 630 image at `src/app/opengraph-image.png`. Next.js adds the image tags automatically. Use the
-logo, the line "Protections you set once, verified on every device" and the navy-to-sky gradient. Use no children's
-faces, following the brand rules.
-
-### 4.2 robots.txt and sitemap
-
-```ts
-// src/app/robots.ts
-import type { MetadataRoute } from "next";
-
-export default function robots(): MetadataRoute.Robots {
-  const site = process.env.APP_URL ?? "https://e-guard-web.vercel.app";
-  return {
-    rules: { userAgent: "*", allow: "/", disallow: "/api/" },
-    sitemap: `${site}/sitemap.xml`,
-  };
-}
-```
-
-```ts
-// src/app/sitemap.ts
-import type { MetadataRoute } from "next";
-
-// Public pages only. Add each /blog/[slug] post (POSTS in src/lib/blog.ts) and, once public, each /help/[slug] article.
-const PAGES = ["", "/register", "/login", "/about", "/privacy", "/terms", "/blog"];
-
-export default function sitemap(): MetadataRoute.Sitemap {
-  const site = process.env.APP_URL ?? "https://e-guard-web.vercel.app";
-  return PAGES.map((p) => ({ url: `${site}${p}`, changeFrequency: p ? "monthly" : "weekly", priority: p ? 0.5 : 1 }));
-}
-```
-
-### 4.3 Keep the dashboard out of search results
-
-Signed-out visitors to `/dashboard` and the other signed-in pages get sent to the sign-in page. Marking the whole
-group `noindex` makes sure none of them turn up in search results. Do the same for forgot-password and
-reset-password.
-
-```ts
-// src/app/(app)/layout.tsx
-export const metadata = { robots: { index: false, follow: false } };
-```
-
-### 4.4 Tell search engines what eGuard is
-
-Add this to the landing page. It gives Google the organization, the logo and the three plans in pesos. Leave out
-`aggregateRating` until you have real reviews, for the same reason as 2.1. An FAQ block won't earn extra space in
-results either: since 2023, Google shows FAQ rich results only for government and health sites.
-
-```tsx
-// src/app/page.tsx, inside the page component
-const site = process.env.APP_URL ?? "https://e-guard-web.vercel.app";
-const offer = (name: string, price: string) => ({ "@type": "Offer", name, price, priceCurrency: "PHP" });
-const jsonLd = {
-  "@context": "https://schema.org",
-  "@graph": [
-    { "@type": "Organization", "@id": `${site}/#org`, name: "eGuard", url: site, logo: `${site}/brand/logo-mark-512.png` },
-    { "@type": "WebApplication", name: "eGuard", url: site, applicationCategory: "LifestyleApplication",
-      operatingSystem: "Any (web browser)", publisher: { "@id": `${site}/#org` },
-      offers: [offer("Free", "0"), offer("eGuard Plus", "149"), offer("Family Pro", "249")] },
-  ],
-};
-
-// in the returned JSX
-<script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }} />
-```
-
-### 4.5 Register with the search engines
+### Register with the search engines (after the domain is live)
 
 **Google Search Console**
 
-- Add a **Domain property** and verify it with a DNS TXT record. This covers the `www` and non-`www` addresses and
-  both http and https at once.
-- Submit `/sitemap.xml`, then use URL Inspection › Request indexing on the home page.
+- Add a **Domain property** for `eguard.family` and verify it with a DNS TXT record. This covers `www` and
+  non-`www`, http and https at once. (For HTML-tag verification instead, set `GOOGLE_SITE_VERIFICATION`.)
+- Submit `https://www.eguard.family/sitemap.xml`, then use URL Inspection › Request indexing on the home page.
 - Check Page indexing weekly for the first month.
 
 **Bing Webmaster Tools**
 
-- Import the site straight from Search Console; no second verification needed.
+- Import the site straight from Search Console; no second verification needed. (`BING_SITE_VERIFICATION` is there
+  if you'd rather use the tag.)
 - Bing also supplies results to DuckDuckGo, Ecosia and several AI assistants, so it's worth the five minutes.
-- Turn on IndexNow so new help pages get picked up within hours.
+- Turn on IndexNow so new posts and help pages get picked up within hours.
 
 After deploying, test with the Facebook Sharing Debugger and Google's Rich Results Test. Facebook caches previews,
-so re-scrape the URL there whenever you change the share image.
+so re-scrape the URL there whenever you change a share image.
 
 ---
 
 ## 5. Pages people search for
 
-**Status: help articles public at `/help`, and three blog posts at `/blog`.** Keep adding one guide a week.
-
-Right now search engines can only find one page on eGuard. You already have the start of more: **10 help articles**
-in [src/lib/help.ts](../src/lib/help.ts), visible only after sign-in. Making them public at `/help/[slug]` gives
-Google ten useful, specific pages from work that's already written.
+**Built:** the Help Center at `/help` (all 10 articles, each with its own page), and three blog posts at `/blog`.
+Blog posts live in [src/lib/blog.ts](../src/lib/blog.ts); help articles in [src/lib/help.ts](../src/lib/help.ts),
+which the apps also read through `GET /help`.
 
 | What a parent searches | Kind | Page that answers it |
 |---|---|---|
-| how to set screen time on child's iPhone | Setup guide, high intent | Help: "Set up supervision on iPhone and iPad" |
-| parental control Android Family Link setup | Setup guide, high intent | Help: "Set up supervision on Android" |
-| parental control app Philippines | Product search, commercial | Landing page (make sure "Philippines" and pesos appear in the copy) |
-| best parental control app free | Comparison, commercial | New: "Free parental controls: what eGuard's Free plan covers" |
-| how to see my child's location on phone | Question, feature | Help: "How location sharing works" |
-| is parental control app safe privacy | Worry, trust | Help: "What data eGuard keeps", plus the privacy policy |
-| bedtime mode for kids phone | Question, feature | New: a bedtime guide that ends in eGuard's Bedtime protection |
-| parental controls not working | Problem, switching | Help: "A setting says…" and "A device shows as offline". Explain how eGuard verifies each setting on the device |
+| how to set screen time on child's iPhone | Setup guide, high intent | `/help/ios-family-sharing` |
+| parental control Android Family Link setup | Setup guide, high intent | `/help/android-family-link` |
+| parental control app Philippines | Product search, commercial | Home page (title and description name the Philippines and pesos) |
+| best parental control app free | Comparison, commercial | `/blog/what-the-free-plan-covers` |
+| how to see my child's location on phone | Question, feature | `/help/location-privacy` |
+| is parental control app safe privacy | Worry, trust | `/help/data-we-keep` and `/privacy` |
+| bedtime mode for kids phone | Question, feature | `/blog/bedtime-for-your-childs-phone` |
+| parental controls not working | Problem, switching | `/blog/settings-verified-on-the-device`, `/help/setting-not-verified`, `/help/device-offline` |
 
 - **Your angle is verification.** Competitors say a setting was saved; eGuard says it was confirmed on the device.
-  Use that as the thread through every page title and description.
+  Use that as the thread through every title and description.
 - **Write for Filipino parents.** Use peso prices, local school terms such as "school nights" and "Grade 7", and
   screenshots of Android phones common in the Philippines. Consider Tagalog versions of the top three guides once
   the English ones are indexed.
-- **One new guide a week** for the first month is enough. Four good guides beat twenty thin ones.
+- **One new post a week** for the first month is enough. Four good guides beat twenty thin ones. Ideas: school-year
+  screen time, first phone for a Grade 5 child, YouTube and TikTok age ratings, what Family Link does and doesn't do.
+- The setup articles tell parents the phone apps are coming soon. Remove that note when the apps ship.
 
 ---
 
@@ -300,10 +177,11 @@ never put ad pixels on signed-in pages, where children's names and locations app
 
 **Tools**
 
-- **Vercel Web Analytics** on the landing page, help pages and sign-up: cookieless and one line to add. Add Speed
-  Insights for real-device load times.
+- **Vercel Web Analytics** on the landing page, blog, help pages and sign-up: cookieless and one line to add. Add
+  Speed Insights for real-device load times.
 - **Search Console** for queries, impressions and indexing.
-- Add a Meta Pixel only if you run Facebook ads, only on public pages, and mention it in the privacy policy.
+- Add a Meta Pixel only if you run Facebook ads, only on public pages, and add it to the privacy policy's Cookies
+  section first: the policy currently says eGuard uses no analytics or tracking cookies.
 
 **The funnel to watch**
 
@@ -320,26 +198,27 @@ You can count all five from your own database, so this funnel needs no third-par
 ## 7. Where to announce
 
 Start where Filipino parents already talk, and lead with a useful guide rather than a sales pitch. Every link you
-share should show the new share image.
+share shows the new share image.
 
 **Parent communities**
 
-- Facebook parenting and homeschool groups: read each group's rules and ask the admin before posting. Share a setup
-  guide first; mention eGuard only as the tool that checks the settings.
+- Facebook parenting and homeschool groups: read each group's rules and ask the admin before posting. Share a blog
+  post or help article first; mention eGuard only as the tool that checks the settings.
 - Mom and parenting creators on Facebook and TikTok: offer a Family Pro plan for an honest walkthrough. Any
   sponsored post must be labeled as sponsored.
 
 **Schools and communities**
 
-- The site already has a "For Schools" section. Offer PTAs and school guidance offices a free parents' session on
-  screen time, with a one-page handout that links to the guides.
-- Take one school from pilot to a real quote. That's what earns back the "Supported by Communities" heading.
+- The landing page has a "Built for Families, Schools and Communities" section. Offer PTAs and school guidance
+  offices a free parents' session on screen time, with a one-page handout that links to the guides.
+- Take one school from pilot to a real quote. Only then say a school uses eGuard.
 
 **Launch platforms and directories**
 
 - Product Hunt: launch on a Tuesday–Thursday, with the verification angle in the tagline.
 - AlternativeTo (as an alternative to Family Link, Qustodio and Bark), SaaSHub and BetaList.
-- Create a Google Business Profile only if eGuard has a registered business address to show.
+- A Google Business Profile for DevCom Digital Marketing Services (Baybay City, Leyte) can link to eGuard, since
+  there's now a registered address to show.
 
 **Press**
 
@@ -356,10 +235,10 @@ The order matters: fix trust first, then make the site findable, then send peopl
 
 | Days | Focus | Work |
 |---|---|---|
-| 1–5 | Trust | Take out the rating and user claims; fix the "Real-time alerts" copy. Publish `/privacy` and `/terms` and name the Data Protection Officer. Replace the store badges and hide the dead links. |
-| 4–8 | Identity | Connect the domain, redirect `vercel.app` to it with a 308, and update `APP_URL`. Set up SPF, DKIM and DMARC; send a test verification email to Gmail and Yahoo. |
-| 6–10 | Findable | Add the metadata, robots, sitemap, share image, noindex and JSON-LD from section 4. Verify Search Console and Bing; submit the sitemap. Check a shared link in Messenger and with the Facebook Sharing Debugger. |
-| 10–18 | Content | Publish all 10 help articles at `/help/[slug]`, each with its own title and description, and add them to the sitemap. Write the first new guide (bedtime or free plan). Add Vercel Analytics to the public pages. |
+| 1–5 | Trust **(done)** | Rating and user claims removed; alerts copy fixed; `/privacy` and `/terms` published with DevCom as controller; store badges replaced and dead links removed. |
+| 4–8 | Identity | Connect `www.eguard.family` and redirect `eguard.family` and `vercel.app` to it with a 308; set `APP_URL`. Set up SPF, DKIM and DMARC; send a test verification email to Gmail and Yahoo. |
+| 6–10 | Findable **(code done)** | Deploy, then verify Search Console and Bing and submit the sitemap. Check a shared link in Messenger and with the Facebook Sharing Debugger; run the Rich Results Test. |
+| 10–18 | Content **(help and three posts done)** | Write one new post a week. Add Vercel Analytics to the public pages. |
 | 18–30 | Announce | Share guides in two or three Facebook parent groups, with admin permission. Pitch one school for a parents' session. Launch on Product Hunt and submit to directories in the same week. On day 30, review the funnel: how many sign-ups reached a paired device, and where people drop off. |
 
 ---
@@ -369,31 +248,36 @@ The order matters: fix trust first, then make the site findable, then send peopl
 **Trust**
 
 - [x] Rating card, "thousands of parents" and unverified "trusted by" copy removed or rewritten
-- [ ] `/privacy` and `/terms` live, with a Data Protection Officer named *(pages live; DPO name and address still
-  to fill in `src/lib/legal.ts`, then have a lawyer review both pages)*
+- [x] `/privacy` and `/terms` live, with DevCom's Data Protection Officer, address and privacy email
+- [ ] Both legal pages reviewed by a lawyer
+- [ ] DPO designated by name with the National Privacy Commission
 - [x] Store badges replaced with "coming soon"; no link points to `#`
-- [x] "Real-time alerts" describes email and in-app alerts until push ships
-- [x] Newsletter box saves addresses, or is removed
+- [x] Alerts copy describes email and in-app alerts until push ships
+- [x] Newsletter box removed until there's a mailing list
 
 **Domain and email**
 
-- [ ] Custom domain is primary; `vercel.app` redirects to it with a 308
-- [ ] `APP_URL` updated in Production
-- [ ] SPF, DKIM and DMARC pass; test email reaches the Gmail inbox
+- [ ] `www.eguard.family` is primary; `eguard.family` and `vercel.app` redirect to it with a 308
+- [ ] `APP_URL` set to `https://www.eguard.family` in Production
+- [ ] `SUPPORT_EMAIL` set to `support@devcomdigital.com` in Production
+- [ ] SPF, DKIM and DMARC pass for `eguard.family`; test email reaches the Gmail inbox; `MAIL_FROM` switched
 
 **Search and sharing**
 
-- [x] `metadataBase`, Open Graph and canonical set
-- [ ] 1200 × 630 share image added; checked in the Facebook Sharing Debugger *(image added; check it after deploy)*
+- [x] Base URL, Open Graph, X tags and canonical set on every public page
+- [x] 1200 × 630 share images added
+- [ ] Share image checked in the Facebook Sharing Debugger (after deploy)
 - [x] `robots.txt` and `sitemap.xml` return 200
 - [x] Signed-in, forgot-password and reset-password pages are `noindex`
-- [ ] JSON-LD passes Google's Rich Results Test, with no rating in it *(added with no rating; test after deploy)*
+- [x] JSON-LD added, with no rating in it
+- [ ] JSON-LD passes Google's Rich Results Test (after deploy)
 - [ ] Search Console and Bing verified; sitemap submitted
 
 **Content and measurement**
 
 - [x] 10 help articles public at `/help/[slug]` and in the sitemap
-- [x] First new guide published *(three posts at `/blog`: verification, bedtime, and the Free plan)*
+- [x] First guides published: three posts at `/blog`
+- [ ] One new post a week for the first month
 - [ ] Cookieless analytics on public pages only
 - [ ] Sign-up → paired device funnel counted from the database
 

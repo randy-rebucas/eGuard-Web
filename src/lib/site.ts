@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 /** Public address of the site, without a trailing slash. Links in metadata, the sitemap and JSON-LD use it. */
-export const siteUrl = () => (process.env.APP_URL?.trim() || "https://e-guard-web.vercel.app").replace(/\/+$/, "");
+export const siteUrl = () => (process.env.APP_URL?.trim() || "https://www.eguard.family").replace(/\/+$/, "");
 
 export const SITE_NAME = "eGuard";
 export const SITE_TAGLINE = "Protections you set once, verified on every device";

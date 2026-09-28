@@ -62,6 +62,14 @@ original dev machine; change `docker-compose.yml` and `DATABASE_URL` together if
   preferences, privacy controls, security (sessions, password), subscription, connected devices, platform
   integrations, data export (JSON), support.
 - **Search** (press `/`): children, devices, protection policies, alerts and settings.
+- **Public site:** the landing page, About, Privacy Policy, Terms of Use, a blog (`src/lib/blog.ts`) and a public
+  Help Center (the same articles as `GET /help`, `src/lib/help.ts`). They share one header and footer
+  (`src/components/site-chrome.tsx`). The legal pages read the operator's details (DevCom Digital Marketing Services,
+  address, privacy email) from `src/lib/legal.ts`.
+- **SEO:** titles, descriptions, canonical URLs and share tags come from `pageMetadata()` (`src/lib/site.ts`); share
+  images are drawn in code (`src/lib/og.tsx`). `robots.txt`, `sitemap.xml` (built from the blog and help articles),
+  a web manifest and JSON-LD (organization, app with peso prices, articles). Signed-in pages are `noindex`. Every
+  absolute URL uses `APP_URL`. See [docs/launch-visibility.md](docs/launch-visibility.md).
 - Light, dark and system themes (stored in a cookie, so there's no flash on load). Responsive layouts: sidebar on
   desktop, icon rail on tablet, bottom nav and drawer on phones.
 
@@ -190,7 +198,11 @@ Without `CRON_SECRET` it only runs in development.
 - Put the app behind a proxy that sets `X-Forwarded-For` (Vercel, a load balancer, nginx). Per-address rate limits
   use the entry the nearest proxy added. Set `TRUSTED_PROXY_HOPS` if more than one proxy is in front. Without a
   proxy, only per-account limits apply.
-- Set `SMTP_URL`, `APP_URL`, `SUPPORT_EMAIL` and `CRON_SECRET`, and schedule the maintenance job.
+- Set `SMTP_URL`, `APP_URL`, `SUPPORT_EMAIL` and `CRON_SECRET`, and schedule the maintenance job. `APP_URL` must be
+  the production domain, `https://www.eguard.family`: canonical URLs, the sitemap and link previews are built from it. `SUPPORT_EMAIL` should be an
+  inbox someone reads (the legal pages use `support@devcomdigital.com` from `src/lib/legal.ts`).
+- Optional: `GOOGLE_SITE_VERIFICATION` / `BING_SITE_VERIFICATION` for HTML-tag verification (DNS verification needs
+  neither).
 - For payments, set the live PayMongo keys and webhook secret, and ask PayMongo support to enable Subscriptions (auto-renew).
 - `npm run build` runs `prisma migrate deploy`.
 
@@ -198,6 +210,7 @@ Without `CRON_SECRET` it only runs in development.
 
 ```
 prisma/            schema, migrations, seed
+src/app/(site)/    public pages: about, privacy, terms, blog, help
 src/app/(auth)/    sign in, register
 src/app/(app)/     dashboard, children, devices, protection, notifications, reports, location, settings
 src/app/actions/   server actions (auth, configuration workflow, family/devices/settings)
@@ -211,7 +224,7 @@ scripts/           end-to-end smoke test
 
 - **Native Android/iOS apps.** Both API contracts above are ready for them. Until they exist, the simulator stands in.
 - **Push delivery and the weekly summary.** Email alerts are sent (see Background jobs). The parent app's push tokens
-  are stored, but no FCM/APNs provider is wired up yet.
+  are stored, but no FCM/APNs provider is wired up yet. The Plus plan lists this as "Push alerts (coming soon)".
 - **"Gaming time"** on the app's Recommended Setup screen. eGuard has per-app limits but no app categories yet, so
   there's no per-category limit to recommend.
 - **Setting a password while signed in.** Parents who signed up with Apple/Google set their first password through
@@ -222,6 +235,8 @@ scripts/           end-to-end smoke test
 - **Two-step verification.** Shown as "Coming soon".
 - **Realtime.** The UI polls (bell every 30s, workflows every ~1s). WebSockets or SSE would replace this.
 - **Family photography.** The hero has a CSS photo slot (`--hero-photo`, see `globals.css`) for licensed images.
+- **Newsletter, social accounts and store badges.** Removed from the landing page until they exist. Add social links
+  and a sign-up back to `src/components/site-chrome.tsx`, and the store badges to `Stores()` in `src/app/page.tsx`.
 - **Location history on the web.** Visits are recorded when the privacy toggle is on and shown in the mobile API.
   The web Location page still shows current locations only.
 - **Choosing the retention period.** It's 90 days for every family; there's no setting to change it yet.

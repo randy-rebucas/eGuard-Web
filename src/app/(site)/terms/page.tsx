@@ -12,7 +12,7 @@ export const metadata: Metadata = pageMetadata({
 });
 
 function Contact() {
-  const email = supportEmail();
+  const email = LEGAL.privacyEmail ?? supportEmail();
   return <a href={`mailto:${email}`}>{email}</a>;
 }
 
@@ -22,7 +22,7 @@ export default function TermsPage() {
       id: "agreement", title: "Agreeing to these terms",
       body: (
         <>
-          <p>These terms are an agreement between you and {LEGAL.entity} (&quot;eGuard&quot;, &quot;we&quot;) for using the eGuard website, parent dashboard and apps (together, &quot;eGuard&quot;). By creating an account or using eGuard, you agree to them and to our <Link href="/privacy">Privacy Policy</Link>.</p>
+          <p>These terms are an agreement between you and {LEGAL.entity} (&quot;{LEGAL.shortName}&quot;, &quot;we&quot;) for using eGuard, our parental control service: the eGuard website, parent dashboard and apps (together, &quot;eGuard&quot;). By creating an account or using eGuard, you agree to them and to our <Link href="/privacy">Privacy Policy</Link>.</p>
           <p>If you don&apos;t agree, please don&apos;t use eGuard.</p>
         </>
       ),
@@ -107,7 +107,7 @@ export default function TermsPage() {
       id: "our-service", title: "Our service",
       body: (
         <>
-          <p>eGuard&apos;s software, name, logo and content belong to us. We give you a personal, non-transferable right to use eGuard for your family while these terms apply.</p>
+          <p>eGuard&apos;s software, name, logo and content belong to {LEGAL.shortName}. We give you a personal, non-transferable right to use eGuard for your family while these terms apply.</p>
           <p>We&apos;re always improving eGuard, so features may change. We&apos;ll try to give notice before removing anything significant from a paid plan. We aim to keep eGuard available at all times, but it may sometimes be unavailable for maintenance or reasons outside our control.</p>
         </>
       ),

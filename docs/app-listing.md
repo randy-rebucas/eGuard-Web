@@ -110,7 +110,7 @@ See today's screen time against the limit, a 7-day trend, an hour-by-hour chart 
 BUILT FOR THE WHOLE FAMILY
 • Add a second parent to share the work
 • Works with Android phones and tablets, iPhone and iPad
-• Also available on the web at eguard.app
+• Also available on the web at www.eguard.family
 
 PRIVACY FIRST
 • eGuard never reads messages, browsing content or photos on your child's device
@@ -119,14 +119,14 @@ PRIVACY FIRST
 • Export or delete your family's data at any time
 
 PLANS
-eGuard is free for 1 child and 2 devices. eGuard Plus and Family Pro add more children and devices, location sharing, real-time alerts, full app monitoring and advanced reports.
+eGuard is free for 1 child and 2 devices. eGuard Plus and Family Pro add more children and devices, location sharing, full app monitoring and advanced reports.
 
 eGuard is a parental control app. Your child's device shows that eGuard is active, and children 13 and older are asked to agree to supervision on their device.
 ```
 
 About 2,600 characters. Before publishing:
 
-- Replace `eguard.app` with the production domain (`APP_URL`).
+- The web address is the production domain, `www.eguard.family` (`APP_URL`).
 - Keep the **PLANS** paragraph as long as nothing is sold in the app. It describes plans without a price or a link,
   which Play's payments policy allows. Don't add "subscribe at our website" (section 6).
 - The last paragraph is there for the monitoring-app policy (section 10). Keep it only if the build shows a
@@ -429,7 +429,7 @@ App Store's "Made for Kids" category: **don't select it**. The customer is the p
 Both stores need working credentials. Don't use the seed accounts (`randy@example.com`), since production has no
 seed data. Instead:
 
-1. Create `review@{domain}` in production with a strong password, and verify its email.
+1. Create `review@eguard.family` in production with a strong password, and verify its email.
 2. Give the family **Family Pro** so reviewers can see every feature, location included.
 3. Add one child ("Mia", 11, Protected profile) and pair a test Android phone and a test iPhone, so health, alerts,
    screen time and location have real data.
@@ -457,8 +457,8 @@ eGuard never reads messages, browsing content or files. A persistent notificatio
 PURCHASES
 The app has no purchases. Plans are managed on our website. The demo family is on Family Pro so every feature can be reviewed.
 
-Demo account: review@{domain} / {password}
-Contact: {support email}, {phone}
+Demo account: review@eguard.family / {password}
+Contact: support@devcomdigital.com, {phone}
 ```
 
 Adjust **PURCHASES** if StoreKit or Play Billing ships (section 6). Play asks for the same credentials under
@@ -470,18 +470,18 @@ App content › App access.
 
 | Field | Value | Status |
 |---|---|---|
-| Privacy policy URL | `{APP_URL}/privacy` | **Missing**: the landing page footer links to `#` |
-| Terms of use URL | `{APP_URL}/terms` | **Missing**: same |
-| Support URL | `{APP_URL}/help` or a support page | Help exists in the app (`GET /help`); a public page doesn't |
-| Marketing URL (App Store, optional) | `{APP_URL}` | Landing page exists |
+| Privacy policy URL | `https://www.eguard.family/privacy` | Live |
+| Terms of use URL | `https://www.eguard.family/terms` | Live |
+| Support URL | `https://www.eguard.family/help` | Live: the public Help Center, same articles as `GET /help` |
+| Marketing URL (App Store, optional) | `https://www.eguard.family` | Landing page exists |
 | Delete-account URL (Play) | `{APP_URL}/settings/…` | Exists behind sign-in; Play also accepts that |
-| Support email | `SUPPORT_EMAIL` | Set in production env |
-| Developer name, address, phone | Play Console / App Store Connect | Organization accounts must be verified (D-U-N-S for Apple) |
+| Support email | `support@devcomdigital.com` (`SUPPORT_EMAIL`) | Set in production env |
+| Developer name, address, phone | DevCom Digital Marketing Services, Brgy. Hipusngo, Baybay City, Leyte 6521, Philippines | Must match the store accounts. Organization accounts must be verified (D-U-N-S for Apple) |
 
-The privacy policy has to cover, at minimum: the data in section 7; that data is collected from children's
+The privacy policy at `/privacy` covers all of this: the data in section 7; that data is collected from children's
 devices on the parent's instruction; the 90-day retention; location history being opt-in; PayMongo as the payment
-processor; how to export and delete data; and a contact for privacy requests. The Philippines' Data Privacy Act
-(RA 10173) applies, so name a Data Protection Officer.
+processor; how to export and delete data; and DevCom's Data Protection Officer as the contact for privacy requests
+(RA 10173). If section 7 changes when the apps are built, update the policy's "What we collect" table to match.
 
 ---
 
@@ -489,12 +489,12 @@ processor; how to export and delete data; and a contact for privacy requests. Th
 
 | # | Problem | Where | Fix |
 |---|---|---|---|
-| 1 | No privacy policy or terms pages; the footer links go to `#` | [src/app/page.tsx](../src/app/page.tsx) | Add `/privacy` and `/terms` routes. Both stores reject a listing without a privacy policy |
-| 2 | The Plans help article says Android users can upgrade "with Google Play", but Play Billing is turned off and the apps don't sell plans | [src/lib/help.ts](../src/lib/help.ts), `upgrade-plan` | Remove the Google Play mention until Play Billing is on. The app also can't say "upgrade on the web" (section 6), so the in-app copy should only name the plans |
+| 1 | ~~No privacy policy or terms pages~~ | `src/app/(site)` | **Fixed.** `/privacy` and `/terms` are live and linked from the footer |
+| 2 | The Plans help article says where to upgrade, which the apps can't (section 6) | [src/lib/help.ts](../src/lib/help.ts), `upgrade-plan` | **Partly fixed.** The Google Play mention is gone. It now says to upgrade "on the web", which is fine on the website but not in the apps: give the apps a version that only names the plans |
 | 3 | iOS paid features without StoreKit likely break guideline 3.1.3(b) | Section 6 | Decide on StoreKit, or Free-only on iOS |
 | 4 | Family Controls distribution entitlement not requested | Apple Developer account | Request it now |
-| 5 | The landing page says "Join thousands of parents who trust eGuard" and "Trusted by modern families" | [src/app/page.tsx](../src/app/page.tsx) | Unverifiable before launch. Keep claims like this out of store copy, and consider removing them from the site |
-| 6 | Push notifications aren't wired up, but Plus lists "Real-time alerts" | README, `realtimeAlerts` | Wire up FCM/APNs before launch, or describe alerts as in-app and email in the listing |
+| 5 | ~~The landing page says "Join thousands of parents who trust eGuard" and "Trusted by modern families"~~ | [src/app/page.tsx](../src/app/page.tsx) | **Fixed.** Removed from the site and the sign-in panel. Keep claims like this out of store copy too |
+| 6 | Push notifications aren't wired up | README, `realtimeAlerts` | **Copy fixed:** Plus now lists "Push alerts (coming soon)". Wire up FCM/APNs before the apps launch, or describe alerts as in-app and email in the listing |
 
 ---
 
@@ -502,8 +502,8 @@ processor; how to export and delete data; and a contact for privacy requests. Th
 
 **Both stores**
 
-- [ ] Privacy policy and terms pages live at public URLs (blocker 1)
-- [ ] Help copy fixed (blocker 2)
+- [x] Privacy policy and terms pages live at public URLs (blocker 1)
+- [ ] Help copy fixed (blocker 2) *(Google Play mention removed; the apps still need a version without "on the web")*
 - [ ] Production demo account set up as in section 12, with test devices online
 - [ ] Screenshots made from the demo family, no real names, photos or addresses
 - [ ] Every permission in section 9 confirmed against the build; unused ones removed

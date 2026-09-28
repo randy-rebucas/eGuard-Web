@@ -46,9 +46,9 @@ export default function PrivacyPage() {
       id: "who-we-are", title: "Who we are",
       body: (
         <>
-          <p>{LEGAL.entity} (&quot;eGuard&quot;, &quot;we&quot;) runs the eGuard website, parent dashboard and apps. We are the personal information controller for the data described here, under the Philippines&apos; Data Privacy Act of 2012 (Republic Act No. 10173).</p>
+          <p>eGuard is a product of {LEGAL.entity} (&quot;{LEGAL.shortName}&quot;, &quot;we&quot;), which runs the eGuard website, parent dashboard and apps. We are the personal information controller for the data described here, under the Philippines&apos; Data Privacy Act of 2012 (Republic Act No. 10173).</p>
           <p>
-            {LEGAL.dpoName ? <>Our Data Protection Officer is <strong>{LEGAL.dpoName}</strong>. </> : <>Our Data Protection Officer handles every privacy request. </>}
+            {LEGAL.dpoName ? <>Our Data Protection Officer is <strong>{LEGAL.dpoName}</strong>. </> : <>{LEGAL.shortName}&apos;s Data Protection Officer handles every privacy request. </>}
             You can reach them at <Contact />{LEGAL.address ? <>, or by post at {LEGAL.address}</> : null}.
           </p>
         </>

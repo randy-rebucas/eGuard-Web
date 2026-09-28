@@ -2,7 +2,7 @@
 
 All examples on this page are real responses from the API, trimmed for length (arrays show 1–2 items).
 
-- **Base URL:** `https://e-guard-web.vercel.app/api/mobile/v1`
+- **Base URL:** `https://www.eguard.family/api/mobile/v1`
 - **Format:** JSON in and out, UTF-8. The only exception is child photos (raw image bytes).
 
 ---
@@ -319,7 +319,7 @@ older. Show the Apple/Google buttons only when enabled.
   "apiVersion": "1",
   "minimumAppVersion": "1.0.0",
   "signIn": { "password": true, "apple": false, "google": false },
-  "supportEmail": "support@eguard.app"
+  "supportEmail": "support@devcomdigital.com"
 }
 ```
 
@@ -340,7 +340,7 @@ older. Show the Apple/Google buttons only when enabled.
     { "slug": "device-offline", "category": "TROUBLESHOOTING", "title": "A device shows as offline",
       "summary": "Settings stay active, but eGuard can't verify them until the device reconnects." }
   ],
-  "contact": { "email": "support@eguard.app", "replyTime": "Replies within 1 business day" }
+  "contact": { "email": "support@devcomdigital.com", "replyTime": "Replies within 1 business day" }
 }
 ```
 

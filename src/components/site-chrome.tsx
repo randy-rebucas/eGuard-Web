@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 import Link from "next/link";
 import { Menu } from "lucide-react";
 import { LogoMark } from "@/components/logo";
+import { LEGAL } from "@/lib/legal";
 
 /**
  * Header and footer shared by the landing page and the public pages (about, privacy, terms, blog).
@@ -72,7 +73,7 @@ export function SiteFooter() {
           </div>
         </div>
         <div className="lp-foot-bottom">
-          <span>© {new Date().getFullYear()} eGuard. All rights reserved.</span>
+          <span>© {new Date().getFullYear()} {LEGAL.entity}. eGuard is a product of {LEGAL.shortName}.</span>
           <span>A safer digital world for their brighter tomorrow.</span>
         </div>
       </div>

@@ -4,14 +4,16 @@
  * Fields left null are simply not shown.
  */
 export const LEGAL = {
-  /** Registered business name, as on the DTI or SEC registration */
-  entity: "eGuard",
-  /** Full name of the Data Protection Officer */
+  /** Registered business name, exactly as on the DTI or SEC registration. eGuard is its product. */
+  entity: "DevCom Digital Marketing Services",
+  /** Short name used after the first mention ("we") */
+  shortName: "DevCom",
+  /** Full name of the Data Protection Officer. Null shows the role only ("DevCom's Data Protection Officer"). */
   dpoName: null as string | null,
   /** Business address for privacy and legal notices */
-  address: null as string | null,
-  /** Where privacy requests go. Null uses SUPPORT_EMAIL. */
-  privacyEmail: null as string | null,
+  address: "Brgy. Hipusngo, Baybay City, Leyte 6521, Philippines" as string | null,
+  /** Where privacy and legal requests go (both pages). Null uses SUPPORT_EMAIL. */
+  privacyEmail: "support@devcomdigital.com" as string | null,
   /** Shown as "Last updated" on both pages; change it whenever either page changes */
   updated: "2026-09-28",
 };

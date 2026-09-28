@@ -6,6 +6,7 @@ import {
   ClipboardCheck, Laptop, Plus, Settings, ShieldCheck, Smartphone, Sparkles, Tablet, Users, type LucideIcon,
 } from "lucide-react";
 import { getUser } from "@/lib/auth";
+import { LEGAL } from "@/lib/legal";
 import { supportEmail } from "@/lib/support";
 import { PLANS as PLAN_CATALOG, webPrice } from "@/lib/plans";
 import { jsonLd, pageMetadata, siteUrl } from "@/lib/site";
@@ -94,6 +95,7 @@ function structuredData() {
     "@context": "https://schema.org",
     "@graph": [
       { "@type": "Organization", "@id": org, name: "eGuard", url: site, logo: `${site}/brand/logo-mark-512.png`,
+        parentOrganization: { "@type": "Organization", name: LEGAL.entity },
         contactPoint: { "@type": "ContactPoint", contactType: "customer support", email: supportEmail(), areaServed: "PH", availableLanguage: "en" } },
       { "@type": "WebSite", "@id": `${site}/#website`, name: "eGuard", url: site, inLanguage: "en-PH", publisher: { "@id": org } },
       { "@type": "WebApplication", name: "eGuard", url: site, applicationCategory: "LifestyleApplication", operatingSystem: "Web, Android, iOS",
