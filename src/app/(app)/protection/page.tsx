@@ -89,7 +89,7 @@ export default async function ProtectionPage() {
             const checked = devices.flatMap((d) => d.protections.filter((x) => x.key === p.key)).reduce<Date | null>((m, x) => (x.lastVerifiedAt && (!m || x.lastVerifiedAt > m) ? x.lastVerifiedAt : m), null);
             return (
               <article className="card prot" key={p.key} id={p.slug}>
-                <div className="row">
+                <div className="row prot-head">
                   <span className="ico-tile"><Icon name={p.icon} /></span>
                   <div className="grow"><h3 style={{ fontSize: 16 }}>{p.name}</h3></div>
                   {!devices.length

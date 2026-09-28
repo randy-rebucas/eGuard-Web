@@ -49,7 +49,7 @@ export function NotificationItem({ a }: { a: AlertItem }) {
   const act = useAct(a);
   const [pending, run] = useAction();
   return (
-    <article className="alert-row" style={{ padding: 16, borderBottom: "1px solid var(--line)", borderRadius: 0, opacity: a.resolved ? 0.62 : 1 }}>
+    <article className="alert-row notif-item" style={{ padding: 16, borderBottom: "1px solid var(--line)", borderRadius: 0, opacity: a.resolved ? 0.62 : 1 }}>
       <span className={`ico-tile ${SEVERITY[a.severity].tile}`}><Icon name={a.icon} /></span>
       <div className="grow">
         <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
@@ -64,7 +64,7 @@ export function NotificationItem({ a }: { a: AlertItem }) {
         ) : null}
         <div className="t-meta" style={{ marginTop: 6 }}>{a.subject} · <time>{a.time}</time></div>
       </div>
-      <div className="row" style={{ gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+      <div className="row notif-actions" style={{ gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
         {a.action ? <button className="btn btn-secondary btn-sm" onClick={act}>{a.action.label}</button> : null}
         {isUnread(a) ? (
           <button className="icon-btn" aria-label={`Mark ${a.title} as read`} title="Mark as read" disabled={pending} onClick={() => run(() => markAlertRead(a.id))}><Icon name={pending ? "loader-circle" : "check"} className={pending ? "spin" : undefined} /></button>
