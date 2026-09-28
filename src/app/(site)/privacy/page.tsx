@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
 import { LEGAL, legalDate } from "@/lib/legal";
+import { pageMetadata } from "@/lib/site";
 import { supportEmail } from "@/lib/support";
 import { LegalBody, PageHead } from "../page-head";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: "Privacy Policy",
+  path: "/privacy",
   description: "What eGuard collects from parents and children's devices, why, how long it's kept, and how to export or delete it.",
-};
+});
 
 const COLLECTED: [string, string][] = [
   ["Your account", "Your name, email address, password (stored only as a one-way hash), your role in the family, notification preferences, and your Apple or Google account ID if you sign in with them."],

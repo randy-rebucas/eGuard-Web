@@ -109,6 +109,19 @@
 .st-more b{display:block; font-family:var(--display); font-weight:600; font-size:16px; line-height:1.35; letter-spacing:-.01em; color:var(--ink)}
 .st-more span{display:block; margin-top:6px; font-size:13.5px; color:var(--ink-3)}
 
+/* ---------- Help Center ---------- */
+.st-help{max-width:1180px; padding-top:48px; padding-bottom:88px; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:40px 32px; align-items:start}
+.st-help-group h2{font-size:22px; letter-spacing:-.02em}
+.st-help-group > p{color:var(--ink-3); font-size:15px; margin-top:4px}
+.st-help-group ul{list-style:none; margin:16px 0 0; padding:0; display:flex; flex-direction:column; gap:12px}
+.st-help-group a{display:grid; grid-template-columns:minmax(0,1fr) auto; column-gap:16px; align-items:center; padding:18px 20px; background:#fff; border:1px solid var(--line); border-radius:16px; box-shadow:var(--card-shadow); transition:border-color .2s, transform .2s var(--ease)}
+.st-help-group a:hover{border-color:#9CCBFF; transform:translateY(-2px)}
+.st-help-group b{grid-column:1; font-family:var(--display); font-weight:600; font-size:16px; letter-spacing:-.01em; color:var(--ink)}
+.st-help-group span{grid-column:1; font-size:14px; color:var(--ink-3); margin-top:4px}
+.st-help-group .lucide{grid-column:2; grid-row:1 / span 2; width:18px; height:18px; color:var(--blue-2)}
+.st-help > .st-note{grid-column:1 / -1; margin:0}
+.st-note a{color:var(--blue-2); font-weight:600; text-decoration:underline; text-underline-offset:3px}
+
 /* ---------- Responsive ---------- */
 @media (max-width:1024px){
   .st-legal{grid-template-columns:minmax(0,1fr); gap:32px}
@@ -119,6 +132,7 @@
   .st-split.st-flip > :first-child{order:2}
   .st-values, .st-facts{grid-template-columns:minmax(0,1fr)}
   .st-posts{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .st-help{grid-template-columns:minmax(0,1fr)}
 }
 @media (max-width:720px){
   .st-head{padding:40px 0 36px}

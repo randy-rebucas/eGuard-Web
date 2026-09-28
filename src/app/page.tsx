@@ -6,7 +6,9 @@ import {
   ClipboardCheck, Laptop, Plus, Settings, ShieldCheck, Smartphone, Sparkles, Tablet, Users, type LucideIcon,
 } from "lucide-react";
 import { getUser } from "@/lib/auth";
+import { supportEmail } from "@/lib/support";
 import { PLANS as PLAN_CATALOG, webPrice } from "@/lib/plans";
+import { jsonLd, pageMetadata, siteUrl } from "@/lib/site";
 import { SiteFooter, SiteHeader } from "@/components/site-chrome";
 import { PhoneDashboard, PhoneScreenTime } from "@/components/landing-phones";
 import "./landing.css";
@@ -30,10 +32,16 @@ import iconApps from "../../public/landing/icon-apps.png";
 import iconLocation from "../../public/landing/icon-location.png";
 import iconAlerts from "../../public/landing/icon-alerts.png";
 
-export const metadata: Metadata = {
-  title: { absolute: "eGuard · A Safer Digital World for Their Brighter Tomorrow" },
-  description: "eGuard helps parents configure, manage, and verify digital safety protections for their children's devices, all in one place.",
-};
+export const metadata: Metadata = pageMetadata({
+  title: "eGuard · Parental controls you can verify, for families in the Philippines",
+  absoluteTitle: true,
+  path: "/",
+  description: "Set screen time, bedtime, app and web rules on your child's Android or iPhone, and see each one confirmed on the device. Free for 1 child; plans from ₱149 a month.",
+  share: {
+    title: "eGuard: parental controls you can verify",
+    description: "Set screen time, bedtime and app rules on your child's phone, and see each one confirmed on the device. Free for 1 child.",
+  },
+});
 
 const AVATARS = [avatar1, avatar2, avatar3];
 
@@ -77,6 +85,24 @@ const PLANS = PLAN_CATALOG.map((p) => ({
   name: p.name, blurb: p.blurb, price: p.id === "FREE" ? "0" : pesos(webPrice(p.id)),
   perks: p.features.map((f) => f.label), ...PLAN_LOOK[p.id],
 }));
+
+/** Search engines' view of eGuard: who publishes it and what it costs. No aggregateRating until there are real reviews. */
+function structuredData() {
+  const site = siteUrl();
+  const org = `${site}/#org`;
+  return {
+    "@context": "https://schema.org",
+    "@graph": [
+      { "@type": "Organization", "@id": org, name: "eGuard", url: site, logo: `${site}/brand/logo-mark-512.png`,
+        contactPoint: { "@type": "ContactPoint", contactType: "customer support", email: supportEmail(), areaServed: "PH", availableLanguage: "en" } },
+      { "@type": "WebSite", "@id": `${site}/#website`, name: "eGuard", url: site, inLanguage: "en-PH", publisher: { "@id": org } },
+      { "@type": "WebApplication", name: "eGuard", url: site, applicationCategory: "LifestyleApplication", operatingSystem: "Web, Android, iOS",
+        description: "Parental controls for screen time, bedtime, apps, web and location, with every setting verified on the child's device.",
+        publisher: { "@id": org },
+        offers: PLANS.map((p) => ({ "@type": "Offer", name: p.name, price: p.price, priceCurrency: "PHP", url: `${site}/#pricing` })) },
+    ],
+  };
+}
 
 const FAQS = [
   ["How does eGuard work?",
@@ -125,6 +151,7 @@ export default async function Home() {
 
   return (
     <div className="lp">
+      <script type="application/ld+json" dangerouslySetInnerHTML={jsonLd(structuredData())} />
       <SiteHeader signedIn={signedIn} />
 
       <main>

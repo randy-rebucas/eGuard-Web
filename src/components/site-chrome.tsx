@@ -64,7 +64,7 @@ export function SiteFooter() {
           </div>
           <div>
             <h4>Resources</h4>
-            <ul><li><Link href="/blog">Blog</Link></li><li><Link href="/#faq">Help Center</Link></li><li><Link href="/#how-it-works">Guides</Link></li></ul>
+            <ul><li><Link href="/blog">Blog</Link></li><li><Link href="/help">Help Center</Link></li><li><Link href="/#how-it-works">Guides</Link></li></ul>
           </div>
           <div>
             <h4>Company</h4>

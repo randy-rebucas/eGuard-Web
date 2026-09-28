@@ -2,12 +2,14 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { POSTS, postDate, readMinutes } from "@/lib/blog";
+import { pageMetadata } from "@/lib/site";
 import { PageHead } from "../page-head";
 
-export const metadata: Metadata = {
-  title: "Blog",
-  description: "Guides for parents on screen time, bedtime and app rules, and how eGuard checks that each setting is really on.",
-};
+export const metadata: Metadata = pageMetadata({
+  title: "Parental control guides for Filipino parents",
+  path: "/blog",
+  description: "Guides for parents on screen time, bedtime and app rules for kids' phones, and how eGuard checks that each setting is really on.",
+});
 
 export default function BlogPage() {
   return (

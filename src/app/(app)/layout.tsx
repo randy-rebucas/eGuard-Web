@@ -9,6 +9,9 @@ import { VerifyEmailBanner } from "@/components/verify-email-banner";
 import { hasPendingVerification } from "@/lib/email-verification";
 import { entitlementsFor, nextPlan } from "@/lib/plans";
 
+/** Signed-in pages never belong in search results (signed-out visitors are sent to sign in anyway). */
+export const metadata = { robots: { index: false, follow: false } };
+
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
   await touchSimulated(user.familyId);

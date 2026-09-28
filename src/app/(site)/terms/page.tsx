@@ -1,13 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { LEGAL, legalDate } from "@/lib/legal";
+import { pageMetadata } from "@/lib/site";
 import { supportEmail } from "@/lib/support";
 import { LegalBody, PageHead } from "../page-head";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: "Terms of Use",
+  path: "/terms",
   description: "The terms for using eGuard: who can use it, how plans and payments work, and what eGuard can and can't promise.",
-};
+});
 
 function Contact() {
   const email = supportEmail();

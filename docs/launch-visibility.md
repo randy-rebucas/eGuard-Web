@@ -36,12 +36,12 @@ Status uses eGuard's own words: **Verified** means it works, **Needs attention**
 | "Real-time alerts" on Plus | Plus card says "Push alerts (coming soon)"; the landing page describes instant email alerts | Verified |
 | Newsletter box | Removed: it didn't save addresses | Verified |
 | Domain | Served from a `vercel.app` subdomain | Needs attention |
-| `robots.txt` | 404 | Needs attention |
-| `sitemap.xml` | 404 | Needs attention |
-| Link previews (Open Graph, X) | No `og:` tags, no share image. Facebook and Messenger show a bare link | Needs attention |
-| Canonical URL | None set | Needs attention |
-| Structured data | No JSON-LD | Needs attention |
-| Signed-in pages | Not marked `noindex` (only `/verify-email` is) | Needs attention |
+| `robots.txt` | Served from `src/app/robots.ts`; blocks `/api/`, points to the sitemap | Verified |
+| `sitemap.xml` | 21 public URLs: home, about, blog and posts, help and all 10 articles, sign-up, sign-in, privacy, terms | Verified |
+| Link previews (Open Graph, X) | Every public page has its own title, description and a 1200 × 630 share image; blog posts and help articles get one with their title | Verified |
+| Canonical URL | Set on every public page, from `APP_URL` | Verified |
+| Structured data | Organization, WebSite and WebApplication (peso offers, no rating) on the home page; BlogPosting and TechArticle with breadcrumbs on posts and articles | Verified |
+| Signed-in pages | The whole signed-in group, forgot-password, reset-password and verify-email are `noindex` | Verified |
 | Title and description | "eGuard · A Safer Digital World for Their Brighter Tomorrow", plus a clear description | Verified |
 | Headings | One H1, eight H2 sections in a sensible order | Verified |
 | Icons | `favicon.ico`, SVG icon and 180px Apple touch icon | Verified |
@@ -49,7 +49,7 @@ Status uses eGuard's own words: **Verified** means it works, **Needs attention**
 | Image alt text | Photos are described; decorative icons use empty alt | Verified |
 | Phones and tablets | No sideways scrolling at 320–1280px across all 33 screens | Verified |
 
-Totals: 1 action required, 7 need attention, 11 verified.
+Totals: 1 action required, 1 needs attention (the domain), 17 verified.
 
 ---
 
@@ -141,6 +141,11 @@ not after. Parents are also more wary of a `vercel.app` address, and it looks li
 ---
 
 ## 4. Search and link previews
+
+**Status: built.** Everything in 4.1–4.4 is in the codebase, with a few differences from the snippets below:
+titles, canonical URLs and share tags come from `pageMetadata()` in `src/lib/site.ts`; the share image is drawn in
+code (`src/app/opengraph-image.tsx`, with per-post and per-article versions); and the sitemap is generated from the
+blog posts and help articles. What's left is 4.5, which needs the live domain.
 
 Five small files cover everything flagged as Needs attention in section 1. They follow the Next.js 16 conventions in
 `node_modules/next/dist/docs` and read the site address from `APP_URL`.
@@ -262,6 +267,8 @@ so re-scrape the URL there whenever you change the share image.
 
 ## 5. Pages people search for
 
+**Status: help articles public at `/help`, and three blog posts at `/blog`.** Keep adding one guide a week.
+
 Right now search engines can only find one page on eGuard. You already have the start of more: **10 help articles**
 in [src/lib/help.ts](../src/lib/help.ts), visible only after sign-in. Making them public at `/help/[slug]` gives
 Google ten useful, specific pages from work that's already written.
@@ -376,17 +383,17 @@ The order matters: fix trust first, then make the site findable, then send peopl
 
 **Search and sharing**
 
-- [ ] `metadataBase`, Open Graph and canonical set
-- [ ] 1200 × 630 share image added; checked in the Facebook Sharing Debugger
-- [ ] `robots.txt` and `sitemap.xml` return 200
-- [ ] Signed-in, forgot-password and reset-password pages are `noindex`
-- [ ] JSON-LD passes Google's Rich Results Test, with no rating in it
+- [x] `metadataBase`, Open Graph and canonical set
+- [ ] 1200 × 630 share image added; checked in the Facebook Sharing Debugger *(image added; check it after deploy)*
+- [x] `robots.txt` and `sitemap.xml` return 200
+- [x] Signed-in, forgot-password and reset-password pages are `noindex`
+- [ ] JSON-LD passes Google's Rich Results Test, with no rating in it *(added with no rating; test after deploy)*
 - [ ] Search Console and Bing verified; sitemap submitted
 
 **Content and measurement**
 
-- [ ] 10 help articles public at `/help/[slug]` and in the sitemap
-- [ ] First new guide published
+- [x] 10 help articles public at `/help/[slug]` and in the sitemap
+- [x] First new guide published *(three posts at `/blog`: verification, bedtime, and the Free plan)*
 - [ ] Cookieless analytics on public pages only
 - [ ] Sign-up → paired device funnel counted from the database
 

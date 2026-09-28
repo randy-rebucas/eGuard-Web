@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { POSTS, postBySlug, postDate, readMinutes, type Block } from "@/lib/blog";
+import { jsonLd, pageMetadata, siteUrl } from "@/lib/site";
 import { PageHead } from "../../page-head";
 
 export const dynamicParams = false;
@@ -14,11 +15,7 @@ export function generateStaticParams() {
 export async function generateMetadata({ params }: PageProps<"/blog/[slug]">): Promise<Metadata> {
   const post = postBySlug((await params).slug);
   if (!post) return {};
-  return {
-    title: post.title,
-    description: post.description,
-    openGraph: { type: "article", title: post.title, description: post.description, publishedTime: post.date },
-  };
+  return pageMetadata({ title: post.title, description: post.description, path: `/blog/${post.slug}`, type: "article", publishedTime: post.date, ownImage: true });
 }
 
 function Content({ block }: { block: Block }) {
@@ -33,9 +30,26 @@ export default async function PostPage({ params }: PageProps<"/blog/[slug]">) {
   const post = postBySlug((await params).slug);
   if (!post) notFound();
   const more = POSTS.filter((p) => p.slug !== post.slug).slice(0, 2);
+  const site = siteUrl();
+  const url = `${site}/blog/${post.slug}`;
+  const data = {
+    "@context": "https://schema.org",
+    "@graph": [
+      { "@type": "BlogPosting", headline: post.title, description: post.description, datePublished: post.date, dateModified: post.date,
+        url, mainEntityOfPage: url, inLanguage: "en-PH",
+        author: { "@type": "Organization", name: "eGuard", url: site },
+        publisher: { "@type": "Organization", "@id": `${site}/#org`, name: "eGuard", logo: `${site}/brand/logo-mark-512.png` } },
+      { "@type": "BreadcrumbList", itemListElement: [
+        { "@type": "ListItem", position: 1, name: "Home", item: site },
+        { "@type": "ListItem", position: 2, name: "Blog", item: `${site}/blog` },
+        { "@type": "ListItem", position: 3, name: post.title, item: url },
+      ] },
+    ],
+  };
 
   return (
     <article>
+      <script type="application/ld+json" dangerouslySetInnerHTML={jsonLd(data)} />
       <PageHead eyebrow={post.tag} title={post.title} lede={post.description}>
         <div className="st-meta">
           <span>By the eGuard team</span>

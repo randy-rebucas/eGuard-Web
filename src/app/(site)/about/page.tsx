@@ -2,15 +2,17 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight, BadgeCheck, CircleCheck, HeartHandshake, LockKeyhole, Send, Smartphone, SlidersHorizontal } from "lucide-react";
+import { pageMetadata } from "@/lib/site";
 import { supportEmail } from "@/lib/support";
 import { PageHead } from "../page-head";
 
 import digitalHabits from "../../../../public/landing/digital-habits.jpg";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: "About",
-  description: "eGuard helps parents set up digital safety protections on their children's devices, and shows whether each one is really working.",
-};
+  path: "/about",
+  description: "eGuard helps parents set up screen time, bedtime and app protections on their children's devices, and shows whether each one is really working.",
+});
 
 const FLOW = [
   [SlidersHorizontal, "You choose a setting", "A two-hour limit, a 9:30 PM bedtime, an age rating for apps."],
