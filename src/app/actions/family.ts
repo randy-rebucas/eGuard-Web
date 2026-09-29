@@ -10,6 +10,8 @@ import { clearSessionCookie, requireAdmin, requireUser } from "@/lib/auth";
 import { sendVerificationEmailLater } from "@/lib/email-verification";
 import { ServiceError, invalid, notFound, planRequired, toResult, type Result } from "@/lib/errors";
 import * as family from "@/lib/family-service";
+import * as browsers from "@/lib/browser-service";
+import * as browserPolicy from "@/lib/browser-policy";
 import { LOCATION_UPGRADE, familyEntitlements, planWith } from "@/lib/plan-access";
 import type { FormState } from "./auth";
 
@@ -98,10 +100,12 @@ export async function setAppLimit(appId: string, minutes: number | null): Promis
 
 /* ---------- Devices ---------- */
 
-export async function createPairingCode(childId: string) {
+export async function createPairingCode(childId: string, opts: family.PairingOptions = { kind: "DEVICE" }) {
   const u = await requireUser();
+  const parsed = family.PairingOptions.safeParse(opts);
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
   try {
-    const p = await family.createPairingCode(u, childId);
+    const p = await family.createPairingCode(u, childId, parsed.data);
     return { code: p.code, expiresAt: p.expiresAt.toISOString(), childName: p.childName };
   } catch (e) {
     if (e instanceof ServiceError) return { error: e.message };
@@ -130,6 +134,28 @@ export async function removeDevice(deviceId: string, _: FormState, form: FormDat
   }
   revalidatePath("/", "layout");
   redirect("/devices");
+}
+
+export async function removeBrowser(installationId: string, _: FormState, form: FormData): Promise<FormState> {
+  const u = await requireUser();
+  try {
+    await browsers.removeBrowser(u, installationId, String(form.get("password") ?? ""));
+  } catch (e) {
+    if (e instanceof ServiceError && e.status === 404) return { error: "This browser was already removed.", fields: { gone: "1" } };
+    return failed(e);
+  }
+  revalidatePath("/", "layout");
+  return { ok: "Browser removed." };
+}
+
+/** Saves browser protection as a new version; returns the saved lists as the server normalised them. */
+export async function saveBrowserPolicy(childId: string, input: unknown) {
+  const u = await requireUser();
+  return toResult(async () => {
+    const p = await browserPolicy.updateBrowserPolicy(u, childId, browserPolicy.BrowserPolicyInput.parse(input), "web");
+    revalidatePath(`/children/${childId}`);
+    return { version: p.version, blockedDomains: p.blockedDomains, allowedDomains: p.allowedDomains };
+  });
 }
 
 /** Polled while a pairing code is on screen. */

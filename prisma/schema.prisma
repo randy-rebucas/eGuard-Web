@@ -84,6 +84,11 @@ enum AppApproval {
   PENDING
 }
 
+enum PairingKind {
+  DEVICE   // the child app on a phone or tablet (/api/device/v1/pair)
+  BROWSER  // the eGuard browser extension (/api/browser/v1/pair)
+}
+
 enum CheckRunStatus {
   RUNNING
   COMPLETED
@@ -112,6 +117,7 @@ model Family {
   alerts       Alert[]
   changes      ConfigChange[]
   pairingCodes PairingCode[]
+  browsers     BrowserInstallation[]
   checkRuns    CheckRun[]
   auditLogs    AuditLog[]
   purchases    StorePurchase[]
@@ -299,6 +305,8 @@ model Child {
   changes    ConfigChange[]
   requests   ConfigRequest[]
   alerts     Alert[]
+  browsers   BrowserInstallation[]
+  browserPolicy BrowserPolicy?
   photo      ChildPhoto?
   visits     LocationVisit[]
 }
@@ -405,9 +413,83 @@ model PairingCode {
   family    Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
   childId   String
   code      String   @unique
+  kind      PairingKind @default(DEVICE)
+  /// BROWSER codes: the computer the parent is adding, e.g. "Mia's MacBook"
+  deviceLabel String?
   expiresAt DateTime
   usedAt    DateTime?
   createdAt DateTime @default(now())
+}
+
+/**
+ * The eGuard browser extension in one browser on a child's computer. Counts toward the plan's device limit.
+ * Credentials: a refresh token that rotates on every use and a 15-minute access token, both stored as SHA-256.
+ * The previous refresh token is kept so a replayed (copied) one can be detected.
+ */
+model BrowserInstallation {
+  id                   String    @id @default(cuid())
+  familyId             String
+  family               Family    @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  childId              String
+  child                Child     @relation(fields: [childId], references: [id], onDelete: Cascade)
+  /// Entered by the parent with the pairing code; nothing is read from the machine
+  deviceLabel          String
+  browser              String
+  browserVersion       String?
+  extensionVersion     String
+  /// runtime.getPlatformInfo().os: win, mac, linux, cros, …
+  platform             String
+  refreshTokenHash     String?   @unique
+  prevRefreshTokenHash String?   @unique
+  refreshRotatedAt     DateTime?
+  accessTokenHash      String?   @unique
+  accessTokenExpiresAt DateTime?
+  lastSeenAt           DateTime?
+  /// Set when eGuard disconnected it for security (a copied refresh token was used)
+  revokedAt            DateTime?
+  createdAt            DateTime  @default(now())
+
+  @@index([familyId])
+  @@index([childId])
+}
+
+/**
+ * What the eGuard browser extension enforces for one child, shared by all of that child's browsers.
+ * `version` goes up on every change; the extension refuses to move backwards. Created with age-based
+ * defaults the first time it's needed.
+ */
+model BrowserPolicy {
+  id                 String   @id @default(cuid())
+  childId            String   @unique
+  child              Child    @relation(fields: [childId], references: [id], onDelete: Cascade)
+  version            Int      @default(1)
+  safeBrowsing       Boolean  @default(true)
+  safeSearch         Boolean  @default(true)
+  blockedCategories  String[]
+  blockedDomains     String[]
+  allowedDomains     String[]
+  /// ALLOW | WARN | BLOCK
+  unknownSitesPolicy String   @default("ALLOW")
+  /// { enabled, startTime "HH:MM", endTime "HH:MM" } in the family's timezone, or null
+  schedule           Json?
+  updatedBy          String
+  updatedAt          DateTime @updatedAt
+  createdAt          DateTime @default(now())
+
+  versions BrowserPolicyVersion[]
+}
+
+/// Immutable snapshot of every version: what was in force when, and who changed it.
+model BrowserPolicyVersion {
+  id        String        @id @default(cuid())
+  policyId  String
+  policy    BrowserPolicy @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  version   Int
+  snapshot  Json
+  createdBy String
+  createdAt DateTime      @default(now())
+
+  @@unique([policyId, version])
 }
 
 // ---------- Activity ----------

@@ -14,10 +14,12 @@ import { WeeklyChart } from "@/components/charts";
 import { FlowButton } from "@/components/flow";
 import { AppControls, ChildForm, DeleteChildForm } from "@/components/forms";
 import { requestedApps } from "@/lib/family-service";
+import { CATEGORY_META, WEB_CATEGORIES, describeBrowserPolicy, getOrCreateBrowserPolicy } from "@/lib/browser-policy";
+import { BrowserPolicyForm } from "@/components/browser-policy";
 import { entitlementsFor } from "@/lib/plans";
 import { APPS_UPGRADE, LOCATION_UPGRADE, visibleApps } from "@/lib/plan-access";
 
-const TABS = [["overview", "Overview"], ["activity", "Activity"], ["apps", "Apps"], ["screen", "Screen Time"], ["protection", "Protection"], ["location", "Location"], ["devices", "Devices"], ["history", "History"]] as const;
+const TABS = [["overview", "Overview"], ["activity", "Activity"], ["apps", "Apps"], ["screen", "Screen Time"], ["protection", "Protection"], ["browser", "Browser"], ["location", "Location"], ["devices", "Devices"], ["history", "History"]] as const;
 type Tab = (typeof TABS)[number][0];
 
 export async function generateMetadata(props: PageProps<"/children/[id]">) {
@@ -72,6 +74,7 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
         {tab === "activity" || tab === "screen" ? <Activity /> : null}
         {tab === "apps" ? <Apps /> : null}
         {tab === "protection" ? <Protection /> : null}
+        {tab === "browser" ? <Browser /> : null}
         {tab === "location" ? <Location /> : null}
         {tab === "devices" ? <div className="devices-grid">{c.devices.map((x) => <DeviceCard key={x.id} d={x} state={graph.deviceStates[x.id]} tz={tz} />)}</div> : null}
         {tab === "history" ? <History /> : null}
@@ -124,6 +127,51 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
           <section className="card card-pad">
             <div className="card-head"><h2 style={{ fontSize: 18 }}>Recent alerts</h2></div>
             <div style={{ margin: "0 -12px" }}>{mine.length ? mine.map((a) => <AlertRow key={a.id} a={toAlertItem(a, tz)} />) : <EmptyState icon="bell" title="No recent alerts" />}</div>
+          </section>
+        </div>
+      </div>
+    );
+  }
+
+  async function Browser() {
+    const [p, browsers] = await Promise.all([
+      getOrCreateBrowserPolicy(c!.id),
+      db.browserInstallation.findMany({ where: { childId: c!.id }, orderBy: { createdAt: "asc" } }),
+    ]);
+    const schedule = p.schedule as { enabled: boolean; startTime: string; endTime: string } | null;
+    return (
+      <div className="detail-grid">
+        <div className="dash-col">
+          <section className="card card-pad">
+            <div className="card-head"><div><h2>Browser protection</h2><div className="sub">What the eGuard extension does in {c!.name}&apos;s Chrome, Edge and Firefox. It applies to every browser you add for {c!.name}.</div></div></div>
+            <BrowserPolicyForm childId={c!.id} childName={c!.name}
+              categories={WEB_CATEGORIES.map((key) => ({ key, ...CATEGORY_META[key] }))}
+              initial={{
+                version: p.version, safeBrowsing: p.safeBrowsing, safeSearch: p.safeSearch, blockedCategories: p.blockedCategories,
+                blockedDomains: p.blockedDomains, allowedDomains: p.allowedDomains,
+                unknownSitesPolicy: p.unknownSitesPolicy as "ALLOW" | "WARN" | "BLOCK", schedule,
+              }} />
+          </section>
+        </div>
+        <div className="dash-col">
+          <section className="card card-pad">
+            <div className="card-head"><h2 style={{ fontSize: 18 }}>Browsers</h2><Link className="link-btn" href="/devices#add-browser">Add a browser <Icon name="arrow-right" /></Link></div>
+            {browsers.length ? (
+              <div className="app-rows">{browsers.map((b) => (
+                <div key={b.id}><span>{b.browser} on {b.deviceLabel}</span><span className="t-meta">{b.revokedAt ? "Disconnected" : `Seen ${ago(b.lastSeenAt, tz)}`}</span></div>
+              ))}</div>
+            ) : <EmptyState icon="globe" title="No browsers yet" text={`Add the eGuard extension to ${c!.name}'s browser to use these settings.`} />}
+            <p className="t-meta" style={{ marginTop: 14 }}>
+              Browsers download these settings within 5 minutes. Blocking in the browser arrives with the next eGuard extension update; until then nothing is blocked, and the extension says so.
+            </p>
+          </section>
+          <section className="card card-pad">
+            <div className="card-head"><h2 style={{ fontSize: 18 }}>Current settings</h2></div>
+            <dl className="kv" style={{ gridTemplateColumns: "minmax(0,1fr)" }}>
+              <div><dt>Version</dt><dd className="num">{p.version}</dd></div>
+              <div><dt>Last changed</dt><dd>{p.updatedBy} · {dayTime(p.updatedAt, tz)}</dd></div>
+              <div><dt>Summary</dt><dd>{describeBrowserPolicy(p)}</dd></div>
+            </dl>
           </section>
         </div>
       </div>

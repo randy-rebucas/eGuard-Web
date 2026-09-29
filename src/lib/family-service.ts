@@ -1,7 +1,7 @@
 import "server-only";
 import { randomInt } from "node:crypto";
 import { z } from "zod";
-import type { AppApproval, Prisma } from "@prisma/client";
+import type { AppApproval, PairingKind, Prisma } from "@prisma/client";
 import { db } from "./db";
 import { confirmPassword, hashPassword } from "./auth";
 import { refreshPurchases } from "./billing";
@@ -14,6 +14,7 @@ import { conflict, forbidden, invalid, isUniqueViolation, notFound, planLimit } 
 import { requireVerifiedEmail } from "./email-verification";
 import { BASE_PLAN, nextPlan, planByName } from "./plans";
 import { LIMITS, enforce } from "./rate-limit";
+import { usedDeviceSlots } from "./device-slots";
 
 /** Family, children, apps and devices: shared by the web server actions and the mobile API. */
 
@@ -124,17 +125,23 @@ export async function setAppLimit(actor: Actor, appId: string, minutes: number |
 
 /* ---------- Devices ---------- */
 
+export const PairingOptions = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("DEVICE") }),
+  z.object({ kind: z.literal("BROWSER"), deviceLabel: z.string().trim().min(1, "Enter the computer's name, like Mia's MacBook.").max(60) }),
+]);
+export type PairingOptions = z.infer<typeof PairingOptions>;
+
 /**
- * A one-time code the child's device exchanges for a device token. Only the newest code for a child works:
- * getting another replaces it, so at most one guessable code per child is ever live.
+ * A one-time code the child's device (or browser, for BROWSER codes) exchanges for its credentials. Only the
+ * newest code for a child works: getting another replaces it, so at most one guessable code per child is ever live.
  */
-export async function createPairingCode(actor: Actor, childId: string) {
+export async function createPairingCode(actor: Actor, childId: string, opts: PairingOptions = { kind: "DEVICE" }) {
   // The device limit comes from the plan; make sure a lapsed or refunded subscription is reflected first
   await refreshPurchases(actor.familyId);
   const [child, family, count] = await Promise.all([
     db.child.findFirst({ where: { id: childId, familyId: actor.familyId } }),
     db.family.findUniqueOrThrow({ where: { id: actor.familyId } }),
-    db.device.count({ where: { familyId: actor.familyId } }),
+    usedDeviceSlots(actor.familyId),
   ]);
   if (!child) throw notFound("Child");
   await requireVerifiedEmail(actor.id);
@@ -148,9 +155,11 @@ export async function createPairingCode(actor: Actor, childId: string) {
   const expiresAt = new Date(Date.now() + 15 * 60_000);
   await db.$transaction([
     db.pairingCode.deleteMany({ where: { childId, usedAt: null } }),
-    db.pairingCode.create({ data: { familyId: actor.familyId, childId, code, expiresAt } }),
+    db.pairingCode.create({
+      data: { familyId: actor.familyId, childId, code, expiresAt, kind: opts.kind as PairingKind, deviceLabel: opts.kind === "BROWSER" ? opts.deviceLabel : null },
+    }),
   ]);
-  return { code, expiresAt, childName: child.name };
+  return { code, expiresAt, childName: child.name, kind: opts.kind };
 }
 
 /**
@@ -161,6 +170,12 @@ export async function pairingCodeStatus(actor: Actor, code: string) {
   const p = await db.pairingCode.findFirst({ where: { code, familyId: actor.familyId } });
   if (!p) return { status: "replaced" as const };
   if (!p.usedAt) return { status: p.expiresAt < new Date() ? ("expired" as const) : ("waiting" as const), expiresAt: p.expiresAt };
+  if (p.kind === "BROWSER") {
+    const b = await db.browserInstallation.findFirst({
+      where: { childId: p.childId, createdAt: { gte: p.usedAt } }, orderBy: { createdAt: "asc" }, select: { id: true, browser: true, deviceLabel: true },
+    });
+    return b ? { status: "paired" as const, device: { id: b.id, name: `${b.browser} on ${b.deviceLabel}`, kind: "BROWSER" as const } } : { status: "waiting" as const, expiresAt: p.expiresAt };
+  }
   const device = await db.device.findFirst({
     where: { childId: p.childId, createdAt: { gte: p.usedAt } }, orderBy: { createdAt: "asc" }, select: { id: true, name: true },
   });

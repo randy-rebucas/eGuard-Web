@@ -1,0 +1,237 @@
+import "server-only";
+import { createHash, createPrivateKey, createPublicKey, sign, type KeyObject } from "node:crypto";
+import { z } from "zod";
+import { Prisma, type BrowserInstallation, type BrowserPolicy } from "@prisma/client";
+import { db } from "./db";
+import { audit } from "./audit";
+import { ServiceError, notFound } from "./errors";
+import type { Actor } from "./config-service";
+
+/**
+ * Browser protection: what the eGuard browser extension enforces for a child. One policy per child, shared
+ * by all their browsers, versioned, and signed when sent so the extension can tell it came from eGuard
+ * (and wasn't edited in the browser's storage). Contract: eguard-browser/packages/schemas/src/policy.ts.
+ */
+
+export const WEB_CATEGORIES = [
+  "ADULT", "GAMBLING", "MALWARE", "PHISHING", "VIOLENCE", "DRUGS", "WEAPONS", "HATE",
+  "DATING", "SOCIAL_MEDIA", "GAMING", "STREAMING", "SHOPPING", "DOWNLOADS",
+] as const;
+export type WebCategory = (typeof WEB_CATEGORIES)[number];
+
+export const CATEGORY_META: Record<WebCategory, { label: string; hint: string }> = {
+  ADULT: { label: "Adult content", hint: "Pornography and explicit material" },
+  GAMBLING: { label: "Gambling", hint: "Betting, casinos, lotteries" },
+  MALWARE: { label: "Malware", hint: "Sites known to spread harmful software" },
+  PHISHING: { label: "Phishing", hint: "Fake sites that steal passwords" },
+  VIOLENCE: { label: "Violence", hint: "Graphic violence and gore" },
+  DRUGS: { label: "Drugs", hint: "Buying or promoting drugs" },
+  WEAPONS: { label: "Weapons", hint: "Buying weapons" },
+  HATE: { label: "Hate & extremism", hint: "Hate speech and extremist content" },
+  DATING: { label: "Dating", hint: "Dating and hookup sites" },
+  SOCIAL_MEDIA: { label: "Social media", hint: "Facebook, Instagram, TikTok and similar" },
+  GAMING: { label: "Gaming", hint: "Online games and game stores" },
+  STREAMING: { label: "Streaming", hint: "Video and music streaming" },
+  SHOPPING: { label: "Shopping", hint: "Online stores" },
+  DOWNLOADS: { label: "Downloads", hint: "File-sharing and download sites" },
+};
+
+export const UNKNOWN_SITES = ["ALLOW", "WARN", "BLOCK"] as const;
+export const MAX_DOMAINS = 500;
+
+/** Protected by default, by age, like the phone profiles. Security categories are always on. */
+export function defaultCategories(age: number): WebCategory[] {
+  const base: WebCategory[] = ["ADULT", "GAMBLING", "MALWARE", "PHISHING", "HATE", "DRUGS", "WEAPONS"];
+  if (age < 13) base.push("VIOLENCE", "DATING");
+  if (age < 9) base.push("SOCIAL_MEDIA");
+  return base.sort();
+}
+
+/* ---------- Domains ---------- */
+
+const DOMAIN_RE = /^(?=.{1,253}$)(?!-)[a-z0-9-]{1,63}(?<!-)(\.(?!-)[a-z0-9-]{1,63}(?<!-))+$/;
+
+/**
+ * Turns what a parent types ("https://www.YouTube.com/watch?v=1", "*.example.com") into a host name.
+ * Returns null when it can't be one. A rule for example.com also covers its subdomains.
+ */
+export function normalizeDomain(raw: string): string | null {
+  let s = raw.trim().toLowerCase();
+  if (!s) return null;
+  s = s.replace(/^[a-z][a-z0-9+.-]*:\/\//, "").replace(/^\*\./, "");
+  s = s.split(/[/?#]/)[0]!.replace(/:\d+$/, "").replace(/\.$/, "");
+  return DOMAIN_RE.test(s) ? s : null;
+}
+
+/** Parses a list typed one per line (commas and spaces also work). Duplicates are dropped. */
+export function parseDomainList(text: string): { domains: string[]; invalid: string[] } {
+  const domains = new Set<string>();
+  const invalid: string[] = [];
+  for (const part of text.split(/[\s,;]+/).filter(Boolean)) {
+    const d = normalizeDomain(part);
+    if (d) domains.add(d);
+    else invalid.push(part);
+  }
+  return { domains: [...domains].sort(), invalid };
+}
+
+/* ---------- Input ---------- */
+
+const HHMM = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use a time like 21:30.");
+
+export const BrowserPolicyInput = z
+  .object({
+    safeBrowsing: z.boolean(),
+    safeSearch: z.boolean(),
+    blockedCategories: z.array(z.enum(WEB_CATEGORIES)).max(WEB_CATEGORIES.length),
+    blockedDomains: z.array(z.string()).max(MAX_DOMAINS, `Up to ${MAX_DOMAINS} blocked sites.`),
+    allowedDomains: z.array(z.string()).max(MAX_DOMAINS, `Up to ${MAX_DOMAINS} allowed sites.`),
+    unknownSitesPolicy: z.enum(UNKNOWN_SITES),
+    schedule: z.object({ enabled: z.boolean(), startTime: HHMM, endTime: HHMM }).nullable(),
+  })
+  .transform((p, ctx) => {
+    const clean = (list: string[], which: string) => {
+      const out = new Set<string>();
+      for (const raw of list) {
+        const d = normalizeDomain(raw);
+        if (d) out.add(d);
+        else ctx.addIssue({ code: "custom", message: `"${raw}" in ${which} isn't a website address.` });
+      }
+      return [...out].sort();
+    };
+    const blockedDomains = clean(p.blockedDomains, "blocked sites");
+    const allowedDomains = clean(p.allowedDomains, "allowed sites");
+    const both = blockedDomains.filter((d) => allowedDomains.includes(d));
+    if (both.length) ctx.addIssue({ code: "custom", message: `${both[0]} is in both lists. Keep it in one.` });
+    if (p.schedule?.enabled && p.schedule.startTime === p.schedule.endTime) {
+      ctx.addIssue({ code: "custom", message: "Focus hours need different start and end times." });
+    }
+    return { ...p, blockedCategories: [...new Set(p.blockedCategories)].sort(), blockedDomains, allowedDomains };
+  });
+export type BrowserPolicyInput = z.output<typeof BrowserPolicyInput>;
+
+/* ---------- Reading and writing ---------- */
+
+const ageOf = (birthYear: number) => new Date().getFullYear() - birthYear;
+
+function snapshot(p: BrowserPolicy) {
+  return {
+    version: p.version, safeBrowsing: p.safeBrowsing, safeSearch: p.safeSearch, blockedCategories: p.blockedCategories,
+    blockedDomains: p.blockedDomains, allowedDomains: p.allowedDomains, unknownSitesPolicy: p.unknownSitesPolicy, schedule: p.schedule,
+  };
+}
+
+/** The child's browser policy, created with age-based defaults the first time it's asked for. */
+export async function getOrCreateBrowserPolicy(childId: string) {
+  const existing = await db.browserPolicy.findUnique({ where: { childId } });
+  if (existing) return existing;
+  const child = await db.child.findUniqueOrThrow({ where: { id: childId } });
+  try {
+    return await db.$transaction(async (tx) => {
+      const p = await tx.browserPolicy.create({
+        data: { childId, blockedCategories: defaultCategories(ageOf(child.birthYear)), blockedDomains: [], allowedDomains: [], updatedBy: "eGuard defaults" },
+      });
+      await tx.browserPolicyVersion.create({ data: { policyId: p.id, version: 1, snapshot: snapshot(p) as Prisma.InputJsonValue, createdBy: "eGuard defaults" } });
+      return p;
+    });
+  } catch {
+    // Another request created it first
+    return db.browserPolicy.findUniqueOrThrow({ where: { childId } });
+  }
+}
+
+const sameSettings = (a: BrowserPolicy, b: BrowserPolicyInput) =>
+  JSON.stringify(canonical({ ...snapshot(a), version: 0 })) === JSON.stringify(canonical({ ...b, version: 0 }));
+
+/** Saves a parent's change as a new version. Browsers pick it up on their next sync (within 5 minutes). */
+export async function updateBrowserPolicy(actor: Actor, childId: string, input: BrowserPolicyInput, via: string) {
+  const child = await db.child.findFirst({ where: { id: childId, familyId: actor.familyId } });
+  if (!child) throw notFound("Child");
+  const current = await getOrCreateBrowserPolicy(childId);
+  if (sameSettings(current, input)) return current;
+
+  const next = await db.$transaction(async (tx) => {
+    // Optimistic: two parents saving at once can't both become version N+1
+    const res = await tx.browserPolicy.updateMany({
+      where: { id: current.id, version: current.version },
+      data: { ...input, schedule: input.schedule ?? Prisma.DbNull, version: { increment: 1 }, updatedBy: actor.name },
+    });
+    if (!res.count) throw new ServiceError(409, "Someone else changed these settings just now. Reload to see their changes.", "conflict");
+    const p = await tx.browserPolicy.findUniqueOrThrow({ where: { id: current.id } });
+    await tx.browserPolicyVersion.create({ data: { policyId: p.id, version: p.version, snapshot: snapshot(p) as Prisma.InputJsonValue, createdBy: actor.name } });
+    return p;
+  });
+
+  await audit(actor.familyId, actor.name, "browser.policy.updated", `${child.name}: v${current.version} → v${next.version}`);
+  await db.configChange.create({
+    data: {
+      familyId: actor.familyId, childId, key: "WEB", title: "Browser protection changed",
+      actor: `${actor.name} on ${via} · applies on next browser sync`,
+      fromValue: describeBrowserPolicy(current), toValue: describeBrowserPolicy(next),
+    },
+  });
+  return next;
+}
+
+export function describeBrowserPolicy(p: Pick<BrowserPolicy, "blockedCategories" | "blockedDomains" | "allowedDomains" | "safeSearch">) {
+  const n = (k: number, one: string, many: string) => `${k} ${k === 1 ? one : many}`;
+  return [
+    n(p.blockedCategories.length, "category", "categories"),
+    n(p.blockedDomains.length, "blocked site", "blocked sites"),
+    n(p.allowedDomains.length, "allowed site", "allowed sites"),
+    p.safeSearch ? "SafeSearch on" : "SafeSearch off",
+  ].join(", ");
+}
+
+/* ---------- Signing ---------- */
+
+/** JSON with object keys sorted at every level and no whitespace: the exact bytes that are signed. */
+export function canonical(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(canonical);
+  if (v && typeof v === "object" && !(v instanceof Date)) {
+    return Object.fromEntries(Object.keys(v).sort().map((k) => [k, canonical((v as Record<string, unknown>)[k])]));
+  }
+  return v;
+}
+export const canonicalJson = (v: unknown) => JSON.stringify(canonical(v));
+
+let key: { priv: KeyObject; keyId: string } | null = null;
+
+/**
+ * BROWSER_POLICY_SIGNING_KEY: base64 of a PKCS#8 (DER) ECDSA P-256 private key; generate one with
+ * `node scripts/browser-policy-keys.mjs`. The matching public key is built into the extension.
+ */
+function signingKey() {
+  if (key) return key;
+  const raw = process.env.BROWSER_POLICY_SIGNING_KEY;
+  if (!raw) throw new ServiceError(503, "eGuard can't send browser settings right now. Try again later.", "signing_not_configured");
+  const priv = createPrivateKey({ key: Buffer.from(raw, "base64"), format: "der", type: "pkcs8" });
+  const spki = createPublicKey(priv).export({ format: "der", type: "spki" });
+  key = { priv, keyId: createHash("sha256").update(spki).digest("hex").slice(0, 16) };
+  return key;
+}
+
+/** ECDSA P-256 / SHA-256 over the canonical JSON, as raw r||s (what WebCrypto verifies). */
+export function signPolicy(policy: object) {
+  const k = signingKey();
+  const signature = sign("sha256", Buffer.from(canonicalJson(policy)), { key: k.priv, dsaEncoding: "ieee-p1363" }).toString("base64");
+  return { signature, keyId: k.keyId };
+}
+
+/** The policy for one installation, as the extension receives it. */
+export async function policyForInstallation(inst: Pick<BrowserInstallation, "id" | "childId" | "familyId">) {
+  const [p, family] = await Promise.all([
+    getOrCreateBrowserPolicy(inst.childId),
+    db.family.findUniqueOrThrow({ where: { id: inst.familyId }, select: { timezone: true } }),
+  ]);
+  const schedule = p.schedule as { enabled: boolean; startTime: string; endTime: string } | null;
+  const policy = {
+    id: p.id, childId: p.childId, installationId: inst.id, version: p.version,
+    safeBrowsing: p.safeBrowsing, safeSearch: p.safeSearch,
+    blockedCategories: p.blockedCategories, blockedDomains: p.blockedDomains, allowedDomains: p.allowedDomains,
+    unknownSitesPolicy: p.unknownSitesPolicy,
+    schedule: schedule ? { enabled: schedule.enabled, startTime: schedule.startTime, endTime: schedule.endTime, timezone: family.timezone } : null,
+    updatedAt: p.updatedAt.toISOString(),
+  };
+  return { policy, ...signPolicy(policy) };
+}

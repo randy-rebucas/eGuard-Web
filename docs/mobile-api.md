@@ -692,6 +692,8 @@ replaces the previous one, so show only the latest. `409` means the plan's devic
 `429 rate_limited` means the parent made more than 20 codes in an hour.
 After pairing, `GET /children/{id}` shows the device, and a first full check runs automatically.
 
+**Browser codes ("Add a browser").** Send `{ "kind": "BROWSER", "deviceLabel": "Mia's MacBook" }` (label 1–60 chars, required) to get a code for the eGuard browser extension instead; the response adds `"kind": "BROWSER"`. The parent types it into the extension's setup page, which calls `POST /api/browser/v1/pair`. Browser codes don't work in the phone app and phone codes don't work in the extension. Connected browsers count toward the plan's device limit (`usage.devicesUsed` in `GET /subscription` includes them). No body, or `{ "kind": "DEVICE" }`, gives a phone-app code as before.
+
 ### 4.7 Protections and configuration batches
 
 #### `GET /children/{id}/protections`
@@ -961,6 +963,8 @@ a batch completes.
 | `GET /devices/{id}` | none | `Device` + `protections: [{ key, name, icon, capability, capabilityLabel, status, reportedLabel, message, lastVerifiedAt }]` (all 10) |
 | `PATCH /devices/{id}` | `{ name }` (1–60 chars) | Same as GET |
 | `DELETE /devices/{id}` | `{ password }` | `{ ok }`. The device is unpaired and its token stops working. `403 wrong_password` without the parent's password (`403 password_not_set` for Apple/Google accounts without one). The family gets a "Device removed" alert, emailed to parents, since eGuard stops verifying the device |
+| `GET /browsers` | none | `{ browsers: [{ id, childId, childName, deviceLabel, browser, browserVersion, extensionVersion, platform, lastSeenAt, connected, createdAt }] }`: the eGuard browser extension installs. `connected: false` means eGuard disconnected it for security (its sign-in key was used from two places); remove it and add it again. Browsers don't enforce a policy yet, so never show them as protected |
+| `DELETE /browsers/{id}` | `{ password }` | `{ ok }`. Same rules as removing a device; the extension forgets the connection on its next check and the family gets a "Browser removed" alert |
 | `POST /checks` | `{ deviceId? }` (omit for all devices) | `202 { runId }` |
 | `GET /checks/{runId}` | none | See below. Poll until `done` |
 

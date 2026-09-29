@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { usedDeviceSlots } from "@/lib/device-slots";
 import { getFamily, getFamilyGraph } from "@/lib/queries";
 import { dayTime, peso, shortDate } from "@/lib/format";
 import { Icon } from "@/components/icon";
@@ -137,7 +138,7 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
       await refreshPurchases(u.familyId);
       const [fam, devicesUsed, childrenUsed, purchase] = await Promise.all([
         db.family.findUniqueOrThrow({ where: { id: u.familyId } }),
-        db.device.count({ where: { familyId: u.familyId } }),
+        usedDeviceSlots(u.familyId),
         db.child.count({ where: { familyId: u.familyId } }),
         currentPurchase(u.familyId),
       ]);

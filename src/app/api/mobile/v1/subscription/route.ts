@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { usedDeviceSlots } from "@/lib/device-slots";
 import { getFamily } from "@/lib/queries";
 import { shortDate } from "@/lib/format";
 import { authed, clientLabel } from "@/lib/mobile-api";
@@ -12,7 +13,7 @@ export const GET = authed(async ({ req, user }) => {
   await refreshPurchases(user.familyId);
   const [family, devices, children, purchase] = await Promise.all([
     getFamily(user.familyId),
-    db.device.count({ where: { familyId: user.familyId } }),
+    usedDeviceSlots(user.familyId),
     db.child.count({ where: { familyId: user.familyId } }),
     currentPurchase(user.familyId),
   ]);

@@ -5,6 +5,7 @@ import { newToken, sha256 } from "@/lib/auth";
 import { badRequest, readJson } from "@/lib/device-auth";
 import { refreshPurchases } from "@/lib/billing";
 import { LIMITS, clientIpFrom, hit, ipKey } from "@/lib/rate-limit";
+import { usedDeviceSlots } from "@/lib/device-slots";
 
 const Body = z.object({
   code: z.string().trim().min(6).max(12),
@@ -27,13 +28,16 @@ export async function POST(req: Request) {
   const invalidCode = () => NextResponse.json({ error: "Pairing code is invalid or expired" }, { status: 400 });
   const code = await db.pairingCode.findUnique({ where: { code: b.code.toUpperCase() } });
   if (!code || code.usedAt || code.expiresAt < new Date()) return invalidCode();
+  if (code.kind !== "DEVICE") {
+    return NextResponse.json({ error: "This code is for the eGuard browser extension. In the parent dashboard, choose Pair a device to get a code for this app." }, { status: 400 });
+  }
   // Claim the code first, atomically: of two devices racing with the same code, only one gets past here
   const claimed = await db.pairingCode.updateMany({ where: { id: code.id, usedAt: null, expiresAt: { gt: new Date() } }, data: { usedAt: new Date() } });
   if (!claimed.count) return invalidCode();
   await refreshPurchases(code.familyId);
   const [family, count] = await Promise.all([
     db.family.findUniqueOrThrow({ where: { id: code.familyId } }),
-    db.device.count({ where: { familyId: code.familyId } }),
+    usedDeviceSlots(code.familyId),
   ]);
   if (count >= family.deviceLimit) {
     // Give the code back so the parent can use it after removing a device
