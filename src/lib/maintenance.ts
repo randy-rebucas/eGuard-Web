@@ -2,6 +2,7 @@ import "server-only";
 import type { Alert } from "@prisma/client";
 import { db } from "./db";
 import { ensureOfflineAlerts } from "./engine";
+import { raiseBrowserOfflineAlerts } from "./browser-health";
 import { familiesWithPurchases, refreshPurchases } from "./billing";
 import { sendPassReminders } from "./web-billing";
 import { appUrl } from "./email-verification";
@@ -37,8 +38,8 @@ export async function refreshAllPurchases() {
 
 /**
  * Deletes activity older than each family's retention period (Settings › Privacy): screen time, app
- * usage, location visits, change history, finished requests and checks, and alerts that are no longer
- * open. Plus expired sessions, links, pairing codes and rate-limit counters.
+ * usage, location visits, change history, finished requests and checks, browser health reports and daily
+ * block counts, and alerts that are no longer open. Plus expired sessions, links, pairing codes and rate-limit counters.
  */
 export async function purgeExpiredData(now = new Date()) {
   const cutoff = (col: string) => `${col} < now() - make_interval(days => f."retentionDays")`;
@@ -49,6 +50,8 @@ export async function purgeExpiredData(now = new Date()) {
     changes: await db.$executeRawUnsafe(`DELETE FROM "ConfigChange" t USING "Family" f WHERE t."familyId" = f.id AND ${cutoff('t."createdAt"')}`),
     requests: await db.$executeRawUnsafe(`DELETE FROM "ConfigRequest" t USING "Child" c JOIN "Family" f ON f.id = c."familyId" WHERE t."childId" = c.id AND t.status IN ('VERIFIED','FAILED','CANCELLED') AND ${cutoff('t."createdAt"')}`),
     checks: await db.$executeRawUnsafe(`DELETE FROM "CheckRun" t USING "Family" f WHERE t."familyId" = f.id AND t.status = 'COMPLETED' AND ${cutoff('t."createdAt"')}`),
+    browserHealth: await db.$executeRawUnsafe(`DELETE FROM "BrowserHealthCheck" t USING "BrowserInstallation" b JOIN "Family" f ON f.id = b."familyId" WHERE t."installationId" = b.id AND ${cutoff('t."createdAt"')}`),
+    browserEvents: await db.$executeRawUnsafe(`DELETE FROM "BrowserEventDaily" t USING "BrowserInstallation" b JOIN "Family" f ON f.id = b."familyId" WHERE t."installationId" = b.id AND ${cutoff('t."date"')}`),
     alerts: await db.$executeRawUnsafe(`DELETE FROM "Alert" t USING "Family" f WHERE t."familyId" = f.id AND (t."resolvedAt" IS NOT NULL OR t.severity = 'INFO') AND ${cutoff('t."createdAt"')}`),
     auditLog: await db.auditLog.deleteMany({ where: { createdAt: { lt: new Date(now.getTime() - AUDIT_RETENTION_DAYS * 864e5) } } }).then((r) => r.count),
     sessions: await db.session.deleteMany({ where: { expiresAt: { lt: now } } }).then((r) => r.count),
@@ -98,9 +101,10 @@ export async function emailNewAlerts() {
 
 export async function runMaintenance() {
   const offlineFamilies = await raiseOfflineAlerts();
+  const offlineBrowsers = await raiseBrowserOfflineAlerts();
   const purchases = await refreshAllPurchases();
   const passReminders = await sendPassReminders();
   const emails = await emailNewAlerts();
   const purged = await purgeExpiredData();
-  return { offlineFamilies, purchases, passReminders, emails, purged };
+  return { offlineFamilies, offlineBrowsers, purchases, passReminders, emails, purged };
 }

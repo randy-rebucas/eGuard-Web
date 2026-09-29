@@ -97,6 +97,8 @@ export function alertAction(a: Pick<Alert, "resolveKey" | "category" | "childId"
   if (k === "APPREQ" && a.childId) return { label: "Review request", href: `/children/${a.childId}?tab=apps` };
   if (k === "WEBREQ" && a.childId) return { label: "Review request", href: `/children/${a.childId}?tab=browser#access-requests` };
   if (k === "BROWSER_REVOKED") return { label: "View browsers", href: "/devices#add-browser" };
+  // Browser health: drift, private windows, Safe Browsing, silence
+  if (k?.startsWith("BROWSER_") && a.childId) return { label: "View browser", href: `/children/${a.childId}?tab=browser` };
   switch (a.category) {
     case "APPS": return a.childId ? { label: "Review app", href: `/children/${a.childId}?tab=apps` } : null;
     case "SCREEN_TIME": return a.childId ? { label: "View activity", href: `/children/${a.childId}?tab=screen` } : null;

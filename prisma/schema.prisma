@@ -448,10 +448,49 @@ model BrowserInstallation {
   lastSeenAt           DateTime?
   /// Set when eGuard disconnected it for security (a copied refresh token was used)
   revokedAt            DateTime?
+  /// From the latest health report: the extension's own answer (PROTECTED, NEEDS_ATTENTION, …), null until the first
+  protectionState      String?
+  /// The policy version the browser says it is enforcing
+  appliedPolicyVersion Int?
+  lastHealthAt         DateTime?
   createdAt            DateTime  @default(now())
+
+  healthChecks BrowserHealthCheck[]
+  dailyEvents  BrowserEventDaily[]
 
   @@index([familyId])
   @@index([childId])
+}
+
+/// One health report from the extension: its self-checks and the policy version it enforces.
+model BrowserHealthCheck {
+  id             String              @id @default(cuid())
+  installationId String
+  installation   BrowserInstallation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  policyVersion  Int?
+  /// ProtectionState the extension showed
+  state          String
+  /// [{ id, status }]
+  checks         Json
+  /// Passing checks, out of those that apply (UNSUPPORTED and NOT_CONFIGURED don't count)
+  score          Int
+  total          Int
+  createdAt      DateTime            @default(now())
+
+  @@index([installationId, createdAt])
+}
+
+/// Aggregated only: how many pages of one kind were blocked in a browser on a day. Never a URL or domain.
+model BrowserEventDaily {
+  installationId String
+  installation   BrowserInstallation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  /// The day in the family's time zone
+  date           DateTime            @db.Date
+  /// A WebCategory, or BLOCKED_SITE / UNKNOWN_SITE / FOCUS_HOURS
+  category       String
+  blockedCount   Int
+
+  @@id([installationId, date, category])
 }
 
 /**

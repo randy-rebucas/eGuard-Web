@@ -6,6 +6,7 @@ import { audit } from "./audit";
 import { refreshPurchases } from "./billing";
 import { usedDeviceSlots } from "./device-slots";
 import { ServiceError, notFound } from "./errors";
+import { OFFLINE_AFTER_MS } from "./health";
 import type { Actor } from "./config-service";
 
 /**
@@ -139,8 +140,15 @@ export async function authBrowser(req: Request) {
   if (!inst.lastSeenAt || Date.now() - inst.lastSeenAt.getTime() > 60_000) {
     await db.browserInstallation.update({ where: { id: inst.id }, data: { lastSeenAt: new Date() } }).catch(() => {});
   }
+  if (!inst.lastSeenAt || Date.now() - inst.lastSeenAt.getTime() > OFFLINE_AFTER_MS) {
+    // Back after a long silence: verifiable again
+    await db.alert.updateMany({ where: { familyId: inst.familyId, resolveKey: browserOfflineKey(inst.id), resolvedAt: null }, data: { resolvedAt: new Date() } });
+  }
   return inst;
 }
+
+/** resolveKey of "eGuard can't verify this browser" (raised by the maintenance job after a day of silence). */
+export const browserOfflineKey = (id: string) => `BROWSER_OFFLINE:${id}`;
 
 /**
  * Removes a browser from the family. Its tokens stop working and the extension forgets the connection on its
@@ -153,7 +161,11 @@ export async function removeBrowser(actor: Actor, installationId: string, passwo
   await db.browserInstallation.delete({ where: { id: b.id } });
   const label = `${b.child.name}'s ${browserLabel(b)}`;
   await audit(actor.familyId, actor.name, "browser.removed", label);
-  await db.alert.updateMany({ where: { familyId: actor.familyId, resolveKey: `BROWSER_REVOKED:${b.id}`, resolvedAt: null }, data: { resolvedAt: new Date() } });
+  // Its open alerts (disconnected for security, drift, private windows, offline…) no longer apply
+  await db.alert.updateMany({
+    where: { familyId: actor.familyId, resolvedAt: null, AND: [{ resolveKey: { startsWith: "BROWSER_" } }, { resolveKey: { endsWith: `:${b.id}` } }] },
+    data: { resolvedAt: new Date() },
+  });
   await db.alert.create({
     data: {
       familyId: actor.familyId, childId: b.childId, severity: "ATTENTION", category: "DEVICES", icon: "trash",
