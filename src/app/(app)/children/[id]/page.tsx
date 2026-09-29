@@ -14,8 +14,10 @@ import { WeeklyChart } from "@/components/charts";
 import { FlowButton } from "@/components/flow";
 import { AppControls, ChildForm, DeleteChildForm } from "@/components/forms";
 import { requestedApps } from "@/lib/family-service";
-import { CATEGORY_META, WEB_CATEGORIES, describeBrowserPolicy, getOrCreateBrowserPolicy } from "@/lib/browser-policy";
-import { BrowserPolicyForm } from "@/components/browser-policy";
+import { CATEGORY_META, WEB_CATEGORIES, activeTemporaryAllows, describeBrowserPolicy, getOrCreateBrowserPolicy } from "@/lib/browser-policy";
+import { categoryCoverage } from "@/lib/category-lists";
+import { DURATION_LABEL, requestsForChild, type Duration } from "@/lib/browser-access";
+import { AccessRequestRow, BrowserPolicyForm } from "@/components/browser-policy";
 import { entitlementsFor } from "@/lib/plans";
 import { APPS_UPGRADE, LOCATION_UPGRADE, visibleApps } from "@/lib/plan-access";
 
@@ -134,10 +136,16 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
   }
 
   async function Browser() {
-    const [p, browsers] = await Promise.all([
+    const [p, browsers, requests] = await Promise.all([
       getOrCreateBrowserPolicy(c!.id),
       db.browserInstallation.findMany({ where: { childId: c!.id }, orderBy: { createdAt: "asc" } }),
+      requestsForChild(u, c!.id),
     ]);
+    const temporary = activeTemporaryAllows(p);
+    const view = (r: (typeof requests.pending)[number]) => ({
+      id: r.id, domain: r.domain, reason: r.reason, status: r.status, duration: r.duration, createdAt: r.createdAt.toISOString(),
+      decidedAt: r.decidedAt?.toISOString() ?? null, decidedBy: r.decidedBy, expiresAt: r.expiresAt?.toISOString() ?? null,
+    });
     const schedule = p.schedule as { enabled: boolean; startTime: string; endTime: string } | null;
     return (
       <div className="detail-grid">
@@ -145,7 +153,7 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
           <section className="card card-pad">
             <div className="card-head"><div><h2>Browser protection</h2><div className="sub">What the eGuard extension does in {c!.name}&apos;s Chrome, Edge and Firefox. It applies to every browser you add for {c!.name}.</div></div></div>
             <BrowserPolicyForm childId={c!.id} childName={c!.name}
-              categories={WEB_CATEGORIES.map((key) => ({ key, ...CATEGORY_META[key] }))}
+              categories={WEB_CATEGORIES.map((key) => ({ key, ...CATEGORY_META[key], ...categoryCoverage(key) }))}
               initial={{
                 version: p.version, safeBrowsing: p.safeBrowsing, safeSearch: p.safeSearch, blockedCategories: p.blockedCategories,
                 blockedDomains: p.blockedDomains, allowedDomains: p.allowedDomains,
@@ -154,6 +162,26 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
           </section>
         </div>
         <div className="dash-col">
+          <section className="card card-pad" id="access-requests">
+            <div className="card-head"><h2 style={{ fontSize: 18 }}>Access requests</h2></div>
+            {requests.pending.length ? (
+              <ul className="bp-requests">{requests.pending.map((r) => <AccessRequestRow key={r.id} r={view(r)} childName={c!.name} when={ago(r.createdAt, tz)} />)}</ul>
+            ) : <p className="t-meta">When {c!.name} asks to open a blocked site, the request appears here.</p>}
+            {temporary.length ? (
+              <>
+                <h3 className="t-title" style={{ fontSize: 14, marginTop: 16 }}>Allowed for now</h3>
+                <div className="app-rows">{temporary.map((t) => <div key={t.domain}><span>{t.domain}</span><span className="t-meta">until {dayTime(new Date(t.until), tz)}</span></div>)}</div>
+              </>
+            ) : null}
+            {requests.recent.length ? (
+              <>
+                <h3 className="t-title" style={{ fontSize: 14, marginTop: 16 }}>Recently answered</h3>
+                <div className="app-rows">{requests.recent.map((r) => (
+                  <div key={r.id}><span>{r.domain}</span><span className="t-meta">{r.status === "APPROVED" ? `Allowed${r.duration ? ` · ${DURATION_LABEL[r.duration as Duration]}` : ""}` : "Declined"} by {r.decidedBy}</span></div>
+                ))}</div>
+              </>
+            ) : null}
+          </section>
           <section className="card card-pad">
             <div className="card-head"><h2 style={{ fontSize: 18 }}>Browsers</h2><Link className="link-btn" href="/devices#add-browser">Add a browser <Icon name="arrow-right" /></Link></div>
             {browsers.length ? (
@@ -162,7 +190,7 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
               ))}</div>
             ) : <EmptyState icon="globe" title="No browsers yet" text={`Add the eGuard extension to ${c!.name}'s browser to use these settings.`} />}
             <p className="t-meta" style={{ marginTop: 14 }}>
-              Browsers download these settings within 5 minutes. Blocking in the browser arrives with the next eGuard extension update; until then nothing is blocked, and the extension says so.
+              Browsers apply changes within 5 minutes. Each browser checks that its blocking rules match these settings; its popup says so, or explains what needs attention.
             </p>
           </section>
           <section className="card card-pad">

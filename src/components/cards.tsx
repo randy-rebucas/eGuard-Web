@@ -95,6 +95,8 @@ export function alertAction(a: Pick<Alert, "resolveKey" | "category" | "childId"
   }
   if (k === "OFFLINE" && a.deviceId) return { label: "View device", href: `/devices/${a.deviceId}` };
   if (k === "APPREQ" && a.childId) return { label: "Review request", href: `/children/${a.childId}?tab=apps` };
+  if (k === "WEBREQ" && a.childId) return { label: "Review request", href: `/children/${a.childId}?tab=browser#access-requests` };
+  if (k === "BROWSER_REVOKED") return { label: "View browsers", href: "/devices#add-browser" };
   switch (a.category) {
     case "APPS": return a.childId ? { label: "Review app", href: `/children/${a.childId}?tab=apps` } : null;
     case "SCREEN_TIME": return a.childId ? { label: "View activity", href: `/children/${a.childId}?tab=screen` } : null;

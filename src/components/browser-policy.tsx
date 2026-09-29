@@ -2,7 +2,7 @@
 
 import { useId, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { saveBrowserPolicy } from "@/app/actions/family";
+import { decideAccessRequest, saveBrowserPolicy } from "@/app/actions/family";
 import { Icon } from "./icon";
 
 type Unknown = "ALLOW" | "WARN" | "BLOCK";
@@ -24,14 +24,15 @@ const UNKNOWN: { key: Unknown; label: string; text: string }[] = [
 ];
 
 const lines = (list: string[]) => list.join("\n");
-const parse = (text: string) => text.split(/[\s,;]+/).map((s) => s.trim()).filter(Boolean);
+/** One site per line (commas also work). Not spaces, so "not a site" is reported as typed. */
+const parse = (text: string) => text.split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean);
 
 /** Browser protection editor. The server validates and normalises everything; this only collects it. */
 export function BrowserPolicyForm({ childId, childName, initial, categories }: {
   childId: string;
   childName: string;
   initial: BrowserPolicyValues;
-  categories: { key: string; label: string; hint: string }[];
+  categories: { key: string; label: string; hint: string; note: string; count: number }[];
 }) {
   const id = useId();
   const router = useRouter();
@@ -63,12 +64,13 @@ export function BrowserPolicyForm({ childId, childName, initial, categories }: {
     <form className="dash-col" style={{ gap: 22 }} onSubmit={(e) => { e.preventDefault(); save(); }}>
       <fieldset className="bp-group">
         <legend className="t-title">Blocked categories</legend>
-        <p className="t-meta">Sites eGuard knows belong to these categories are blocked. New sites may not be listed yet, so add any you notice below.</p>
+        <p className="t-meta">eGuard blocks the sites on each category&apos;s list. The lists are a starting point, not complete: add any other sites you want blocked below.</p>
         <div className="check-list">
           {categories.map((c) => (
             <label key={c.key} className="check">
               <input type="checkbox" checked={v.blockedCategories.includes(c.key)} onChange={() => toggleCategory(c.key)} />
-              <span><span className="t-title" style={{ fontSize: 14 }}>{c.label}</span><span className="t-meta" style={{ display: "block" }}>{c.hint}</span></span>
+              <span><span className="t-title" style={{ fontSize: 14 }}>{c.label}</span><span className="t-meta" style={{ display: "block" }}>{c.hint}</span>
+                <span className={`bp-note ${c.count ? "" : "bp-note-muted"}`}>{c.note}</span></span>
             </label>
           ))}
         </div>
@@ -133,5 +135,45 @@ export function BrowserPolicyForm({ childId, childName, initial, categories }: {
         <button className="btn btn-primary" disabled={pending}>{pending ? <><Icon name="loader-circle" className="spin" />Saving…</> : "Save browser protection"}</button>
       </div>
     </form>
+  );
+}
+
+export type AccessRequestView = { id: string; domain: string; reason: string | null; status: string; duration: string | null; createdAt: string; decidedAt: string | null; decidedBy: string | null; expiresAt: string | null };
+
+const DURATIONS: { key: string; label: string }[] = [
+  { key: "15M", label: "15 minutes" },
+  { key: "1H", label: "1 hour" },
+  { key: "TODAY", label: "Rest of today" },
+  { key: "ALWAYS", label: "Always" },
+];
+
+/** A child's open request to open a blocked site: approve for a while, always, or decline. */
+export function AccessRequestRow({ r, childName, when }: { r: AccessRequestView; childName: string; when: string }) {
+  const router = useRouter();
+  const [duration, setDuration] = useState("1H");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const id = useId();
+  const decide = (decision: "APPROVE" | "DENY") => start(async () => {
+    const res = await decideAccessRequest(r.id, decision === "APPROVE" ? { decision, duration } : { decision });
+    if (res.error !== undefined) { setError(res.error); return; }
+    router.refresh();
+  });
+  return (
+    <li className="bp-request">
+      <div className="grow" style={{ minWidth: 0 }}>
+        <div className="t-title" style={{ overflowWrap: "anywhere" }}>{r.domain}</div>
+        <div className="t-meta">{childName} asked {when}{r.reason ? <> · &ldquo;{r.reason}&rdquo;</> : null}</div>
+        {error ? <div className="form-error" role="alert" style={{ marginTop: 8 }}><Icon name="triangle-alert" />{error}</div> : null}
+      </div>
+      <div className="row" style={{ flexWrap: "wrap", gap: 8 }}>
+        <label className="sr-only" htmlFor={`${id}-dur`}>Allow for</label>
+        <select id={`${id}-dur`} className="input" style={{ height: 36, width: "auto" }} value={duration} onChange={(e) => setDuration(e.target.value)} disabled={pending}>
+          {DURATIONS.map((d) => <option key={d.key} value={d.key}>{d.label}</option>)}
+        </select>
+        <button type="button" className="btn btn-primary btn-sm" disabled={pending} onClick={() => decide("APPROVE")}>Allow</button>
+        <button type="button" className="btn btn-secondary btn-sm" disabled={pending} onClick={() => decide("DENY")}>Decline</button>
+      </div>
+    </li>
   );
 }

@@ -12,6 +12,7 @@ import { ServiceError, invalid, notFound, planRequired, toResult, type Result } 
 import * as family from "@/lib/family-service";
 import * as browsers from "@/lib/browser-service";
 import * as browserPolicy from "@/lib/browser-policy";
+import * as browserAccess from "@/lib/browser-access";
 import { LOCATION_UPGRADE, familyEntitlements, planWith } from "@/lib/plan-access";
 import type { FormState } from "./auth";
 
@@ -155,6 +156,17 @@ export async function saveBrowserPolicy(childId: string, input: unknown) {
     const p = await browserPolicy.updateBrowserPolicy(u, childId, browserPolicy.BrowserPolicyInput.parse(input), "web");
     revalidatePath(`/children/${childId}`);
     return { version: p.version, blockedDomains: p.blockedDomains, allowedDomains: p.allowedDomains };
+  });
+}
+
+/** Answers a child's request to open a blocked site. */
+export async function decideAccessRequest(requestId: string, decision: unknown) {
+  const u = await requireUser();
+  return toResult(async () => {
+    const r = await browserAccess.decideAccessRequest(u, requestId, browserAccess.Decision.parse(decision), "web");
+    revalidatePath(`/children/${r.childId}`);
+    revalidatePath("/", "layout");
+    return { status: r.status };
   });
 }
 

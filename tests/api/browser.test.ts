@@ -104,11 +104,12 @@ describe("pairing", () => {
 });
 
 describe("tokens", () => {
-  it("the access token opens the policy endpoint, which says plainly that nothing is set up yet", async () => {
+  it("the access token opens the policy endpoint (the child's signed policy; details in browser-policy.test.ts)", async () => {
     const p = await pairBrowser();
     const r = await ext("/policy", { token: p.accessToken });
-    expect(r.status).toBe(404);
-    expect(r.data).toEqual({ error: "Browser protection settings for Lia aren't set up in eGuard yet.", code: "policy_not_configured" });
+    expect(r.status).toBe(200);
+    expect(r.data.policy).toMatchObject({ installationId: p.installationId, childId });
+    expect(r.data.signature).toEqual(expect.any(String));
     expect((await ext("/policy", { token: "not-a-token" })).status).toBe(401);
     expect((await ext("/policy")).status).toBe(401);
     // The refresh token isn't an access token
@@ -122,7 +123,7 @@ describe("tokens", () => {
     expect(r.status).toBe(200);
     expect(r.data.refreshToken).not.toBe(p.refreshToken);
     expect((await ext("/policy", { token: p.accessToken })).status).toBe(401);
-    expect((await ext("/policy", { token: r.data.accessToken })).status).toBe(404);
+    expect((await ext("/policy", { token: r.data.accessToken })).status).toBe(200);
     // The new refresh token works in turn
     expect((await ext("/token", { body: { installationId: p.installationId, refreshToken: r.data.refreshToken } })).status).toBe(200);
     await db.browserInstallation.delete({ where: { id: p.installationId } });
@@ -141,7 +142,7 @@ describe("tokens", () => {
     const retry = await ext("/token", { body: { installationId: p.installationId, refreshToken: p.refreshToken } });
     expect(first.status).toBe(200);
     expect(retry.status).toBe(200);
-    expect((await ext("/policy", { token: retry.data.accessToken })).status).toBe(404);
+    expect((await ext("/policy", { token: retry.data.accessToken })).status).toBe(200);
     const row = await db.browserInstallation.findUniqueOrThrow({ where: { id: p.installationId } });
     expect(row.revokedAt).toBeNull();
     await db.browserInstallation.delete({ where: { id: p.installationId } });

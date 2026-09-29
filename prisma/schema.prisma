@@ -307,6 +307,7 @@ model Child {
   alerts     Alert[]
   browsers   BrowserInstallation[]
   browserPolicy BrowserPolicy?
+  accessRequests BrowserAccessRequest[]
   photo      ChildPhoto?
   visits     LocationVisit[]
 }
@@ -472,11 +473,35 @@ model BrowserPolicy {
   unknownSitesPolicy String   @default("ALLOW")
   /// { enabled, startTime "HH:MM", endTime "HH:MM" } in the family's timezone, or null
   schedule           Json?
+  /// Sites a parent approved for a while: [{ domain, until (ISO) }]. Expired entries are pruned on the next change.
+  temporaryAllows    Json     @default("[]")
   updatedBy          String
   updatedAt          DateTime @updatedAt
   createdAt          DateTime @default(now())
 
   versions BrowserPolicyVersion[]
+}
+
+/// A child asking, from the browser's block page, to open a blocked site. The parent approves or denies.
+model BrowserAccessRequest {
+  id             String    @id @default(cuid())
+  familyId       String
+  childId        String
+  child          Child     @relation(fields: [childId], references: [id], onDelete: Cascade)
+  installationId String?
+  domain         String
+  reason         String?
+  /// PENDING | APPROVED | DENIED
+  status         String    @default("PENDING")
+  /// 15M | 1H | TODAY | ALWAYS, when approved
+  duration       String?
+  expiresAt      DateTime?
+  decidedBy      String?
+  decidedAt      DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([childId, status])
+  @@index([familyId, createdAt])
 }
 
 /// Immutable snapshot of every version: what was in force when, and who changed it.
