@@ -149,3 +149,11 @@
   .st-more ul{grid-template-columns:minmax(0,1fr)}
   .st-about, .st-legal, .st-article{padding-top:36px}
 }
+
+/* Status pills (how it works, protections): Verified / Pending / Failed and capability labels */
+.hw-pill{display:inline-flex; align-items:center; height:24px; padding:0 10px; border-radius:12px; font-size:12.5px; font-weight:700; white-space:nowrap; vertical-align:1px}
+.hw-pill.ok{background:#E3F7EE; color:#0E7A48}
+.hw-pill.wait{background:#FFF1DC; color:#9A5600}
+.hw-pill.fail{background:#FDE7E8; color:#C4262D}
+.hw-pill.info{background:var(--blue-soft); color:var(--blue-2)}
+.hw-pill.muted{background:#EEF1F5; color:#5F6E84}

@@ -1,0 +1,88 @@
+/* ---------- Protections (/protections and /protections/[slug]) ----------
+   Built on landing.css and site.css, scoped under .lp. The phone illustration comes from flow-devices. */
+
+.pr{max-width:1180px; margin:0 auto; padding:48px var(--gutter) 88px}
+.pr-sec{margin-top:72px}
+.pr-sec > h2, .pr-copy h2{font-size:clamp(22px, 2.2vw, 28px); line-height:1.2; letter-spacing:-.02em}
+.pr-lede{color:var(--ink-3); font-size:16.5px; margin-top:10px; max-width:44em}
+.pr-link{display:inline-flex; align-items:center; gap:6px; font-weight:600; color:var(--blue-2)}
+.pr-link .lucide{width:16px; height:16px; transition:transform .2s var(--ease)}
+.pr-link:hover .lucide{transform:translateX(3px)}
+
+/* Capability chips: "Android · Applied by eGuard" */
+.pr-caps{display:flex; flex-wrap:wrap; gap:8px}
+.st-head .pr-caps{margin-top:24px}
+.pr-cap{display:inline-flex; align-items:center; gap:8px; min-height:30px; padding:4px 12px; border-radius:15px; font-size:13px; font-weight:600; background:#fff; border:1px solid var(--line); color:var(--ink-2)}
+.pr-cap b{font-weight:700; color:var(--ink)}
+.pr-cap::before{content:""; width:8px; height:8px; border-radius:50%; flex:none; background:currentColor}
+.pr-cap.ok::before{background:var(--ok)}
+.pr-cap.info::before{background:var(--blue)}
+.pr-cap.wait::before{background:#EE8200}
+.pr-cap.muted::before{background:#A6B1C2}
+
+/* Index grid */
+.pr-grid{list-style:none; margin:0; padding:0; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px}
+.pr-card{height:100%; display:flex; flex-direction:column; padding:26px 26px 22px; background:#fff; border:1px solid var(--line); border-radius:20px; box-shadow:var(--card-shadow); transition:transform .22s var(--ease), box-shadow .22s var(--ease), border-color .2s}
+.pr-card:hover{transform:translateY(-3px); border-color:#BFDCFB; box-shadow:0 2px 4px rgba(11,35,72,.04), 0 22px 40px -18px rgba(20,80,160,.3)}
+.pr-card-ico, .pr-others i{display:grid; place-items:center; flex:none; color:#fff; background:linear-gradient(180deg, #2398FF, #1560DB)}
+.pr-card-ico{width:48px; height:48px; border-radius:14px}
+.pr-card-ico .lucide{width:23px; height:23px}
+.pr-card h2{font-size:20px; letter-spacing:-.015em; margin-top:16px}
+.pr-card p{color:var(--ink-3); font-size:15px; margin-top:6px}
+.pr-card .pr-caps{margin-top:16px}
+.pr-card .pr-cap{font-size:12.5px}
+.pr-card-more{display:inline-flex; align-items:center; gap:6px; margin-top:auto; padding-top:18px; font-size:14.5px; font-weight:600; color:var(--blue-2)}
+.pr-card-more .lucide{width:16px; height:16px; transition:transform .2s var(--ease)}
+.pr-card:hover .pr-card-more .lucide{transform:translateX(3px)}
+
+.pr-levels{list-style:none; margin:24px 0 20px; padding:0; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px}
+.pr-levels li{padding:18px 18px 16px; background:#fff; border:1px solid var(--line); border-radius:16px}
+.pr-levels p{font-size:14.5px; color:var(--ink-3); margin-top:10px}
+
+/* Detail: copy beside the phone */
+.pr-top{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,.62fr); gap:56px; align-items:start; margin-top:28px}
+.pr-copy h2 + p{margin-top:10px}
+.pr-copy p + h2{margin-top:32px}
+.pr-copy p{color:var(--ink-2); font-size:16.5px; line-height:1.7; max-width:38em}
+.pr-copy p + p{margin-top:12px}
+.pr-art{position:sticky; top:100px; display:flex; justify-content:center; padding:36px 24px 28px; border-radius:28px;
+  background:radial-gradient(70% 70% at 50% 35%, #E1EFFF 0%, transparent 70%), linear-gradient(180deg, #F2F8FF, #EAF3FE); border:1px solid #E1ECF9}
+.pr-phone{width:min(100%, 260px)}
+.pr-phone .hwp{filter:drop-shadow(0 24px 28px rgba(15,60,130,.26))}
+
+.pr-plats{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; margin-top:22px; align-items:start}
+.pr-plat{padding:24px 24px 22px; background:#fff; border:1px solid var(--line); border-radius:20px; box-shadow:var(--card-shadow)}
+.pr-plat-head{display:flex; align-items:center; gap:12px; margin-bottom:14px}
+.pr-plat-mark{width:44px; height:44px; border-radius:12px; display:grid; place-items:center; background:#F4F8FD; color:#111}
+.pr-plat-mark svg{width:24px; height:24px}
+.pr-plat h3{font-size:18px}
+.pr-plat p{color:var(--ink-3); font-size:15px; margin-top:12px}
+.pr-steps-h{display:block; margin-top:18px; font-size:14px; color:var(--ink)}
+.pr-steps{list-style:none; margin:10px 0 0; padding:0; counter-reset:s; display:flex; flex-direction:column; gap:10px}
+.pr-steps li{counter-increment:s; display:flex; gap:10px; align-items:flex-start; font-size:14.5px; color:var(--ink-2)}
+.pr-steps li::before{content:counter(s); flex:none; width:24px; height:24px; border-radius:50%; display:grid; place-items:center; background:var(--blue-soft); color:var(--blue-2); font-weight:700; font-size:12.5px}
+
+.pr-sec .st-table{max-width:760px}
+.pr-faq{margin-top:14px; max-width:800px}
+
+.pr-others{list-style:none; margin:20px 0 0; padding:0; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px}
+.pr-others a{display:flex; align-items:center; gap:12px; min-height:60px; padding:10px 16px 10px 10px; background:#fff; border:1px solid var(--line); border-radius:14px; font-weight:600; font-size:15px; color:var(--ink); transition:border-color .2s}
+.pr-others a:hover{border-color:#9CCBFF; color:var(--blue-2)}
+.pr-others i{width:38px; height:38px; border-radius:11px}
+.pr-others i .lucide{width:19px; height:19px}
+
+@media (max-width:1024px){
+  .pr-top{grid-template-columns:minmax(0,1fr); gap:32px}
+  .pr-art{position:static; order:-1}
+  .pr-levels{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .pr-others{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:720px){
+  .pr{padding-top:32px}
+  .pr-sec{margin-top:56px}
+  .pr-grid, .pr-plats, .pr-levels, .pr-others{grid-template-columns:minmax(0,1fr)}
+  .pr-card{padding:22px 20px 18px}
+  .pr-art{margin-inline:calc(-1 * var(--gutter) + 8px); padding:28px 16px 22px}
+  .pr-phone{width:min(66%, 250px)}
+  .pr-copy p{font-size:16px}
+}

@@ -1,0 +1,56 @@
+/* ---------- Pricing (/pricing) ----------
+   Plan cards reuse the landing page's .lp-plans / .lp-plan; the rest is here. */
+
+.pc{max-width:1180px; margin:0 auto; padding:56px var(--gutter) 88px}
+.pc .pc-plans{margin-top:0; max-width:none}
+.pc-plan-name{font-size:22px; font-weight:600}
+.pc-sec{margin-top:88px}
+.pc-sec > h2{font-size:clamp(26px, 2.8vw, 34px); line-height:1.15}
+.pc-lede{color:var(--ink-3); font-size:16.5px; margin-top:10px}
+.pc-lede a{color:var(--blue-2); font-weight:600; text-decoration:underline; text-underline-offset:3px}
+
+/* Comparison table: first column sticks while the plans scroll on small screens */
+.pc-table{margin-top:24px; overflow-x:auto; border:1px solid var(--line); border-radius:18px; background:#fff; box-shadow:var(--card-shadow)}
+.pc-table:focus-visible{outline:2px solid var(--blue); outline-offset:3px}
+.pc-table table{width:100%; min-width:640px; border-collapse:collapse; table-layout:fixed; font-size:15px}
+.pc-table th, .pc-table td{padding:14px 18px; border-top:1px solid var(--line); text-align:center; vertical-align:middle}
+.pc-table thead th{border-top:0; background:#F3F8FE; font-family:var(--display); font-size:16px; font-weight:600; color:var(--ink)}
+.pc-table thead th small{display:block; margin-top:2px; font-family:var(--font); font-size:13px; font-weight:500; color:var(--ink-3)}
+.pc-table thead th:nth-child(3){background:#E6F1FF}
+.pc-table tbody td:nth-child(3){background:#FAFCFF}
+.pc-table tbody th{text-align:left; font-weight:600; color:var(--ink); width:34%}
+.pc-table tbody th small{display:block; margin-top:2px; font-size:13px; font-weight:400; color:var(--ink-3)}
+.pc-table td{color:var(--ink-2)}
+.pc-table th:first-child{position:sticky; left:0; z-index:1; background:#fff}
+.pc-table thead th:first-child{background:#F3F8FE}
+.pc-yes, .pc-no{display:inline-grid; place-items:center; width:26px; height:26px; border-radius:50%}
+.pc-yes{background:#E3F7EE; color:#0E7A48}
+.pc-no{background:#F1F4F8; color:#A6B1C2}
+.pc-yes .lucide, .pc-no .lucide{width:15px; height:15px; stroke-width:3}
+
+.pc-ways{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; margin-top:24px}
+.pc-way{padding:28px 28px 24px; background:#fff; border:1px solid var(--line); border-radius:20px; box-shadow:var(--card-shadow)}
+.pc-way > i{width:48px; height:48px; border-radius:14px; display:grid; place-items:center; background:var(--blue-soft); color:var(--blue-2)}
+.pc-way > i .lucide{width:22px; height:22px}
+.pc-way h3{font-size:20px; margin-top:16px}
+.pc-way > p{color:var(--ink-3); margin-top:6px}
+.pc-methods{list-style:none; margin:16px 0 0; padding:0; display:flex; flex-wrap:wrap; gap:8px}
+.pc-methods li{height:32px; padding:0 14px; border-radius:16px; display:inline-flex; align-items:center; background:#F3F8FE; border:1px solid var(--line); font-size:14px; font-weight:600; color:var(--ink-2)}
+.pc-points{list-style:none; margin:18px 0 0; padding:0; display:flex; flex-direction:column; gap:10px}
+.pc-points li{display:flex; align-items:center; gap:10px; font-size:15px; color:var(--ink-2)}
+.pc-points .lucide{width:17px; height:17px; color:var(--ok); stroke-width:2.6}
+.pc-note{display:flex; align-items:center; gap:10px; margin-top:18px; font-size:15px; color:var(--ink-2)}
+.pc-note .lucide{flex:none; width:18px; height:18px; color:var(--blue-2)}
+.pc-faq{margin-top:14px; max-width:820px}
+
+@media (max-width:1024px){
+  .pc .pc-plans{grid-template-columns:minmax(0,1fr); max-width:480px}
+}
+@media (max-width:720px){
+  .pc{padding-top:36px}
+  .pc-sec{margin-top:64px}
+  .pc-ways{grid-template-columns:minmax(0,1fr)}
+  .pc-way{padding:22px 20px 20px}
+  .pc-table th, .pc-table td{padding:12px 12px}
+  .pc-note{align-items:flex-start}
+}

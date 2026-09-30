@@ -1,0 +1,83 @@
+/* ---------- Guides by age (/guides and /guides/[slug]) ---------- */
+
+.gd{max-width:1180px; margin:0 auto; padding:48px var(--gutter) 88px}
+.gd h2{font-size:clamp(22px, 2.2vw, 28px); line-height:1.2; letter-spacing:-.02em}
+.gd-lede{color:var(--ink-3); font-size:16.5px; margin-top:10px; max-width:46em}
+.gd-lede b{color:var(--ink); font-weight:600}
+.gd-center{margin:32px auto 0; text-align:center}
+
+/* Index */
+.gd-grid{list-style:none; margin:0; padding:0; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px}
+.gd-tile{height:100%; display:flex; flex-direction:column; padding:28px 28px 24px; background:#fff; border:1px solid var(--line); border-radius:22px; box-shadow:var(--card-shadow); transition:transform .22s var(--ease), box-shadow .22s var(--ease), border-color .2s}
+.gd-tile:hover{transform:translateY(-3px); border-color:#BFDCFB; box-shadow:0 2px 4px rgba(11,35,72,.04), 0 22px 40px -18px rgba(20,80,160,.3)}
+.gd-age{align-self:flex-start; height:32px; padding:0 14px; border-radius:16px; display:inline-flex; align-items:center; background:linear-gradient(180deg, #2398FF, #0F74E8); color:#fff; font-weight:700; font-size:14px}
+.gd-tile h2{margin-top:16px}
+.gd-tile p{color:var(--ink-3); font-size:15.5px; margin-top:8px}
+.gd-tile dl{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin:20px 0 0}
+.gd-tile dl div{padding:10px 12px; border-radius:12px; background:#F3F8FE; border:1px solid var(--line)}
+.gd-tile dt{font-size:12px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--ink-3)}
+.gd-tile dd{margin:2px 0 0; font-size:14px; font-weight:600; color:var(--ink)}
+.gd-more{display:inline-flex; align-items:center; gap:6px; margin-top:auto; padding-top:20px; font-size:14.5px; font-weight:600; color:var(--blue-2)}
+.gd-more .lucide{width:16px; height:16px; transition:transform .2s var(--ease)}
+.gd-tile:hover .gd-more .lucide{transform:translateX(3px)}
+
+/* Guide */
+.gd-top{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,.62fr); gap:48px; align-items:start; margin-top:28px}
+.gd-prose p{color:var(--ink-2); font-size:16.5px; line-height:1.7; margin-top:12px; max-width:38em}
+.gd-prose h2 + p{margin-top:10px}
+.gd-prose p + h2{margin-top:36px}
+.gd-focus{list-style:none; margin:16px 0 0; padding:0; display:flex; flex-direction:column; gap:14px}
+.gd-focus li{display:flex; gap:14px; align-items:flex-start; padding:18px 20px; background:#fff; border:1px solid var(--line); border-radius:16px}
+.gd-focus li > .lucide{flex:none; width:22px; height:22px; padding:3px; border-radius:50%; background:#E3F7EE; color:#0E7A48; stroke-width:3}
+.gd-focus b{display:block; font-weight:600; color:var(--ink)}
+.gd-focus span{display:block; margin-top:4px; font-size:15px; color:var(--ink-3)}
+.gd-card{position:sticky; top:100px; padding:26px 26px 22px; border-radius:22px; background:linear-gradient(180deg, #F0F7FF, #fff); border:1px solid #D6EAFF}
+.gd-card h2{display:flex; align-items:center; gap:12px; font-size:20px}
+.gd-card h2 i{width:40px; height:40px; border-radius:12px; display:grid; place-items:center; background:var(--blue-soft); color:var(--blue-2)}
+.gd-card h2 .lucide{width:20px; height:20px}
+.gd-card ul{list-style:none; margin:16px 0 0; padding:0; display:flex; flex-direction:column; gap:12px}
+.gd-card li{padding:12px 14px; border-radius:14px; background:#fff; border:1px solid var(--line); font-size:15px; color:var(--ink-2); font-style:italic}
+.gd-link{display:inline-flex; align-items:center; gap:6px; margin-top:18px; font-weight:600; color:var(--blue-2)}
+.gd-link .lucide{width:16px; height:16px}
+
+.gd-sec{margin-top:72px}
+.gd-table{max-width:760px}
+.gd-table td:first-child{width:45%}
+.gd-table td a{display:inline-flex; align-items:center; gap:10px; color:var(--ink); font-weight:500}
+.gd-table td a:hover{color:var(--blue-2)}
+.gd-table td a .lucide{width:18px; height:18px; color:var(--blue-2)}
+
+.gd-loosen{display:flex; gap:20px; align-items:flex-start; padding:28px; border-radius:22px; background:linear-gradient(180deg, #F0FBF6, #fff); border:1px solid #CDEFDD}
+.gd-loosen > i{flex:none; width:52px; height:52px; border-radius:16px; display:grid; place-items:center; background:linear-gradient(180deg, #2BCB85, #0E9A5B); color:#fff}
+.gd-loosen > i .lucide{width:24px; height:24px}
+.gd-loosen ul{list-style:disc; margin:12px 0 0; padding-left:1.2em; display:flex; flex-direction:column; gap:8px; color:var(--ink-2); font-size:16px}
+.gd-loosen li::marker{color:var(--ok)}
+
+.gd-prots{list-style:none; margin:20px 0 0; padding:0; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px}
+.gd-prots a{height:100%; display:flex; gap:14px; align-items:flex-start; padding:16px 18px; background:#fff; border:1px solid var(--line); border-radius:16px; transition:border-color .2s}
+.gd-prots a:hover{border-color:#9CCBFF}
+.gd-prots i{flex:none; width:40px; height:40px; border-radius:12px; display:grid; place-items:center; color:#fff; background:linear-gradient(180deg, #2398FF, #1560DB)}
+.gd-prots i .lucide{width:20px; height:20px}
+.gd-prots b{display:block; font-family:var(--display); font-weight:600; color:var(--ink)}
+.gd-prots span{display:block; margin-top:2px; font-size:14px; color:var(--ink-3)}
+
+.gd-pager{display:flex; justify-content:space-between; gap:16px; margin-top:56px}
+.gd-pager a{display:inline-flex; align-items:center; gap:12px; padding:14px 18px; background:#fff; border:1px solid var(--line); border-radius:16px; color:var(--ink); font-weight:600}
+.gd-pager a:hover{border-color:#9CCBFF; color:var(--blue-2)}
+.gd-pager small{display:block; font-size:12px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--ink-3)}
+.gd-pager .next{text-align:right}
+.gd-pager .lucide{width:18px; height:18px; color:var(--blue-2)}
+
+@media (max-width:1024px){
+  .gd-top{grid-template-columns:minmax(0,1fr); gap:32px}
+  .gd-card{position:static}
+}
+@media (max-width:720px){
+  .gd{padding-top:32px}
+  .gd-grid, .gd-prots{grid-template-columns:minmax(0,1fr)}
+  .gd-tile{padding:22px 20px 20px}
+  .gd-tile dl{grid-template-columns:minmax(0,1fr)}
+  .gd-loosen{flex-direction:column; padding:22px 20px}
+  .gd-sec{margin-top:56px}
+  .gd-pager a{padding:12px 14px}
+}

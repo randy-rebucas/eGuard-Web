@@ -12,7 +12,7 @@ import { LEGAL } from "@/lib/legal";
 /** In the order the sections appear on the landing page, then pages elsewhere. */
 const NAV = [
   ["Who It's For", "/#communities"], ["Features", "/#features"], ["For Parents", "/#habits"],
-  ["How It Works", "/#how-it-works"], ["Extension", "/#browsers"], ["Pricing", "/#pricing"],
+  ["How It Works", "/how-it-works"], ["Extension", "/#browsers"], ["Pricing", "/pricing"],
   ["FAQ", "/#faq"], ["Blog", "/blog"],
 ] as const;
 
@@ -63,15 +63,15 @@ export function SiteFooter() {
           <Brand style={{ alignSelf: "start" }} />
           <div>
             <h4>Product</h4>
-            <ul><li><Link href="/#features">Features</Link></li><li><Link href="/#how-it-works">How it works</Link></li><li><Link href="/#browsers">Browser extension</Link></li><li><Link href="/#pricing">Pricing</Link></li></ul>
+            <ul><li><Link href="/#features">Features</Link></li><li><Link href="/protections">Protections</Link></li><li><Link href="/how-it-works">How it works</Link></li><li><Link href="/#browsers">Browser extension</Link></li><li><Link href="/pricing">Pricing</Link></li></ul>
           </div>
           <div>
             <h4>Resources</h4>
-            <ul><li><Link href="/help">Help Center</Link></li><li><Link href="/#faq">FAQ</Link></li><li><Link href="/blog">Blog</Link></li></ul>
+            <ul><li><Link href="/help">Help Center</Link></li><li><Link href="/#faq">FAQ</Link></li><li><Link href="/blog">Blog</Link></li><li><Link href="/guides">Guides by age</Link></li><li><Link href="/for-kids">For kids</Link></li></ul>
           </div>
           <div>
             <h4>Company</h4>
-            <ul><li><Link href="/about">About</Link></li><li><Link href="/privacy">Privacy</Link></li><li><Link href="/terms">Terms</Link></li><li><Link href="/delete-account">Delete account</Link></li></ul>
+            <ul><li><Link href="/about">About</Link></li><li><Link href="/security">Security &amp; privacy</Link></li><li><Link href="/privacy">Privacy</Link></li><li><Link href="/terms">Terms</Link></li><li><Link href="/delete-account">Delete account</Link></li></ul>
           </div>
         </div>
         <div className="lp-foot-bottom">

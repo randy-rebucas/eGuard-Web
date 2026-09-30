@@ -12,6 +12,7 @@ import { PLANS as PLAN_CATALOG, webPrice } from "@/lib/plans";
 import { jsonLd, pageMetadata, siteUrl } from "@/lib/site";
 import { SiteFooter, SiteHeader } from "@/components/site-chrome";
 import { PhoneDashboard, PhoneScreenTime } from "@/components/landing-phones";
+import { ChromeMark, EdgeMark, FirefoxMark, STORE_LINKS } from "@/components/brand-marks";
 import "./landing.css";
 
 import heroBackground from "../../public/landing/hero-background.jpg";
@@ -119,53 +120,11 @@ const FAQS = [
     "Yes. eGuard is built for schools, communities and employers as well as families. The Family Pro plan includes API access for schools and organizations."],
 ] as const;
 
-/* Simplified browser marks for the extension cards (not the official logos). */
-function ChromeMark() {
-  return (
-    <svg viewBox="0 0 48 48" aria-hidden="true">
-      <path d="M24 24 4.95 13A22 22 0 0 1 43.05 13Z" fill="#EA4335" />
-      <path d="M24 24 43.05 13A22 22 0 0 1 24 46Z" fill="#FBBC04" />
-      <path d="M24 24 24 46A22 22 0 0 1 4.95 13Z" fill="#34A853" />
-      <circle cx="24" cy="24" r="10" fill="#fff" /><circle cx="24" cy="24" r="7.8" fill="#4285F4" />
-    </svg>
-  );
-}
-
-function EdgeMark() {
-  return (
-    <svg viewBox="0 0 48 48" aria-hidden="true">
-      <defs>
-        <linearGradient id="lp-edge" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#35C1F1" /><stop offset=".55" stopColor="#1B87D8" /><stop offset="1" stopColor="#2FC96B" />
-        </linearGradient>
-      </defs>
-      <circle cx="24" cy="24" r="22" fill="url(#lp-edge)" />
-      <path d="M14 26.5C14 19 19 14.5 25 14.5c6.2 0 9.5 4.3 9.5 9.5H19.5c.4 5.2 4.6 8.5 10 8.5 2.8 0 5-.7 6.5-1.7" fill="none" stroke="#fff" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function FirefoxMark() {
-  return (
-    <svg viewBox="0 0 48 48" aria-hidden="true">
-      <defs>
-        <linearGradient id="lp-firefox" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#FFBD4F" /><stop offset=".5" stopColor="#FF4F5E" /><stop offset="1" stopColor="#9059FF" />
-        </linearGradient>
-      </defs>
-      <circle cx="24" cy="24" r="22" fill="url(#lp-firefox)" />
-      <circle cx="26" cy="26" r="11" fill="#5B2BBF" opacity=".85" />
-    </svg>
-  );
-}
-
 const BROWSERS = [
-  { name: "Chrome", Mark: ChromeMark, store: "Chrome Web Store", cta: "Add to Chrome",
-    href: "https://chromewebstore.google.com/detail/eguard-browser-protection/mbmebjjdmbnadjghjgakafhgmbhimadk" },
-  { name: "Microsoft Edge", Mark: EdgeMark, store: "Microsoft Edge Add-ons", cta: "Add to Edge",
-    href: "https://microsoftedge.microsoft.com/addons/detail/eguard-browser-protection/noapokcbieljofcaajebjdmddbjpeckd" },
+  { name: "Chrome", Mark: ChromeMark, store: "Chrome Web Store", cta: "Add to Chrome", href: STORE_LINKS.chrome },
+  { name: "Microsoft Edge", Mark: EdgeMark, store: "Microsoft Edge Add-ons", cta: "Add to Edge", href: STORE_LINKS.edge },
   // Still in Firefox Add-ons review: shown blurred, with no link, until it's published.
-  { name: "Firefox", Mark: FirefoxMark, store: "Firefox Add-ons", cta: "Coming soon", href: null },
+  { name: "Firefox", Mark: FirefoxMark, store: "Firefox Add-ons", cta: "Coming soon", href: STORE_LINKS.firefox },
 ] as const;
 
 const BROWSER_PERKS = ["Blocks harmful sites and categories", "Forces SafeSearch", "Lets your child ask before opening a blocked site"];
@@ -193,7 +152,7 @@ function Avatars() {
   return <div className="lp-avatars">{AVATARS.map((a, i) => <Image key={i} src={a} alt="" width={40} height={40} />)}</div>;
 }
 
-const PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.devcom.eguard";
+const PLAY_STORE_URL = STORE_LINKS.googlePlay;
 
 /** Android is live on Google Play; the App Store badge stays disabled until the iOS app is published. */
 function Stores() {
@@ -321,6 +280,7 @@ export default async function Home() {
                   </article>
                 ))}
               </div>
+              <Link href="/protections" className="lp-btn lp-btn-outline lp-how-more">See all 10 protections<ArrowRight /></Link>
             </div>
             <div className="lp-phones" role="region" aria-label="eGuard app screens" tabIndex={0}>
               <PhoneDashboard />
@@ -360,6 +320,7 @@ export default async function Home() {
                 </li>
               ))}
             </ol>
+            <Link href="/how-it-works" className="lp-btn lp-btn-outline lp-how-more">See the full walkthrough<ArrowRight /></Link>
           </div>
         </section>
 
@@ -427,6 +388,7 @@ export default async function Home() {
                 </article>
               ))}
             </div>
+            <Link href="/pricing" className="lp-btn lp-btn-outline lp-how-more">Compare plans and ways to pay<ArrowRight /></Link>
           </div>
         </section>
 

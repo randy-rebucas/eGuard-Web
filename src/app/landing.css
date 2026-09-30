@@ -256,6 +256,7 @@
 .lp-step-ico .lucide{width:44px; height:44px; stroke-width:1.6}
 .lp-step h3{font-size:17px; font-weight:600; letter-spacing:-.01em}
 .lp-step p{font-size:14.5px; color:var(--ink-3); margin-top:8px}
+.lp-how-more{margin-top:44px}
 
 /* ---------- Browser extension ---------- */
 .lp-browsers{padding:8px 0 88px}

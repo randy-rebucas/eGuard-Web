@@ -1,0 +1,248 @@
+/* ---------- How it works (/how-it-works) ----------
+   Built on landing.css and site.css (tokens, buttons, eyebrow, CTA band), scoped under .lp.
+   Device illustrations and their styles come from src/components/flow-devices.tsx (+ flow-devices.css). */
+
+.hw{max-width:1320px; margin:0 auto; padding:0 var(--gutter) 88px}
+.hw-sec{padding-top:96px}
+.hw-sec:first-child{padding-top:56px}
+.hw-sec-head{max-width:46em}
+.hw-sec-head.center{margin:0 auto; text-align:center}
+.hw-sec-head h2{font-size:clamp(28px, 3vw, 40px); line-height:1.14; margin-top:16px}
+.hw-sec-head p{color:var(--ink-3); font-size:17px; margin-top:14px}
+.hw .brand-mark{flex:none}
+
+.hw-jump{display:flex; flex-wrap:wrap; gap:8px; margin-top:28px}
+.hw-jump a{display:inline-flex; align-items:center; min-height:40px; padding:0 16px; border-radius:20px; background:#fff; border:1px solid var(--line); font-size:14px; font-weight:600; color:var(--ink-2); transition:border-color .15s, color .15s}
+.hw-jump a:hover{border-color:#9CCBFF; color:var(--blue-2)}
+
+.hw-num{width:34px; height:34px; border-radius:50%; display:inline-grid; place-items:center; flex:none; background:linear-gradient(180deg, #2398FF, #0F74E8); color:#fff; font-weight:700; font-size:15px; box-shadow:0 6px 14px -6px rgba(16,122,240,.8)}
+
+/* =====================================================================
+   Big-picture map
+   ===================================================================== */
+.hw-map{margin-top:44px; padding:44px 36px 40px; border-radius:28px; border:1px solid var(--line); box-shadow:var(--card-shadow);
+  background:radial-gradient(40% 60% at 50% 42%, #DCEDFF 0%, transparent 70%), linear-gradient(180deg, #fff, #F7FBFF)}
+.hw-map-grid{display:grid; grid-template-columns:minmax(0,1.3fr) minmax(64px,.34fr) minmax(0,.74fr) minmax(64px,.34fr) minmax(0,1.3fr); align-items:start}
+.hw-col{display:flex; flex-direction:column; align-items:center; text-align:center; min-width:0}
+.hw-col h3{font-size:18px; margin-top:4px}
+.hw-col > p{font-size:14.5px; color:var(--ink-3); margin-top:6px; max-width:24em}
+.hw-tag{display:inline-flex; align-items:center; height:32px; padding:0 14px; border-radius:16px; font-size:12px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; white-space:nowrap; background:var(--blue-soft); color:var(--blue-2)}
+.hw-tag.cloud{background:var(--ink); color:#fff}
+.hw-tag.child{background:#E3F7EE; color:#0E7A48}
+
+/* Laptop in front, phones overlapping its lower corners */
+.hw-stage{position:relative; width:100%; margin:22px 0 18px; padding-bottom:30%}
+.hw-stage .hw-laptop{width:88%; margin:0 auto}
+.hw-stage .hw-phone{position:absolute; bottom:0; width:28%; filter:drop-shadow(0 18px 22px rgba(15,60,130,.28))}
+.hw-stage .hw-at-left{left:0}
+.hw-stage .hw-at-right{right:0}
+
+.hw-col-cloud{align-self:center}
+.hw-cloud-art{width:100%; max-width:230px; margin:18px auto 8px}
+.hw-jobs{list-style:none; margin:10px 0 0; padding:0; display:flex; flex-direction:column; align-items:center; gap:8px}
+.hw-jobs li{display:inline-flex; align-items:center; gap:7px; height:32px; padding:0 12px; border-radius:16px; background:#fff; border:1px solid var(--line); font-size:13px; font-weight:600; color:var(--ink-2); white-space:nowrap}
+.hw-jobs .lucide{width:15px; height:15px; color:var(--blue-2)}
+
+.hw-platforms{list-style:none; margin:14px 0 0; padding:0; display:flex; flex-wrap:wrap; justify-content:center; gap:6px}
+.hw-platforms li{display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 10px; border-radius:14px; background:#F3F8FE; border:1px solid var(--line); font-size:12.5px; font-weight:600; color:var(--ink-2)}
+.hw-platforms svg{width:14px; height:14px; flex:none}
+.hw-platforms .lucide{color:var(--blue-2)}
+
+/* Flow lanes between the columns */
+.hw-lane{align-self:center; display:flex; flex-direction:column; gap:34px; padding:0 8px; margin-top:-60px}
+.hw-pipe{position:relative; display:block; height:4px; border-radius:2px;
+  background:repeating-linear-gradient(90deg, var(--blue) 0 9px, transparent 9px 16px); background-size:16px 4px; animation:hw-flow-x .8s linear infinite}
+.hw-pipe.back{background-image:repeating-linear-gradient(90deg, var(--ok) 0 9px, transparent 9px 16px); animation-direction:reverse}
+.hw-pipe::after{content:""; position:absolute; top:50%; right:-1px; width:10px; height:10px; border-top:3px solid var(--blue); border-right:3px solid var(--blue); transform:translateY(-50%) rotate(45deg)}
+.hw-pipe.back::after{right:auto; left:-1px; border-color:var(--ok); transform:translateY(-50%) rotate(-135deg)}
+.hw-pipe em{position:absolute; left:50%; bottom:12px; translate:-50% 0; font-style:normal; font-size:11.5px; font-weight:700; letter-spacing:.02em; white-space:nowrap; color:var(--blue-2)}
+.hw-pipe.back em{bottom:auto; top:12px; color:#0E7A48}
+@keyframes hw-flow-x{to{background-position:16px 0}}
+@keyframes hw-flow-y{to{background-position:0 16px}}
+
+/* The five pieces */
+.hw-pieces{list-style:none; margin:28px 0 0; padding:0; display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:16px}
+.hw-piece{display:flex; flex-direction:column; padding:22px 20px 20px; background:#fff; border:1px solid var(--line); border-radius:18px; box-shadow:var(--card-shadow)}
+.hw-piece-ico{width:46px; height:46px; border-radius:14px; display:grid; place-items:center; color:#fff; background:linear-gradient(180deg, #2398FF, #1560DB)}
+.hw-piece-ico.ink{background:linear-gradient(180deg, #1D3A66, #0B2348)}
+.hw-piece-ico.green{background:linear-gradient(180deg, #2BCB85, #0E9A5B)}
+.hw-piece-ico .lucide{width:22px; height:22px}
+.hw-piece-who{margin-top:16px; font-size:12px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-3)}
+.hw-piece h3{font-size:17px; font-weight:600; letter-spacing:-.01em; margin-top:4px}
+.hw-piece p{font-size:14px; color:var(--ink-3); margin-top:8px}
+.hw-avail{list-style:none; margin:auto 0 0; padding:16px 0 0; display:flex; flex-wrap:wrap; gap:6px}
+.hw-avail li{display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 10px; border-radius:14px; font-size:12.5px; font-weight:600}
+.hw-avail svg{width:14px; height:14px; flex:none}
+.hw-avail .live{background:#E3F7EE; color:#0E7A48}
+.hw-avail .soon{background:#EEF1F5; color:#5F6E84}
+.hw-avail .soon svg{opacity:.7}
+
+/* =====================================================================
+   Setup steps
+   ===================================================================== */
+.hw-steps{list-style:none; margin:48px 0 0; padding:0; display:flex; flex-direction:column; gap:40px}
+.hw-step{display:grid; grid-template-columns:minmax(0,1.15fr) minmax(0,1fr); gap:56px; align-items:center}
+.hw-step:nth-child(even) .hw-art{order:2}
+.hw-art{position:relative; display:flex; justify-content:center; align-items:center; gap:28px; padding:40px 36px 32px; border-radius:28px; min-height:360px;
+  background:radial-gradient(70% 70% at 50% 35%, #E1EFFF 0%, transparent 70%), linear-gradient(180deg, #F2F8FF, #EAF3FE); border:1px solid #E1ECF9}
+.hw-art .hw-laptop{width:100%; max-width:560px}
+.hw-solo{width:min(100%, 250px)}
+.hw-solo .hwp{filter:drop-shadow(0 24px 28px rgba(15,60,130,.26))}
+.hw-art-duo{align-items:flex-end}
+.hw-art-duo .hw-solo{width:min(34%, 210px)}
+.hw-art-duo .hw-laptop{flex:1; min-width:0}
+.hw-step-copy h3{font-size:clamp(22px, 2.2vw, 28px); line-height:1.2; margin-top:16px}
+.hw-step-copy p{color:var(--ink-3); font-size:16.5px; margin-top:12px; max-width:32em}
+.hw-step-copy p b{color:var(--ink-2); font-weight:600}
+.hw-step-copy p a{color:var(--blue-2); font-weight:600; text-decoration:underline; text-underline-offset:3px}
+.hw-tip{display:flex; align-items:flex-start; gap:10px; padding:12px 16px; border-radius:14px; background:#fff; border:1px solid var(--line); font-size:15px !important; color:var(--ink-2) !important}
+.hw-tip .lucide{flex:none; width:18px; height:18px; margin-top:2px; color:var(--blue-2)}
+
+/* =====================================================================
+   One setting's journey
+   ===================================================================== */
+.hw-track{list-style:none; margin:52px 0 0; padding:0; display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:18px; position:relative}
+.hw-track::before{content:""; position:absolute; top:22px; left:10%; right:10%; height:3px; border-radius:2px; background:linear-gradient(90deg, var(--blue), var(--ok))}
+.hw-track > li{position:relative; display:flex; flex-direction:column; align-items:center; text-align:center; padding:0 6px}
+.hw-dot{position:relative; width:46px; height:46px; border-radius:50%; display:grid; place-items:center; background:#fff; border:3px solid var(--blue); color:var(--blue-2); font-weight:700; font-size:16px; box-shadow:0 0 0 6px #F6FAFF}
+.hw-track .done .hw-dot{background:var(--ok); border-color:var(--ok); color:#fff}
+.hw-dot .lucide{width:22px; height:22px; stroke-width:3}
+.hw-track small{margin-top:16px; font-size:12.5px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--ink-3)}
+.hw-track h3{font-size:17px; font-weight:600; letter-spacing:-.01em; margin-top:6px}
+.hw-track p{font-size:14.5px; color:var(--ink-3); margin-top:8px; flex:1}
+.hw-track .hw-pill{margin-top:14px}
+.hw-track-notes{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; margin-top:44px}
+.hw-track-notes p{display:flex; align-items:flex-start; gap:12px; padding:18px 20px; border-radius:16px; background:#fff; border:1px solid var(--line); font-size:15px; color:var(--ink-2)}
+.hw-track-notes .hw-pill{flex:none; margin-top:1px}
+
+/* =====================================================================
+   iPhone & Android
+   ===================================================================== */
+.hw-compare{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:24px; margin-top:44px}
+.hw-compare-col{display:grid; grid-template-columns:minmax(0,220px) minmax(0,1fr); gap:32px; align-items:center; padding:32px; border-radius:24px; background:#fff; border:1px solid var(--line); box-shadow:var(--card-shadow)}
+.hw-compare-col .hw-solo{width:100%}
+.hw-compare h3{font-size:22px}
+.hw-list{list-style:none; margin:16px 0 0; padding:0; display:flex; flex-direction:column; gap:12px}
+.hw-list li{display:flex; align-items:flex-start; gap:10px; font-size:15px; color:var(--ink-2)}
+.hw-list .lucide{flex:none; width:18px; height:18px; margin-top:2px; color:var(--ok); stroke-width:2.6}
+.hw-list b{color:var(--ink); font-weight:600}
+
+/* =====================================================================
+   When your child asks
+   ===================================================================== */
+.hw-story{list-style:none; margin:48px 0 0; padding:0; display:grid; grid-template-columns:minmax(0,1.2fr) minmax(0,.8fr) minmax(0,1.2fr); gap:44px; align-items:start}
+.hw-story > li{position:relative; display:flex; flex-direction:column; align-items:center; text-align:center}
+.hw-story > li:not(:last-child)::after{content:""; position:absolute; top:34%; right:-34px; width:24px; height:24px; border-top:3px solid #A9CCF2; border-right:3px solid #A9CCF2; transform:rotate(45deg)}
+.hw-story-art{width:100%; min-height:300px; display:flex; align-items:center; justify-content:center; padding:24px 20px; margin-bottom:20px; border-radius:24px; background:linear-gradient(180deg, #F2F8FF, #EAF3FE); border:1px solid #E1ECF9}
+.hw-story-phone .hw-solo{width:min(100%, 190px)}
+.hw-story > li > h3{font-size:18px; margin-top:12px}
+.hw-story > li > p{font-size:15px; color:var(--ink-3); margin-top:6px; max-width:24em}
+.hw-aside{max-width:52em; margin:36px auto 0; text-align:center; font-size:15.5px; color:var(--ink-2)}
+.hw-aside .lucide{display:inline-block; width:18px; height:18px; margin-right:8px; vertical-align:-3px; color:var(--blue-2)}
+.hw-aside b{color:var(--ink); font-weight:600}
+.hw-aside a{color:var(--blue-2); font-weight:600; text-decoration:underline; text-underline-offset:3px}
+
+/* What if */
+.hw-whatif{list-style:none; margin:36px 0 0; padding:0; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px}
+.hw-whatif li{padding:26px 26px 24px; background:#fff; border:1px solid var(--line); border-radius:18px; box-shadow:var(--card-shadow)}
+.hw-whatif i{width:46px; height:46px; border-radius:14px; display:grid; place-items:center; background:var(--blue-soft); color:var(--blue-2)}
+.hw-whatif i .lucide{width:22px; height:22px}
+.hw-whatif h3{font-size:18px; font-weight:600; letter-spacing:-.01em; margin-top:16px}
+.hw-whatif p{font-size:15px; color:var(--ink-3); margin-top:8px}
+
+/* Privacy */
+.hw-privacy{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; margin-top:36px}
+.hw-priv{padding:28px 28px 26px; border-radius:22px; border:1px solid var(--line)}
+.hw-priv.sees{background:linear-gradient(180deg, #F0FBF6, #fff)}
+.hw-priv.never{background:linear-gradient(180deg, #F4F6FA, #fff)}
+.hw-priv h3{display:flex; align-items:center; gap:12px; font-size:20px}
+.hw-priv h3 i{width:40px; height:40px; border-radius:12px; display:grid; place-items:center}
+.hw-priv.sees h3 i{background:#D5F3E4; color:#0E7A48}
+.hw-priv.never h3 i{background:#E6EAF1; color:#4A5A72}
+.hw-priv h3 .lucide{width:20px; height:20px}
+.hw-priv ul{list-style:none; margin:18px 0 0; padding:0; display:flex; flex-direction:column; gap:12px}
+.hw-priv li{display:flex; align-items:flex-start; gap:10px; font-size:15.5px; color:var(--ink-2)}
+.hw-priv li .lucide{flex:none; width:18px; height:18px; margin-top:3px; stroke-width:2.6}
+.hw-priv.sees li .lucide{color:var(--ok)}
+.hw-priv.never li .lucide{color:#C4262D}
+
+/* Get eGuard */
+.hw-get{list-style:none; margin:36px 0 0; padding:0; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px}
+.hw-get li{display:flex; align-items:center; gap:14px; padding:18px 18px; background:#fff; border:1px solid var(--line); border-radius:18px; box-shadow:var(--card-shadow)}
+.hw-get li > div{flex:1; min-width:0}
+.hw-get b{display:block; font-family:var(--display); font-size:16px; font-weight:600}
+.hw-get li > div span{display:block; font-size:13.5px; color:var(--ink-3)}
+.hw-get-mark{flex:none; width:50px; height:50px; border-radius:14px; display:grid; place-items:center; background:#F4F8FD; color:var(--blue-2)}
+.hw-get-mark svg{width:28px; height:28px}
+.hw-get .lp-btn{min-height:42px; padding:0 16px; font-size:14px; gap:8px}
+.hw-get .soon{background:#FBFDFF}
+.hw-get .soon .hw-get-mark{opacity:.55}
+.hw-soon{flex:none; height:30px; padding:0 12px; border-radius:15px; display:grid; place-items:center; background:#EEF1F5; color:#5F6E84; font-size:12.5px; font-weight:700; white-space:nowrap}
+
+/* =====================================================================
+   Responsive
+   ===================================================================== */
+@media (max-width:1180px){
+  .hw-pieces{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .hw-track{grid-template-columns:repeat(5,minmax(0,1fr)); gap:10px}
+  .hw-compare{grid-template-columns:minmax(0,1fr)}
+  .hw-compare-col{grid-template-columns:minmax(0,220px) minmax(0,1fr)}
+  .hw-get{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:1024px){
+  /* Map stacks top to bottom; the lanes turn vertical */
+  .hw-map{padding:32px 20px 28px}
+  .hw-map-grid{grid-template-columns:minmax(0,1fr)}
+  .hw-col{max-width:560px; margin:0 auto; width:100%}
+  .hw-lane{flex-direction:row; justify-content:center; gap:120px; height:92px; margin:6px 0; padding:0}
+  .hw-pipe{width:4px; height:100%; background:repeating-linear-gradient(180deg, var(--blue) 0 9px, transparent 9px 16px); background-size:4px 16px; animation-name:hw-flow-y}
+  .hw-pipe.back{background-image:repeating-linear-gradient(180deg, var(--ok) 0 9px, transparent 9px 16px)}
+  .hw-pipe::after{top:auto; bottom:-1px; right:50%; transform:translateX(50%) rotate(135deg)}
+  .hw-pipe.back::after{bottom:auto; top:-1px; left:50%; right:auto; transform:translateX(-50%) rotate(-45deg)}
+  .hw-pipe em{left:auto; right:14px; bottom:auto; top:50%; translate:0 -50%}
+  .hw-pipe.back em{right:auto; left:14px; top:50%}
+  .hw-pieces{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .hw-step{grid-template-columns:minmax(0,1fr); gap:24px}
+  .hw-step:nth-child(even) .hw-art{order:0}
+  .hw-art{min-height:0}
+  .hw-track{grid-template-columns:minmax(0,1fr); gap:0; max-width:560px; margin-inline:auto}
+  .hw-track::before{top:10px; bottom:10px; left:22px; right:auto; width:3px; height:auto; background:linear-gradient(180deg, var(--blue), var(--ok))}
+  .hw-track > li{display:grid; grid-template-columns:46px minmax(0,1fr); column-gap:18px; align-items:start; text-align:left; padding:0 0 28px}
+  .hw-track > li > :not(.hw-dot){grid-column:2}
+  .hw-dot{grid-row:1 / span 5}
+  .hw-track small{margin-top:2px}
+  .hw-track .hw-pill{justify-self:start; margin-top:10px}
+  .hw-track-notes{grid-template-columns:minmax(0,1fr); margin-top:12px}
+  .hw-story{grid-template-columns:minmax(0,1fr); gap:56px; max-width:560px; margin-inline:auto}
+  .hw-story > li:not(:last-child)::after{top:auto; bottom:-40px; right:50%; transform:translateX(50%) rotate(135deg)}
+  .hw-story-art{min-height:0}
+  .hw-whatif, .hw-privacy{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:720px){
+  .hw-sec{padding-top:72px}
+  .hw-sec:first-child{padding-top:40px}
+  .hw-sec-head p{font-size:16px}
+  .hw-jump{flex-wrap:nowrap; overflow-x:auto; margin-inline:calc(-1 * var(--gutter)); padding:0 var(--gutter) 4px; scrollbar-width:none}
+  .hw-jump::-webkit-scrollbar{display:none}
+  .hw-jump a{flex:none}
+  .hw-map{margin-inline:calc(-1 * var(--gutter) + 8px); padding:24px 12px; border-radius:22px}
+  .hw-stage{padding-bottom:36%}
+  .hw-stage .hw-phone{width:32%}
+  .hw-lane{gap:96px}
+  .hw-pieces{grid-template-columns:minmax(0,1fr)}
+  .hw-art{padding:28px 16px 22px; border-radius:22px; margin-inline:calc(-1 * var(--gutter) + 8px)}
+  .hw-art-duo{flex-direction:column; align-items:center}
+  .hw-art-duo .hw-solo{width:min(62%, 220px)}
+  .hw-art-duo .hw-laptop{width:100%; flex:none}
+  .hw-solo{width:min(66%, 250px)}
+  .hw-step-copy p{font-size:16px}
+  .hw-compare-col{grid-template-columns:minmax(0,1fr); padding:24px 20px; justify-items:center}
+  .hw-compare-col .hw-solo{width:min(66%, 230px)}
+  .hw-story-art{padding:20px 12px}
+  .hw-get{grid-template-columns:minmax(0,1fr)}
+  .hw-priv{padding:22px 20px}
+  .hw-whatif li{padding:22px 20px}
+}
+@media (prefers-reduced-motion: reduce){
+  .hw-pipe{animation:none}
+}

@@ -1,0 +1,111 @@
+/* ---------- For kids (/for-kids) ----------
+   Friendlier and bigger than the other public pages, on the same site.css blocks.
+   Printing keeps only the family agreement (.kd-screen parts are hidden). */
+
+.kd .st-split p, .kd .st-block > p{font-size:18px}
+.kd b{color:var(--ink); font-weight:600}
+.kd-art{display:flex; justify-content:center; padding:36px 24px 28px; border-radius:28px;
+  background:radial-gradient(70% 70% at 50% 35%, #E1EFFF 0%, transparent 70%), linear-gradient(180deg, #F2F8FF, #EAF3FE); border:1px solid #E1ECF9}
+.kd-phone{width:min(100%, 250px)}
+.kd-phone .hwp{filter:drop-shadow(0 24px 28px rgba(15,60,130,.26))}
+
+.kd-does{list-style:none; margin:28px 0 0; padding:0; display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:16px}
+.kd-does li{padding:22px 20px; background:#fff; border:1px solid var(--line); border-radius:22px; box-shadow:var(--card-shadow)}
+.kd-does i{width:52px; height:52px; border-radius:16px; display:grid; place-items:center}
+.kd-does i .lucide{width:26px; height:26px}
+.kd-does .blue{background:#E4F1FF; color:#1478E8}
+.kd-does .purple{background:#F1E8FF; color:#8A3FF0}
+.kd-does .green{background:#E3F7EE; color:#0E9A5B}
+.kd-does .orange{background:#FFF1DC; color:#D97800}
+.kd-does h3{font-size:19px; margin-top:16px}
+.kd-does p{font-size:15.5px; color:var(--ink-3); margin-top:8px}
+
+.kd-see{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; margin-top:28px}
+.kd-see > div{padding:26px 26px 24px; border-radius:22px; border:1px solid var(--line)}
+.kd-can{background:linear-gradient(180deg, #F0FBF6, #fff)}
+.kd-cant{background:linear-gradient(180deg, #FFF4F4, #fff)}
+.kd-see h3{display:flex; align-items:center; gap:12px; font-size:21px}
+.kd-see h3 i{width:40px; height:40px; border-radius:12px; display:grid; place-items:center}
+.kd-can h3 i{background:#D5F3E4; color:#0E7A48}
+.kd-cant h3 i{background:#FDE0E1; color:#C4262D}
+.kd-see h3 .lucide{width:20px; height:20px; stroke-width:2.6}
+.kd-see ul{list-style:none; margin:18px 0 0; padding:0; display:flex; flex-direction:column; gap:12px}
+.kd-see li{display:flex; align-items:flex-start; gap:10px; font-size:17px; color:var(--ink-2)}
+.kd-see li .lucide{flex:none; width:19px; height:19px; margin-top:3px; stroke-width:2.6}
+.kd-can li .lucide{color:var(--ok)}
+.kd-cant li .lucide{color:#C4262D}
+
+.kd-ask{list-style:none; margin:28px 0 0; padding:0; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px}
+.kd-ask li{position:relative; padding:24px 22px 22px; background:#fff; border:1px solid var(--line); border-radius:22px; box-shadow:var(--card-shadow); font-size:16px; color:var(--ink-3)}
+.kd-ask span{width:40px; height:40px; border-radius:50%; display:grid; place-items:center; margin-bottom:14px; background:linear-gradient(180deg, #2398FF, #0F74E8); color:#fff; font-weight:700; font-size:17px}
+.kd-ask b{display:block; font-family:var(--display); font-size:19px; margin-bottom:6px}
+.kd-ask em{font-style:normal; font-weight:600; color:var(--blue-2)}
+
+.kd-tips{list-style:none; margin:0; padding:24px; display:flex; flex-direction:column; gap:18px; background:#fff; border:1px solid var(--line); border-radius:22px; box-shadow:var(--card-shadow)}
+.kd-tips li{display:flex; gap:14px; align-items:flex-start}
+.kd-tips i{flex:none; width:44px; height:44px; border-radius:50%; display:grid; place-items:center; background:var(--blue-soft); color:var(--blue-2)}
+.kd-tips i .lucide{width:21px; height:21px}
+.kd-tips b{display:block; font-size:17px}
+.kd-tips span{font-size:15.5px; color:var(--ink-3)}
+
+/* The agreement: looks like a sheet of paper on screen, prints as one page */
+.kd-agreement{margin-top:88px; padding:40px 44px 32px; background:#fff; border-radius:24px; border:1px solid var(--line); box-shadow:0 30px 60px -30px rgba(16,110,230,.35);
+  background-image:radial-gradient(90% 60% at 100% 0%, #EAF4FF 0%, transparent 60%)}
+.kd-agreement-head{display:flex; justify-content:space-between; align-items:flex-end; gap:20px; flex-wrap:wrap}
+.kd-agreement h2{font-size:clamp(26px, 3vw, 36px); margin-top:14px}
+.kd-agreement-head p{color:var(--ink-3); margin-top:6px; font-size:16px}
+.kd-agreement-head .lucide{width:18px; height:18px}
+.kd-fields{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:22px 36px; margin-top:32px}
+.kd-fields .wide{grid-column:1 / -1}
+.kd-fields div{display:flex; align-items:flex-end; gap:12px}
+.kd-fields span{flex:none; font-weight:600; color:var(--ink)}
+.kd-fields i, .kd-sign i, .kd-line{display:block; flex:1; min-width:60px; height:28px; border-bottom:2px dotted #A9C3E0}
+.kd-promises{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:32px; margin-top:36px}
+.kd-promises h3{font-size:20px}
+.kd-promises ul{list-style:none; margin:14px 0 0; padding:0; display:flex; flex-direction:column; gap:12px}
+.kd-promises li{display:flex; align-items:center; gap:12px; font-size:16px; color:var(--ink-2)}
+.kd-box{flex:none; width:22px; height:22px; border-radius:6px; border:2px solid #8FB4DC}
+.kd-sign{display:grid; grid-template-columns:1.3fr 1.3fr .7fr; gap:28px; margin-top:44px}
+.kd-sign div{display:flex; flex-direction:column; gap:6px}
+.kd-sign i{flex:none; height:44px; border-bottom-style:solid; border-bottom-width:1.5px; border-bottom-color:#8FA6C2}
+.kd-sign span{font-size:13.5px; color:var(--ink-3)}
+.kd-foot{margin-top:28px; font-size:12.5px; color:var(--ink-3); text-align:right}
+
+@media (max-width:1180px){
+  .kd-does{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
+@media (max-width:1024px){
+  .kd-see, .kd-promises{grid-template-columns:minmax(0,1fr)}
+  .kd-ask{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:720px){
+  .kd .st-split p, .kd .st-block > p{font-size:16.5px}
+  .kd-does{grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:12px}
+  .kd-does li{padding:18px 16px}
+  .kd-art{margin-inline:calc(-1 * var(--gutter) + 8px)}
+  .kd-phone{width:min(66%, 240px)}
+  .kd-agreement{padding:28px 20px 24px; margin-top:64px}
+  .kd-agreement-head .lp-btn{width:100%}
+  .kd-agreement-head > div{width:100%}
+  .kd-fields{grid-template-columns:minmax(0,1fr)}
+  .kd-fields div{flex-wrap:wrap}
+  .kd-fields i{flex-basis:100%}
+  .kd-sign{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:420px){
+  .kd-does{grid-template-columns:minmax(0,1fr)}
+}
+
+@media print{
+  @page{margin:14mm}
+  .lp-header, .lp-footer, .kd-screen, nextjs-portal{display:none !important}
+  .lp{background:#fff !important; min-height:0}
+  .kd{padding:0 !important; max-width:none}
+  .kd-agreement{margin:0; padding:0; border:0; box-shadow:none; background:none; break-inside:avoid}
+  .kd-agreement, .kd-agreement *{-webkit-print-color-adjust:exact; print-color-adjust:exact}
+  .kd-fields{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .kd-fields div{flex-wrap:nowrap}
+  .kd-fields i{flex-basis:auto}
+  .kd-promises{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .kd-sign{grid-template-columns:1.3fr 1.3fr .7fr}
+}
