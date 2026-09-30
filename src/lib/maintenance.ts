@@ -5,6 +5,8 @@ import { ensureOfflineAlerts } from "./engine";
 import { raiseBrowserOfflineAlerts } from "./browser-health";
 import { familiesWithPurchases, refreshPurchases } from "./billing";
 import { sendPassReminders } from "./web-billing";
+import { refreshPendingBatches } from "./organizations";
+import { ORG_EVENT_RETENTION_DAYS, sendCodeExpiryReminders, sendOrgDigests } from "./org-notifications";
 import { appUrl } from "./email-verification";
 import { escapeHtml, sendMail } from "./mail";
 
@@ -53,6 +55,7 @@ export async function purgeExpiredData(now = new Date()) {
     browserHealth: await db.$executeRawUnsafe(`DELETE FROM "BrowserHealthCheck" t USING "BrowserInstallation" b JOIN "Family" f ON f.id = b."familyId" WHERE t."installationId" = b.id AND ${cutoff('t."createdAt"')}`),
     browserEvents: await db.$executeRawUnsafe(`DELETE FROM "BrowserEventDaily" t USING "BrowserInstallation" b JOIN "Family" f ON f.id = b."familyId" WHERE t."installationId" = b.id AND ${cutoff('t."date"')}`),
     alerts: await db.$executeRawUnsafe(`DELETE FROM "Alert" t USING "Family" f WHERE t."familyId" = f.id AND (t."resolvedAt" IS NOT NULL OR t.severity = 'INFO') AND ${cutoff('t."createdAt"')}`),
+    orgEvents: await db.orgEvent.deleteMany({ where: { createdAt: { lt: new Date(now.getTime() - ORG_EVENT_RETENTION_DAYS * 864e5) } } }).then((r) => r.count),
     auditLog: await db.auditLog.deleteMany({ where: { createdAt: { lt: new Date(now.getTime() - AUDIT_RETENTION_DAYS * 864e5) } } }).then((r) => r.count),
     sessions: await db.session.deleteMany({ where: { expiresAt: { lt: now } } }).then((r) => r.count),
     links: (await db.emailVerification.deleteMany({ where: { expiresAt: { lt: now } } })).count + (await db.passwordReset.deleteMany({ where: { expiresAt: { lt: now } } })).count,
@@ -104,7 +107,10 @@ export async function runMaintenance() {
   const offlineBrowsers = await raiseBrowserOfflineAlerts();
   const purchases = await refreshAllPurchases();
   const passReminders = await sendPassReminders();
+  const codeBatches = await refreshPendingBatches().catch((e) => { console.error("[maintenance] code batch refresh failed", e); return -1; });
+  const codeReminders = await sendCodeExpiryReminders().catch((e) => { console.error("[maintenance] code expiry reminders failed", e); return null; });
+  const orgDigests = await sendOrgDigests().catch((e) => { console.error("[maintenance] organization digests failed", e); return null; });
   const emails = await emailNewAlerts();
   const purged = await purgeExpiredData();
-  return { offlineFamilies, offlineBrowsers, purchases, passReminders, emails, purged };
+  return { offlineFamilies, offlineBrowsers, purchases, passReminders, codeBatches, codeReminders, orgDigests, emails, purged };
 }

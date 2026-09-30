@@ -11,6 +11,8 @@ import {
   AccountForm, AddParentForm, DeleteAccountForm, PasswordForm, RemoveParentButton, SettingSwitch, SignOutOthersButton, UnlinkIdentityButton,
 } from "@/components/forms";
 import { BuyPlan, CancelAutoRenew } from "@/components/billing";
+import { CreateOrgForm, JoinOrgForm, LeaveOrgButton, RedeemCodeForm } from "@/components/organizations";
+import { ORG_KINDS, VOUCHER_STORE, familyOrganizations, managedOrganizations, sponsorOf } from "@/lib/organizations";
 import { SECTIONS } from "../sections";
 import { supportEmail } from "@/lib/support";
 import { currentPurchase, refreshPurchases } from "@/lib/billing";
@@ -71,12 +73,56 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
       );
     }
 
+    case "organizations": {
+      const [joined, managed] = await Promise.all([familyOrganizations(u.familyId), managedOrganizations(u.id)]);
+      return (
+        <>
+          {head}
+          <p className="t-meta" style={{ marginTop: -6 }}>Schools, community groups and businesses can support families who use eGuard. An organization only ever sees how many families joined, never anything about yours.</p>
+          <h3 className="org-sub">Your family&apos;s organizations</h3>
+          {joined.map((o) => (
+            <div className="setting-row" key={o.id}>
+              <span className="ico-tile"><Icon name="building" /></span>
+              <div className="grow"><div className="t-title">{o.name}</div><div className="t-meta">{o.kind} · joined {shortDate(o.joinedAt, tz)}</div></div>
+              {admin ? <LeaveOrgButton orgId={o.id} name={o.name} /> : null}
+            </div>
+          ))}
+          {joined.length ? null : <p className="t-meta">Your family hasn&apos;t joined an organization.</p>}
+          {admin ? (
+            <div className="dash-col" style={{ gap: 8, marginTop: 16 }}>
+              <div><div className="t-title">Join with a code</div><div className="t-meta">Enter the code your school, community group or employer gave you.</div></div>
+              <JoinOrgForm />
+            </div>
+          ) : <p className="t-meta" style={{ marginTop: 12 }}>Only the family admin can join or leave an organization. You&apos;ll get an alert when they do.</p>}
+
+          <hr className="divider" style={{ margin: "24px 0 8px" }} />
+          <h3 className="org-sub">Organizations you manage</h3>
+          {managed.map((o) => (
+            <div className="setting-row" key={o.id}>
+              <span className="ico-tile"><Icon name={o.kind === "SCHOOL" ? "school" : o.kind === "BUSINESS" ? "briefcase" : "users"} /></span>
+              <div className="grow"><div className="t-title">{o.name}</div><div className="t-meta">{ORG_KINDS[o.kind]} · {o.role === "OWNER" ? "Owner" : "Admin"} · {o.families} {o.families === 1 ? "family" : "families"} joined</div></div>
+              <Link className="link-btn" href={`/organizations/${o.id}`}>Open</Link>
+            </div>
+          ))}
+          {managed.length ? (
+            <p className="t-meta" style={{ marginTop: 8 }}>
+              We email you when admins or the join code change, when codes are paid for, refunded or close to their redeem-by date, and once a day with how many families joined or left and codes were used. Those emails never say which families.
+            </p>
+          ) : null}
+          <div className="dash-col" style={{ gap: 12, marginTop: managed.length ? 16 : 4 }}>
+            <div><div className="t-title">Create an organization</div><div className="t-meta">For a school, community group or business that wants to help families: share a join code, and buy sponsor codes that pay for families&apos; plans.</div></div>
+            <CreateOrgForm />
+          </div>
+        </>
+      );
+    }
+
     case "notifications":
       return (
         <>
           {head}
           <SettingSwitch setting="notifyPush" title="Push notifications" desc={plan.realtimeAlerts ? "Protection changes and devices that need attention" : `Push alerts are included with ${planWith((e) => e.realtimeAlerts).name}. Alerts still show in eGuard and by email.`} checked={user.notifyPush && plan.realtimeAlerts} disabled={!plan.realtimeAlerts} />
-          <SettingSwitch setting="notifyEmail" title="Email alerts" desc="Protection changes, devices that stop syncing, and anything that needs action" checked={user.notifyEmail} />
+          <SettingSwitch setting="notifyEmail" title="Email alerts" desc="Protection changes, devices that stop syncing, anything that needs action, and organization activity" checked={user.notifyEmail} />
           <SettingSwitch setting="notifyApproval" title="App approval requests" desc="When a child asks to install an app" checked={user.notifyApproval} />
           <SettingSwitch setting="weeklySummary" title="Weekly summary" desc="Every Sunday at 6 PM" checked={user.weeklySummary} />
           <p className="t-meta" style={{ marginTop: 12 }}>Email alerts go to your verified email address. Push notifications and the weekly summary aren&apos;t sent yet; your choices are saved and apply once they are.</p>
@@ -144,7 +190,9 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
       ]);
       const current = planByName(fam.plan);
       const paidUntil = purchase?.expiresAt ? shortDate(purchase.expiresAt, tz) : null;
-      const how = !purchase ? null : purchase.store === "GOOGLE_PLAY" ? "Google Play" : webProduct(purchase.productId)?.autoRenew ? (purchase.autoRenewing ? "Auto-renew" : "Auto-renew off") : "Prepaid pass";
+      const sponsor = await sponsorOf(purchase);
+      const sponsored = purchase?.store === VOUCHER_STORE;
+      const how = !purchase ? null : purchase.store === "GOOGLE_PLAY" ? "Google Play" : sponsored ? `Sponsored by ${sponsor ?? "an organization"}` : webProduct(purchase.productId)?.autoRenew ? (purchase.autoRenewing ? "Auto-renew" : "Auto-renew off") : "Prepaid pass";
       const nextCharge = purchase?.autoRenewing ? webProduct(purchase.productId) : null;
       // Plans retired before these keep billing at the price they were bought at, which only PayMongo knows
       const nextAmount = nextCharge && !nextCharge.legacy ? peso(webPrice(nextCharge.plan)) : null;
@@ -183,8 +231,14 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
           {current.entitlements.apiAccess ? (
             <div className="setting-row" style={{ marginTop: 12 }}>
               <span className="ico-tile"><Icon name="plug" /></span>
-              <div className="grow"><div className="t-title">API access for schools and organizations</div><div className="t-meta">Included with {current.name}. We set up access with you: tell us who needs it and what for.</div></div>
-              <a className="btn btn-secondary btn-sm" href={`mailto:${supportEmail()}?subject=${encodeURIComponent(`${current.name} API access`)}`}>Request access</a>
+              <div className="grow"><div className="t-title">API access for schools and organizations</div><div className="t-meta">Included with {current.name}. Create API keys on the page of an organization you manage, under API access.</div></div>
+              <Link className="btn btn-secondary btn-sm" href="/settings/organizations">Organizations</Link>
+            </div>
+          ) : null}
+          {admin ? (
+            <div className="setting-row" style={{ flexDirection: "column", alignItems: "stretch", gap: 10, marginTop: 8 }}>
+              <div><div className="t-title">Have a sponsor code?</div><div className="t-meta">Schools, community groups and employers can give families eGuard codes. Enter yours to get the plan it covers.</div></div>
+              <RedeemCodeForm />
             </div>
           ) : null}
           <hr className="divider" style={{ margin: "20px 0" }} />
@@ -206,7 +260,7 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
               methods={passMethodLabel()}
               payer={{ name: user.name, email: user.email }}
               autoRenewBlocked={purchase && paidUntil ? `available once your paid time ends on ${paidUntil}.` : null}
-              passOnly={runningPass && paidUntil ? { plan: runningPass.id, reason: `Your ${runningPass.name} pass runs until ${paidUntil}. You can add months to it now, or switch plans after it ends.` } : null}
+              passOnly={runningPass && paidUntil ? { plan: runningPass.id, reason: `Your ${sponsored ? `sponsored ${runningPass.name}` : `${runningPass.name} pass`} runs until ${paidUntil}. You can add months to it now, or switch plans after it ends.` } : null}
             />
           )}
         </>

@@ -59,12 +59,13 @@ export type CheckoutSession = {
   payment_intent?: Resource<{ status: string }> | null;
 };
 
+/** One line item; `amount` is per unit, in centavos (quantity defaults to 1). */
 export function createCheckoutSession(cfg: PaymongoConfig, o: {
-  name: string; description: string; amount: number; methods: string[]; email: string; reference: string;
+  name: string; description: string; amount: number; quantity?: number; methods: string[]; email: string; reference: string;
   successUrl: string; cancelUrl: string; metadata: Record<string, string>;
 }, f: Fetch = fetch) {
   return call<CheckoutSession>(cfg, "POST", "/v2/checkout_sessions", {
-    line_items: [{ name: o.name, description: o.description, amount: o.amount, currency: "PHP", quantity: 1 }],
+    line_items: [{ name: o.name, description: o.description, amount: o.amount, currency: "PHP", quantity: o.quantity ?? 1 }],
     payment_method_types: o.methods,
     description: o.description,
     customer_email: o.email,

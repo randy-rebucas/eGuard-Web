@@ -17,7 +17,7 @@ export type Entitlements = {
   realtimeAlerts: boolean;
   /** 30-day and custom report ranges, and CSV export */
   advancedReports: boolean;
-  /** Organization API access, set up with support for now */
+  /** Organization API keys (/api/org/v1, docs/organization-api.md) for organizations this family's parents manage */
   apiAccess: boolean;
 };
 

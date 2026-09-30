@@ -1071,7 +1071,7 @@ Settings › Family.
 
   Otherwise show no upgrade button.
 - `store`, when set, says how the current plan is paid: `{ name, productId, autoRenewing, expiresAt }`.
-  - `name` is `PAYMONGO` for a web purchase (a pass, or auto-renew) or `GOOGLE_PLAY`.
+  - `name` is `PAYMONGO` for a web purchase (a pass, or auto-renew), `VOUCHER` for a sponsor code an organization gave the family (show it as "Sponsored plan"; codes are redeemed on the web), or `GOOGLE_PLAY`.
   - If `autoRenewing` is false (a pass, or auto-renew turned off), `renewsLabel` reads "Ends on …".
   - For a Google Play plan, "Manage Subscription" opens
     `https://play.google.com/store/account/subscriptions?sku={productId}&package={packageName}`.

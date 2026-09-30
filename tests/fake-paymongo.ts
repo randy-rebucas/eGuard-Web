@@ -31,7 +31,7 @@ export function fakePaymongo() {
 
     if (method === "POST" && path === "/v2/checkout_sessions") {
       const cs = id("cs");
-      sessions.set(cs, { status: "active", paymentId: null, amount: body.line_items[0].amount, reference: body.reference_number });
+      sessions.set(cs, { status: "active", paymentId: null, amount: body.line_items[0].amount * (body.line_items[0].quantity ?? 1), reference: body.reference_number });
       return ok(res(cs, "checkout_session", { checkout_url: `https://checkout.paymongo.test/${cs}` }));
     }
     if (method === "GET" && (m = path.match(/^\/v1\/checkout_sessions\/(.+)$/))) {

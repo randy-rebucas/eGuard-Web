@@ -604,6 +604,34 @@ select.input{appearance:auto}
 .buy-option .btn{margin-top:auto; align-self:flex-start}
 .pairing-code{font-family:var(--display); font-size:34px; font-weight:600; letter-spacing:.18em; text-align:center; padding:18px; border-radius:14px; background:var(--surface-2); border:1px dashed var(--line-strong)}
 
+/* ---------- Organizations (settings section and /organizations/[id]) ---------- */
+.org-sub{font-size:16px; margin:18px 0 4px}
+.org-code-form{gap:8px; flex-wrap:wrap}
+.org-code-input{flex:1; min-width:0; max-width:260px; font-family:var(--display); font-weight:600; letter-spacing:.08em; text-transform:uppercase}
+.org-code-input::placeholder{letter-spacing:.08em; font-weight:500}
+.org-confirm{display:flex; flex-direction:column; gap:12px; padding:16px; border:1px solid var(--line); border-radius:var(--r); background:var(--surface-2)}
+.org-join-code{font-size:30px}
+.org-stats{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px}
+.org-stats .card{display:flex; flex-direction:column; gap:4px}
+.org-stats b{font-family:var(--display); font-size:30px; font-weight:600; color:var(--ink); line-height:1.1}
+.org-stats small{font-family:var(--font); font-size:14px; font-weight:500; color:var(--ink-3)}
+.org-grid{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.2fr); gap:18px; align-items:start}
+.org-buy-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+.org-total{display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; padding:16px 18px; border-radius:var(--r); background:var(--surface-2); border:1px solid var(--line)}
+.org-total-amount{font-family:var(--display); font-size:26px; font-weight:600; color:var(--ink)}
+.org-code{font-family:ui-monospace, "SF Mono", Consolas, monospace; font-weight:600; letter-spacing:.04em; color:var(--ink)}
+.org-codes td:nth-child(2){text-align:left}
+.org-codes th:nth-child(2){text-align:left}
+.org-api-key{display:block; padding:12px 14px; font-size:14px; line-height:1.5; word-break:break-all; white-space:pre-wrap; background:var(--surface); border:1px solid var(--line); border-radius:10px}
+@media (max-width:900px){
+  .org-grid, .org-buy-grid{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:560px){
+  .org-stats{grid-template-columns:minmax(0,1fr)}
+  .org-code-input{max-width:none}
+  .org-total .btn{width:100%}
+}
+
 
 /* link-based variants of prototype controls */
 .tab[aria-current="page"]{background:var(--surface); color:var(--ink); box-shadow:var(--shadow-sm)}

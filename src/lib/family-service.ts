@@ -6,6 +6,7 @@ import { db } from "./db";
 import { PASSWORD_TOO_LONG, confirmPassword, hashPassword, passwordTooLong } from "./auth";
 import { refreshPurchases } from "./billing";
 import { cancelSubscriptionsBeforeDeletion } from "./web-billing";
+import { handOverOrganizations } from "./organizations";
 import { audit } from "./audit";
 import { profileConfigs, type ProfileId } from "./profiles";
 import type { ProtectionConfig } from "./protections";
@@ -267,9 +268,12 @@ export async function deleteAccount(actor: Actor, confirm: { password?: string; 
   else if (confirm.phrase !== "DELETE") throw invalid("Type DELETE to confirm.");
   if (actor.role === "FAMILY_ADMIN") {
     await cancelSubscriptionsBeforeDeletion(actor.familyId);
+    const members = await db.user.findMany({ where: { familyId: actor.familyId }, select: { id: true } });
+    await handOverOrganizations(members.map((m) => m.id));
     await db.family.delete({ where: { id: actor.familyId } });
     return { deleted: "family" as const };
   }
+  await handOverOrganizations([actor.id]);
   await db.user.delete({ where: { id: actor.id } });
   await audit(actor.familyId, actor.name, "member.left", user.email);
   return { deleted: "account" as const };
@@ -295,6 +299,7 @@ export async function addParent(actor: Actor, input: z.infer<typeof ParentSchema
 export async function removeParent(actor: Actor, userId: string) {
   requireAdminActor(actor);
   if (userId === actor.id) throw invalid("You can't remove yourself.");
+  if (await db.user.count({ where: { id: userId, familyId: actor.familyId, role: "PARENT" } })) await handOverOrganizations([userId]);
   const r = await db.user.deleteMany({ where: { id: userId, familyId: actor.familyId, role: "PARENT" } });
   if (!r.count) throw notFound("Family member");
   await audit(actor.familyId, actor.name, "member.removed", userId);

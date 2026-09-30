@@ -94,6 +94,17 @@ enum CheckRunStatus {
   COMPLETED
 }
 
+enum OrgKind {
+  SCHOOL
+  COMMUNITY
+  BUSINESS
+}
+
+enum OrgRole {
+  OWNER
+  ADMIN
+}
+
 // ---------- Account ----------
 
 model Family {
@@ -122,6 +133,8 @@ model Family {
   auditLogs    AuditLog[]
   purchases    StorePurchase[]
   supportTickets SupportTicket[]
+  orgMemberships OrgMembership[]
+  vouchers     Voucher[]
 }
 
 model User {
@@ -153,6 +166,8 @@ model User {
   identities OAuthIdentity[]
   pushTokens PushToken[]
   supportTickets SupportTicket[]
+  orgRoles   OrgMember[]
+  orgApiKeys OrgApiKey[]
 
   @@index([familyId])
 }
@@ -284,6 +299,141 @@ model AuditLog {
   createdAt DateTime @default(now())
 
   @@index([familyId, createdAt])
+}
+
+// ---------- Organizations (docs/organizations.md) ----------
+
+/**
+ * A school, community group or business that helps families: they join it with its code, and it can buy
+ * sponsor codes that pay for families' plans. It never sees a family's data, only counts.
+ */
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  kind      OrgKind
+  /// XXXXXXXX (shown as XXXX-XXXX); replacing it stops the old one working
+  joinCode  String   @unique
+  createdAt DateTime @default(now())
+  /// When admins were last sent the daily activity email (covers OrgEvents up to this time)
+  digestSentAt DateTime?
+
+  members     OrgMember[]
+  memberships OrgMembership[]
+  batches     VoucherBatch[]
+  events      OrgEvent[]
+  apiKeys     OrgApiKey[]
+}
+
+/// A key for the organization API (/api/org/v1, docs/organization-api.md). Only its hash is stored.
+model OrgApiKey {
+  id          String       @id @default(cuid())
+  orgId       String
+  org         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  name        String
+  /// The start of the key (egk_ + 8 characters), shown so admins can tell keys apart
+  prefix      String
+  tokenHash   String       @unique
+  /// READ, or WRITE (read, and cancel codes)
+  access      String       @default("READ")
+  /// Works while this admin manages the organization and their family's plan includes API access
+  createdById String
+  createdBy   User         @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt   DateTime     @default(now())
+  lastUsedAt  DateTime?
+  revokedAt   DateTime?
+
+  @@index([orgId])
+}
+
+/// Something that happened in an organization, for the admins' daily email. Deliberately has no family:
+/// the email says how many, never who. Kept 30 days.
+model OrgEvent {
+  id        String       @id @default(cuid())
+  orgId     String
+  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  /// JOINED | LEFT | REDEEMED | CANCELLED
+  kind      String
+  createdAt DateTime     @default(now())
+
+  @@index([orgId, createdAt])
+}
+
+/// An eGuard user who manages an organization. They stay in their own family; this only adds a role.
+model OrgMember {
+  orgId     String
+  org       Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      OrgRole      @default(ADMIN)
+  createdAt DateTime     @default(now())
+
+  @@id([orgId, userId])
+  @@index([userId])
+}
+
+/// A family that joined an organization with its join code. Only the family can create or remove it.
+model OrgMembership {
+  orgId    String
+  org      Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  familyId String
+  family   Family       @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  joinedAt DateTime     @default(now())
+
+  @@id([orgId, familyId])
+  @@index([familyId])
+}
+
+/// One purchase of sponsor codes (one PayMongo checkout). Codes are created when the payment is confirmed.
+model VoucherBatch {
+  /// Also the checkout's reference number
+  id            String   @id @default(cuid())
+  orgId         String
+  org           Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  /// PLUS | PRO
+  plan          String
+  /// 1, 3, 6 or 12
+  months        Int
+  quantity      Int
+  /// Total charged, centavos
+  amount        Int
+  /// PayMongo checkout session (cs_…)
+  purchaseToken String   @unique
+  /// PENDING | PAID | EXPIRED | VOIDED
+  state         String   @default("PENDING")
+  /// PayMongo payment (pay_…), to match refunds
+  paymentId     String?
+  paidAt        DateTime?
+  /// User id of the admin who bought it
+  createdBy     String
+  /// When admins were told its unused codes' redeem-by date is near
+  expiryRemindedAt DateTime?
+  checkedAt     DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  vouchers Voucher[]
+
+  @@index([orgId, createdAt])
+  @@index([paymentId])
+}
+
+/// A sponsor code: one family redeems it once for the batch's plan and months.
+model Voucher {
+  id         String       @id @default(cuid())
+  batchId    String
+  batch      VoucherBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  /// XXXXXXXXXXXX (shown as XXXX-XXXX-XXXX). Stored so admins can view and hand out their codes
+  code       String       @unique
+  /// Redeem by
+  expiresAt  DateTime
+  redeemedAt DateTime?
+  /// The family that redeemed it. For support and refunds only: never shown to the organization
+  familyId   String?
+  family     Family?      @relation(fields: [familyId], references: [id], onDelete: SetNull)
+  /// Cancelled by an admin, or by a refund of the batch
+  revokedAt  DateTime?
+
+  @@index([batchId])
+  @@index([familyId])
 }
 
 // ---------- Children & devices ----------

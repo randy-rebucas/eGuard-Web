@@ -101,6 +101,14 @@ Sign in with either demo account:
 |---|---|---|
 | `randy@example.com` | `ChangeMe123!` | Family Admin |
 | `ana@example.com` | `ChangeMe123!` | Parent |
+| `school@example.com` | `ChangeMe123!` | Owner of the demo organization, San Isidro Elementary School |
+
+The demo organization ([prisma/demo-organization.ts](prisma/demo-organization.ts)) has join code `SCHL-7K2P`, Randy
+as a second admin, and two paid batches of sponsor codes: eGuard Plus for 3 months (10 codes: 3 redeemed, 1
+cancelled) and Family Pro for 1 month (5 codes). It also has a read-only API key,
+`egk_local-demo-key-san-isidro-elementary-school`, for trying the [organization API](docs/organization-api.md). The Cruz family and the three sponsored families
+(`reyes@`, `garcia@`, `bautista@example.com`, same password) joined it, so it shows 4 families. The seed prints an
+unused code of each kind to try redeeming.
 
 Every email the app sends in development (verification, password reset, alerts) lands in Mailpit at
 <http://localhost:8025>.
@@ -231,7 +239,8 @@ browser pairing and tokens, browser policy, browser access requests, and browser
 | **Notifications** | Filter by category, severity labels, unread state, mark all read, dismiss info items, show resolved. Each alert has an action (fix the setting, view the device, review the app…) |
 | **Reports** | Today, 7 days, 30 days or a custom range: health, average screen time vs the previous period, protection changes, device health, top apps, a change timeline, and CSV export |
 | **Location** | A Leaflet/OpenStreetMap map of current locations. Children who don't share location get a "Turn on" link into the guided flow |
-| **Settings** | Account and family time zone, family members (admin adds/removes parents), notification preferences, privacy controls, security (sessions, password), subscription, connected devices, platform integrations, data export (JSON), support |
+| **Settings** | Account and family time zone, family members (admin adds/removes parents), notification preferences, privacy controls, security (sessions, password), subscription (including redeeming a sponsor code), organizations (join with a code, or create one), connected devices, platform integrations, data export (JSON), support |
+| **Organizations** | For schools, community groups and businesses (`/organizations/{id}`): a join code families enter, sponsor codes bought in batches through PayMongo that each give one family a paid plan, and admins. The organization sees counts only, never a family's data. See [docs/organizations.md](docs/organizations.md) |
 | **Search** | Press `/` to search children, devices, protection policies, alerts and settings |
 
 The UI has light, dark and system themes (stored in a cookie, so there's no flash on load) and responsive layouts:
@@ -317,7 +326,7 @@ runs without the mobile apps.
 
 ## APIs
 
-The server exposes three versioned APIs, one per kind of client. All are JSON, and errors have the shape
+The server exposes four versioned APIs, one per kind of client. All are JSON, and errors have the shape
 `{ error, code? }` where `error` is a message safe to show to a person.
 
 | API | Base path | Client | Auth | Reference |
@@ -325,6 +334,7 @@ The server exposes three versioned APIs, one per kind of client. All are JSON, a
 | Device API | `/api/device/v1` | eGuard app on the child's phone/tablet | Device token | Below |
 | Parent mobile API | `/api/mobile/v1` | Parent app (iOS/Android) | Session token | [docs/mobile-api.md](docs/mobile-api.md) |
 | Browser extension API | `/api/browser/v1` | eGuard extension in the child's browser | 15-minute access token + rotating refresh token | [docs/browser-extension-api.md](docs/browser-extension-api.md) |
+| Organization API | `/api/org/v1` | A school's or company's own systems | Organization API key (Family Pro) | [docs/organization-api.md](docs/organization-api.md) |
 
 ### Device API (`/api/device/v1`)
 
@@ -522,6 +532,7 @@ src/app/
   api/device/v1/       API for the child's phone/tablet app
   api/mobile/v1/       API for the parent mobile app
   api/browser/v1/      API for the browser extension
+  api/org/v1/          API for organizations' own systems (API keys)
   api/billing/         PayMongo webhook, Google Play notifications
   api/cron/            maintenance job
   api/…                polling (flow status, checks), search, notifications, CSV/JSON export, map tiles
@@ -552,6 +563,7 @@ docs/                  developer and launch documentation
 | [docs/child-app-spec.md](docs/child-app-spec.md) | Child device app: pairing, what the child sees, enforcing each protection, sync and reporting, server gaps |
 | [docs/browser-extension-api.md](docs/browser-extension-api.md) | Browser extension developers: pairing, tokens, signed policies, health, events |
 | [docs/subscriptions.md](docs/subscriptions.md) | Plans, PayMongo flows, entitlements, operations |
+| [docs/organizations.md](docs/organizations.md) | Organizations (schools, communities, businesses), join codes and sponsor codes: roadmap and Phase 1 spec |
 | [docs/app-listing.md](docs/app-listing.md) | App Store and Google Play listing copy, privacy forms, reviewer notes |
 | [docs/launch-visibility.md](docs/launch-visibility.md) | Domain, SEO, search engine registration and launch plan |
 

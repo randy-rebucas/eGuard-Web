@@ -14,6 +14,7 @@ import * as browsers from "@/lib/browser-service";
 import * as browserPolicy from "@/lib/browser-policy";
 import * as browserAccess from "@/lib/browser-access";
 import { LOCATION_UPGRADE, familyEntitlements, planWith } from "@/lib/plan-access";
+import { handOverOrganizations } from "@/lib/organizations";
 import type { FormState } from "./auth";
 
 const { audit, ChildSchema } = family;
@@ -265,6 +266,7 @@ export async function removeParent(userId: string): Promise<Result> {
   return toResult(async () => {
     const u = await requireAdmin();
     if (userId === u.id) throw invalid("You can't remove yourself.");
+    if (await db.user.count({ where: { id: userId, familyId: u.familyId, role: "PARENT" } })) await handOverOrganizations([userId]);
     const r = await db.user.deleteMany({ where: { id: userId, familyId: u.familyId, role: "PARENT" } });
     if (!r.count) throw notFound("Parent");
     await audit(u.familyId, u.name, "member.removed", userId);

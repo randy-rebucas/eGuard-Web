@@ -295,11 +295,14 @@ export async function handlePaymongoEvent(e: WebhookEvent, o: WebBillingOpts = {
       await audit(p.familyId, "PayMongo", "purchase.voided", p.productId);
       await applyEntitlement(p.familyId);
     }
-    return { handled: hits.length > 0 };
+    // Or an organization's sponsor codes (loaded lazily: organizations.ts builds on this module)
+    const batch = paymentId ? await (await import("./organizations")).handleBatchRefund(paymentId) : false;
+    return { handled: hits.length > 0 || batch };
   }
 
   if (e.type.startsWith("checkout_session.")) {
     rows = await db.storePurchase.findMany({ where: { purchaseToken: r.id, store: STORE } });
+    if (!rows.length) return { handled: await (await import("./organizations")).handleBatchCheckout(r.id, o) };
   } else if (e.type.startsWith("subscription.")) {
     // subscription.* carry the subscription; subscription.invoice.* carry the invoice
     const nested = a.subscription as { id?: unknown } | undefined;
@@ -327,7 +330,8 @@ export async function handlePaymongoEvent(e: WebhookEvent, o: WebBillingOpts = {
  */
 export async function sendPassReminders(now = new Date()) {
   const due = await db.storePurchase.findMany({
-    where: { store: STORE, state: "PAID", remindedAt: null, expiresAt: { gt: now, lte: new Date(now.getTime() + REMIND_BEFORE_MS) } },
+    // Passes, and plans from sponsor codes (store VOUCHER), which end the same way
+    where: { store: { in: [STORE, "VOUCHER"] }, state: "PAID", remindedAt: null, expiresAt: { gt: now, lte: new Date(now.getTime() + REMIND_BEFORE_MS) } },
   });
   let sent = 0;
   for (const p of due) {
@@ -338,6 +342,7 @@ export async function sendPassReminders(now = new Date()) {
     const family = await db.family.findUniqueOrThrow({ where: { id: p.familyId }, include: { users: { where: { role: "FAMILY_ADMIN", emailVerifiedAt: { not: null } } } } });
     const ends = shortDate(p.expiresAt!, family.timezone);
     const plan = planByProduct(p.productId)?.name ?? family.plan;
+    const what = p.store === "VOUCHER" ? "sponsored plan" : "pass";
     const link = `${appUrl()}/settings/subscription`;
     await db.alert.create({
       data: {
@@ -349,9 +354,9 @@ export async function sendPassReminders(now = new Date()) {
       try {
         await sendMail({
           to: u.email,
-          subject: `Your ${plan} pass ends on ${ends}`,
-          text: `Hi ${u.name.split(/\s+/)[0]},\n\nYour ${plan} pass ends on ${ends}. After that your family goes back to ${BASE_PLAN} (${FREE_LIMITS}). Children and devices already added stay protected.\n\nTo keep ${plan}, buy another pass or turn on auto-renew:\n${link}\n\n— eGuard`,
-          html: `<p>Hi ${escapeHtml(u.name.split(/\s+/)[0])},</p><p>Your ${escapeHtml(plan)} pass ends on <b>${escapeHtml(ends)}</b>. After that your family goes back to ${BASE_PLAN} (${FREE_LIMITS}). Children and devices already added stay protected.</p>`
+          subject: `Your ${plan} ${what} ends on ${ends}`,
+          text: `Hi ${u.name.split(/\s+/)[0]},\n\nYour ${plan} ${what} ends on ${ends}. After that your family goes back to ${BASE_PLAN} (${FREE_LIMITS}). Children and devices already added stay protected.\n\nTo keep ${plan}, buy another pass or turn on auto-renew:\n${link}\n\n— eGuard`,
+          html: `<p>Hi ${escapeHtml(u.name.split(/\s+/)[0])},</p><p>Your ${escapeHtml(plan)} ${what} ends on <b>${escapeHtml(ends)}</b>. After that your family goes back to ${BASE_PLAN} (${FREE_LIMITS}). Children and devices already added stay protected.</p>`
             + `<p><a href="${link}" style="display:inline-block;padding:12px 20px;border-radius:10px;background:#1a73e8;color:#fff;text-decoration:none;font-weight:600">Keep ${escapeHtml(plan)}</a></p>`,
         });
         sent++;
