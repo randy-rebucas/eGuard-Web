@@ -3,6 +3,7 @@ import { z } from "zod";
 import { handlePlayNotification } from "@/lib/billing";
 import { googlePlayConfig } from "@/lib/google-play";
 import { ServiceError } from "@/lib/errors";
+import { readText } from "@/lib/request-body";
 import { verifyIdToken } from "@/lib/social-auth";
 
 /**
@@ -37,7 +38,7 @@ export async function POST(req: Request) {
 
   let n: z.infer<typeof Notification>;
   try {
-    const msg = Message.parse(await req.json());
+    const msg = Message.parse(JSON.parse(await readText(req)));
     n = Notification.parse(JSON.parse(Buffer.from(msg.message.data, "base64").toString("utf8")));
   } catch {
     // Malformed messages would be redelivered forever; acknowledge and drop them

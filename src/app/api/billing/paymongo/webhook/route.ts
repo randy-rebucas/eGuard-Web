@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { handlePaymongoEvent } from "@/lib/web-billing";
 import { parseWebhookEvent, paymongoConfig, verifyWebhookSignature } from "@/lib/paymongo";
+import { readText } from "@/lib/request-body";
 
 /**
  * PayMongo webhooks: checkout_session.payment.paid, subscription.* and refund.succeeded. Register this
@@ -12,8 +13,9 @@ export async function POST(req: Request) {
   const cfg = paymongoConfig();
   if (!cfg?.webhookSecret) return NextResponse.json({ error: "Not configured" }, { status: 501 });
 
-  // The signature covers the exact bytes PayMongo sent, so read the body raw
-  const raw = await req.text();
+  // The signature covers the exact bytes PayMongo sent, so read the body raw (capped: this runs before the signature check)
+  let raw: string;
+  try { raw = await readText(req); } catch { return NextResponse.json({ error: "Too large" }, { status: 413 }); }
   if (!verifyWebhookSignature(req.headers.get("paymongo-signature"), raw, cfg.webhookSecret, cfg.livemode)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
