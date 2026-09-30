@@ -692,7 +692,7 @@ replaces the previous one, so show only the latest. `409` means the plan's devic
 `429 rate_limited` means the parent made more than 20 codes in an hour.
 After pairing, `GET /children/{id}` shows the device, and a first full check runs automatically.
 
-**Browser codes ("Add a browser").** Send `{ "kind": "BROWSER", "deviceLabel": "Mia's MacBook" }` (label 1–60 chars, required) to get a code for the eGuard browser extension instead; the response adds `"kind": "BROWSER"`. The parent types it into the extension's setup page, which calls `POST /api/browser/v1/pair`. Browser codes don't work in the phone app and phone codes don't work in the extension. Connected browsers count toward the plan's device limit (`usage.devicesUsed` in `GET /subscription` includes them). No body, or `{ "kind": "DEVICE" }`, gives a phone-app code as before.
+**Browser codes ("Add a browser").** Send `{ "kind": "BROWSER", "deviceLabel": "Mia's MacBook" }` (label 1–60 chars, required) to get a code for the eGuard browser extension instead; the response adds `"kind": "BROWSER"`. The parent types it into the extension's setup page, which calls `POST /api/browser/v1/pair` (see [browser-extension-api.md](browser-extension-api.md)). Browser codes don't work in the phone app and phone codes don't work in the extension. Connected browsers count toward the plan's device limit (`usage.devicesUsed` in `GET /subscription` includes them). No body, or `{ "kind": "DEVICE" }`, gives a phone-app code as before.
 
 ### 4.7 Protections and configuration batches
 
