@@ -3,6 +3,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { fmtMinutes } from "@/lib/protections";
 import { authDevice, badRequest, readJson, unauthorized } from "@/lib/device-auth";
+import { LIMITS, hit } from "@/lib/rate-limit";
 
 const Body = z.discriminatedUnion("type", [
   z.object({ type: z.literal("APP_INSTALLED"), app: z.string().min(1).max(80), ageRating: z.number().int().optional() }),
@@ -22,6 +23,10 @@ const LIMIT_ALERT_WINDOW_MS = 12 * 60 * 60_000;
 export async function POST(req: Request) {
   const device = await authDevice(req);
   if (!device) return unauthorized();
+  // A device token must not be able to fill the family's app list and alert feed without limit
+  if ((await hit(`deviceevents:${device.id}`, LIMITS.deviceEvents)).limited) {
+    return NextResponse.json({ error: "Too many events. eGuard will accept the next one shortly." }, { status: 429 });
+  }
   const parsed = Body.safeParse(await readJson(req));
   if (!parsed.success) return badRequest(parsed.error.issues[0].message);
   const e = parsed.data;

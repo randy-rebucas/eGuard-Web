@@ -15,6 +15,11 @@ const SESSION_DAYS = 30;
 export const sha256 = (v: string) => createHash("sha256").update(v).digest("hex");
 export const newToken = (bytes = 32) => randomBytes(bytes).toString("base64url");
 
+/** bcrypt ignores everything past 72 bytes, so a longer password would silently match its own prefix. */
+export const PASSWORD_MAX_BYTES = 72;
+export const PASSWORD_TOO_LONG = "Use a shorter password (up to 72 characters).";
+export const passwordTooLong = (pw: string) => Buffer.byteLength(pw, "utf8") > PASSWORD_MAX_BYTES;
+
 export async function hashPassword(pw: string) {
   return bcrypt.hash(pw, 12);
 }

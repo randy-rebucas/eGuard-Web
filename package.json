@@ -3,8 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "postinstall": "prisma generate",
     "dev": "next dev",
-    "build": "prisma generate && prisma migrate deploy && next build",
+    "build": "prisma generate && next build",
+    "db:deploy": "prisma migrate deploy",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
@@ -15,7 +17,8 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "prisma db seed",
     "db:reset": "prisma migrate reset --force",
-    "seed:demo": "tsx scripts/seed-demo.ts"
+    "seed:demo": "tsx scripts/seed-demo.ts",
+    "funnel": "tsx scripts/funnel.ts"
   },
   "dependencies": {
     "@prisma/client": "6.19.3",
@@ -36,6 +39,7 @@
     "@types/nodemailer": "^8.0.2",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "dotenv": "^16.6.1",
     "eslint": "^9",
     "eslint-config-next": "16.3.6",
     "prisma": "6.19.3",
@@ -51,8 +55,5 @@
     "esbuild@0.28.2": true,
     "prisma@6.19.3": true,
     "unrs-resolver@1.12.2": true
-  },
-  "prisma": {
-    "seed": "tsx prisma/seed.ts"
   }
 }

@@ -2,6 +2,7 @@ import "server-only";
 import { NextResponse } from "next/server";
 import { db } from "./db";
 import { sha256 } from "./auth";
+import { readText } from "./request-body";
 
 /** Resolves the device from `Authorization: Bearer <device token>`. */
 export async function authDevice(req: Request) {
@@ -14,6 +15,7 @@ export async function authDevice(req: Request) {
 export const unauthorized = () => NextResponse.json({ error: "Invalid or missing device token" }, { status: 401 });
 export const badRequest = (message: string) => NextResponse.json({ error: message }, { status: 400 });
 
+/** The parsed body, or null when it's empty, not JSON, or over MAX_JSON_BYTES (read no further than that). */
 export async function readJson(req: Request): Promise<unknown> {
-  try { return await req.json(); } catch { return null; }
+  try { return JSON.parse(await readText(req)); } catch { return null; }
 }

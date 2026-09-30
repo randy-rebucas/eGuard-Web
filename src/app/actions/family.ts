@@ -183,7 +183,7 @@ export async function pairingStatus(code: string) {
 export async function updateAccount(_: FormState, form: FormData): Promise<FormState> {
   const u = await requireUser();
   const parsed = z.object({
-    name: z.string().trim().min(2, "Enter your name."),
+    name: z.string().trim().min(2, "Enter your name.").max(family.NAME_MAX, family.NAME_TOO_LONG),
     email: z.string().trim().toLowerCase().email("Enter a valid email address."),
     timezone: z.string().refine((tz) => { try { new Intl.DateTimeFormat("en", { timeZone: tz }); return true; } catch { return false; } }, "Choose a valid time zone."),
   }).safeParse({ name: form.get("name"), email: form.get("email"), timezone: form.get("timezone") });

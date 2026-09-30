@@ -342,7 +342,7 @@ export async function sendPassReminders(now = new Date()) {
     await db.alert.create({
       data: {
         familyId: p.familyId, severity: "INFO", category: "SYSTEM", icon: "crown", subject: "Subscription",
-        title: `${family.plan} ends on ${ends}`, body: "Buy another pass or turn on auto-renew in Settings › Subscription to keep it.",
+        title: `${plan} ends on ${ends}`, body: "Buy another pass or turn on auto-renew in Settings › Subscription to keep it.",
       },
     });
     for (const u of family.users) {

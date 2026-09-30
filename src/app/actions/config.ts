@@ -37,6 +37,8 @@ export async function getFlowContext(childId: string, key: ProtectionKey): Promi
 }
 
 async function flowContext(familyId: string, childId: string, key: ProtectionKey): Promise<FlowContext> {
+  // Server actions take whatever the client sends; an unknown key would crash on def.caps below
+  if (typeof key !== "string" || !Object.hasOwn(PROTECTION_BY_KEY, key)) throw notFound("Protection");
   const child = await childFor(familyId, childId);
   const def = PROTECTION_BY_KEY[key];
   const age = new Date().getFullYear() - child.birthYear;

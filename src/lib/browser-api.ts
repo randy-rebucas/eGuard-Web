@@ -1,6 +1,7 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { ServiceError } from "./errors";
+import { readText } from "./request-body";
 
 /** JSON for the browser extension; credentials and policies must never be cached. */
 export const browserJson = (body: unknown, status = 200) =>
@@ -19,6 +20,8 @@ export async function browserRoute(fn: () => Promise<Response>): Promise<Respons
   }
 }
 
+/** The parsed body, or null when it's empty or not JSON. Past MAX_JSON_BYTES it throws a 413 (browserRoute answers it). */
 export async function readBody(req: Request): Promise<unknown> {
-  try { return await req.json(); } catch { return null; }
+  const text = await readText(req);
+  try { return JSON.parse(text); } catch { return null; }
 }

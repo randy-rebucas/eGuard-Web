@@ -151,7 +151,8 @@ development.
 | Script | What it does |
 |---|---|
 | `npm run dev` | Start the development server on port 3000 |
-| `npm run build` | `prisma generate`, `prisma migrate deploy`, then `next build` |
+| `npm run build` | `prisma generate`, then `next build`. Doesn't touch the database |
+| `npm run db:deploy` | `prisma migrate deploy`: apply pending migrations. Run once per release, before the new code goes live |
 | `npm run start` | Serve the production build |
 | `npm run lint` | ESLint |
 | `npm run typecheck` | `tsc --noEmit`. Run `npx next typegen` first after adding routes |
@@ -479,8 +480,8 @@ The logic is in [src/lib/maintenance.ts](src/lib/maintenance.ts).
 
 Production checklist:
 
-1. **Database:** provision PostgreSQL 16 and set `DATABASE_URL`. `npm run build` runs `prisma migrate deploy`, so
-   migrations apply on every build.
+1. **Database:** provision PostgreSQL 16 and set `DATABASE_URL`. Run `npm run db:deploy` against it once per release,
+   before switching traffic. The build doesn't migrate, so preview builds can't touch production.
 2. **URL:** set `APP_URL=https://www.eguard.family`. Canonical URLs, the sitemap and link previews are built from it.
 3. **Email:** set `SMTP_URL` (and optionally Resend as a fallback) and `MAIL_FROM`. Set `SUPPORT_EMAIL` to an inbox
    someone reads (the legal pages use `support@devcomdigital.com` from [src/lib/legal.ts](src/lib/legal.ts)).
@@ -548,6 +549,7 @@ docs/                  developer and launch documentation
 | Document | For |
 |---|---|
 | [docs/mobile-api.md](docs/mobile-api.md) | Parent app developers: every endpoint, object, flow and enum |
+| [docs/child-app-spec.md](docs/child-app-spec.md) | Child device app: pairing, what the child sees, enforcing each protection, sync and reporting, server gaps |
 | [docs/browser-extension-api.md](docs/browser-extension-api.md) | Browser extension developers: pairing, tokens, signed policies, health, events |
 | [docs/subscriptions.md](docs/subscriptions.md) | Plans, PayMongo flows, entitlements, operations |
 | [docs/app-listing.md](docs/app-listing.md) | App Store and Google Play listing copy, privacy forms, reviewer notes |

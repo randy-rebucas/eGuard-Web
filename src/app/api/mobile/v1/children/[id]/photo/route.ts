@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { childFor } from "@/lib/config-service";
 import { ServiceError, notFound } from "@/lib/errors";
 import { authed, photoUrl } from "@/lib/mobile-api";
+import { readCapped } from "@/lib/request-body";
 
 const TYPES = ["image/jpeg", "image/png", "image/webp", "image/heic"];
 const MAX_BYTES = 2 * 1024 * 1024;
@@ -14,24 +15,6 @@ function sniff(b: Buffer) {
   if (b.subarray(0, 4).toString("latin1") === "RIFF" && b.subarray(8, 12).toString("latin1") === "WEBP") return "image/webp";
   if (b.subarray(4, 8).toString("latin1") === "ftyp" && /^(heic|heix|mif1|msf1)$/.test(b.subarray(8, 12).toString("latin1"))) return "image/heic";
   return null;
-}
-
-/** Reads the body, stopping as soon as it passes `max` bytes (Content-Length can be missing or wrong). */
-async function readCapped(req: Request, max: number) {
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  const reader = req.body?.getReader();
-  while (reader) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    size += value.length;
-    if (size > max) {
-      await reader.cancel();
-      throw new ServiceError(413, "Choose an image under 2 MB.", "too_large");
-    }
-    chunks.push(value);
-  }
-  return Buffer.concat(chunks);
 }
 
 /** The child's photo. Needs the parent's bearer token like every other endpoint. */
@@ -49,11 +32,8 @@ export const PUT = authed<{ id: string }>(async ({ req, user, params }) => {
   await childFor(user.familyId, params.id);
   const declared = (req.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
   if (!TYPES.includes(declared)) throw new ServiceError(415, "Upload a JPEG, PNG, WebP or HEIC image.", "unsupported_media_type");
-  // Refuse oversized uploads before reading them into memory
-  if (Number(req.headers.get("content-length") ?? 0) > MAX_BYTES) throw new ServiceError(413, "Choose an image under 2 MB.", "too_large");
-  const data = await readCapped(req, MAX_BYTES);
+  const data = await readCapped(req, MAX_BYTES, "Choose an image under 2 MB.");
   if (!data.length) throw new ServiceError(400, "The image is empty.", "invalid");
-  if (data.length > MAX_BYTES) throw new ServiceError(413, "Choose an image under 2 MB.", "too_large");
   if (sniff(data) !== declared) throw new ServiceError(415, "That file isn't a valid image.", "unsupported_media_type");
   const photo = await db.childPhoto.upsert({
     where: { childId: params.id },

@@ -44,8 +44,9 @@ const apps = async (filter: string) => {
 const PASSWORD = "CorrectHorse123!";
 
 beforeAll(async () => {
+  // eGuard Plus: these tests pair more devices than Free covers and need location sharing
   const f = await db.family.create({
-    data: { name: "Reyes", users: { create: {
+    data: { name: "Reyes", plan: "eGuard Plus", deviceLimit: 10, users: { create: {
       name: "Sam Reyes", email: `sam.${RUN}@verification-test.example`, passwordHash: await hashPassword(PASSWORD), role: "FAMILY_ADMIN", emailVerifiedAt: new Date(),
     } } },
     include: { users: true },

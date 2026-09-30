@@ -31,7 +31,7 @@ Status uses eGuard's own words: **Verified** means it works, **Needs attention**
 
 | Check | What the site returns | Status |
 |---|---|---|
-| Domain | `www.eguard.family` is the default in code; not yet connected in Vercel, and `APP_URL` not yet set (section 3) | Needs attention |
+| Domain | `www.eguard.family` is the default in code, and the app redirects `eguard.family` and `e-guard-web.vercel.app` to it; not yet connected in Vercel, and `APP_URL` not yet set (section 3) | Needs attention |
 | Privacy policy and terms | Live at `/privacy` and `/terms`. DevCom Digital Marketing Services is named as the controller, with its Data Protection Officer, address and privacy email | Verified |
 | Ratings and user claims | No rating, "thousands of parents" or "trusted by" claims on the landing page or the sign-in panel | Verified |
 | App store badges | Replaced with "Android and iOS apps coming soon" | Verified |
@@ -87,7 +87,9 @@ ranking or backlinks. Parents are also more wary of a `vercel.app` address, whic
 
 - In Vercel › Project › Domains, add **`www.eguard.family`** as the primary domain.
 - Add `eguard.family` and set it to redirect to `www`. Make `e-guard-web.vercel.app` redirect too. Both redirects
-  are permanent (308).
+  are permanent (308). The app also sends both hosts to `www` with a 308 itself ([next.config.ts](../next.config.ts)),
+  except `/api/`, so webhooks and apps still pointed at the old host keep working. Move the PayMongo and Google Play
+  webhooks to `www.eguard.family` anyway.
 - Set `APP_URL=https://www.eguard.family` in Production. Verification links, map tiles, canonical URLs, the
   sitemap, share tags and structured data all read it. (The code falls back to the same address if it's unset.)
 - Consider securing a `.ph` or `.com.ph` version of the name if it's free.
@@ -191,7 +193,9 @@ never put ad pixels on signed-in pages, where children's names and locations app
 4. Child → **first device paired**: the moment eGuard delivers value
 5. Paired → **upgrade** to Plus or Family Pro
 
-You can count all five from your own database, so this funnel needs no third-party tracking.
+You can count all five from your own database, so this funnel needs no third-party tracking:
+`DATABASE_URL=<production url> npm run funnel` shows families created in the last 30 days (`-- --days 7` for a
+week, `-- --days 0` for all time), leaving out the review demo family. Code: [scripts/funnel.ts](../scripts/funnel.ts).
 
 ---
 
@@ -279,7 +283,7 @@ The order matters: fix trust first, then make the site findable, then send peopl
 - [x] First guides published: three posts at `/blog`
 - [ ] One new post a week for the first month
 - [ ] Cookieless analytics on public pages only
-- [ ] Sign-up → paired device funnel counted from the database
+- [x] Sign-up → paired device funnel counted from the database (`npm run funnel`)
 
 **Announce**
 

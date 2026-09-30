@@ -18,6 +18,8 @@ beforeAll(async () => {
   const r = await call("POST", "/auth/register", { body: { name: "Sam Reyes", email: email("sam"), password: PASSWORD, guardian: true } });
   token = r.data.token;
   familyId = r.data.user.family.id;
+  // eGuard Plus: these tests pair more devices than Free covers
+  await db.family.update({ where: { id: familyId }, data: { plan: "eGuard Plus", deviceLimit: 10 } });
   await verifyInbox(email("sam"));
   childId = (await call("POST", "/children", { token, body: { name: "Lia", age: 9 } })).data.id;
 });

@@ -3,7 +3,7 @@ import { randomInt } from "node:crypto";
 import { z } from "zod";
 import type { AppApproval, PairingKind, Prisma } from "@prisma/client";
 import { db } from "./db";
-import { confirmPassword, hashPassword } from "./auth";
+import { PASSWORD_TOO_LONG, confirmPassword, hashPassword, passwordTooLong } from "./auth";
 import { refreshPurchases } from "./billing";
 import { cancelSubscriptionsBeforeDeletion } from "./web-billing";
 import { audit } from "./audit";
@@ -21,6 +21,10 @@ import { usedDeviceSlots } from "./device-slots";
 export { audit };
 
 const requireAdminActor = (a: Actor) => { if (a.role !== "FAMILY_ADMIN") throw forbidden(); };
+
+/** Longest parent or family name; it appears in emails, alerts and history lines. */
+export const NAME_MAX = 80;
+export const NAME_TOO_LONG = `Use up to ${NAME_MAX} characters.`;
 
 /* ---------- Children ---------- */
 
@@ -208,6 +212,7 @@ export async function removeDevice(actor: Actor, deviceId: string, password: str
 
 export async function changePassword(actor: Actor & { sessionId: string }, current: string, next: string) {
   if (next.length < 10) throw invalid("Use at least 10 characters for your new password.");
+  if (passwordTooLong(next)) throw invalid(PASSWORD_TOO_LONG);
   await confirmPassword(actor.id, current);
   await db.user.update({ where: { id: actor.id }, data: { passwordHash: await hashPassword(next), passwordChangedAt: new Date() } });
   await db.session.deleteMany({ where: { userId: actor.id, id: { not: actor.sessionId } } });
@@ -271,9 +276,9 @@ export async function deleteAccount(actor: Actor, confirm: { password?: string; 
 }
 
 export const ParentSchema = z.object({
-  name: z.string().trim().min(2, "Enter their name."),
+  name: z.string().trim().min(2, "Enter their name.").max(NAME_MAX, NAME_TOO_LONG),
   email: z.string().trim().toLowerCase().email("Enter a valid email address."),
-  password: z.string().min(10, "Temporary password needs at least 10 characters."),
+  password: z.string().min(10, "Temporary password needs at least 10 characters.").refine((p) => !passwordTooLong(p), PASSWORD_TOO_LONG),
 });
 
 export async function addParent(actor: Actor, input: z.infer<typeof ParentSchema>) {
@@ -310,10 +315,10 @@ export async function userIdForMailbox(email: string, exceptUserId = "") {
 }
 
 export const RegisterSchema = z.object({
-  name: z.string().trim().min(2, "Enter your name."),
-  familyName: z.string().trim().min(2, "Enter a family name."),
+  name: z.string().trim().min(2, "Enter your name.").max(NAME_MAX, NAME_TOO_LONG),
+  familyName: z.string().trim().min(2, "Enter a family name.").max(NAME_MAX, NAME_TOO_LONG),
   email: z.string().trim().toLowerCase().email("Enter a valid email address."),
-  password: z.string().min(10, "Use at least 10 characters for your password."),
+  password: z.string().min(10, "Use at least 10 characters for your password.").refine((p) => !passwordTooLong(p), PASSWORD_TOO_LONG),
   /** Accounts are for parents and guardians only; children are added by a parent, never sign up */
   guardian: z.literal(true, { error: GUARDIAN_REQUIRED }),
 });

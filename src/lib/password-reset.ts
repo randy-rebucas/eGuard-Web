@@ -1,6 +1,6 @@
 import "server-only";
 import { db } from "./db";
-import { hashPassword, newToken, sha256 } from "./auth";
+import { PASSWORD_TOO_LONG, hashPassword, newToken, passwordTooLong, sha256 } from "./auth";
 import { audit } from "./audit";
 import { appUrl } from "./email-verification";
 import { ServiceError, invalid } from "./errors";
@@ -56,6 +56,7 @@ export const requestPasswordResetQuietly = (email: string, ip: string | null) =>
 export async function resetPassword(token: string, password: string, ip: string | null) {
   await enforce(ipKey("token", ip), LIMITS.tokenIp);
   if (password.length < MIN_PASSWORD) throw invalid(`Use at least ${MIN_PASSWORD} characters for your password.`);
+  if (passwordTooLong(password)) throw invalid(PASSWORD_TOO_LONG);
   const r = token ? await db.passwordReset.findUnique({ where: { tokenHash: sha256(token) }, include: { user: true } }) : null;
   if (!r || r.email !== r.user.email) throw new ServiceError(400, "This link has already been used or isn't valid. Ask for a new one.", "link_invalid");
   if (r.expiresAt < new Date()) throw new ServiceError(400, "This link has expired. Ask for a new one.", "link_expired");

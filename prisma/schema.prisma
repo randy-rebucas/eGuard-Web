@@ -153,6 +153,8 @@ model User {
   identities OAuthIdentity[]
   pushTokens PushToken[]
   supportTickets SupportTicket[]
+
+  @@index([familyId])
 }
 
 /// A single-use "verify your email" link. Only the SHA-256 of the token is stored; `email` is the
@@ -310,6 +312,8 @@ model Child {
   accessRequests BrowserAccessRequest[]
   photo      ChildPhoto?
   visits     LocationVisit[]
+
+  @@index([familyId])
 }
 
 /// Profile photo, kept out of Child so ordinary queries don't load the bytes.
@@ -362,6 +366,9 @@ model Device {
   appUsage    AppUsageDaily[]
   checkResults CheckRunResult[]
   visits      LocationVisit[]
+
+  @@index([familyId])
+  @@index([childId])
 }
 
 /// Verified state per device and protection (what the device reported).
@@ -420,6 +427,8 @@ model PairingCode {
   expiresAt DateTime
   usedAt    DateTime?
   createdAt DateTime @default(now())
+
+  @@index([childId])
 }
 
 /**
@@ -639,6 +648,7 @@ model ConfigChange {
   createdAt DateTime      @default(now())
 
   @@index([familyId, createdAt])
+  @@index([childId])
 }
 
 model CheckRun {
@@ -649,6 +659,8 @@ model CheckRun {
   createdAt   DateTime       @default(now())
   completedAt DateTime?
   results     CheckRunResult[]
+
+  @@index([familyId])
 }
 
 model CheckRunResult {
@@ -691,6 +703,9 @@ model Alert {
   reads AlertRead[]
 
   @@index([familyId, createdAt])
+  @@index([familyId, resolveKey])
+  // the maintenance job's "not emailed yet" queue
+  @@index([notifiedAt, createdAt])
 }
 
 model AlertRead {
@@ -701,4 +716,5 @@ model AlertRead {
   readAt  DateTime @default(now())
 
   @@id([alertId, userId])
+  @@index([userId])
 }

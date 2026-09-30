@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { userForToken, type SessionUser } from "./auth";
 import { ServiceError } from "./errors";
+import { readText } from "./request-body";
 
 /** Helpers for the parent mobile API (`/api/mobile/v1`). Auth is `Authorization: Bearer <session token>`. */
 
@@ -24,7 +25,7 @@ export function clientLabel(req: Request) {
 
 export async function body<S extends z.ZodType>(req: Request, schema: S): Promise<z.infer<S>> {
   let raw: unknown = {};
-  const text = await req.text();
+  const text = await readText(req);
   if (text) {
     try { raw = JSON.parse(text); } catch { throw new ServiceError(400, "Request body must be valid JSON.", "invalid_json"); }
   }

@@ -9,6 +9,8 @@ import { runMaintenance } from "@/lib/maintenance";
  * Without CRON_SECRET it only runs in development.
  */
 export const dynamic = "force-dynamic";
+/** The job works through families, purchases and emails one at a time, so it grows with the user base. Watch `ms`. */
+export const maxDuration = 300;
 
 function authorized(req: Request) {
   const secret = process.env.CRON_SECRET;

@@ -14,10 +14,26 @@ const securityHeaders = [
   { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" },
 ];
 
+/**
+ * Other addresses of the production site, sent permanently (308) to www.eguard.family so search engines see one
+ * site. Vercel's domain settings should do the same; this covers them if they're missing. Preview deployments
+ * (other *.vercel.app hosts) are left alone, and so is /api: webhooks and apps may still call the old host, and
+ * not every client follows a redirect.
+ */
+const OLD_HOSTS = ["eguard.family", "e-guard-web.vercel.app"];
+
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
+  },
+  async redirects() {
+    return OLD_HOSTS.map((host) => ({
+      source: "/:path((?!api(?:/|$)).*)",
+      has: [{ type: "host" as const, value: host }],
+      destination: "https://www.eguard.family/:path",
+      permanent: true,
+    }));
   },
 };
 

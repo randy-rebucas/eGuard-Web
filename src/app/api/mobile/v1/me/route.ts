@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { sendVerificationEmailLater } from "@/lib/email-verification";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { changeEmail, deleteAccount } from "@/lib/family-service";
+import { NAME_MAX, NAME_TOO_LONG, changeEmail, deleteAccount } from "@/lib/family-service";
 import { meJson } from "@/lib/mobile-account";
 import { authed, body } from "@/lib/mobile-api";
 
@@ -10,7 +10,7 @@ export const GET = authed(async ({ user }) => NextResponse.json(await meJson(use
 
 const validTz = (tz: string) => { try { new Intl.DateTimeFormat("en", { timeZone: tz }); return true; } catch { return false; } };
 const Body = z.object({
-  name: z.string().trim().min(2, "Enter your name.").optional(),
+  name: z.string().trim().min(2, "Enter your name.").max(NAME_MAX, NAME_TOO_LONG).optional(),
   email: z.string().trim().toLowerCase().email("Enter a valid email address.").optional(),
   /** Required to change `email`: the parent's current password */
   password: z.string().max(200).optional(),
