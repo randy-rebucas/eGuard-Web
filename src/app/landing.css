@@ -51,7 +51,7 @@
 .lp-brand b{display:block; font-family:var(--display); font-size:22px; font-weight:700; letter-spacing:-.02em; line-height:1}
 .lp-brand small{display:block; font-size:11.5px; color:var(--ink-3); margin-top:4px; line-height:1.2}
 .lp-nav{display:flex; gap:4px; margin:0 auto}
-.lp-nav a{padding:8px 14px; border-radius:10px; font-size:14.5px; font-weight:500; color:var(--ink-2); transition:color .15s, background .15s}
+.lp-nav a{padding:8px 12px; border-radius:10px; font-size:14.5px; font-weight:500; white-space:nowrap; color:var(--ink-2); transition:color .15s, background .15s}
 .lp-nav a:hover{color:var(--blue-2); background:rgba(232,243,255,.8)}
 .lp-head-cta{display:flex; align-items:center; gap:10px}
 .lp-head-cta .lp-btn{min-height:44px; padding:0 22px; border-radius:22px; font-size:14.5px}
@@ -257,6 +257,28 @@
 .lp-step h3{font-size:17px; font-weight:600; letter-spacing:-.01em}
 .lp-step p{font-size:14.5px; color:var(--ink-3); margin-top:8px}
 
+/* ---------- Browser extension ---------- */
+.lp-browsers{padding:8px 0 88px}
+.lp-browsers .lp-wrap{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.5fr); gap:48px 56px; align-items:center}
+.lp-browsers h2{font-size:clamp(28px, 3vw, 36px); line-height:1.15; margin-top:18px}
+.lp-browsers-head > p{color:var(--ink-3); font-size:17px; margin-top:14px; max-width:32em}
+.lp-browser-perks{list-style:none; margin:22px 0 0; padding:0; display:flex; flex-direction:column; gap:10px}
+.lp-browser-perks li{display:flex; align-items:center; gap:12px; font-size:15px; color:var(--ink-2)}
+.lp-browser-perks .lucide{width:17px; height:17px; color:var(--ok); stroke-width:2.6}
+.lp-browser-grid{list-style:none; margin:0; padding:0; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:18px}
+.lp-browser{position:relative; display:flex; flex-direction:column; align-items:center; text-align:center; padding:30px 22px 24px; background:#fff; border:1px solid var(--line); border-radius:18px; box-shadow:var(--card-shadow); transition:transform .22s var(--ease), box-shadow .22s var(--ease)}
+.lp-browser:not(.lp-browser-soon):hover{transform:translateY(-3px); box-shadow:0 2px 4px rgba(11,35,72,.04), 0 22px 40px -18px rgba(20,80,160,.3)}
+.lp-browser-mark{width:64px; height:64px; border-radius:18px; display:grid; place-items:center; background:#F4F8FD; margin-bottom:16px}
+.lp-browser-mark svg{width:40px; height:40px}
+.lp-browser h3{font-size:17px; font-weight:600; letter-spacing:-.01em}
+.lp-browser p{font-size:14px; color:var(--ink-3); margin-top:4px}
+.lp-browser .lp-btn{width:100%; min-height:46px; margin-top:20px; padding:0 18px; font-size:14.5px}
+.lp-browser-blur{display:flex; flex-direction:column; align-items:center; width:100%; filter:blur(3px) grayscale(.35); opacity:.6; user-select:none; pointer-events:none}
+.lp-browser-soon{cursor:not-allowed; background:#FBFDFF}
+.lp-browser-soon-badge{position:absolute; top:50%; left:50%; translate:-50% -50%; z-index:1; height:34px; padding:0 16px; border-radius:17px; display:grid; place-items:center; background:var(--ink); color:#fff; font-size:13px; font-weight:600; white-space:nowrap; box-shadow:0 10px 24px -10px rgba(11,35,72,.6)}
+.lp-browsers-note{grid-column:1 / -1; font-size:14.5px; color:var(--ink-3); text-align:center}
+.lp-browsers-note b{color:var(--ink-2); font-weight:600}
+
 /* ---------- Purpose ---------- */
 .lp-purpose{position:relative; isolation:isolate; min-height:360px; display:flex; align-items:center}
 .lp-purpose{background:linear-gradient(90deg, #F6FAFF, #E6F1FF)}
@@ -332,10 +354,13 @@
 .lp-foot-bottom{display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap; padding:20px 0 28px; border-top:1px solid var(--line); font-size:13.5px; color:var(--ink-3)}
 
 /* ---------- Responsive ---------- */
-@media (max-width:1180px){
+/* Eight menu links need about 1320px beside the brand and sign-in buttons; below that, the menu button takes over. */
+@media (max-width:1320px){
   .lp-nav{display:none}
   .lp-menu{display:block}
   .lp-head-cta{margin-left:auto}
+}
+@media (max-width:1180px){
   .lp-hc-trust{right:0}
   .lp-steps{grid-template-columns:repeat(2,minmax(0,1fr))}
   .lp-step:nth-child(2)::after{display:none}
@@ -356,6 +381,7 @@
   .lp-purpose-img{position:relative; width:100%; aspect-ratio:2; -webkit-mask-image:none; mask-image:none}
   .lp-purpose::after{display:none}
   .lp-purpose .lp-wrap{margin-top:-80px; justify-content:center}
+  .lp-browsers .lp-wrap{grid-template-columns:minmax(0,1fr); gap:32px}
   .lp-plans{grid-template-columns:minmax(0,1fr); max-width:480px}
   .lp-faq .lp-wrap{grid-template-columns:minmax(0,1fr); gap:24px}
   .lp-faq-head{padding-top:0}
@@ -378,6 +404,12 @@
   .lp-feature-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:12px}
   .lp-feature{padding:18px 16px}
   .lp-steps{grid-template-columns:minmax(0,1fr); gap:28px}
+  .lp-browsers{padding-bottom:64px}
+  .lp-browser-grid{grid-template-columns:minmax(0,1fr); gap:12px}
+  .lp-browser{padding:22px 18px 18px}
+  .lp-browser-mark{width:56px; height:56px; margin-bottom:12px}
+  .lp-browser-mark svg{width:34px; height:34px}
+  .lp-browser .lp-btn{margin-top:14px}
   .lp-step:not(:last-child)::after{top:auto; bottom:-26px; right:auto; left:44px; width:0; height:24px; border-top:0; border-left:2px dotted #A9CCF2; display:block}
   .lp-hero-family img{object-position:50% 40%}
   /* Phones become a swipeable row at readable size instead of two shrunken, overlapping screens. */

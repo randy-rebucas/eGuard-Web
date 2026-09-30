@@ -3,7 +3,7 @@ import Image, { type StaticImageData } from "next/image";
 import Link from "next/link";
 import {
   ArrowRight, BellRing, CalendarClock, ChartNoAxesColumnIncreasing, Check, ChevronDown, ChevronRight, CircleCheck,
-  ClipboardCheck, Download, Laptop, Plus, Settings, ShieldCheck, Smartphone, Sparkles, Tablet, Users, type LucideIcon,
+  ClipboardCheck, Download, Globe, Laptop, Plus, Settings, ShieldCheck, Smartphone, Sparkles, Tablet, Users, type LucideIcon,
 } from "lucide-react";
 import { getUser } from "@/lib/auth";
 import { LEGAL } from "@/lib/legal";
@@ -118,6 +118,57 @@ const FAQS = [
   ["Can schools or organizations use eGuard?",
     "Yes. eGuard is built for schools, communities and employers as well as families. The Family Pro plan includes API access for schools and organizations."],
 ] as const;
+
+/* Simplified browser marks for the extension cards (not the official logos). */
+function ChromeMark() {
+  return (
+    <svg viewBox="0 0 48 48" aria-hidden="true">
+      <path d="M24 24 4.95 13A22 22 0 0 1 43.05 13Z" fill="#EA4335" />
+      <path d="M24 24 43.05 13A22 22 0 0 1 24 46Z" fill="#FBBC04" />
+      <path d="M24 24 24 46A22 22 0 0 1 4.95 13Z" fill="#34A853" />
+      <circle cx="24" cy="24" r="10" fill="#fff" /><circle cx="24" cy="24" r="7.8" fill="#4285F4" />
+    </svg>
+  );
+}
+
+function EdgeMark() {
+  return (
+    <svg viewBox="0 0 48 48" aria-hidden="true">
+      <defs>
+        <linearGradient id="lp-edge" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#35C1F1" /><stop offset=".55" stopColor="#1B87D8" /><stop offset="1" stopColor="#2FC96B" />
+        </linearGradient>
+      </defs>
+      <circle cx="24" cy="24" r="22" fill="url(#lp-edge)" />
+      <path d="M14 26.5C14 19 19 14.5 25 14.5c6.2 0 9.5 4.3 9.5 9.5H19.5c.4 5.2 4.6 8.5 10 8.5 2.8 0 5-.7 6.5-1.7" fill="none" stroke="#fff" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function FirefoxMark() {
+  return (
+    <svg viewBox="0 0 48 48" aria-hidden="true">
+      <defs>
+        <linearGradient id="lp-firefox" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#FFBD4F" /><stop offset=".5" stopColor="#FF4F5E" /><stop offset="1" stopColor="#9059FF" />
+        </linearGradient>
+      </defs>
+      <circle cx="24" cy="24" r="22" fill="url(#lp-firefox)" />
+      <circle cx="26" cy="26" r="11" fill="#5B2BBF" opacity=".85" />
+    </svg>
+  );
+}
+
+const BROWSERS = [
+  { name: "Chrome", Mark: ChromeMark, store: "Chrome Web Store", cta: "Add to Chrome",
+    href: "https://chromewebstore.google.com/detail/eguard-browser-protection/mbmebjjdmbnadjghjgakafhgmbhimadk" },
+  { name: "Microsoft Edge", Mark: EdgeMark, store: "Microsoft Edge Add-ons", cta: "Add to Edge",
+    href: "https://microsoftedge.microsoft.com/addons/detail/eguard-browser-protection/noapokcbieljofcaajebjdmddbjpeckd" },
+  // Still in Firefox Add-ons review: shown blurred, with no link, until it's published.
+  { name: "Firefox", Mark: FirefoxMark, store: "Firefox Add-ons", cta: "Coming soon", href: null },
+] as const;
+
+const BROWSER_PERKS = ["Blocks harmful sites and categories", "Forces SafeSearch", "Lets your child ask before opening a blocked site"];
 
 function PlayDot() {
   return <span className="lp-play"><svg viewBox="0 0 10 12" aria-hidden="true"><path d="M0 0v12l10-6z" fill="currentColor" /></svg></span>;
@@ -309,6 +360,40 @@ export default async function Home() {
                 </li>
               ))}
             </ol>
+          </div>
+        </section>
+
+        {/* ---------- Browser extension ---------- */}
+        <section className="lp-browsers" id="browsers">
+          <div className="lp-wrap">
+            <div className="lp-browsers-head">
+              <span className="lp-eyebrow"><Globe />Browser protection</span>
+              <h2>Protect Their Browser Too</h2>
+              <p>Add the eGuard Browser Protection extension to your child&apos;s computer. The rules you choose in eGuard reach the browser within 5 minutes.</p>
+              <ul className="lp-browser-perks">{BROWSER_PERKS.map((perk) => <li key={perk}><Check />{perk}</li>)}</ul>
+            </div>
+            <ul className="lp-browser-grid">
+              {BROWSERS.map(({ name, Mark, store, cta, href }) => href ? (
+                <li key={name} className="lp-browser">
+                  <span className="lp-browser-mark"><Mark /></span>
+                  <h3>{name}</h3>
+                  <p>{store}</p>
+                  <a className="lp-btn lp-btn-outline" href={href} target="_blank" rel="noopener noreferrer">{cta}<ArrowRight /></a>
+                </li>
+              ) : (
+                <li key={name} className="lp-browser lp-browser-soon">
+                  <span className="lp-browser-soon-badge">Coming soon</span>
+                  <div className="lp-browser-blur" aria-hidden="true">
+                    <span className="lp-browser-mark"><Mark /></span>
+                    <h3>{name}</h3>
+                    <p>{store}</p>
+                    <span className="lp-btn lp-btn-soft">{cta}</span>
+                  </div>
+                  <span className="sr-only">{name}: coming soon</span>
+                </li>
+              ))}
+            </ul>
+            <p className="lp-browsers-note">After installing, open your eGuard dashboard and choose <b>Add a browser</b> to get the code that connects it to your child.</p>
           </div>
         </section>
 

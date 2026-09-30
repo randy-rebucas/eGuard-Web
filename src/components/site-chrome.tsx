@@ -9,9 +9,11 @@ import { LEGAL } from "@/lib/legal";
  * Social links and a newsletter sign-up belong in the footer once the accounts and a mailing list exist.
  */
 
+/** In the order the sections appear on the landing page, then pages elsewhere. */
 const NAV = [
-  ["Features", "/#features"], ["How It Works", "/#how-it-works"], ["For Parents", "/#habits"],
-  ["For Schools", "/#communities"], ["Pricing", "/#pricing"], ["Blog", "/blog"],
+  ["Who It's For", "/#communities"], ["Features", "/#features"], ["For Parents", "/#habits"],
+  ["How It Works", "/#how-it-works"], ["Extension", "/#browsers"], ["Pricing", "/#pricing"],
+  ["FAQ", "/#faq"], ["Blog", "/blog"],
 ] as const;
 
 function Brand({ style }: { style?: CSSProperties }) {
@@ -61,11 +63,11 @@ export function SiteFooter() {
           <Brand style={{ alignSelf: "start" }} />
           <div>
             <h4>Product</h4>
-            <ul><li><Link href="/#features">Features</Link></li><li><Link href="/#pricing">Pricing</Link></li></ul>
+            <ul><li><Link href="/#features">Features</Link></li><li><Link href="/#how-it-works">How it works</Link></li><li><Link href="/#browsers">Browser extension</Link></li><li><Link href="/#pricing">Pricing</Link></li></ul>
           </div>
           <div>
             <h4>Resources</h4>
-            <ul><li><Link href="/blog">Blog</Link></li><li><Link href="/help">Help Center</Link></li><li><Link href="/#how-it-works">Guides</Link></li></ul>
+            <ul><li><Link href="/help">Help Center</Link></li><li><Link href="/#faq">FAQ</Link></li><li><Link href="/blog">Blog</Link></li></ul>
           </div>
           <div>
             <h4>Company</h4>
