@@ -11,8 +11,6 @@ import { jsonLd, pageMetadata, siteUrl } from "@/lib/site";
 import { PageHead } from "../../page-head";
 import "../guides.css";
 
-export const dynamicParams = false;
-
 export function generateStaticParams() {
   return AGE_GUIDES.map((g) => ({ slug: g.slug }));
 }

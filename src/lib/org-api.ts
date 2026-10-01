@@ -1,4 +1,5 @@
 import "server-only";
+import { unstable_rethrow } from "next/navigation";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import type { OrgApiKey, Organization, Prisma } from "@prisma/client";
@@ -139,6 +140,7 @@ export function orgApi<P = Record<string, never>>(fn: (c: { req: Request; caller
       const caller = await authOrgKey(req, { write });
       return json(await fn({ req, caller, params: await ctx.params }));
     } catch (e) {
+      unstable_rethrow(e); // Next's own control flow (e.g. bailing out of prerendering), not a failure
       if (e instanceof ServiceError) return errorJson(e.status, e.message, e.code);
       if (e instanceof z.ZodError) {
         const issue = e.issues[0];

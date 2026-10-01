@@ -14,8 +14,6 @@ import { PageHead } from "../../page-head";
 import { CapabilityChip, CAPABILITY_COPY } from "../capability";
 import "../protections.css";
 
-export const dynamicParams = false;
-
 export function generateStaticParams() {
   return PROTECTIONS.map((p) => ({ slug: p.slug }));
 }

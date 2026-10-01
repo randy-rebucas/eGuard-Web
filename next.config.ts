@@ -24,6 +24,12 @@ const OLD_HOSTS = ["eguard.family", "e-guard-web.vercel.app"];
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // Pages prerender to a static shell; request-time parts (session, cookies) stream in behind <Suspense>
+  cacheComponents: true,
+  images: {
+    // AVIF is ~20% smaller than WebP; browsers without it get WebP. Each format is encoded and cached separately.
+    formats: ["image/avif", "image/webp"],
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

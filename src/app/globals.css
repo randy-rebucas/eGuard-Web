@@ -212,7 +212,9 @@ button.list-row:hover .chev{transform:translateX(2px); color:var(--accent-ink)}
 /* ---------- Hero ---------- */
 /* Banner art is light in both themes, so hero colors are fixed navy rather than --ink (which flips in dark mode) */
 .hero{position:relative; overflow:hidden; border-radius:24px; color:#0B2348; min-height:280px; display:grid; grid-template-columns:minmax(0,1.2fr) minmax(0,1fr); gap:24px; padding:40px 44px; isolation:isolate;
-  background:#DCEBFB url("/web/dashboard-hero.jpg") right center/cover no-repeat;}
+  background:#DCEBFB;}
+/* The landscape (HeroArt in dashboard/page.tsx), an optimized <Image> under the wash and the lights */
+.hero-art{object-fit:cover; object-position:right center; z-index:-2; pointer-events:none}
 /* Soft wash on the left keeps the copy legible over the landscape */
 .hero::after{content:""; position:absolute; inset:0; z-index:-1; pointer-events:none;
   background:linear-gradient(90deg, rgba(236,245,255,.85) 0%, rgba(236,245,255,.5) 40%, rgba(236,245,255,0) 65%);}

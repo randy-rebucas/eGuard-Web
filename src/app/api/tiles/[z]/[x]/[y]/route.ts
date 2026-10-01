@@ -9,8 +9,6 @@ import { getUser } from "@/lib/auth";
  * fine for development and light use under OSM's tile policy) or a commercial provider's URL with its key.
  */
 
-export const dynamic = "force-dynamic";
-
 const DEFAULT_UPSTREAM = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const MAX_ZOOM = 18;
 const TTL_MS = 24 * 3600_000;

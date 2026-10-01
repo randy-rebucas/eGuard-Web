@@ -1,4 +1,5 @@
 import "server-only";
+import { unstable_rethrow } from "next/navigation";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { userForToken, type SessionUser } from "./auth";
@@ -46,6 +47,7 @@ export function query<S extends z.ZodType>(req: Request, schema: S): z.infer<S> 
 }
 
 function toResponse(e: unknown) {
+  unstable_rethrow(e); // Next's own control flow (e.g. bailing out of prerendering), not a failure
   if (e instanceof ServiceError) return apiError(e.status, e.message, e.code);
   if (e instanceof z.ZodError) return apiError(400, e.issues[0].message, "invalid");
   console.error("[mobile-api]", e);

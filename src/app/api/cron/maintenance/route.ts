@@ -1,5 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
-import { NextResponse } from "next/server";
+import { NextResponse, connection } from "next/server";
 import { runMaintenance } from "@/lib/maintenance";
 
 /**
@@ -8,7 +8,6 @@ import { runMaintenance } from "@/lib/maintenance";
  * itself when CRON_SECRET is set; elsewhere use any scheduler, e.g. `curl -H ...` from cron).
  * Without CRON_SECRET it only runs in development.
  */
-export const dynamic = "force-dynamic";
 /** The job works through families, purchases and emails one at a time, so it grows with the user base. Watch `ms`. */
 export const maxDuration = 300;
 
@@ -21,6 +20,8 @@ function authorized(req: Request) {
 }
 
 async function run(req: Request) {
+  // Always at request time: without CRON_SECRET, authorized() never reads the request, and the GET could be prerendered
+  await connection();
   if (!authorized(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const started = Date.now();
   const result = await runMaintenance();

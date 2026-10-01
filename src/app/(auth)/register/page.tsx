@@ -1,10 +1,15 @@
 import { RegisterForm } from "@/components/auth-forms";
 import { pageMetadata } from "@/lib/site";
+import { FormSuspense } from "../form-suspense";
 import { redirectIfSignedIn } from "../signed-out";
 
 export const metadata = pageMetadata({ title: "Create account", path: "/register", description: "Create a free eGuard account. Set up screen time, bedtime and app rules for one child, with every setting verified on the device." });
 
-export default async function RegisterPage() {
+async function Register() {
   await redirectIfSignedIn();
   return <RegisterForm />;
+}
+
+export default function RegisterPage() {
+  return <FormSuspense><Register /></FormSuspense>;
 }

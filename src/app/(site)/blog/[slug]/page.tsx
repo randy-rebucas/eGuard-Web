@@ -6,8 +6,6 @@ import { POSTS, postBySlug, postDate, readMinutes, type Block } from "@/lib/blog
 import { jsonLd, pageMetadata, siteUrl } from "@/lib/site";
 import { PageHead } from "../../page-head";
 
-export const dynamicParams = false;
-
 export function generateStaticParams() {
   return POSTS.map((p) => ({ slug: p.slug }));
 }

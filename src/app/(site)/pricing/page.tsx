@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight, Check, ChevronDown, CreditCard, Minus, RefreshCw, Ticket } from "lucide-react";
-import { getUser } from "@/lib/auth";
+import { Check, ChevronDown, CreditCard, Minus, RefreshCw, Ticket } from "lucide-react";
+import { SignedIn, StartLink } from "@/components/signed-in";
 import { PLANS, webPrice, type Plan } from "@/lib/plans";
 import { pageMetadata } from "@/lib/site";
 import { supportEmail } from "@/lib/support";
@@ -58,10 +58,13 @@ function Mark({ value }: { value: Cell }) {
   return <span>{value}</span>;
 }
 
-export default async function PricingPage() {
-  const signedIn = Boolean(await getUser());
-  const start = (id: Plan["id"]) => signedIn ? (id === "FREE" ? "/dashboard" : "/settings/subscription") : "/register";
+function PlanLink({ id, signedIn }: { id: Plan["id"]; signedIn: boolean }) {
+  const look = LOOK[id];
+  const href = signedIn ? (id === "FREE" ? "/dashboard" : "/settings/subscription") : "/register";
+  return <Link href={href} className={`lp-btn ${look.style}`}>{signedIn && id === "FREE" ? "Open dashboard" : look.cta}</Link>;
+}
 
+export default function PricingPage() {
   return (
     <>
       <PageHead
@@ -81,7 +84,7 @@ export default async function PricingPage() {
                 <p>{p.blurb}</p>
                 <div className="lp-price"><b className="num"><sup>₱</sup>{pesos(p)}</b><span>/ month</span></div>
                 <ul>{p.features.map((f) => <li key={f.key}><Check />{f.label}</li>)}</ul>
-                <Link href={start(p.id)} className={`lp-btn ${look.style}`}>{signedIn && p.id === "FREE" ? "Open dashboard" : look.cta}</Link>
+                <SignedIn signedIn={<PlanLink id={p.id} signedIn />} signedOut={<PlanLink id={p.id} signedIn={false} />} />
               </article>
             );
           })}
@@ -149,7 +152,7 @@ export default async function PricingPage() {
             <h2>Start free, upgrade when you&apos;re ready</h2>
             <p>One child, every setting verified. No card needed.</p>
           </div>
-          <Link href={signedIn ? "/dashboard" : "/register"} className="lp-btn lp-btn-white">{signedIn ? "Open Dashboard" : "Get Started Free"}<ArrowRight /></Link>
+          <StartLink className="lp-btn lp-btn-white" />
         </div>
       </div>
     </>

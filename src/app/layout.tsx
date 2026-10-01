@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { Hanken_Grotesk, Sora } from "next/font/google";
-import { cookies } from "next/headers";
 import { SITE_NAME, siteUrl } from "@/lib/site";
 import "./globals.css";
 
@@ -25,10 +24,18 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover" };
 
-export default async function RootLayout({ children }: LayoutProps<"/">) {
-  const theme = (await cookies()).get("eg_theme")?.value;
+/**
+ * Applies the eg_theme cookie (set by the settings page, readable by scripts) before first paint. Reading it on
+ * the server would make every page request-bound, so the public pages couldn't be served from the static shell.
+ */
+const THEME_SCRIPT = `try{var t=document.cookie.match(/(?:^|; )eg_theme=(light|dark)(?:;|$)/);if(t)document.documentElement.setAttribute("data-theme",t[1])}catch(e){}`;
+
+export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${hanken.variable} ${sora.variable}`} data-theme={theme === "light" || theme === "dark" ? theme : undefined} suppressHydrationWarning>
+    <html lang="en" className={`${hanken.variable} ${sora.variable}`} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+      </head>
       <body>{children}</body>
     </html>
   );

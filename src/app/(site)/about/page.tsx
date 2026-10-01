@@ -44,7 +44,7 @@ export default function AboutPage() {
             <p>We wanted a tool that tells parents what&apos;s true on their child&apos;s device right now, and speaks up when that changes. That&apos;s the idea eGuard is built around.</p>
           </div>
           <div className="st-photo">
-            <Image src={digitalHabits} alt="A mother and daughter using a laptop together" fill sizes="(max-width:1024px) 100vw, 45vw" placeholder="blur" />
+            <Image src={digitalHabits} alt="A mother and daughter using a laptop together" fill sizes="(max-width:1024px) 100vw, (max-width:1240px) 45vw, 560px" placeholder="blur" />
           </div>
         </div>
 

@@ -8,8 +8,6 @@ import { supportEmail } from "@/lib/support";
 import { STORE_LINKS } from "@/components/brand-marks";
 import { PageHead } from "../../page-head";
 
-export const dynamicParams = false;
-
 export function generateStaticParams() {
   return HELP_ARTICLES.map((a) => ({ slug: a.slug }));
 }

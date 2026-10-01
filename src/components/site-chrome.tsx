@@ -1,7 +1,9 @@
 import type { CSSProperties } from "react";
 import Link from "next/link";
+import { cacheLife } from "next/cache";
 import { Menu } from "lucide-react";
 import { LogoMark } from "@/components/logo";
+import { SignedIn } from "@/components/signed-in";
 import { LEGAL } from "@/lib/legal";
 
 /**
@@ -25,7 +27,8 @@ function Brand({ style }: { style?: CSSProperties }) {
   );
 }
 
-export function SiteHeader({ signedIn }: { signedIn: boolean }) {
+/** Static apart from the sign-in links, which stream in once the session is known (see SignedIn). */
+export function SiteHeader() {
   return (
     <header className="lp-header">
       <div className="lp-wrap">
@@ -34,25 +37,33 @@ export function SiteHeader({ signedIn }: { signedIn: boolean }) {
           {NAV.map(([label, href]) => <Link key={href} href={href}>{label}</Link>)}
         </nav>
         <div className="lp-head-cta">
-          {signedIn ? (
-            <Link href="/dashboard" className="lp-btn lp-btn-primary">Open Dashboard</Link>
-          ) : (
-            <>
-              <Link href="/login" className="lp-btn lp-signin">Sign In</Link>
-              <Link href="/register" className="lp-btn lp-btn-primary">Get Started</Link>
-            </>
-          )}
+          <SignedIn
+            signedIn={<Link href="/dashboard" className="lp-btn lp-btn-primary">Open Dashboard</Link>}
+            signedOut={
+              <>
+                <Link href="/login" className="lp-btn lp-signin">Sign In</Link>
+                <Link href="/register" className="lp-btn lp-btn-primary">Get Started</Link>
+              </>
+            }
+          />
           <details className="lp-menu">
             <summary aria-label="Open menu"><Menu /></summary>
             <nav className="lp-menu-panel" aria-label="Mobile">
               {NAV.map(([label, href]) => <Link key={href} href={href}>{label}</Link>)}
-              {signedIn ? null : <Link href="/login">Sign In</Link>}
+              <SignedIn signedIn={null} signedOut={<Link href="/login">Sign In</Link>} />
             </nav>
           </details>
         </div>
       </div>
     </header>
   );
+}
+
+/** The current year, cached so the footer stays in the static shell; re-read daily so it rolls over on Jan 1. */
+async function Year() {
+  "use cache";
+  cacheLife("days");
+  return new Date().getFullYear();
 }
 
 export function SiteFooter() {
@@ -75,7 +86,7 @@ export function SiteFooter() {
           </div>
         </div>
         <div className="lp-foot-bottom">
-          <span>© {new Date().getFullYear()} {LEGAL.entity}. eGuard is a product of {LEGAL.shortName}.</span>
+          <span>© <Year /> {LEGAL.entity}. eGuard is a product of {LEGAL.shortName}.</span>
           <span>A safer digital world for their brighter tomorrow.</span>
         </div>
       </div>

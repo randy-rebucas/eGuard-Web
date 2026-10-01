@@ -5,12 +5,12 @@ import {
   ArrowRight, BellRing, CalendarClock, ChartNoAxesColumnIncreasing, Check, ChevronDown, ChevronRight, CircleCheck,
   ClipboardCheck, Download, Globe, Laptop, Plus, Settings, ShieldCheck, Smartphone, Sparkles, Tablet, Users, type LucideIcon,
 } from "lucide-react";
-import { getUser } from "@/lib/auth";
 import { LEGAL } from "@/lib/legal";
 import { supportEmail } from "@/lib/support";
 import { PLANS as PLAN_CATALOG, webPrice } from "@/lib/plans";
 import { jsonLd, pageMetadata, siteUrl } from "@/lib/site";
 import { SiteFooter, SiteHeader } from "@/components/site-chrome";
+import { SignedIn, StartLink } from "@/components/signed-in";
 import { PhoneDashboard, PhoneScreenTime } from "@/components/landing-phones";
 import { ChromeMark, EdgeMark, FirefoxMark, STORE_LINKS } from "@/components/brand-marks";
 import "./landing.css";
@@ -173,19 +173,16 @@ function Stores() {
   );
 }
 
-export default async function Home() {
-  const signedIn = Boolean(await getUser());
-  const start = signedIn ? "/dashboard" : "/register";
-
+export default function Home() {
   return (
     <div className="lp">
       <script type="application/ld+json" dangerouslySetInnerHTML={jsonLd(structuredData())} />
-      <SiteHeader signedIn={signedIn} />
+      <SiteHeader />
 
       <main>
         {/* ---------- Hero ---------- */}
         <section className="lp-hero">
-          <div className="lp-hero-bg"><Image src={heroBackground} alt="" fill preload sizes="100vw" /></div>
+          <div className="lp-hero-bg"><Image src={heroBackground} alt="" fill loading="eager" fetchPriority="high" sizes="100vw" placeholder="blur" /></div>
           <div className="lp-wrap">
             <div className="lp-hero-copy">
               <span className="lp-eyebrow"><Users />Built for modern families</span>
@@ -198,13 +195,13 @@ export default async function Home() {
                 <li><CircleCheck />Peace of mind</li>
               </ul>
               <div className="lp-hero-actions">
-                <Link href={start} className="lp-btn lp-btn-primary">{signedIn ? "Open Dashboard" : "Get Started Free"}<ArrowRight /></Link>
+                <StartLink className="lp-btn lp-btn-primary" />
                 <a href="#how-it-works" className="lp-btn lp-btn-outline"><PlayDot />See How It Works</a>
               </div>
               <Stores />
             </div>
 
-            <div className="lp-hero-family"><Image src={heroFamily} alt="A smiling family looking at a tablet together" fill preload sizes="(max-width:1024px) 100vw, 64vw" /></div>
+            <div className="lp-hero-family"><Image src={heroFamily} alt="A smiling family looking at a tablet together" fill loading="eager" fetchPriority="high" sizes="(max-width:1024px) 100vw, (max-width:1633px) 60vw, 980px" placeholder="blur" /></div>
 
             <div className="lp-hero-cards">
               <div className="lp-float lp-hc lp-hc-protect">
@@ -292,7 +289,7 @@ export default async function Home() {
 
         {/* ---------- Healthy habits ---------- */}
         <section className="lp-habits" id="habits">
-          <div className="lp-habits-img"><Image src={digitalHabits} alt="A mother and daughter using a laptop together" fill sizes="(max-width:1024px) 100vw, 62vw" /></div>
+          <div className="lp-habits-img"><Image src={digitalHabits} alt="A mother and daughter using a laptop together" fill sizes="(max-width:1024px) 100vw, 60vw" placeholder="blur" /></div>
           <div className="lp-wrap">
             <div className="lp-habits-copy">
               <div className="lp-habits-tag"><i><span><ClipboardCheck /></span></i>Healthy digital habits</div>
@@ -361,7 +358,7 @@ export default async function Home() {
 
         {/* ---------- Purpose ---------- */}
         <section className="lp-purpose">
-          <div className="lp-purpose-img"><Image src={familySunset} alt="A family sitting together looking out over mountains at sunset" fill sizes="100vw" /></div>
+          <div className="lp-purpose-img"><Image src={familySunset} alt="A family sitting together looking out over mountains at sunset" fill sizes="(max-width:1024px) 100vw, 66vw" placeholder="blur" /></div>
           <div className="lp-wrap">
             <div className="lp-float lp-purpose-card">
               <span className="lp-eyebrow"><Users />Our purpose</span>
@@ -385,7 +382,7 @@ export default async function Home() {
                   <p>{p.blurb}</p>
                   <div className="lp-price"><b className="num"><sup>₱</sup>{p.price}</b><span>/ month</span></div>
                   <ul>{p.perks.map((perk) => <li key={perk}><Check />{perk}</li>)}</ul>
-                  <Link href={start} className={`lp-btn ${p.style}`}>{p.cta}</Link>
+                  <SignedIn signedIn={<Link href="/dashboard" className={`lp-btn ${p.style}`}>{p.cta}</Link>} signedOut={<Link href="/register" className={`lp-btn ${p.style}`}>{p.cta}</Link>} />
                 </article>
               ))}
             </div>
@@ -416,11 +413,11 @@ export default async function Home() {
         <section className="lp-cta">
           <div className="lp-wrap">
             <div className="lp-cta-box">
-              <div className="lp-cta-img"><Image src={ctaFamily} alt="" fill sizes="(max-width:1024px) 100vw, 56vw" /></div>
+              <div className="lp-cta-img"><Image src={ctaFamily} alt="" fill sizes="(max-width:1024px) 100vw, 56vw" placeholder="blur" /></div>
               <h2>Ready to Create a Safer Digital World for Your Family?</h2>
               <p>Free for one child. No card needed.</p>
               <div className="lp-hero-actions">
-                <Link href={start} className="lp-btn lp-btn-white">{signedIn ? "Open Dashboard" : "Get Started Free"}<ArrowRight /></Link>
+                <StartLink className="lp-btn lp-btn-white" />
                 <a href="#how-it-works" className="lp-btn lp-btn-ghost-light"><PlayDot />See How It Works</a>
               </div>
               <Stores />

@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { getAlerts, getFamily, getFamilyGraph, type FamilyGraph } from "@/lib/queries";
@@ -15,6 +16,8 @@ import { SectionBoundary } from "@/components/boundary";
 import { currentPurchase, renewalWord } from "@/lib/entitlement";
 import { entitlementsFor, nextPlan } from "@/lib/plans";
 import { planWith } from "@/lib/plan-access";
+
+import heroArt from "../../../../public/web/dashboard-hero.jpg";
 
 export const metadata = { title: "Dashboard" };
 
@@ -37,6 +40,14 @@ async function Weekly({ familyId, graph, tz }: { familyId: string; graph: Family
 async function RecentAlerts({ familyId, userId, tz }: { familyId: string; userId: string; tz: string }) {
   const alerts = await getAlerts(familyId, userId, { take: 4 });
   return alerts.length ? alerts.map((a) => <AlertRow key={a.id} a={toAlertItem(a, tz)} />) : <EmptyState icon="bell" title="You're all caught up" text="New alerts will appear here." />;
+}
+
+/**
+ * The hero's landscape. `cover` scales the wide art (1418×320) to the hero's height (280px or more), so it's drawn
+ * at least ~1240px wide at every screen size: always ask for the full width, never a smaller viewport-based one.
+ */
+function HeroArt() {
+  return <Image className="hero-art" src={heroArt} alt="" fill loading="eager" fetchPriority="high" placeholder="blur" sizes="1418px" />;
 }
 
 function Streamed({ title, height, children }: { title: string; height: number; children: React.ReactNode }) {
@@ -71,6 +82,7 @@ export default async function Dashboard() {
     return (
       <>
         <section className="hero" aria-labelledby="hero-title">
+          <HeroArt />
           <div className="hero-copy">
             <span className="greet">{greeting(tz)}</span>
             <h1 id="hero-title">{firstName}</h1>
@@ -89,6 +101,7 @@ export default async function Dashboard() {
   return (
     <>
       <section className="hero" aria-labelledby="hero-title">
+        <HeroArt />
         <div className="hero-copy">
           <span className="greet">{greeting(tz)}</span>
           <h1 id="hero-title">{firstName}</h1>

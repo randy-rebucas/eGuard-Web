@@ -11,7 +11,7 @@ import {
   ScreenChildSetup, ScreenPairingCode, ScreenParentAlerts, ScreenParentChild, ScreenWebBedtime, ScreenWebDashboard,
   ServerCloud,
 } from "@/components/flow-devices";
-import { getUser } from "@/lib/auth";
+import { StartLink } from "@/components/signed-in";
 import { PageHead } from "../page-head";
 import "./how-it-works.css";
 
@@ -106,10 +106,7 @@ function Platforms({ items }: { items: [() => React.ReactElement, string][] }) {
   return <ul className="hw-platforms">{items.map(([Mark, label]) => <li key={label}><Mark />{label}</li>)}</ul>;
 }
 
-export default async function HowItWorksPage() {
-  const signedIn = Boolean(await getUser());
-  const start = signedIn ? "/dashboard" : "/register";
-
+export default function HowItWorksPage() {
   return (
     <>
       <PageHead
@@ -391,7 +388,7 @@ export default async function HowItWorksPage() {
             <li>
               <span className="hw-get-mark"><Monitor /></span>
               <div><b>Web dashboard</b><span>Any browser, at eguard.family</span></div>
-              <Link href={start} className="lp-btn lp-btn-primary">{signedIn ? "Open" : "Start free"}<ArrowRight /></Link>
+              <StartLink className="lp-btn lp-btn-primary" open="Open" start="Start free" />
             </li>
             <li>
               <span className="hw-get-mark"><AndroidMark /></span>
@@ -426,7 +423,7 @@ export default async function HowItWorksPage() {
             <h2>Ready to see it on your own family&apos;s devices?</h2>
             <p>Free for one child. No card needed.</p>
           </div>
-          <Link href={start} className="lp-btn lp-btn-white">{signedIn ? "Open Dashboard" : "Get Started Free"}<ArrowRight /></Link>
+          <StartLink className="lp-btn lp-btn-white" />
         </div>
       </div>
     </>

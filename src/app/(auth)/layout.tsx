@@ -22,7 +22,7 @@ const POINTS = [
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="auth">
-      <Image className="auth-bg" src={panelBackground} alt="" fill priority sizes="100vw" placeholder="blur" />
+      <Image className="auth-bg" src={panelBackground} alt="" fill loading="eager" fetchPriority="high" sizes="100vw" placeholder="blur" />
       <aside className="auth-art">
         <div className="auth-art-copy">
           <Link href="/" className="auth-home" aria-label="eGuard home"><Brand /></Link>

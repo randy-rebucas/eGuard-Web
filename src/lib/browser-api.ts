@@ -1,4 +1,5 @@
 import "server-only";
+import { unstable_rethrow } from "next/navigation";
 import { NextResponse } from "next/server";
 import { ServiceError } from "./errors";
 import { readText } from "./request-body";
@@ -14,6 +15,7 @@ export async function browserRoute(fn: () => Promise<Response>): Promise<Respons
   try {
     return await fn();
   } catch (e) {
+    unstable_rethrow(e); // Next's own control flow (e.g. bailing out of prerendering), not a failure
     if (e instanceof ServiceError) return browserError(e.status, e.message, e.code ?? "error");
     console.error("[browser-api]", e);
     return browserError(500, "eGuard is having trouble right now.", "server_error");

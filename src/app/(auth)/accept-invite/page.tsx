@@ -1,12 +1,17 @@
 import Link from "next/link";
 import { AcceptInviteForm } from "@/components/auth-forms";
 import { invitation } from "@/lib/invitations";
+import { FormSuspense } from "../form-suspense";
 
 export const metadata = { title: "Your invitation", robots: { index: false }, referrer: "no-referrer" };
 
 /** Where an emailed invitation lands. Works signed in or out: the token alone identifies the invitation. */
-export default async function AcceptInvitePage(props: PageProps<"/accept-invite">) {
-  const { token } = await props.searchParams;
+export default function AcceptInvitePage(props: PageProps<"/accept-invite">) {
+  return <FormSuspense><AcceptInvite searchParams={props.searchParams} /></FormSuspense>;
+}
+
+async function AcceptInvite({ searchParams }: Pick<PageProps<"/accept-invite">, "searchParams">) {
+  const { token } = await searchParams;
   const t = typeof token === "string" ? token : "";
   const invite = t ? await invitation(t) : null;
   if (!invite || invite.expired) {

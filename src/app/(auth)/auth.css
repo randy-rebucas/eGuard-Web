@@ -1,5 +1,5 @@
 /* ---------- Auth (/login, /register) ----------
-   Follows the design comp (public/web/auth.png) and is pinned to the light palette,
+   Pinned to the light palette,
    like the landing page, regardless of the app's dark-mode preference. */
 .auth{
   color-scheme:light;

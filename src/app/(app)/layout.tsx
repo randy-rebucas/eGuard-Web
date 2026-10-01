@@ -12,6 +12,9 @@ import { entitlementsFor, nextPlan } from "@/lib/plans";
 /** Signed-in pages never belong in search results (signed-out visitors are sent to sign in anyway). */
 export const metadata = { robots: { index: false, follow: false } };
 
+/** Every page here is the signed-in parent's own data, read per request: no static shell to validate. */
+export const instant = false;
+
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
   // Upkeep first where it matters: simulated heartbeats before reading device state, offline alerts before counting them
