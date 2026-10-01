@@ -1,7 +1,7 @@
 import "server-only";
 import type { Alert } from "@prisma/client";
 import { db } from "./db";
-import { ensureOfflineAlerts } from "./engine";
+import { ensureOfflineAlerts, offlineDeviceWhere } from "./engine";
 import { raiseBrowserOfflineAlerts } from "./browser-health";
 import { familiesWithPurchases, refreshPurchases } from "./billing";
 import { sendPassReminders } from "./web-billing";
@@ -26,8 +26,9 @@ export const worthEmail = (a: Pick<Alert, "severity" | "category" | "resolveKey"
   a.severity === "ACTION_REQUIRED" || a.severity === "CRITICAL" || isChildRequest(a)
   || (a.severity === "ATTENTION" && (a.category === "PROTECTION" || a.category === "DEVICES" || a.category === "LOCATION"));
 
+/** Only families with a quiet device can need an alert, so the rest aren't visited. */
 export async function raiseOfflineAlerts() {
-  const families = await db.device.findMany({ distinct: ["familyId"], select: { familyId: true } });
+  const families = await db.device.findMany({ where: offlineDeviceWhere(), distinct: ["familyId"], select: { familyId: true } });
   for (const f of families) await ensureOfflineAlerts(f.familyId);
   return families.length;
 }

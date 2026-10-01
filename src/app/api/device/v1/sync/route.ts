@@ -19,8 +19,10 @@ export async function POST(req: Request) {
   if (!device) return unauthorized();
   const body = Body.safeParse((await readJson(req)) ?? {});
   const info = body.success ? body.data : {};
-  const sync = await deviceSync(device.id, info);
-  const apps = await db.childApp.findMany({ where: { childId: device.childId }, select: { name: true, approval: true, dailyLimitMinutes: true } });
+  const [sync, apps] = await Promise.all([
+    deviceSync(device.id, info),
+    db.childApp.findMany({ where: { childId: device.childId }, select: { name: true, approval: true, dailyLimitMinutes: true } }),
+  ]);
   return NextResponse.json({
     deviceId: device.id,
     policy: sync.policy,

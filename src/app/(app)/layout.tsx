@@ -14,10 +14,13 @@ export const metadata = { robots: { index: false, follow: false } };
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
-  await touchSimulated(user.familyId);
-  await ensureOfflineAlerts(user.familyId);
+  // Upkeep first where it matters: simulated heartbeats before reading device state, offline alerts before counting them
+  const touched = touchSimulated(user.familyId);
   const [family, graph, unread, jar, linkSent] = await Promise.all([
-    getFamily(user.familyId), getFamilyGraph(user.familyId), unreadCount(user.familyId, user.id), cookies(),
+    getFamily(user.familyId),
+    touched.then(() => getFamilyGraph(user.familyId)),
+    touched.then(() => ensureOfflineAlerts(user.familyId)).then(() => unreadCount(user.familyId, user.id)),
+    cookies(),
     !user.emailVerified && hasPendingVerification(user.id, user.email),
   ]);
   const attention = Object.values(graph.deviceStates).filter((s) => s.key !== "healthy").length;

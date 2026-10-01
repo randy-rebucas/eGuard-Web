@@ -37,24 +37,26 @@ function messageFor(status: CheckStatus, key: ProtectionKey, label: string, repo
 /** Called when the device sends a heartbeat/sync. Delivers pending APPLY requests. */
 export async function deviceSync(deviceId: string, info: { battery?: number | null; osVersion?: string; appVersion?: string } = {}) {
   const now = new Date();
-  const device = await db.device.update({
-    where: { id: deviceId },
-    data: {
-      lastSeenAt: now,
-      ...(info.battery !== undefined ? { battery: info.battery } : {}),
-      ...(info.osVersion ? { osVersion: info.osVersion } : {}),
-      ...(info.appVersion ? { appVersion: info.appVersion } : {}),
-    },
-    include: { child: { include: { policies: true } } },
-  });
-  const pending = await db.configRequest.findMany({
-    where: { deviceId, status: "PENDING", mode: "APPLY" },
-    orderBy: { createdAt: "asc" },
-  });
-  if (pending.length) {
-    await db.configRequest.updateMany({ where: { id: { in: pending.map((p) => p.id) } }, data: { status: "DELIVERED", deliveredAt: now } });
-  }
-  await resolveAlerts(device.familyId, `OFFLINE:${deviceId}`);
+  const [device, pending] = await Promise.all([
+    db.device.update({
+      where: { id: deviceId },
+      data: {
+        lastSeenAt: now,
+        ...(info.battery !== undefined ? { battery: info.battery } : {}),
+        ...(info.osVersion ? { osVersion: info.osVersion } : {}),
+        ...(info.appVersion ? { appVersion: info.appVersion } : {}),
+      },
+      include: { child: { include: { policies: true } } },
+    }),
+    db.configRequest.findMany({
+      where: { deviceId, status: "PENDING", mode: "APPLY" },
+      orderBy: { createdAt: "asc" },
+    }),
+  ]);
+  await Promise.all([
+    pending.length && db.configRequest.updateMany({ where: { id: { in: pending.map((p) => p.id) } }, data: { status: "DELIVERED", deliveredAt: now } }),
+    resolveAlerts(device.familyId, `OFFLINE:${deviceId}`),
+  ]);
   return {
     device,
     requests: pending.map((r) => ({ id: r.id, key: r.key, config: r.desired })),
@@ -81,7 +83,21 @@ export async function processReport(deviceId: string, report: DeviceReport) {
     include: { child: true, protections: true },
   });
   const label = deviceLabel(device);
-  await resolveAlerts(device.familyId, `OFFLINE:${deviceId}`);
+  // Read once for the whole report instead of per protection: a full report covers every protection
+  const keys = report.protections.map((p) => p.key);
+  const [openRequests, policyRows] = await Promise.all([
+    db.configRequest.findMany({
+      where: { deviceId, key: { in: keys }, status: { in: ["PENDING", "DELIVERED", "AWAITING_PARENT"] } },
+      orderBy: { createdAt: "desc" },
+    }),
+    db.childPolicy.findMany({ where: { childId: device.childId, key: { in: keys } }, select: { key: true, config: true } }),
+    resolveAlerts(device.familyId, `OFFLINE:${deviceId}`),
+  ]);
+  const policies = new Map<ProtectionKey, Prisma.JsonValue>(policyRows.map((p) => [p.key, p.config]));
+  const statuses = new Map<ProtectionKey, CheckStatus>(device.protections.map((p) => [p.key, p.status]));
+  const passing = new Set<string>();
+  // Requests verified or failed by an earlier entry (a report may repeat a key)
+  const settled = new Set<string>();
 
   for (const rp of report.protections) {
     const def = PROTECTION_BY_KEY[rp.key];
@@ -89,18 +105,17 @@ export async function processReport(deviceId: string, report: DeviceReport) {
     const reported = { ...rp.config, key: rp.key };
 
     // 1. Open requests for this protection on this device
-    const open = await db.configRequest.findMany({
-      where: { deviceId, key: rp.key, status: { in: ["PENDING", "DELIVERED", "AWAITING_PARENT"] } },
-      orderBy: { createdAt: "desc" },
-    });
+    const open = openRequests.filter((r) => r.key === rp.key && !settled.has(r.id));
     for (const req of open) {
       if (configMatches(req.desired, reported)) {
+        settled.add(req.id);
         await db.configRequest.update({ where: { id: req.id }, data: { status: "VERIFIED", verifiedAt: now } });
         await db.childPolicy.upsert({
           where: { childId_key: { childId: device.childId, key: rp.key } },
           create: { childId: device.childId, key: rp.key, config: req.desired as Prisma.InputJsonValue },
           update: { config: req.desired as Prisma.InputJsonValue },
         });
+        policies.set(rp.key, req.desired);
         await syncChildLimits(device.childId, req.desired);
         const from = describeConfig(req.previous), to = describeConfig(req.desired);
         await db.configChange.create({
@@ -112,6 +127,7 @@ export async function processReport(deviceId: string, report: DeviceReport) {
           },
         });
       } else if (req.status === "DELIVERED" && req.mode === "APPLY") {
+        settled.add(req.id);
         await db.configRequest.update({
           where: { id: req.id },
           data: { status: "FAILED", failureReason: `Device reported ${describeConfig(reported)}` },
@@ -120,8 +136,7 @@ export async function processReport(deviceId: string, report: DeviceReport) {
     }
 
     // 2. Evaluate against (possibly updated) policy
-    const policy = await db.childPolicy.findUnique({ where: { childId_key: { childId: device.childId, key: rp.key } } });
-    const status = evaluate(def.caps[device.platform], policy?.config, reported);
+    const status = evaluate(def.caps[device.platform], policies.get(rp.key), reported);
     const prev = device.protections.find((p) => p.key === rp.key);
     const message = messageFor(status, rp.key, label, reported);
     await db.deviceProtection.upsert({
@@ -129,12 +144,17 @@ export async function processReport(deviceId: string, report: DeviceReport) {
       create: { deviceId, key: rp.key, status, reported: reported as Prisma.InputJsonValue, message, lastVerifiedAt: now },
       update: { status, reported: reported as Prisma.InputJsonValue, message, lastVerifiedAt: now },
     });
+    statuses.set(rp.key, status);
 
-    // 3. Alerts on transitions
+    // 3. Alerts on transitions (passing ones are resolved together after the loop)
     const rk = `${rp.key}:${deviceId}`;
     if (isPassing(status)) {
-      await resolveAlerts(device.familyId, rk);
-    } else if (prev && isPassing(prev.status) && !open.some((r) => now.getTime() - r.createdAt.getTime() < CHANGE_GRACE_MS)) {
+      passing.add(rk);
+      continue;
+    }
+    // A repeated key: the later entry wins, as when each was resolved on its own
+    passing.delete(rk);
+    if (prev && isPassing(prev.status) && !open.some((r) => now.getTime() - r.createdAt.getTime() < CHANGE_GRACE_MS)) {
       const prevCfg = prev.reported;
       const isLocation = rp.key === "LOCATION" && !isConfigured(reported);
       // Two reports arriving together both see the earlier passing state: raise it (and record it) once
@@ -162,6 +182,10 @@ export async function processReport(deviceId: string, report: DeviceReport) {
     }
   }
 
+  if (passing.size) {
+    await db.alert.updateMany({ where: { familyId: device.familyId, resolveKey: { in: [...passing] }, resolvedAt: null }, data: { resolvedAt: now } });
+  }
+
   if (rpHasLocation(report)) {
     const sharing = !!report.protections.find((p) => p.key === "LOCATION")!.config.sharing;
     // Sharing off: forget where the device was, so no stale position is kept, shown or exported
@@ -175,8 +199,8 @@ export async function processReport(deviceId: string, report: DeviceReport) {
 
   // 4. Configuration check bookkeeping
   if (report.full && device.checkRequestedAt) {
-    const fresh = await db.deviceProtection.findMany({ where: { deviceId } });
-    const issues = fresh.filter((p) => !isPassing(p.status)).length;
+    // What the device had before this report, with what it just reported on top
+    const issues = [...statuses.values()].filter((s) => !isPassing(s)).length;
     await db.checkRunResult.updateMany({
       where: { deviceId, reportedAt: null, run: { status: "RUNNING" } },
       data: { reachable: true, issues, reportedAt: now },
@@ -213,18 +237,28 @@ export async function resolveAlerts(familyId: string, resolveKey: string) {
   await db.alert.updateMany({ where: { familyId, resolveKey, resolvedAt: null }, data: { resolvedAt: new Date() } });
 }
 
+/** Devices that haven't synced for a day (or ever) get an offline alert. */
+export const offlineDeviceWhere = (now = Date.now()): Prisma.DeviceWhereInput => ({
+  OR: [{ lastSeenAt: { lt: new Date(now - 24 * 3600_000) } }, { lastSeenAt: null }],
+});
+
 /** Creates an alert for devices that have gone quiet, once. */
 export async function ensureOfflineAlerts(familyId: string) {
-  const cutoff = new Date(Date.now() - 24 * 3600_000);
   const devices = await db.device.findMany({
-    where: { familyId, OR: [{ lastSeenAt: { lt: cutoff } }, { lastSeenAt: null }] },
-    include: { child: true },
+    where: { familyId, ...offlineDeviceWhere() },
+    include: { child: { select: { name: true } } },
   });
+  if (!devices.length) return;
+  // The usual case (all already raised) stays one cheap read; only a missing alert takes the lock
+  const raised = await db.alert.findMany({
+    where: { familyId, resolvedAt: null, resolveKey: { in: devices.map((d) => `OFFLINE:${d.id}`) } },
+    select: { resolveKey: true },
+  });
+  const done = new Set(raised.map((a) => a.resolveKey));
   for (const d of devices) {
     const rk = `OFFLINE:${d.id}`;
+    if (done.has(rk)) continue;
     const open = { familyId, resolveKey: rk, resolvedAt: null };
-    // The usual case (already raised) stays one cheap read; only a missing alert takes the lock
-    if (await db.alert.findFirst({ where: open, select: { id: true } })) continue;
     // Runs on every page load and in the maintenance job, so two can overlap
     await createAlertUnless(rk, open, {
       familyId, childId: d.childId, deviceId: d.id, severity: "ATTENTION", category: "DEVICES", icon: "wifi-off",

@@ -3,17 +3,18 @@ import { cache } from "react";
 import { db } from "./db";
 import { computeHealth, deviceState } from "./health";
 import { pageByTime } from "./paging";
+import { dateFormat } from "./format";
 
 /** YYYY-MM-DD for a date in the family's timezone */
 export function dayKey(d: Date, tz: string) {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+  return dateFormat("en-CA", tz, { year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
 }
 export const dateFromKey = (k: string) => new Date(`${k}T00:00:00.000Z`);
 
 /** Milliseconds `tz` is ahead of UTC at instant `d`. */
 function tzOffset(d: Date, tz: string) {
   const p = Object.fromEntries(
-    new Intl.DateTimeFormat("en-US", { timeZone: tz, hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric" })
+    dateFormat("en-US", tz, { hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric" })
       .formatToParts(d).map((x) => [x.type, Number(x.value)]),
   );
   return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - Math.floor(d.getTime() / 1000) * 1000;

@@ -51,7 +51,13 @@ export async function issueSession(userId: string, userAgent: string | null) {
 /** Resolves a raw session token (cookie or bearer) to the signed-in user. */
 export async function userForToken(token: string): Promise<SessionUser | null> {
   if (!token) return null;
-  const s = await db.session.findUnique({ where: { tokenHash: sha256(token) }, include: { user: true } });
+  const s = await db.session.findUnique({
+    where: { tokenHash: sha256(token) },
+    select: {
+      id: true, expiresAt: true, lastSeenAt: true,
+      user: { select: { id: true, name: true, email: true, emailVerifiedAt: true, role: true, familyId: true } },
+    },
+  });
   if (!s || s.expiresAt < new Date()) return null;
   if (Date.now() - s.lastSeenAt.getTime() > 5 * 60_000) {
     await db.session.update({ where: { id: s.id }, data: { lastSeenAt: new Date() } }).catch(() => {});

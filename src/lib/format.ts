@@ -1,7 +1,20 @@
-const fmt = (tz: string, o: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat("en-US", { timeZone: tz, ...o });
+/**
+ * Formatters are slow to create (each loads locale and time zone data) and the same few are used for every row
+ * a page renders, so they're made once per locale, time zone and options. The options are always literals here,
+ * so the cache stays small.
+ */
+const formatters = new Map<string, Intl.DateTimeFormat>();
+export function dateFormat(locale: string, tz: string, o: Intl.DateTimeFormatOptions) {
+  const k = `${locale}|${tz}|${JSON.stringify(o)}`;
+  let f = formatters.get(k);
+  if (!f) formatters.set(k, (f = new Intl.DateTimeFormat(locale, { timeZone: tz, ...o })));
+  return f;
+}
+
+const fmt = (tz: string, o: Intl.DateTimeFormatOptions) => dateFormat("en-US", tz, o);
 
 function dayIndex(d: Date, tz: string) {
-  const k = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(d);
+  const k = dateFormat("en-CA", tz, {}).format(d);
   return Math.floor(new Date(`${k}T00:00:00Z`).getTime() / 864e5);
 }
 
@@ -34,12 +47,13 @@ export function ago(d: Date | null | undefined, tz: string, now = new Date()) {
 
 export const longDate = (d: Date, tz: string) => fmt(tz, { weekday: "short", month: "short", day: "numeric", year: "numeric" }).format(d);
 /** "₱199" or "₱199.50", from centavos. */
-export const peso = (centavos: number) =>
-  new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", maximumFractionDigits: centavos % 100 ? 2 : 0 }).format(centavos / 100);
+const pesoWhole = new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", maximumFractionDigits: 0 });
+const pesoCents = new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP", maximumFractionDigits: 2 });
+export const peso = (centavos: number) => (centavos % 100 ? pesoCents : pesoWhole).format(centavos / 100);
 export const shortDate = (d: Date, tz: string) => fmt(tz, { month: "short", day: "numeric", year: "numeric" }).format(d);
 export const dayLabel = (key: string) => {
   const d = new Date(`${key}T12:00:00Z`);
-  return { dow: d.toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" }), date: d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }) };
+  return { dow: fmt("UTC", { weekday: "short" }).format(d), date: fmt("UTC", { month: "short", day: "numeric" }).format(d) };
 };
 
 export function greeting(tz: string, now = new Date()) {

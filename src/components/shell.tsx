@@ -196,7 +196,14 @@ function Bell({ initial }: { initial: number }) {
     try { const r = await fetch("/api/notifications/summary"); if (r.ok) { const unread = (await r.json()).unread; setFetched({ n: unread, initial }); } } catch { /* offline */ }
   }, [initial]);
   useEffect(() => { const t = setTimeout(refresh, 0); return () => clearTimeout(t); }, [path, refresh]);
-  useEffect(() => { const t = setInterval(refresh, 30_000); return () => clearInterval(t); }, [refresh]);
+  // Background tabs don't poll; coming back catches up at once
+  useEffect(() => {
+    const visible = () => document.visibilityState === "visible";
+    const t = setInterval(() => { if (visible()) refresh(); }, 30_000);
+    const onShow = () => { if (visible()) refresh(); };
+    document.addEventListener("visibilitychange", onShow);
+    return () => { clearInterval(t); document.removeEventListener("visibilitychange", onShow); };
+  }, [refresh]);
   return (
     <Link className="icon-btn" href="/notifications" aria-label={n ? `Notifications, ${n} need review` : "Notifications"}>
       <Icon name="bell" />
