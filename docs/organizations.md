@@ -6,7 +6,8 @@ what's built.
 
 **Status:** Phase 1 built, 2026-10-01 (migration `20260930160137_organizations`, service `src/lib/organizations.ts`,
 tests `tests/api/organizations.test.ts`).
-**Related:** [subscriptions.md](subscriptions.md) (plans, PayMongo, entitlements), README › Protections and verification.
+**Related:** [subscriptions.md](subscriptions.md) (plans, PayMongo, entitlements), README › Protections and verification,
+[mobile-organizations.md](mobile-organizations.md) (organizations in the Android and iOS app).
 
 ## Contents
 
