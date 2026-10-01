@@ -4,7 +4,7 @@ import type { AppApproval } from "@prisma/client";
 import { db } from "@/lib/db";
 import { childFor } from "@/lib/config-service";
 import { APPROVAL_LABEL, audit, requestedApps } from "@/lib/family-service";
-import { conflict } from "@/lib/errors";
+import { conflict, isUniqueViolation } from "@/lib/errors";
 import { appMinutesOn, dateFromKey, dayKey, getFamily } from "@/lib/queries";
 import { authed, body, clientLabel, query } from "@/lib/mobile-api";
 import { APPS_UPGRADE, familyEntitlements, visibleApps } from "@/lib/plan-access";
@@ -62,8 +62,11 @@ const Body = z.object({
 export const POST = authed<{ id: string }>(async ({ req, user, params }) => {
   const b = await body(req, Body);
   const child = await childFor(user.familyId, params.id);
-  if (await db.childApp.findUnique({ where: { childId_name: { childId: child.id, name: b.name } } })) throw conflict(`${b.name} is already on ${child.name}'s list.`);
-  const app = await db.childApp.create({ data: { childId: child.id, name: b.name, approval: b.approval, dailyLimitMinutes: b.dailyLimitMinutes ?? null } });
+  const taken = () => conflict(`${b.name} is already on ${child.name}'s list.`);
+  if (await db.childApp.findUnique({ where: { childId_name: { childId: child.id, name: b.name } } })) throw taken();
+  // A double tap (or the device reporting the app at the same moment) passes the check above twice
+  const app = await db.childApp.create({ data: { childId: child.id, name: b.name, approval: b.approval, dailyLimitMinutes: b.dailyLimitMinutes ?? null } })
+    .catch((e) => { throw isUniqueViolation(e) ? taken() : e; });
   await db.configChange.create({
     data: {
       familyId: user.familyId, childId: child.id, key: "APP_RESTRICTIONS", title: `${app.name} added as ${APPROVAL_LABEL[app.approval]}`,

@@ -3,7 +3,7 @@ import type { BrowserInstallation, CheckStatus, Child } from "@prisma/client";
 import { z } from "zod";
 import { db } from "./db";
 import { enforce } from "./rate-limit";
-import { resolveAlerts } from "./engine";
+import { createAlertUnless, resolveAlerts } from "./engine";
 import { OFFLINE_AFTER_MS } from "./health";
 import { browserLabel, browserOfflineKey as offlineKey } from "./browser-service";
 import { ServiceError } from "./errors";
@@ -48,12 +48,10 @@ export function scoreChecks(checks: { status: CheckStatus }[]) {
   return { score: counted.filter((c) => c.status === "PASS").length, total: counted.length };
 }
 
+/** Under a lock: two health reports at once (a retry, two windows) would otherwise both raise it. */
 async function raiseOnce(inst: Inst, resolveKey: string, alert: { title: string; body: string; icon: string }) {
-  const open = await db.alert.findFirst({ where: { familyId: inst.familyId, resolveKey, resolvedAt: null } });
-  if (open) return;
-  await db.alert.create({
-    data: { familyId: inst.familyId, childId: inst.childId, severity: "ATTENTION", category: "PROTECTION", subject: label(inst), resolveKey, ...alert },
-  });
+  await createAlertUnless(resolveKey, { familyId: inst.familyId, resolveKey, resolvedAt: null },
+    { familyId: inst.familyId, childId: inst.childId, severity: "ATTENTION", category: "PROTECTION", subject: label(inst), resolveKey, ...alert });
 }
 
 /** Stores a health report and raises or resolves the alerts it implies. */
@@ -127,15 +125,13 @@ export async function raiseBrowserOfflineAlerts(now = Date.now()) {
   let raised = 0;
   for (const inst of quiet) {
     const rk = offlineKey(inst.id);
-    if (await db.alert.findFirst({ where: { familyId: inst.familyId, resolveKey: rk, resolvedAt: null } })) continue;
-    await db.alert.create({
-      data: {
-        familyId: inst.familyId, childId: inst.childId, severity: "ATTENTION", category: "DEVICES", icon: "wifi-off",
-        title: "eGuard can't verify this browser", subject: label(inst), resolveKey: rk,
-        body: `${browserLabel(inst)} hasn't checked in for over a day. Its last settings stay active, but eGuard can't confirm them until the browser is opened again. If eGuard was removed or turned off, it stops protecting that browser.`,
-      },
+    // Two overlapping maintenance runs must not both raise it
+    const created = await createAlertUnless(rk, { familyId: inst.familyId, resolveKey: rk, resolvedAt: null }, {
+      familyId: inst.familyId, childId: inst.childId, severity: "ATTENTION", category: "DEVICES", icon: "wifi-off",
+      title: "eGuard can't verify this browser", subject: label(inst), resolveKey: rk,
+      body: `${browserLabel(inst)} hasn't checked in for over a day. Its last settings stay active, but eGuard can't confirm them until the browser is opened again. If eGuard was removed or turned off, it stops protecting that browser.`,
     });
-    raised++;
+    if (created) raised++;
   }
   return raised;
 }
@@ -179,9 +175,11 @@ export async function recordEvents(inst: Inst, report: EventsReport, now = new D
   if (ageDays < -1 || ageDays > EVENTS_MAX_AGE_DAYS) throw new ServiceError(400, "Counts can only be sent for the last two weeks.", "invalid_date");
 
   const rows = Object.entries(report.blocked).filter(([, n]) => n > 0);
-  await db.$transaction([
-    db.browserEventDaily.deleteMany({ where: { installationId: inst.id, date } }),
-    db.browserEventDaily.createMany({ data: rows.map(([category, blockedCount]) => ({ installationId: inst.id, date, category, blockedCount })) }),
-  ]);
+  await db.$transaction(async (tx) => {
+    // A retry arriving with the original (lost response) would otherwise insert the same rows twice and fail
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`browserevents:${inst.id}:${report.date}`}))`;
+    await tx.browserEventDaily.deleteMany({ where: { installationId: inst.id, date } });
+    await tx.browserEventDaily.createMany({ data: rows.map(([category, blockedCount]) => ({ installationId: inst.id, date, category, blockedCount })) });
+  });
   return { date: report.date, categories: rows.length };
 }

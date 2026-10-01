@@ -8,6 +8,8 @@ import { photoUrl } from "./mobile-api";
 import { ensureOfflineAlerts } from "./engine";
 import { touchSimulated } from "./simulator";
 import { notFound } from "./errors";
+import { isDismissible } from "./health";
+import { capAppUsage } from "./plan-access";
 import { requestedApps } from "./family-service";
 
 /**
@@ -22,7 +24,9 @@ export async function refreshFamily(familyId: string) {
 }
 
 /** `offline`: devices counted by their last known state. "Fully protected" needs every one of them online. */
-export function healthLabel(score: number, total: number, offline = 0) {
+export function healthLabel(score: number, total: number, offline: number, devices: number) {
+  // Nothing paired: every check is "not configured", which isn't the same as needing action (web shows "–")
+  if (!devices) return "No devices yet";
   if (score === total) return offline ? "Last known: all set" : "Fully protected";
   if (score >= total - 2) return "Good protection";
   if (score >= total / 2) return "Needs attention";
@@ -123,7 +127,7 @@ export function alertJson(a: Alert & { read: boolean }, tz: string) {
     id: a.id, childId: a.childId, deviceId: a.deviceId,
     severity: a.severity, category: a.category, icon: a.icon,
     title: a.title, body: a.body, subject: a.subject, fromValue: a.fromValue, toValue: a.toValue,
-    read: a.read, resolved: !!a.resolvedAt, dismissible: a.severity === "INFO" && !a.resolvedAt,
+    read: a.read, resolved: !!a.resolvedAt, dismissible: isDismissible(a),
     createdAt: a.createdAt, timeLabel: dayTime(a.createdAt, tz), day: dayGroup(a.createdAt, tz),
     action: mobileAlertAction(a),
   };
@@ -144,7 +148,7 @@ export const ALERT_FILTERS: Record<string, AlertCategory[] | null> = {
 
 export type Period = "today" | "7d" | "30d";
 
-export async function screenTime(child: ChildView, tz: string, period: Period) {
+export async function screenTime(child: ChildView, tz: string, period: Period, appLimit: number | null = null) {
   const n = period === "today" ? 1 : period === "7d" ? 7 : 30;
   const days = lastNDays(n * 2, tz); // current period plus the one before, for comparison
   const cur = days.slice(n), prev = days.slice(0, n);
@@ -171,6 +175,9 @@ export async function screenTime(child: ChildView, tz: string, period: Period) {
     if (today.length) hourly = Array.from({ length: 24 }, (_, h) => today.reduce((s, r) => s + r.hourly[h], 0));
   }
   const byName = new Map(rules.map((r) => [r.name, r]));
+  // No more app names than the plan's Apps list shows; the rest are summed as Others
+  const capped = capAppUsage(apps.map((a) => ({ app: a.app, minutes: a._sum.minutes ?? 0 })), appLimit);
+  const appRows = capped.named.concat(capped.others > 0 ? [{ app: "Others", minutes: capped.others }] : []);
   return {
     period, from: cur[0], to: cur[cur.length - 1],
     totalMinutes: total,
@@ -179,10 +186,11 @@ export async function screenTime(child: ChildView, tz: string, period: Period) {
     limitMinutes: period === "today" ? limitOn(child, cur[0]) : child.dailyLimitMinutes,
     days: series,
     hourly,
-    apps: apps.map((a) => {
-      const rule = byName.get(a.app);
-      return { name: a.app, minutes: a._sum.minutes ?? 0, appId: rule?.id ?? null, approval: rule?.approval ?? null, dailyLimitMinutes: rule?.dailyLimitMinutes ?? null };
+    apps: appRows.map((a) => {
+      const rule = a.app === "Others" ? undefined : byName.get(a.app);
+      return { name: a.app, minutes: a.minutes, appId: rule?.id ?? null, approval: rule?.approval ?? null, dailyLimitMinutes: rule?.dailyLimitMinutes ?? null };
     }),
+    hiddenApps: capped.hidden,
   };
 }
 
@@ -209,7 +217,7 @@ export async function childOverview(graph: FamilyGraph, childId: string, tz: str
     child: childJson(c, { photo: photos.get(c.id), todayMinutes: minutes.get(c.id), tz }),
     health: {
       score: c.health.score, total: c.health.total, offline: c.health.offline, verified: c.health.verified,
-      label: healthLabel(c.health.score, c.health.total, c.health.offline), checks: c.health.checks,
+      label: healthLabel(c.health.score, c.health.total, c.health.offline, c.devices.length), checks: c.health.checks,
     },
     today: {
       minutes: minutes.get(c.id) ?? 0,

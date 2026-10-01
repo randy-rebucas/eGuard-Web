@@ -5,6 +5,9 @@ function dayIndex(d: Date, tz: string) {
   return Math.floor(new Date(`${k}T00:00:00Z`).getTime() / 864e5);
 }
 
+/** "8 years old"; a child born this year (age 0 by year) is "Under 1 year old". */
+export const ageLabel = (age: number) => (age < 1 ? "Under 1 year old" : `${age} ${age === 1 ? "year" : "years"} old`);
+
 const time = (d: Date, tz: string) => fmt(tz, { hour: "numeric", minute: "2-digit" }).format(d);
 /** "2:32 PM" in the family's time zone */
 export const clockTime = time;

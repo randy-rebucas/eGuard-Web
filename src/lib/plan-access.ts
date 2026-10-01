@@ -35,6 +35,18 @@ export function visibleApps<A extends { name: string; approval: string }>(apps: 
   return { apps: apps.filter((a) => keep.has(a)), hidden: apps.length - keep.size };
 }
 
+/**
+ * App usage on a plan with an app limit: only the `limit` most used are named, so usage lists (reports, screen
+ * time) can't reveal more apps than the Apps tab shows. `others` sums the rest, including the devices' own
+ * "Others" row; `hidden` counts the named apps left out. Rows must be most used first.
+ */
+export function capAppUsage<R extends { app: string; minutes: number }>(rows: R[], limit: number | null) {
+  const named = rows.filter((r) => r.app !== "Others");
+  const shown = limit == null ? named : named.slice(0, limit);
+  const total = rows.reduce((s, r) => s + r.minutes, 0);
+  return { named: shown, others: total - shown.reduce((s, r) => s + r.minutes, 0), hidden: named.length - shown.length };
+}
+
 export const APPS_UPGRADE = `See and manage every app with ${planWith((e) => e.appMonitoringLimit == null).name}.`;
 
 /** Current locations stop being kept when a plan without location sharing takes over. History is kept, hidden. */

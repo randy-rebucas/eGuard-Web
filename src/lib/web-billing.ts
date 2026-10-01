@@ -1,6 +1,6 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import type { StorePurchase } from "@prisma/client";
+import type { Prisma, StorePurchase } from "@prisma/client";
 import { db } from "./db";
 import { ServiceError, conflict, forbidden } from "./errors";
 import { audit } from "./audit";
@@ -12,7 +12,7 @@ import { BASE_PLAN, type Interval, type PaidPlanId, planById, planByName, planBy
 import { applyEntitlement, currentPurchase, isEntitled } from "./entitlement";
 import {
   type PaymongoConfig, type WebhookEvent, cancelSubscription, createCheckoutSession, createSubscription, customerFor, endOfBillingDay,
-  getCheckoutSession, getPaymentIntent, getSubscription, paidPayment, paymongoConfig, planFor,
+  getCheckoutSession, getPayment, getPaymentIntent, getSubscription, isFullyRefunded, paidPayment, paymongoConfig, planFor,
 } from "./paymongo";
 
 /**
@@ -90,6 +90,13 @@ async function assertCanBuy(familyId: string, plan: PaidPlanId, autoRenew: boole
   if (now && now.id !== plan) throw conflict(`Your ${now.name} pass runs until ${until}. Switch to ${planById(plan).name} after that, or buy another ${now.name} month to extend it.`);
 }
 
+/**
+ * Serializes anything that starts paid time "when the current paid time ends" (passes, sponsor codes) for one
+ * family. Released when the transaction ends.
+ */
+export const lockPaidTime = (tx: Prisma.TransactionClient, familyId: string) =>
+  tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`paid-time:${familyId}`}))`;
+
 /* ---------- Pass (Checkout) ---------- */
 
 export async function buyPass(actor: Actor, planId: PaidPlanId, o: WebBillingOpts = {}) {
@@ -122,14 +129,19 @@ async function syncPass(p: StorePurchase, cfg: PaymongoConfig, f: Fetch | undefi
   const cs = (await getCheckoutSession(cfg, p.purchaseToken, f)).attributes;
   const pay = paidPayment(cs);
   if (pay) {
-    // Starts when the family's current paid time ends, so an early renewal loses nothing
-    // Only time on the same plan counts; another plan over paid time is refused (assertCanBuy)
-    const plan = planByProduct(p.productId);
-    const others = (await db.storePurchase.findMany({ where: { familyId: p.familyId, id: { not: p.id } } })).filter((x) => planByProduct(x.productId) === plan);
-    const paidUntil = Math.max(now.getTime(), ...others.filter((x) => isEntitled(x, now.getTime())).map((x) => x.expiresAt!.getTime()));
-    const expiresAt = addInterval(new Date(paidUntil), webProduct(p.productId)!.interval);
-    // Conditional, so the webhook and the parent's return from checkout can't both extend the plan
-    const won = await db.storePurchase.updateMany({ where: { id: p.id, state: "PENDING" }, data: { state: "PAID", paymentId: pay.id, expiresAt, checkedAt: now } });
+    const won = await db.$transaction(async (tx) => {
+      // Under the family's purchase lock (shared with sponsor codes): two passes confirmed at once would
+      // otherwise both start from the same paid-until date and overlap, losing a paid month
+      await lockPaidTime(tx, p.familyId);
+      // Starts when the family's current paid time ends, so an early renewal loses nothing
+      // Only time on the same plan counts; another plan over paid time is refused (assertCanBuy)
+      const plan = planByProduct(p.productId);
+      const others = (await tx.storePurchase.findMany({ where: { familyId: p.familyId, id: { not: p.id } } })).filter((x) => planByProduct(x.productId) === plan);
+      const paidUntil = Math.max(now.getTime(), ...others.filter((x) => isEntitled(x, now.getTime())).map((x) => x.expiresAt!.getTime()));
+      const expiresAt = addInterval(new Date(paidUntil), webProduct(p.productId)!.interval);
+      // Conditional, so the webhook and the parent's return from checkout can't both extend the plan
+      return tx.storePurchase.updateMany({ where: { id: p.id, state: "PENDING" }, data: { state: "PAID", paymentId: pay.id, expiresAt, checkedAt: now } });
+    });
     if (won.count) await audit(p.familyId, "PayMongo", "purchase.paid", `${p.productId} ${(pay.attributes.amount / 100).toFixed(2)} PHP`);
   } else if (cs.status === "expired" || now.getTime() - p.createdAt.getTime() > ABANDONED_MS) {
     await db.storePurchase.updateMany({ where: { id: p.id, state: "PENDING" }, data: { state: "EXPIRED", checkedAt: now } });
@@ -289,17 +301,26 @@ export async function handlePaymongoEvent(e: WebhookEvent, o: WebBillingOpts = {
   if (e.type === "refund.succeeded" || e.type === "refund.updated") {
     if (e.type === "refund.updated" && a.status !== "succeeded") return { handled: false };
     const paymentId = typeof a.payment_id === "string" ? a.payment_id : null;
+    // Only a full refund ends a pass or voids a batch of codes; re-read the payment rather than trust the event
+    if (paymentId) {
+      const payment = (await getPayment(requireConfig(o), paymentId, o.fetch)).attributes;
+      const amount = typeof a.amount === "number" ? a.amount : 0;
+      if (!isFullyRefunded(payment, { id: r.id, amount })) return { handled: true, partial: true };
+    }
     const hits = paymentId ? await db.storePurchase.findMany({ where: { paymentId, store: STORE, state: { not: "VOIDED" } } }) : [];
     for (const p of hits) {
       await db.storePurchase.update({ where: { id: p.id }, data: { state: "VOIDED", autoRenewing: false, checkedAt: new Date() } });
       await audit(p.familyId, "PayMongo", "purchase.voided", p.productId);
       await applyEntitlement(p.familyId);
     }
-    return { handled: hits.length > 0 };
+    // Or an organization's sponsor codes (loaded lazily: organizations.ts builds on this module)
+    const batch = paymentId ? await (await import("./organizations")).handleBatchRefund(paymentId) : false;
+    return { handled: hits.length > 0 || batch };
   }
 
   if (e.type.startsWith("checkout_session.")) {
     rows = await db.storePurchase.findMany({ where: { purchaseToken: r.id, store: STORE } });
+    if (!rows.length) return { handled: await (await import("./organizations")).handleBatchCheckout(r.id, o) };
   } else if (e.type.startsWith("subscription.")) {
     // subscription.* carry the subscription; subscription.invoice.* carry the invoice
     const nested = a.subscription as { id?: unknown } | undefined;
@@ -327,7 +348,8 @@ export async function handlePaymongoEvent(e: WebhookEvent, o: WebBillingOpts = {
  */
 export async function sendPassReminders(now = new Date()) {
   const due = await db.storePurchase.findMany({
-    where: { store: STORE, state: "PAID", remindedAt: null, expiresAt: { gt: now, lte: new Date(now.getTime() + REMIND_BEFORE_MS) } },
+    // Passes, and plans from sponsor codes (store VOUCHER), which end the same way
+    where: { store: { in: [STORE, "VOUCHER"] }, state: "PAID", remindedAt: null, expiresAt: { gt: now, lte: new Date(now.getTime() + REMIND_BEFORE_MS) } },
   });
   let sent = 0;
   for (const p of due) {
@@ -338,6 +360,7 @@ export async function sendPassReminders(now = new Date()) {
     const family = await db.family.findUniqueOrThrow({ where: { id: p.familyId }, include: { users: { where: { role: "FAMILY_ADMIN", emailVerifiedAt: { not: null } } } } });
     const ends = shortDate(p.expiresAt!, family.timezone);
     const plan = planByProduct(p.productId)?.name ?? family.plan;
+    const what = p.store === "VOUCHER" ? "sponsored plan" : "pass";
     const link = `${appUrl()}/settings/subscription`;
     await db.alert.create({
       data: {
@@ -349,9 +372,9 @@ export async function sendPassReminders(now = new Date()) {
       try {
         await sendMail({
           to: u.email,
-          subject: `Your ${plan} pass ends on ${ends}`,
-          text: `Hi ${u.name.split(/\s+/)[0]},\n\nYour ${plan} pass ends on ${ends}. After that your family goes back to ${BASE_PLAN} (${FREE_LIMITS}). Children and devices already added stay protected.\n\nTo keep ${plan}, buy another pass or turn on auto-renew:\n${link}\n\n— eGuard`,
-          html: `<p>Hi ${escapeHtml(u.name.split(/\s+/)[0])},</p><p>Your ${escapeHtml(plan)} pass ends on <b>${escapeHtml(ends)}</b>. After that your family goes back to ${BASE_PLAN} (${FREE_LIMITS}). Children and devices already added stay protected.</p>`
+          subject: `Your ${plan} ${what} ends on ${ends}`,
+          text: `Hi ${u.name.split(/\s+/)[0]},\n\nYour ${plan} ${what} ends on ${ends}. After that your family goes back to ${BASE_PLAN} (${FREE_LIMITS}). Children and devices already added stay protected.\n\nTo keep ${plan}, buy another pass or turn on auto-renew:\n${link}\n\n— eGuard`,
+          html: `<p>Hi ${escapeHtml(u.name.split(/\s+/)[0])},</p><p>Your ${escapeHtml(plan)} ${what} ends on <b>${escapeHtml(ends)}</b>. After that your family goes back to ${BASE_PLAN} (${FREE_LIMITS}). Children and devices already added stay protected.</p>`
             + `<p><a href="${link}" style="display:inline-block;padding:12px 20px;border-radius:10px;background:#1a73e8;color:#fff;text-decoration:none;font-weight:600">Keep ${escapeHtml(plan)}</a></p>`,
         });
         sent++;

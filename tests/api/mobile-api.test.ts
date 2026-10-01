@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { PASSWORD, RUN, applyAndReport, call, cleanup, db, email, pairDevice, verificationToken, verifyInbox } from "./helpers";
+import { PASSWORD, RUN, applyAndReport, call, cleanup, db, email, inviteAndAccept, pairDevice, verificationToken, verifyInbox } from "./helpers";
 
 /**
  * End-to-end tests of the parent mobile API, screen by screen from public/ios.png.
@@ -265,12 +265,12 @@ describe("7–9. Pair a device, setup progress, configuration health", () => {
   it("changing one protection is verified per device and lands in history", async () => {
     const r = await call("PUT", `/children/${miaId}/protections/bedtime`, { token, body: { enabled: true, start: "21:00", end: "06:30", days: "SCHOOL_NIGHTS" } });
     expect(r.status).toBe(202);
-    expect(r.data.items[0]).toMatchObject({ key: "BEDTIME", status: "PENDING", to: "9:00 PM – 6:30 AM" });
+    expect(r.data.items[0]).toMatchObject({ key: "BEDTIME", status: "PENDING", to: "9:00 PM – 6:30 AM, school nights" });
     await applyAndReport(android.send);
     const b = await call("GET", `/batches/${r.data.batchId}`, { token });
     expect(b.data.items[0].status).toBe("VERIFIED");
     const hist = await call("GET", `/children/${miaId}/history`, { token });
-    expect(hist.data.changes[0]).toMatchObject({ key: "BEDTIME", title: "Bedtime updated", toValue: "9:00 PM – 6:30 AM" });
+    expect(hist.data.changes[0]).toMatchObject({ key: "BEDTIME", title: "Bedtime updated", toValue: "9:00 PM – 6:30 AM, school nights" });
     expect(hist.data.changes[0].actor).toMatch(/Randy Cruz on iOS app · verified on Galaxy A54/);
   });
 
@@ -364,7 +364,13 @@ describe("12. Screen time", () => {
     expect(w.data.days).toHaveLength(7);
     expect(w.data.hourly).toBeNull();
     expect(w.data.days[6].minutes).toBe(134);
+    // 30 days is an advanced report: refused on eGuard Plus, allowed on Family Pro
+    const locked = await call("GET", `/children/${miaId}/screen-time?period=30d`, { token });
+    expect(locked).toMatchObject({ status: 403, data: { code: "plan_required" } });
+    const famId = (await call("GET", "/family", { token })).data.id;
+    await db.family.update({ where: { id: famId }, data: { plan: "Family Pro" } });
     expect((await call("GET", `/children/${miaId}/screen-time?period=30d`, { token })).data.days).toHaveLength(30);
+    await db.family.update({ where: { id: famId }, data: { plan: "eGuard Plus" } });
     expect((await call("GET", `/children/${miaId}/screen-time?period=year`, { token })).status).toBe(400);
   });
 });
@@ -532,11 +538,8 @@ describe("16–17. Settings and subscription", () => {
     expect(await db.pushToken.count({ where: { token: "apns-token-1234567890" } })).toBe(0);
   });
 
-  it("family admin adds a parent, who can't change admin-only settings", async () => {
-    const add = await call("POST", "/family/members", { token, body: { name: "Ana Cruz", email: email("ana"), password: PASSWORD } });
-    expect(add.status).toBe(201);
-    anaId = add.data.id;
-    anaToken = (await call("POST", "/auth/login", { body: { email: email("ana"), password: PASSWORD } })).data.token;
+  it("family admin invites a parent, who joins on accepting and can't change admin-only settings", async () => {
+    ({ id: anaId, token: anaToken } = await inviteAndAccept(token, "Ana Cruz", email("ana"), PASSWORD));
     const fam = await call("GET", "/family", { token: anaToken });
     expect(fam.data).toMatchObject({ name: "Cruz Family", canManage: false });
     expect(fam.data.members).toHaveLength(2);

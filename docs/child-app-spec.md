@@ -129,7 +129,8 @@ send the OS default name and add a rename call (**Server gap G6**).
 }
 ```
 
-`201` returns `{ deviceId, token, childName }`. Store the token at once (section 10). It is shown only once.
+`code` is case-insensitive and may contain spaces or dashes ("k7pq-2m9x" works), so the field can accept what the
+parent reads out. `201` returns `{ deviceId, token, childName }`. Store the token at once (section 10). It is shown only once.
 
 | Response | What the app shows |
 |---|---|
@@ -216,7 +217,9 @@ For each protection: how it's applied, how the app reads back the real state, an
 **Reporting rule.** Send `config` with **exactly** the fields in `ProtectionConfig`
 ([protections.ts](../src/lib/protections.ts)), with the same types, and no `key` inside `config` (the server adds
 it). The server compares the whole object for equality: an extra field, `"120"` instead of `120`, or `"9:30"`
-instead of `"21:30"` fails verification.
+instead of `"21:30"` fails verification. A config with a missing or extra field, a wrong type or an impossible
+value (`"25:00"`) isn't stored at all: the response is still `200`, with `ignored: [{ key, error }]` naming each
+protection that was skipped. Treat a non-empty `ignored` as a bug and log it.
 
 | Key | Config to report | Android: apply and read back | iOS: apply and read back |
 |---|---|---|---|
@@ -326,7 +329,8 @@ in", not show a spinner. **Server gap G1** (silent push) fixes this.
 
 ### Screen time (`/usage`)
 
-- `date` is the device's local date, `YYYY-MM-DD`.
+- `date` is the device's local date, `YYYY-MM-DD`, and must be a real day within the last 30 days. Older queued
+  totals get a `400`: drop them.
 - `totalMinutes` is foreground time across all apps, 0 to 1440. Don't count eGuard's own screens.
 - `apps` is per-app minutes by display name, at most 200. Leave out apps with 0 minutes.
 - `hourly` is 24 numbers, minutes per local hour (0 is midnight), each 0 to 60.
@@ -345,13 +349,14 @@ the last threshold crossed and no `apps`, and change the listing copy.
   rest, one fix every 15 minutes is enough to count as "live" in the parent app.
 - Use balanced accuracy (not GPS-always). Send `accuracyM`.
 - `placeLabel` is optional. Don't reverse-geocode on the device in v1.
+- Each fix replaces the previous one whole: a field you leave out (`placeLabel`, `accuracyM`) is cleared, not kept from the last fix.
 - Nothing is stored on the device beyond the last unsent fix.
 
 ### Events (`/events`)
 
 | Event | Send when | Server throttles |
 |---|---|---|
-| `APP_INSTALLED` `{ app, ageRating? }` | A new app appears and App Approval is off | Only the first time the name is seen for the child |
+| `APP_INSTALLED` `{ app, ageRating? }` | A new app appears and App Approval is off | Only the first time the name is seen for the child. `ageRating` is 0–21; app names are trimmed, and a blank one is a `400` |
 | `APP_REQUESTED` `{ app }` | The child taps Ask, or a new app is installed with App Approval on | One open request per app; asking again for a blocked app alerts once a day |
 | `APP_BLOCKED` `{ app }` | The child opens a `BLOCKED` app | One alert per app per hour |
 | `LIMIT_REACHED` `{ minutes }` | The daily screen-time limit is hit (`minutes` is the limit) | One alert per 12 hours |

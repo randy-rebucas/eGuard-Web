@@ -42,6 +42,7 @@ export default async function NotificationsPage(props: PageProps<"/notifications
       </nav>
       <section className="card" style={{ padding: 8 }}>
         {alerts.length ? alerts.map((a) => <NotificationItem key={a.id} a={toAlertItem(a, family.timezone)} />)
+          : filter === "ALL" ? <EmptyState icon="bell" title="You're all caught up" text={showResolved ? "There are no notifications yet." : "New notifications appear here. Resolved ones are hidden."} />
           : <EmptyState icon="bell-off" title="Nothing here" text="There are no notifications in this category." />}
         {alerts.length < inTab ? (
           <div className="row t-meta" style={{ justifyContent: "space-between", gap: 10, flexWrap: "wrap", padding: "12px 8px 4px" }}>

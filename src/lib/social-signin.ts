@@ -2,8 +2,8 @@ import "server-only";
 import { db } from "./db";
 import { hashPassword, newToken } from "./auth";
 import { audit } from "./audit";
-import { ServiceError, conflict } from "./errors";
-import { GUARDIAN_REQUIRED, createFamily, userIdForMailbox } from "./family-service";
+import { ServiceError, conflict, isUniqueViolation } from "./errors";
+import { GUARDIAN_REQUIRED, createFamily, isPendingInvite, userIdForMailbox } from "./family-service";
 import { defaultFamilyName } from "./mobile-account";
 import type { Identity } from "./social-auth";
 
@@ -12,8 +12,26 @@ import type { Identity } from "./social-auth";
  * links an existing account with exactly the same email, or creates a new family.
  */
 export async function signInWithIdentity(id: Identity, opts: { name?: string; guardian?: boolean } = {}) {
-  const linked = await db.oAuthIdentity.findUnique({ where: { provider_subject: { provider: id.provider, subject: id.subject } } });
-  if (linked) return { userId: linked.userId, isNew: false };
+  const linkedUser = async () => (await db.oAuthIdentity.findUnique({ where: { provider_subject: { provider: id.provider, subject: id.subject } } }))?.userId;
+  try {
+    return await signIn(id, opts, await linkedUser());
+  } catch (e) {
+    // A double tap: the other request linked this identity (or created its family) first. Sign in to that
+    // account instead of showing "already exists" for an account the parent just made.
+    if (isUniqueViolation(e) || (e instanceof ServiceError && e.status === 409)) {
+      // The winner creates the family a moment before linking the identity, so look again briefly
+      for (let i = 0; i < 4; i++) {
+        const userId = await linkedUser();
+        if (userId) return { userId, isNew: false };
+        await new Promise((r) => setTimeout(r, 150));
+      }
+    }
+    throw e;
+  }
+}
+
+async function signIn(id: Identity, opts: { name?: string; guardian?: boolean }, linked: string | undefined) {
+  if (linked) return { userId: linked, isNew: false };
 
   if (!id.email || !id.emailVerified) {
     throw new ServiceError(400, "Your account needs a verified email address to use eGuard.", "email_required");
@@ -23,8 +41,10 @@ export async function signInWithIdentity(id: Identity, opts: { name?: string; gu
 
   // Link only on the exact address. An alias (randy+x@…, r.andy@gmail.com) can be a different person's
   // mailbox at some providers, so it never gets into this account.
+  // An invitation they haven't accepted isn't their account: signing in with Apple/Google never quietly puts them
+  // in the family that invited them (they accept from the emailed link). Creating their own family below drops it.
   const existing = await db.user.findUnique({ where: { email } });
-  if (existing) {
+  if (existing && !isPendingInvite(existing)) {
     if (!existing.emailVerifiedAt) {
       // Whoever registered this address never proved they own it; the provider just proved this person does.
       // Lock the registrant out: their password and sessions stop working before we hand over the account.
@@ -39,7 +59,9 @@ export async function signInWithIdentity(id: Identity, opts: { name?: string; gu
     await audit(existing.familyId, existing.name, "identity.linked", id.provider);
     return { userId: existing.id, isNew: false };
   }
-  if (await userIdForMailbox(email)) {
+  const other = await userIdForMailbox(email);
+  const otherUser = other ? await db.user.findUnique({ where: { id: other } }) : null;
+  if (otherUser && !isPendingInvite(otherUser)) {
     throw conflict("An eGuard account already uses another spelling of this email. Sign in with your password instead.");
   }
 

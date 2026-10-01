@@ -108,8 +108,12 @@ export function describeConfig(cfg: unknown): string {
   if (!cfg || typeof cfg !== "object") return "Not configured";
   const c = cfg as ProtectionConfig;
   switch (c.key) {
-    case "SCREEN_TIME": return `${fmtMinutes(c.dailyMinutes)} / day`;
-    case "BEDTIME": return c.enabled ? `${to12h(c.start)} – ${to12h(c.end)}` : "Off";
+    // Name the weekend limit when it differs, or a weekend-only change reads the same before and after
+    case "SCREEN_TIME": return c.weekendMinutes === c.dailyMinutes || c.weekendMinutes == null
+      ? `${fmtMinutes(c.dailyMinutes)} / day`
+      : `${fmtMinutes(c.dailyMinutes)} / day, ${fmtMinutes(c.weekendMinutes)} weekends`;
+    // Name school nights: without it a school-nights bedtime reads as every night, and a days-only change looks unchanged
+    case "BEDTIME": return c.enabled ? `${to12h(c.start)} – ${to12h(c.end)}${c.days === "SCHOOL_NIGHTS" ? ", school nights" : ""}` : "Off";
     case "APP_RESTRICTIONS": return `Apps rated ${c.maxAgeRating}+ and under`;
     case "APP_APPROVAL": return c.enabled ? "Approval required" : "Off";
     case "CONTENT": return `Rated ${c.maxAgeRating}+ and under`;

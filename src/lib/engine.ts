@@ -3,6 +3,7 @@ import type { CheckStatus, Device, Prisma, ProtectionKey } from "@prisma/client"
 import { db } from "./db";
 import { PROTECTION_BY_KEY, configMatches, describeConfig, isConfigured } from "./protections";
 import { evaluate, isPassing } from "./health";
+import { ServiceError } from "./errors";
 
 export type ReportedProtection = { key: ProtectionKey; config: Record<string, unknown> };
 
@@ -136,23 +137,22 @@ export async function processReport(deviceId: string, report: DeviceReport) {
     } else if (prev && isPassing(prev.status) && !open.some((r) => now.getTime() - r.createdAt.getTime() < CHANGE_GRACE_MS)) {
       const prevCfg = prev.reported;
       const isLocation = rp.key === "LOCATION" && !isConfigured(reported);
-      await db.alert.create({
-        data: {
-          familyId: device.familyId, childId: device.childId, deviceId,
-          severity: status === "ACTION_REQUIRED" || isLocation ? "ACTION_REQUIRED" : "ATTENTION",
-          category: isLocation ? "LOCATION" : "PROTECTION",
-          icon: isLocation ? "map-pin-off" : "shield-alert",
-          title: isLocation ? "Location sharing turned off" : "Protection setting changed",
-          body: isLocation
-            ? "Location sharing was switched off on the device."
-            : `${def.name} was changed on the device and no longer matches your setting.`,
-          subject: label,
-          fromValue: isLocation ? null : describeConfig(prevCfg),
-          toValue: isLocation ? null : describeConfig(reported),
-          resolveKey: rk,
-        },
+      // Two reports arriving together both see the earlier passing state: raise it (and record it) once
+      const raised = await createAlertUnless(rk, { familyId: device.familyId, resolveKey: rk, resolvedAt: null }, {
+        familyId: device.familyId, childId: device.childId, deviceId,
+        severity: status === "ACTION_REQUIRED" || isLocation ? "ACTION_REQUIRED" : "ATTENTION",
+        category: isLocation ? "LOCATION" : "PROTECTION",
+        icon: isLocation ? "map-pin-off" : "shield-alert",
+        title: isLocation ? "Location sharing turned off" : "Protection setting changed",
+        body: isLocation
+          ? "Location sharing was switched off on the device."
+          : `${def.name} was changed on the device and no longer matches your setting.`,
+        subject: label,
+        fromValue: isLocation ? null : describeConfig(prevCfg),
+        toValue: isLocation ? null : describeConfig(reported),
+        resolveKey: rk,
       });
-      await db.configChange.create({
+      if (raised) await db.configChange.create({
         data: {
           familyId: device.familyId, childId: device.childId, key: rp.key,
           title: `${def.name} changed on device`, actor: `Changed on ${device.name}`,
@@ -195,6 +195,20 @@ export async function syncChildLimits(childId: string, cfg: unknown) {
 
 const rpHasLocation =(r: DeviceReport) => r.protections.some((p) => p.key === "LOCATION");
 
+/**
+ * Creates an alert unless one matching `exists` is already there. Check and create run under one lock per
+ * `lockKey`, so requests arriving together (a child tapping "Ask" three times, an extension retrying) raise one
+ * alert, not one each, and parents aren't emailed three times. Returns whether it created one.
+ */
+export async function createAlertUnless(lockKey: string, exists: Prisma.AlertWhereInput, data: Prisma.AlertUncheckedCreateInput) {
+  return db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`alert:${lockKey}`}))`;
+    if (await tx.alert.findFirst({ where: exists, select: { id: true } })) return false;
+    await tx.alert.create({ data });
+    return true;
+  });
+}
+
 export async function resolveAlerts(familyId: string, resolveKey: string) {
   await db.alert.updateMany({ where: { familyId, resolveKey, resolvedAt: null }, data: { resolvedAt: new Date() } });
 }
@@ -208,15 +222,15 @@ export async function ensureOfflineAlerts(familyId: string) {
   });
   for (const d of devices) {
     const rk = `OFFLINE:${d.id}`;
-    const exists = await db.alert.findFirst({ where: { familyId, resolveKey: rk, resolvedAt: null } });
-    if (exists) continue;
-    await db.alert.create({
-      data: {
-        familyId, childId: d.childId, deviceId: d.id, severity: "ATTENTION", category: "DEVICES", icon: "wifi-off",
-        title: "Device hasn't synced in over a day",
-        body: "Settings stay active offline, but eGuard can't verify them until the device reconnects.",
-        subject: `${d.child.name}'s ${d.name}`, resolveKey: rk,
-      },
+    const open = { familyId, resolveKey: rk, resolvedAt: null };
+    // The usual case (already raised) stays one cheap read; only a missing alert takes the lock
+    if (await db.alert.findFirst({ where: open, select: { id: true } })) continue;
+    // Runs on every page load and in the maintenance job, so two can overlap
+    await createAlertUnless(rk, open, {
+      familyId, childId: d.childId, deviceId: d.id, severity: "ATTENTION", category: "DEVICES", icon: "wifi-off",
+      title: "Device hasn't synced in over a day",
+      body: "Settings stay active offline, but eGuard can't verify them until the device reconnects.",
+      subject: `${d.child.name}'s ${d.name}`, resolveKey: rk,
     });
   }
 }
@@ -224,6 +238,8 @@ export async function ensureOfflineAlerts(familyId: string) {
 /** Starts a configuration check across devices. Devices answer on their next sync. */
 export async function startCheckRun(familyId: string, deviceIds?: string[]) {
   const devices = await db.device.findMany({ where: { familyId, ...(deviceIds ? { id: { in: deviceIds } } : {}) } });
+  // An empty run completes at once and would report "0 devices, 10 protections need review"
+  if (!devices.length) throw new ServiceError(409, "Pair a child's device before running a check.", "no_devices");
   const now = new Date();
   const run = await db.checkRun.create({
     data: { familyId, results: { create: devices.map((d) => ({ deviceId: d.id })) } },

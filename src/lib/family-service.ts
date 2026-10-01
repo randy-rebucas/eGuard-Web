@@ -3,12 +3,13 @@ import { randomInt } from "node:crypto";
 import { z } from "zod";
 import type { AppApproval, PairingKind, Prisma } from "@prisma/client";
 import { db } from "./db";
-import { PASSWORD_TOO_LONG, confirmPassword, hashPassword, passwordTooLong } from "./auth";
+import { PASSWORD_TOO_LONG, confirmPassword, hashPassword, isPendingInvite, passwordTooLong } from "./auth";
 import { refreshPurchases } from "./billing";
 import { cancelSubscriptionsBeforeDeletion } from "./web-billing";
+import { handOverOrganizations } from "./organizations";
 import { audit } from "./audit";
 import { profileConfigs, type ProfileId } from "./profiles";
-import type { ProtectionConfig } from "./protections";
+import { fmtMinutes, type ProtectionConfig } from "./protections";
 import type { Actor } from "./config-service";
 import { conflict, forbidden, invalid, isUniqueViolation, notFound, planLimit } from "./errors";
 import { requireVerifiedEmail } from "./email-verification";
@@ -28,9 +29,16 @@ export const NAME_TOO_LONG = `Use up to ${NAME_MAX} characters.`;
 
 /* ---------- Children ---------- */
 
+/** Oldest birth year offered is this many years back. */
+export const MAX_CHILD_AGE = 18;
+
 export const ChildSchema = z.object({
   name: z.string().trim().min(1, "Enter a name.").max(40),
-  birthYear: z.coerce.number().int().min(new Date().getFullYear() - 19, "eGuard is for children under 18.").max(new Date().getFullYear(), "Enter a valid birth year."),
+  // Bounds are read when validating, not when the module loads, so a server running over New Year stays right.
+  // Born 18 years ago can still be 17 (birthday later this year); 19 years ago is 18 at least.
+  birthYear: z.coerce.number({ error: "Enter a valid birth year." }).int("Enter a valid birth year.")
+    .refine((y) => y >= new Date().getFullYear() - MAX_CHILD_AGE, "eGuard is for children under 18.")
+    .refine((y) => y <= new Date().getFullYear(), "Enter a valid birth year."),
 });
 const HUES = [205, 160, 330, 28, 265, 190];
 
@@ -46,24 +54,41 @@ export function childLimitReached(plan: string, count: number) {
 export async function createChild(actor: Actor, input: { name: string; birthYear: number; profile?: ProfileId }) {
   // The limit comes from the plan; make sure a lapsed or refunded subscription is reflected first
   await refreshPurchases(actor.familyId);
-  const [count, family] = await Promise.all([
-    db.child.count({ where: { familyId: actor.familyId } }),
-    db.family.findUniqueOrThrow({ where: { id: actor.familyId }, select: { plan: true } }),
-  ]);
-  const full = childLimitReached(family.plan, count);
-  if (full) throw planLimit(full);
   const age = new Date().getFullYear() - input.birthYear;
   const configs = profileConfigs(input.profile ?? "PROTECTED", age);
   const screen = configs.find((c) => c.key === "SCREEN_TIME") as Extract<ProtectionConfig, { key: "SCREEN_TIME" }>;
-  const child = await db.child.create({
-    data: {
-      familyId: actor.familyId, name: input.name, birthYear: input.birthYear, hue: HUES[count % HUES.length],
-      dailyLimitMinutes: screen.dailyMinutes, weekendLimitMinutes: screen.weekendMinutes,
-      policies: { create: configs.map((c) => ({ key: c.key, config: c as Prisma.InputJsonValue })) },
-    },
+  const child = await db.$transaction(async (tx) => {
+    // One add at a time per family (two parents, or web and app at once): otherwise both pass the count below
+    // and the family ends up over its plan's limit. Released when the transaction ends.
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`child.create:${actor.familyId}`}))`;
+    const [existing, family] = await Promise.all([
+      tx.child.findMany({ where: { familyId: actor.familyId }, select: { name: true } }),
+      tx.family.findUniqueOrThrow({ where: { id: actor.familyId }, select: { plan: true } }),
+    ]);
+    const full = childLimitReached(family.plan, existing.length);
+    if (full) throw planLimit(full);
+    // Most often the same child added twice (two tabs, web and app); a nickname tells real namesakes apart
+    if (existing.some((e) => e.name.trim().toLowerCase() === input.name.trim().toLowerCase())) {
+      throw conflict(`You already have a child named ${input.name}. If this is another child, add a last initial or nickname.`);
+    }
+    return tx.child.create({
+      data: {
+        familyId: actor.familyId, name: input.name, birthYear: input.birthYear, hue: HUES[existing.length % HUES.length],
+        dailyLimitMinutes: screen.dailyMinutes, weekendLimitMinutes: screen.weekendMinutes,
+        policies: { create: configs.map((c) => ({ key: c.key, config: c as Prisma.InputJsonValue })) },
+      },
+    });
   });
   await audit(actor.familyId, actor.name, "child.created", child.name);
   return child;
+}
+
+/** The "already have a child named …" error when another child in the family uses this name (any case). */
+export async function assertNameFree(familyId: string, name: string, exceptChildId?: string) {
+  const others = await db.child.findMany({ where: { familyId, ...(exceptChildId ? { id: { not: exceptChildId } } : {}) }, select: { name: true } });
+  if (others.some((o) => o.name.trim().toLowerCase() === name.trim().toLowerCase())) {
+    throw conflict(`You already have a child named ${name}. Add a last initial or nickname to tell them apart.`);
+  }
 }
 
 export async function deleteChild(actor: Actor, childId: string, password: string) {
@@ -71,8 +96,22 @@ export async function deleteChild(actor: Actor, childId: string, password: strin
   await confirmPassword(actor.id, password);
   const child = await db.child.findFirst({ where: { id: childId, familyId: actor.familyId } });
   if (!child) throw notFound("Child");
-  await db.child.delete({ where: { id: child.id } });
+  const [, gone] = await db.$transaction([
+    // Codes aren't linked to the child in the schema, so they'd outlive it: a device pairing with one would
+    // fail with a database error and use the code up
+    db.pairingCode.deleteMany({ where: { childId: child.id, familyId: actor.familyId } }),
+    // deleteMany: two deletes at once (two parents, a double tap) make the second a 404, not a database error
+    db.child.deleteMany({ where: { id: child.id, familyId: actor.familyId } }),
+  ]);
+  if (!gone.count) throw notFound("Child");
   await audit(actor.familyId, actor.name, "child.deleted", child.name);
+  // Like removing a device, this ends verification and tamper alerts, so the other parents hear about it
+  await db.alert.create({
+    data: {
+      familyId: actor.familyId, severity: "ATTENTION", category: "PROTECTION", icon: "trash", title: "Child removed", subject: child.name,
+      body: `${actor.name} removed ${child.name} and their data from eGuard. Protections already on their devices stay, but eGuard no longer verifies them or tells you if they change.`,
+    },
+  });
   return child;
 }
 
@@ -121,10 +160,20 @@ export async function setAppApproval(actor: Actor, appId: string, approval: AppA
   return updated;
 }
 
-export async function setAppLimit(actor: Actor, appId: string, minutes: number | null) {
-  await appFor(actor.familyId, appId);
+export async function setAppLimit(actor: Actor, appId: string, minutes: number | null, via: string) {
+  const app = await appFor(actor.familyId, appId);
   const m = minutes && minutes > 0 ? Math.min(1440, Math.round(minutes)) : null;
-  return db.childApp.update({ where: { id: appId }, data: { dailyLimitMinutes: m } });
+  if (app.dailyLimitMinutes === m) return app;
+  const updated = await db.childApp.update({ where: { id: appId }, data: { dailyLimitMinutes: m } });
+  // In the child's history like approvals, so "who changed what" covers limits too
+  const label = (v: number | null) => (v ? `${fmtMinutes(v)} a day` : "No limit");
+  await db.configChange.create({
+    data: {
+      familyId: actor.familyId, childId: app.childId, key: "APP_RESTRICTIONS", title: m ? `${app.name} limited to ${fmtMinutes(m)} a day` : `${app.name} limit removed`,
+      actor: `${actor.name} on ${via} · applies on next sync`, fromValue: label(app.dailyLimitMinutes), toValue: label(m),
+    },
+  });
+  return updated;
 }
 
 /* ---------- Devices ---------- */
@@ -137,7 +186,8 @@ export type PairingOptions = z.infer<typeof PairingOptions>;
 
 /**
  * A one-time code the child's device (or browser, for BROWSER codes) exchanges for its credentials. Only the
- * newest code for a child works: getting another replaces it, so at most one guessable code per child is ever live.
+ * newest code of each kind for a child works: getting another replaces it, so at most two guessable codes per child
+ * (one for the phone app, one for the browser extension) are ever live.
  */
 export async function createPairingCode(actor: Actor, childId: string, opts: PairingOptions = { kind: "DEVICE" }) {
   // The device limit comes from the plan; make sure a lapsed or refunded subscription is reflected first
@@ -158,7 +208,8 @@ export async function createPairingCode(actor: Actor, childId: string, opts: Pai
   const code = Array.from({ length: 8 }, () => alphabet[randomInt(alphabet.length)]).join("");
   const expiresAt = new Date(Date.now() + 15 * 60_000);
   await db.$transaction([
-    db.pairingCode.deleteMany({ where: { childId, usedAt: null } }),
+    // Replaces only the same kind: the Devices page offers a phone code and a browser code side by side
+    db.pairingCode.deleteMany({ where: { childId, usedAt: null, kind: opts.kind as PairingKind } }),
     db.pairingCode.create({
       data: { familyId: actor.familyId, childId, code, expiresAt, kind: opts.kind as PairingKind, deviceLabel: opts.kind === "BROWSER" ? opts.deviceLabel : null },
     }),
@@ -195,7 +246,13 @@ export async function removeDevice(actor: Actor, deviceId: string, password: str
   const d = await db.device.findFirst({ where: { id: deviceId, familyId: actor.familyId }, include: { child: true } });
   if (!d) throw notFound("Device");
   await confirmPassword(actor.id, password);
-  await db.device.delete({ where: { id: d.id } });
+  const [gone] = await db.$transaction([
+    // deleteMany: another parent removing it at the same moment is a 404 here, not a Prisma error
+    db.device.deleteMany({ where: { id: d.id } }),
+    // Alerts only hold the device's id, so its open ones (offline, protection changed) would never resolve
+    db.alert.updateMany({ where: { familyId: actor.familyId, deviceId: d.id, resolvedAt: null }, data: { resolvedAt: new Date() } }),
+  ]);
+  if (!gone.count) throw notFound("Device");
   const label = `${d.child.name}'s ${d.name}`;
   await audit(actor.familyId, actor.name, "device.removed", label);
   await db.alert.create({
@@ -246,13 +303,22 @@ export const listIdentities = (userId: string) =>
 
 /** Unlinks an Apple/Google sign-in, unless it's the only way left to sign in. */
 export async function unlinkIdentity(actor: Actor, identityId: string) {
-  const [user, identities] = await Promise.all([db.user.findUniqueOrThrow({ where: { id: actor.id } }), listIdentities(actor.id)]);
-  const target = identities.find((i) => i.id === identityId);
-  if (!target) throw notFound("Sign-in");
-  if (!user.passwordSet && identities.length === 1) {
-    throw conflict("This is your only way to sign in. Set a password first (sign out, then “Forgot password?”).");
-  }
-  await db.oAuthIdentity.delete({ where: { id: target.id } });
+  const target = await db.$transaction(async (tx) => {
+    // One unlink at a time per parent: unlinking Apple and Google at once would otherwise both see "another
+    // sign-in is left" and remove the last way into an account with no password
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`identities:${actor.id}`}))`;
+    const [user, identities] = await Promise.all([
+      tx.user.findUniqueOrThrow({ where: { id: actor.id } }),
+      tx.oAuthIdentity.findMany({ where: { userId: actor.id }, select: { id: true, provider: true } }),
+    ]);
+    const t = identities.find((i) => i.id === identityId);
+    if (!t) throw notFound("Sign-in");
+    if (!user.passwordSet && identities.length === 1) {
+      throw conflict("This is your only way to sign in. Set a password first (sign out, then “Forgot password?”).");
+    }
+    await tx.oAuthIdentity.delete({ where: { id: t.id } });
+    return t;
+  });
   await audit(actor.familyId, actor.name, "identity.unlinked", target.provider);
 }
 
@@ -267,37 +333,49 @@ export async function deleteAccount(actor: Actor, confirm: { password?: string; 
   else if (confirm.phrase !== "DELETE") throw invalid("Type DELETE to confirm.");
   if (actor.role === "FAMILY_ADMIN") {
     await cancelSubscriptionsBeforeDeletion(actor.familyId);
+    const members = await db.user.findMany({ where: { familyId: actor.familyId }, select: { id: true } });
+    await handOverOrganizations(members.map((m) => m.id));
     await db.family.delete({ where: { id: actor.familyId } });
     return { deleted: "family" as const };
   }
+  await handOverOrganizations([actor.id]);
   await db.user.delete({ where: { id: actor.id } });
   await audit(actor.familyId, actor.name, "member.left", user.email);
   return { deleted: "account" as const };
 }
 
-export const ParentSchema = z.object({
+/** Who the family admin invites. Children never get an account; another parent or guardian does. */
+export const InviteSchema = z.object({
   name: z.string().trim().min(2, "Enter their name.").max(NAME_MAX, NAME_TOO_LONG),
   email: z.string().trim().toLowerCase().email("Enter a valid email address."),
-  password: z.string().min(10, "Temporary password needs at least 10 characters.").refine((p) => !passwordTooLong(p), PASSWORD_TOO_LONG),
 });
 
-export async function addParent(actor: Actor, input: z.infer<typeof ParentSchema>) {
-  requireAdminActor(actor);
-  const taken = () => conflict("An account with this email already exists.");
-  if (await userIdForMailbox(input.email)) throw taken();
-  const user = await db.user.create({
-    data: { familyId: actor.familyId, name: input.name, email: input.email, passwordHash: await hashPassword(input.password), role: "PARENT" },
-  }).catch((e) => { throw isUniqueViolation(e) ? taken() : e; });
-  await audit(actor.familyId, actor.name, "member.added", input.email);
-  return user;
+export { isPendingInvite };
+
+/**
+ * Before an account is created for `email` by its owner (sign-up, Apple/Google): an invitation waiting at that
+ * address is dropped, so nobody is put in a family they didn't choose and an invitation can't hold an address hostage.
+ */
+export async function dropPendingInvite(email: string) {
+  const id = await userIdForMailbox(email);
+  if (!id) return false;
+  const u = await db.user.findUnique({ where: { id } });
+  if (!u || !isPendingInvite(u)) return false;
+  const r = await db.user.deleteMany({ where: { id: u.id, role: "PARENT", passwordSet: false, emailVerifiedAt: null } });
+  if (r.count) await audit(u.familyId, "eGuard", "member.invite_dropped", `${u.email} created their own eGuard account`);
+  return r.count > 0;
 }
 
 export async function removeParent(actor: Actor, userId: string) {
   requireAdminActor(actor);
   if (userId === actor.id) throw invalid("You can't remove yourself.");
+  const parent = await db.user.findFirst({ where: { id: userId, familyId: actor.familyId, role: "PARENT" } });
+  if (!parent) throw notFound("Family member");
+  await handOverOrganizations([userId]);
   const r = await db.user.deleteMany({ where: { id: userId, familyId: actor.familyId, role: "PARENT" } });
   if (!r.count) throw notFound("Family member");
-  await audit(actor.familyId, actor.name, "member.removed", userId);
+  // Name the person: the id means nothing in the audit log once their account is gone
+  await audit(actor.familyId, actor.name, isPendingInvite(parent) ? "member.invite_withdrawn" : "member.removed", `${parent.name} (${parent.email})`);
 }
 
 /* ---------- Registration ---------- */
@@ -330,6 +408,7 @@ export const RegisterSchema = z.object({
  */
 export async function createFamily(input: { name: string; familyName: string; email: string; passwordHash: string; emailVerified?: boolean; passwordSet?: boolean }) {
   const taken = () => conflict("An account with this email already exists. Sign in instead.");
+  await dropPendingInvite(input.email);
   if (await userIdForMailbox(input.email)) throw taken();
   // Family and admin are created in one statement, so a lost race leaves no empty family behind.
   // The base plan is free and has no renewal date; a store purchase sets one.

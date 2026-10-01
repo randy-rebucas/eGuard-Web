@@ -70,8 +70,8 @@ export default function DeleteAccountPage() {
           <p><strong>If you&apos;re the family admin</strong> (the person who created the family), deleting your account deletes the whole family:</p>
           <ul>
             <li>every parent&apos;s account in the family, and their sign-in sessions;</li>
-            <li>every child&apos;s profile and photo, and every paired device;</li>
-            <li>protection settings, screen time and app usage, app approvals, locations and location history;</li>
+            <li>every child&apos;s profile and photo, and every paired device and browser;</li>
+            <li>protection settings and browser rules, screen time and app usage, app approvals and site requests, locations and location history;</li>
             <li>alerts, change history, support messages and your plan and purchase records.</li>
           </ul>
           <p><strong>If you&apos;re another parent in the family</strong>, only your own account is deleted. The family, its children and their data stay with the family admin.</p>

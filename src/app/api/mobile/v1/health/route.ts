@@ -14,10 +14,12 @@ export const GET = authed(async ({ req, user }) => {
   const q = query(req, Query);
   await refreshFamily(user.familyId);
   const graph = await getFamilyGraph(user.familyId);
-  const h = q.childId ? childFromGraph(graph, q.childId).health : graph.familyHealth;
+  const child = q.childId ? childFromGraph(graph, q.childId) : null;
+  const h = child ? child.health : graph.familyHealth;
+  const devices = child ? child.devices.length : graph.devices.length;
   const toFix = h.checks.filter((c) => !isPassing(c.status));
   return NextResponse.json({
-    score: h.score, total: h.total, offline: h.offline, verified: h.verified, label: healthLabel(h.score, h.total, h.offline),
+    score: h.score, total: h.total, offline: h.offline, verified: h.verified, label: healthLabel(h.score, h.total, h.offline, devices),
     checks: h.checks,
     toFix: toFix.map((c) => ({ key: c.key, name: c.name, status: c.status, detail: c.detail, childId: c.fixChildId ?? q.childId ?? null, deviceId: c.fixDeviceId ?? null })),
     children: q.childId ? undefined : graph.children.map((c) => ({ id: c.id, name: c.name, score: c.health.score, total: c.health.total, status: c.status })),

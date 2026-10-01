@@ -140,7 +140,7 @@ export default async function HowItWorksPage() {
                 </div>
                 <h3>Parent app and web dashboard</h3>
                 <p>Choose protections, add devices, and see what&apos;s verified, from whichever screen is handy.</p>
-                <Platforms items={[[AppleMark, "iPhone"], [AndroidMark, "Android"], [() => <Monitor />, "Web"]]} />
+                <Platforms items={[[AndroidMark, "Android"], [() => <Monitor />, "Web"], [AppleMark, "iPhone: soon"]]} />
               </div>
 
               <Lane out="Your settings" back="Verified" />
@@ -168,7 +168,7 @@ export default async function HowItWorksPage() {
                 </div>
                 <h3>Their phone and browser</h3>
                 <p>eGuard applies your rules on their phone or tablet, and the extension does it in their browser.</p>
-                <Platforms items={[[AndroidMark, "Android"], [AppleMark, "iPhone & iPad"], [ChromeMark, "Chrome"], [EdgeMark, "Edge"], [FirefoxMark, "Firefox"]]} />
+                <Platforms items={[[AndroidMark, "Android"], [ChromeMark, "Chrome"], [EdgeMark, "Edge"], [AppleMark, "iPhone & iPad: soon"], [FirefoxMark, "Firefox: soon"]]} />
               </div>
             </div>
           </div>
@@ -233,7 +233,7 @@ export default async function HowItWorksPage() {
                 <span className="hw-num">3</span>
                 <h3>Connect your child&apos;s phone and browser</h3>
                 <p><b>Phone or tablet:</b> install eGuard, choose <b>I&apos;m setting up my child&apos;s device</b>, and enter the code. eGuard explains each permission before your phone asks for it.</p>
-                <p><b>Computer:</b> add the eGuard extension to Chrome, Edge or Firefox, and type the browser code on its setup page.</p>
+                <p><b>Computer:</b> add the eGuard extension to Chrome or Edge (Firefox is coming soon), and type the browser code on its setup page.</p>
               </div>
             </li>
 

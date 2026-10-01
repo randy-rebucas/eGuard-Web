@@ -23,8 +23,19 @@ export const LIMITS = {
   resetEmail: { max: 3, windowMs: 60 * 60_000 },
   resetIp: { max: 10, windowMs: 60 * 60_000 },
   supportUser: { max: 10, windowMs: 60 * 60_000 },
+  /** parent invitations an admin sends or resends: each emails someone outside the family */
+  inviteUser: { max: 10, windowMs: 60 * 60_000 },
   /** events one child device reports (each can add an app row or an alert); a real phone sends a handful an hour */
   deviceEvents: { max: 120, windowMs: 60 * 60_000 },
+  /** organization join codes a user tries (a wrong guess only joins an organization, but don't allow enumeration) */
+  joinCodeUser: { max: 20, windowMs: 60 * 60_000 },
+  /** sponsor codes a family tries; codes are worth money, so keep guessing slow */
+  voucherFamily: { max: 10, windowMs: 60 * 60_000 },
+  voucherUser: { max: 10, windowMs: 60 * 60_000 },
+  /** organization API requests per key (docs/organization-api.md): 600 per 10 minutes, about one a second */
+  orgApiKey: { max: 600, windowMs: 10 * 60_000 },
+  /** organization API requests with a wrong key, from one address */
+  orgApiBadKeyIp: { max: 20, windowMs: 15 * 60_000 },
 } satisfies Record<string, Limit>;
 
 /**

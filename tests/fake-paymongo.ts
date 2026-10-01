@@ -12,6 +12,8 @@ export function fakePaymongo() {
   const intents = new Map<string, { status: string; client_key: string; amount: number }>();
   const plans: { id: string; attributes: Record<string, unknown> }[] = [];
   const customers: { id: string; attributes: { email: string } }[] = [];
+  /** Refunds by payment id, as GET /v1/payments/{id} lists them */
+  const refunds = new Map<string, { id: string; type: string; attributes: { amount: number; status: string } }[]>();
   const calls: string[] = [];
   let n = 0;
   const id = (p: string) => `${p}_${++n}`;
@@ -31,7 +33,7 @@ export function fakePaymongo() {
 
     if (method === "POST" && path === "/v2/checkout_sessions") {
       const cs = id("cs");
-      sessions.set(cs, { status: "active", paymentId: null, amount: body.line_items[0].amount, reference: body.reference_number });
+      sessions.set(cs, { status: "active", paymentId: null, amount: body.line_items[0].amount * (body.line_items[0].quantity ?? 1), reference: body.reference_number });
       return ok(res(cs, "checkout_session", { checkout_url: `https://checkout.paymongo.test/${cs}` }));
     }
     if (method === "GET" && (m = path.match(/^\/v1\/checkout_sessions\/(.+)$/))) {
@@ -71,6 +73,11 @@ export function fakePaymongo() {
       if (method === "POST" && m[2]) s.status = "cancelled";
       return ok(res(m[1], "subscription", s));
     }
+    if (method === "GET" && (m = path.match(/^\/v1\/payments\/(.+)$/))) {
+      const s = [...sessions.values()].find((x) => x.paymentId === m![1]);
+      if (!s) return Response.json({ errors: [{ code: "resource_not_found" }] }, { status: 404 });
+      return ok(res(m[1], "payment", { amount: s.amount, status: "paid", refunds: refunds.get(m[1]) ?? [] }));
+    }
     if (method === "GET" && (m = path.match(/^\/v1\/payment_intents\/(.+)$/))) {
       const pi = intents.get(m[1]);
       return pi ? ok(res(m[1], "payment_intent", pi)) : Response.json({ errors: [{ code: "resource_not_found" }] }, { status: 404 });
@@ -82,6 +89,16 @@ export function fakePaymongo() {
     cfg, fetch, sessions, subs, intents, plans, customers, calls,
     /** The parent pays the checkout. */
     pay(cs: string) { const s = sessions.get(cs)!; s.paymentId = id("pay"); return s.paymentId; },
+    /**
+     * Refunds a payment, in full unless `amount` (centavos) says otherwise. Returns the refund resource a
+     * refund.succeeded webhook carries.
+     */
+    refund(paymentId: string, amount?: number) {
+      const paid = [...sessions.values()].find((x) => x.paymentId === paymentId)!.amount;
+      const r = res(id("ref"), "refund", { payment_id: paymentId, amount: amount ?? paid, status: "succeeded" });
+      refunds.set(paymentId, [...(refunds.get(paymentId) ?? []), r]);
+      return r;
+    },
     /** The first (or a renewal) invoice is paid; the next charge is on `nextBilling` (YYYY-MM-DD). */
     activate(sub: string, nextBilling: string) {
       const s = subs.get(sub)!;

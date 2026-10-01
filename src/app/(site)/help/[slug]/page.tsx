@@ -5,6 +5,7 @@ import { ArrowLeft, ArrowRight } from "lucide-react";
 import { HELP_ARTICLES, HELP_CATEGORIES } from "@/lib/help";
 import { jsonLd, pageMetadata, siteUrl } from "@/lib/site";
 import { supportEmail } from "@/lib/support";
+import { STORE_LINKS } from "@/components/brand-marks";
 import { PageHead } from "../../page-head";
 
 export const dynamicParams = false;
@@ -51,7 +52,7 @@ export default async function HelpArticlePage({ params }: PageProps<"/help/[slug
         <div className="st-prose" style={{ marginTop: 28 }}>
           {a.body.map((p) => <p key={p}>{p}</p>)}
           {a.category === "SETUP" ? (
-            <p className="st-note">The eGuard apps for Android and iOS are coming soon. Steps that install eGuard on a device apply once they&apos;re out; everything else works on the web today.</p>
+            <p className="st-note">The eGuard app for Android is on <a href={STORE_LINKS.googlePlay} target="_blank" rel="noopener noreferrer">Google Play</a>. The iPhone and iPad app is coming soon; until then, steps that install eGuard on an iPhone or iPad apply once it&apos;s out.</p>
           ) : null}
           <p className="st-note">Still stuck? Write to <a href={`mailto:${supportEmail()}`}>{supportEmail()}</a>.</p>
         </div>

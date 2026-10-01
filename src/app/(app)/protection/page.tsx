@@ -1,24 +1,25 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
-import { db } from "@/lib/db";
 import { getFamily, getFamilyGraph } from "@/lib/queries";
+import { entitlementsFor } from "@/lib/plans";
+import { LOCATION_UPGRADE } from "@/lib/plan-access";
 import { dayTime } from "@/lib/format";
 import { CAPABILITY_META, CHECK_META, PROTECTIONS, describeConfig, type Capability } from "@/lib/protections";
 import { isPassing } from "@/lib/health";
 import { Icon } from "@/components/icon";
-import { CapabilityChip, CheckBadge, HealthRing, PageHead } from "@/components/ui";
+import { CapabilityChip, CheckBadge, HealthRing, PageHead, UpgradeNote } from "@/components/ui";
 import { CheckButton, FlowButton } from "@/components/flow";
 
 export const metadata = { title: "Protection" };
 
 export default async function ProtectionPage() {
   const u = await requireUser();
-  const [family, { familyHealth: h, children, devices, deviceStates }, lastRun] = await Promise.all([
+  const [family, { familyHealth: h, children, devices, deviceStates }] = await Promise.all([
     getFamily(u.familyId),
     getFamilyGraph(u.familyId),
-    db.checkRun.findFirst({ where: { familyId: u.familyId, status: "COMPLETED" }, orderBy: { completedAt: "desc" } }),
   ]);
   const tz = family.timezone;
+  const locationSharing = entitlementsFor(family.plan).locationSharing;
   const open = h.checks.filter((c) => !isPassing(c.status));
   const isOff = (d: (typeof devices)[number]) => deviceStates[d.id].key === "offline";
   const offline = devices.filter(isOff);
@@ -29,12 +30,16 @@ export default async function ProtectionPage() {
     : h.verified ? "Every protection is verified"
     : h.score === h.total ? "Every protection is set, as last reported"
     : open.length === 1 ? "One protection needs review" : `${open.length} protections need review`;
+  // The latest device report, same source as each card's "Last checked". A check run isn't used: it may have
+  // covered one device, or ended with no device answering.
   const lastVerified = devices.flatMap((d) => d.protections).reduce<Date | null>((m, p) => (p.lastVerifiedAt && (!m || p.lastVerifiedAt > m) ? p.lastVerifiedAt : m), null);
+  const offlineNames = offline.map((d) => `${d.child.name}'s ${d.name}`);
+  const offlineText = offlineNames.length > 3 ? `${offlineNames.slice(0, 3).join(", ")} and ${offlineNames.length - 3} more` : offlineNames.join(", ");
 
   return (
     <>
       <PageHead title="Protection" text="Configuration Health tells you whether each protection is set up and verified on your children's devices. It measures configuration, not your children's behavior.">
-        <CheckButton><Icon name="scan-search" />Run Configuration Check</CheckButton>
+        {devices.length ? <CheckButton><Icon name="scan-search" />Run Configuration Check</CheckButton> : <Link className="btn btn-primary" href="/devices#pair"><Icon name="plus" />Pair a device</Link>}
       </PageHead>
 
       <section className="card card-pad" aria-labelledby="ch-title">
@@ -45,12 +50,12 @@ export default async function ProtectionPage() {
             <h2 id="ch-title" style={{ fontSize: 26, marginTop: 4 }}>{headline}</h2>
             {devices.length ? (
               <p className="muted" style={{ marginTop: 6 }}>
-                {lastRun?.completedAt ? `Last full check ${dayTime(lastRun.completedAt, tz)}` : `Last verified ${dayTime(lastVerified, tz)}`} across {devices.length} device{devices.length === 1 ? "" : "s"}.
-                {offline.length ? ` ${offline.map((d) => `${d.child.name}'s ${d.name}`).join(", ")} ${offline.length === 1 ? "is" : "are"} offline and keep${offline.length === 1 ? "s" : ""} the last verified state.` : ""}
+                {devices.length} device{devices.length === 1 ? "" : "s"}, {lastVerified ? `last checked ${dayTime(lastVerified, tz)}` : "not checked yet"}.
+                {offline.length ? ` ${offlineText} ${offline.length === 1 ? "is" : "are"} offline and keep${offline.length === 1 ? "s" : ""} the last known state.` : ""}
               </p>
             ) : (
               <p className="muted" style={{ marginTop: 6 }}>
-                Pair a child&apos;s device to start verifying protections. <Link className="link-btn" href="/devices">Add a device <Icon name="arrow-right" /></Link>
+                Pair a child&apos;s device to start verifying protections. <Link className="link-btn" href="/devices#pair">Add a device <Icon name="arrow-right" /></Link>
               </p>
             )}
             <div className="row" style={{ flexWrap: "wrap", gap: 8, marginTop: 14 }} aria-label="Status legend">
@@ -100,6 +105,8 @@ export default async function ProtectionPage() {
                 </div>
                 <div className="p-value">{values.length === 1 ? values[0] : values.length ? "Varies by child" : "No children yet"}</div>
                 {values.length > 1 ? <div className="t-meta">{children.map((c) => `${c.name}: ${describeConfig(c.policies.find((x) => x.key === p.key)?.config)}`).join(" · ")}</div> : null}
+                {/* The device can share, but the server drops locations on this plan: don't let "Sharing" imply parents see it */}
+                {p.key === "LOCATION" && !locationSharing ? <UpgradeNote compact title="" text={LOCATION_UPGRADE} /> : null}
                 <div className="caps">
                   <CapabilityChip cap={p.caps.ANDROID} platform="Android" />
                   <CapabilityChip cap={p.caps.IOS} platform="iOS" />

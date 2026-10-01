@@ -13,7 +13,8 @@ export default async function NewChildPage() {
   const full = childLimitReached(family.plan, count);
   return (
     <>
-      <PageHead title="Add a child" crumbs={[{ href: "/children", label: "Children" }]} text="After adding a child, pair their device from the Devices page with the eGuard app." />
+      <PageHead title="Add a child" crumbs={[{ href: "/children", label: "Children" }]}
+        text={full ? undefined : "Add their name and age. Next, you'll pair their phone or tablet with the eGuard app."} />
       <section className="card card-pad">
         {full ? <UpgradeNote icon="users" title="Your plan is full" text={full} /> : <ChildForm />}
       </section>

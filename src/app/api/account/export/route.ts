@@ -2,7 +2,8 @@ import { getUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 
 /**
- * Full export of the family's data (no password hashes, tokens or purchase tokens).
+ * Full export of the family's data, including browsers, browser protection and organizations joined
+ * (no password hashes, tokens or purchase tokens).
  * POST, since it writes to the audit log: a GET could be fired by a link or prefetch. The session cookie
  * is SameSite=Lax, so another site can't submit this for the parent.
  */
@@ -26,6 +27,13 @@ export async function POST() {
           appUsage: { select: { date: true, app: true, minutes: true, deviceId: true } },
           visits: { select: { deviceId: true, lat: true, lng: true, placeLabel: true, arrivedAt: true, lastSeenAt: true } },
           changes: { select: { key: true, title: true, actor: true, fromValue: true, toValue: true, createdAt: true } },
+          browserPolicy: {
+            select: {
+              version: true, safeBrowsing: true, safeSearch: true, blockedCategories: true, blockedDomains: true, allowedDomains: true,
+              unknownSitesPolicy: true, schedule: true, temporaryAllows: true, updatedBy: true, updatedAt: true,
+            },
+          },
+          accessRequests: { select: { domain: true, reason: true, status: true, duration: true, expiresAt: true, decidedBy: true, decidedAt: true, createdAt: true } },
           devices: {
             select: {
               id: true, name: true, model: true, platform: true, osVersion: true, lastSeenAt: true, createdAt: true,
@@ -39,6 +47,15 @@ export async function POST() {
       auditLogs: { select: { actor: true, action: true, detail: true, createdAt: true }, orderBy: { createdAt: "desc" } },
       supportTickets: { select: { category: true, subject: true, message: true, status: true, createdAt: true } },
       purchases: { select: { store: true, productId: true, state: true, autoRenewing: true, expiresAt: true, createdAt: true } },
+      // The eGuard browser extension on the children's computers (never its tokens)
+      browsers: {
+        select: {
+          childId: true, deviceLabel: true, browser: true, browserVersion: true, extensionVersion: true, platform: true,
+          lastSeenAt: true, revokedAt: true, protectionState: true, appliedPolicyVersion: true, createdAt: true,
+          dailyEvents: { select: { date: true, category: true, blockedCount: true } },
+        },
+      },
+      orgMemberships: { select: { joinedAt: true, org: { select: { name: true, kind: true } } } },
     },
   });
   await db.auditLog.create({ data: { familyId: u.familyId, actor: u.name, action: "data.exported" } });

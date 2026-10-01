@@ -30,6 +30,16 @@ async function mailToken(to: string, path: string, { after = 0 } = {}) {
 
 export const verificationToken = (to: string, o: { after?: number } = {}) => mailToken(to, "verify-email", o);
 export const resetToken = (to: string, o: { after?: number } = {}) => mailToken(to, "reset-password", o);
+export const inviteToken = (to: string, o: { after?: number } = {}) => mailToken(to, "accept-invite", o);
+
+/** Family admin invites a parent, who accepts from the email with `password`. Returns the new parent's id and session token. */
+export async function inviteAndAccept(adminToken: string, name: string, to: string, password: string) {
+  const add = await call("POST", "/family/members", { token: adminToken, body: { name, email: to } });
+  if (add.status !== 201) throw new Error(`invite failed: ${JSON.stringify(add.data)}`);
+  const accepted = await call("POST", "/auth/accept-invite", { body: { token: await inviteToken(to), password } });
+  if (accepted.status !== 200) throw new Error(`accept failed: ${JSON.stringify(accepted.data)}`);
+  return { id: add.data.id as string, token: accepted.data.token as string };
+}
 
 /** Every email Mailpit holds for `to`, newest first (subject and text). */
 export async function inbox(to: string) {

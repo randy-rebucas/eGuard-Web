@@ -8,12 +8,23 @@ import type { Role } from "@prisma/client";
 import { db } from "./db";
 import { ServiceError, forbidden } from "./errors";
 import { LIMITS, clearLimit, hit, ipKey, isLimited } from "./rate-limit";
+import { PATH_HEADER, loginPath, safeNext } from "./return-to";
 
 const COOKIE = "eg_session";
 const SESSION_DAYS = 30;
 
 export const sha256 = (v: string) => createHash("sha256").update(v).digest("hex");
 export const newToken = (bytes = 32) => randomBytes(bytes).toString("base64url");
+
+/**
+ * An invited parent who hasn't accepted yet (lib/invitations): no password of their own and an email nobody has
+ * proved. They can't sign in, and the invitation never stands in the way of the person signing up for themselves.
+ */
+export const isPendingInvite = (u: { role: Role; passwordSet: boolean; emailVerifiedAt: Date | null }) =>
+  u.role === "PARENT" && !u.passwordSet && !u.emailVerifiedAt;
+
+/** Shortest password a parent can choose (sign-up, reset, accepting an invitation). */
+export const MIN_PASSWORD = 10;
 
 /** bcrypt ignores everything past 72 bytes, so a longer password would silently match its own prefix. */
 export const PASSWORD_MAX_BYTES = 72;
@@ -92,7 +103,7 @@ export const getUser = cache(async (): Promise<SessionUser | null> => {
 
 export async function requireUser() {
   const u = await getUser();
-  if (!u) redirect("/login");
+  if (!u) redirect(loginPath(safeNext((await headers()).get(PATH_HEADER))));
   return u;
 }
 

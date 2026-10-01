@@ -13,13 +13,16 @@ export const GET = authed(async ({ user }) => {
   ]);
   const { score, total, offline, verified } = graph.familyHealth;
   const needsAttention = graph.children.filter((c) => c.status === "attention").length;
+  // A child with no paired device isn't protected, so the family can't "look good" yet (same rule as the web dashboard)
+  const unpaired = graph.children.filter((c) => !c.devices.length);
   return NextResponse.json({
     user: me,
     greeting: greeting(family.timezone),
     summary: !graph.children.length ? "Add your first child to get started."
       : needsAttention ? `${needsAttention} ${needsAttention === 1 ? "child needs" : "children need"} attention.`
+      : unpaired.length ? (unpaired.length === 1 ? `Pair ${unpaired[0].name}'s device to start protecting them.` : `${unpaired.length} children have no paired device yet.`)
       : "Your family's digital safety looks good today.",
-    health: { score, total, offline, verified, label: healthLabel(score, total, offline) },
+    health: { score, total, offline, verified, label: healthLabel(score, total, offline, graph.devices.length) },
     children: await childrenJson(graph, family.timezone),
     deviceCount: graph.devices.length,
     recentAlerts: alerts.map((a) => alertJson(a, family.timezone)),

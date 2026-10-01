@@ -6,6 +6,7 @@ import { authed } from "@/lib/mobile-api";
 export const POST = authed(async ({ req, user }) => {
   const pushToken = new URL(req.url).searchParams.get("pushToken");
   if (pushToken) await db.pushToken.deleteMany({ where: { token: pushToken, userId: user.id } });
-  await db.session.delete({ where: { id: user.sessionId } });
+  // deleteMany: signing out twice at once (or after "sign out everywhere") is still a success
+  await db.session.deleteMany({ where: { id: user.sessionId } });
   return NextResponse.json({ ok: true });
 });

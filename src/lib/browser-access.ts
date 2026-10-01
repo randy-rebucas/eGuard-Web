@@ -54,13 +54,18 @@ export async function createAccessRequest(inst: BrowserInstallation & { child: C
   if (!domain) throw new ServiceError(400, "That isn't a website address.", "invalid_domain");
   const reason = input.reason?.trim().slice(0, 280) || null;
 
-  const open = await db.browserAccessRequest.findFirst({ where: { childId: inst.childId, domain, status: "PENDING" } });
-  if (open) return { request: open, created: false };
+  const found = await db.browserAccessRequest.findFirst({ where: { childId: inst.childId, domain, status: "PENDING" } });
+  if (found) return { request: found, created: false };
   await enforce(`webreq:${inst.id}`, REQUESTS_PER_HOUR, "You've sent several requests. Wait a little before asking again.");
 
-  const request = await db.browserAccessRequest.create({
-    data: { familyId: inst.familyId, childId: inst.childId, installationId: inst.id, domain, reason },
+  const { request, created } = await db.$transaction(async (tx) => {
+    // One open request per child and site: a double tap on the block page would otherwise create two (and two alerts)
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`webreq:${inst.childId}:${domain}`}))`;
+    const open = await tx.browserAccessRequest.findFirst({ where: { childId: inst.childId, domain, status: "PENDING" } });
+    if (open) return { request: open, created: false };
+    return { request: await tx.browserAccessRequest.create({ data: { familyId: inst.familyId, childId: inst.childId, installationId: inst.id, domain, reason } }), created: true };
   });
+  if (!created) return { request, created };
   await db.alert.create({
     data: {
       familyId: inst.familyId, childId: inst.childId, severity: "ATTENTION", category: "PROTECTION", icon: "globe",
@@ -99,12 +104,9 @@ export async function decideAccessRequest(actor: Actor, requestId: string, d: De
   if (req.status !== "PENDING") throw new ServiceError(409, "This request was already answered.", "already_decided");
   const now = new Date();
 
-  let expiresAt: Date | null = null;
-  if (d.decision === "APPROVE") {
-    expiresAt = untilFor(d.duration, req.child.family.timezone, now);
-    await allowDomain(req.childId, req.domain, expiresAt, actor.name);
-  }
-  // Only the first answer counts (two parents answering at once)
+  const expiresAt = d.decision === "APPROVE" ? untilFor(d.duration, req.child.family.timezone, now) : null;
+  // Only the first answer counts (two parents answering at once). Claim it before touching the policy: allowing
+  // first let a losing approval open the site while the request said "Declined", or with another duration.
   const res = await db.browserAccessRequest.updateMany({
     where: { id: req.id, status: "PENDING" },
     data: {
@@ -113,6 +115,15 @@ export async function decideAccessRequest(actor: Actor, requestId: string, d: De
     },
   });
   if (!res.count) throw new ServiceError(409, "This request was already answered.", "already_decided");
+  if (d.decision === "APPROVE") {
+    try {
+      await allowDomain(req.childId, req.domain, expiresAt, actor.name);
+    } catch (e) {
+      // Not allowed after all: put the request back so the parent can answer it again
+      await db.browserAccessRequest.updateMany({ where: { id: req.id, status: "APPROVED", decidedAt: now }, data: { status: "PENDING", duration: null, expiresAt: null, decidedBy: null, decidedAt: null } });
+      throw e;
+    }
+  }
 
   await db.alert.updateMany({ where: { familyId: actor.familyId, resolveKey: `WEBREQ:${req.id}`, resolvedAt: null }, data: { resolvedAt: now } });
   const what = d.decision === "APPROVE" ? `${req.domain} (${DURATION_LABEL[d.duration]})` : req.domain;

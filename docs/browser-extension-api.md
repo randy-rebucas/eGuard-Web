@@ -135,7 +135,7 @@ Response `201`:
 Show "Connected for Mia on Mia's MacBook" using `childName` and `deviceName` (the name the parent gave the computer).
 Then fetch the policy straight away.
 
-- Codes are 8 characters, single use, and valid for 15 minutes. Only the child's newest code works.
+- Codes are 8 characters, single use, and valid for 15 minutes. Only the child's newest browser code works (a device code for the phone app can be live at the same time).
 - A malformed body gets the same `400 invalid_code` as a wrong code, with no detail.
 - `400 wrong_code_kind`: the parent typed a phone-app code. Show `error`, which tells them to choose "Add a browser".
 - `409 device_limit`: the code isn't used up, so the parent can remove a device and then use the same code.

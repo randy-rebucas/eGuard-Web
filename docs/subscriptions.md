@@ -140,9 +140,9 @@ loudly instead of charging the wrong amount. The landing page's prices come from
 
 | Field | Meaning |
 |---|---|
-| `store` | `PAYMONGO` (or `GOOGLE_PLAY`) |
+| `store` | `PAYMONGO`, `VOUCHER` (a redeemed sponsor code, see [organizations.md](organizations.md)), or `GOOGLE_PLAY` |
 | `productId` | One of the web products above |
-| `purchaseToken` **unique** | Checkout session id (`cs_…`) for a pass, subscription id (`subs_…`) for auto-renew |
+| `purchaseToken` **unique** | Checkout session id (`cs_…`) for a pass, subscription id (`subs_…`) for auto-renew, `voucher:{id}` for a sponsor code |
 | `state` | See below |
 | `autoRenewing` | `true` while PayMongo will charge again (`active`, `past_due`) |
 | `expiresAt` | End of the paid period ("paid-through") |
@@ -422,7 +422,7 @@ online payment isn't available and links to support.
 `GET /subscription` returns the plan, usage and renewal as before.
 
 - `billingAvailable` is `false` while Google Play is turned off, so the apps show no buy button.
-- `store.name` is `PAYMONGO` for web purchases.
+- `store.name` is `PAYMONGO` for web purchases and `VOUCHER` for sponsor codes.
 
 ---
 

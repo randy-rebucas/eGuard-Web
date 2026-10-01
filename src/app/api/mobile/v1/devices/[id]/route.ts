@@ -19,7 +19,9 @@ async function detail(familyId: string, deviceId: string) {
       const cap = p.caps[d.platform];
       return {
         key: p.key, name: p.name, icon: p.icon, capability: cap, capabilityLabel: CAPABILITY_META[cap].label,
-        status: row?.status ?? "NOT_CONFIGURED", reportedLabel: row ? describeConfig(row.reported) : "Unknown",
+        // Same wording as the web device page
+        status: row?.status ?? "NOT_CONFIGURED",
+        reportedLabel: !row ? "Unknown" : row.status === "UNSUPPORTED" ? "Not supported" : row.status === "NOT_CONFIGURED" ? "Not configured" : describeConfig(row.reported),
         message: row?.message ?? null, lastVerifiedAt: row?.lastVerifiedAt ?? null,
       };
     }),

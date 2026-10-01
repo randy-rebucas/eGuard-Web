@@ -1,4 +1,9 @@
 /** Blog posts for /blog. Static for now, like the help articles; a CMS can replace `POSTS` later. Newest first. */
+import { FREE_APP_LIMIT, planById, webPrice, type PaidPlanId } from "./plans";
+
+/** Prices and limits from the plan catalogue, since prices can change without a release (PRICE_*_MONTHLY). */
+const price = (id: PaidPlanId) => { const c = webPrice(id); return `₱${c % 100 ? (c / 100).toFixed(2) : c / 100} a month`; };
+const limits = (id: PaidPlanId) => planById(id).entitlements;
 
 export type Block =
   | { h2: string }
@@ -86,18 +91,18 @@ export const POSTS: Post[] = [
       { h2: "What's included" },
       { ul: [
         "1 child and up to 2 devices, for example a phone and a tablet",
-        "Guided setup for Android and iOS",
+        "Guided setup for Android (iPhone and iPad coming soon)",
         "Screen time limits, with a separate weekend limit",
         "Bedtime, content age ratings, web filtering, download approval and uninstall protection",
-        "App monitoring for up to 5 apps: see usage, set daily limits, block or approve",
+        `App monitoring for up to ${FREE_APP_LIMIT} apps: see usage, set daily limits, block or approve`,
         "Configuration Health, so you can see every setting is verified on the device",
         "Alerts in the dashboard and by email when a setting changes or a device goes offline",
         "Email support",
       ] },
       { p: "Verification isn't a paid extra. Every plan, Free included, only marks a setting as done once the device confirms it." },
       { h2: "When to upgrade" },
-      { p: "eGuard Plus (₱149 a month) makes sense when you have more than one child, want to see where your child's device is, or need to manage all of their apps rather than five. It covers up to 5 children and 10 devices." },
-      { p: "Family Pro (₱249 a month) is for larger families and organizations: up to 10 children and 20 devices, 30-day and custom reports with CSV export, and API access for schools." },
+      { p: `eGuard Plus (${price("PLUS")}) makes sense when you have more than one child, want to see where your child's device is, or need to manage all of their apps rather than ${FREE_APP_LIMIT}. It covers up to ${limits("PLUS").childLimit} children and ${limits("PLUS").deviceLimit} devices.` },
+      { p: `Family Pro (${price("PRO")}) is for larger families and organizations: up to ${limits("PRO").childLimit} children and ${limits("PRO").deviceLimit} devices, 30-day and custom reports with CSV export, and API access for schools.` },
       { p: "You can upgrade on the web with a card, Maya, GCash or QR Ph, and cancel any time. If you move back to Free, the children and devices you already added stay protected; you just can't add more until you upgrade again." },
     ],
   },

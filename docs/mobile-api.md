@@ -87,7 +87,7 @@ Every error has the same shape. `error` is always written for the parent and saf
 ### Pagination
 
 Lists that can grow (`/alerts`, `/children/{id}/history`) use a cursor. Each response has `nextBefore`, which is an
-ISO timestamp or `null` on the last page. To get the next page, send it back as `?before=<nextBefore>` (URL-encoded).
+ISO timestamp or `null` on the last page. To get the next page, send it back as `?before=<nextBefore>` (URL-encoded). Any ISO 8601 time with `Z` or an offset (`+08:00`) is accepted; anything else is `400`.
 
 ### Polling
 
@@ -420,6 +420,21 @@ too many requests from one address.
 themselves. Sets the password, **signs out every session**, and returns a new one: `{ token, expiresAt, user }`.
 Errors: `400 invalid` (password too short), `400 link_invalid` (used, replaced or unknown), `400 link_expired`.
 
+#### Invitations (no auth): `GET /auth/invite`, `POST /auth/accept-invite`, `POST /auth/decline-invite`
+
+When a family admin invites another parent, the invitee gets an email linking to `/accept-invite?token=…` (valid
+7 days, single use). For apps that open that link themselves:
+
+| Call | Body / query | Response |
+|---|---|---|
+| `GET /auth/invite?token=…` | | `{ name, email, familyName, invitedBy }`. Show which family it is **before** they accept. `400 link_invalid` / `400 link_expired` |
+| `POST /auth/accept-invite` | `{ token, password }` (their own, ≥ 10 characters) | Same as sign-in: `{ token, expiresAt, user }`. Their email counts as verified. `400 invalid`, `link_invalid`, `link_expired` |
+| `POST /auth/decline-invite` | `{ token }` | `{ ok, familyName }`. Nothing about them stays with the family |
+
+Until they accept, the invitee can't sign in. A pending invitation never blocks them: signing up (or with
+Apple/Google) at that address creates their own family and drops the invitation. "Forgot password" for that
+address emails the invitation again rather than a reset link.
+
 #### `POST /auth/social` → `200` (existing account) / `201` (new account)
 
 "Continue with Apple / Google". Send the **ID token** (JWT) from the native SDK, not an authorization code.
@@ -455,12 +470,12 @@ Ends this session only. Pass the device's push token so this phone stops receivi
 | Method & path | Body | Response |
 |---|---|---|
 | `GET /me` | none | `User` |
-| `PATCH /me` | any of `{ name, email, password, timezone }` | `User`. `timezone` (IANA, e.g. `Asia/Manila`) is applied only for the family admin. Changing `email` needs the current `password` (`403 wrong_password`, or `403 password_not_set` when `hasPassword` is false). `409` if the email is taken. A new email sets `emailVerified: false`, sends a link to the new address, and unlinks Apple/Google sign-ins |
+| `PATCH /me` | any of `{ name, email, password, timezone }` | `User`. `timezone` (IANA, e.g. `Asia/Manila`) is the family's: only the family admin can change it (`403 forbidden` for another parent sending a different zone). Changing `email` needs the current `password` (`403 wrong_password`, or `403 password_not_set` when `hasPassword` is false). `409` if the email is taken. A new email sets `emailVerified: false`, sends a link to the new address, and unlinks Apple/Google sign-ins |
 | `DELETE /me` | `{ password }`, or `{ confirm: "DELETE" }` when `hasPassword` is false | `{ ok, deleted: "family" \| "account" }`. **Deletes the account.** The family admin's account deletes the whole family (children, devices, history, other parents). Another parent's account removes only them. Sign out locally afterwards |
 | `GET /me/identities` | none | `{ identities: [{ id, provider, email, createdAt }] }`: linked Apple/Google sign-ins |
 | `DELETE /me/identities/{id}` | none | `{ ok }`. `409` if it's the only way to sign in (no password set) |
 | `POST /me/password` | `{ current, next }` | `{ ok, message }`. `403 wrong_password`, `400` if `next` < 10 chars. **Signs out every other session**; this one stays |
-| `GET /me/notifications` | none | `{ notifyPush, notifyEmail, notifyApproval, weeklySummary }` |
+| `GET /me/notifications` | none | `{ notifyPush, notifyEmail, notifyApproval, weeklySummary }`. `notifyEmail` emails alerts that need attention; `notifyApproval` (with `notifyEmail` on) also emails a child's requests for an app or a blocked website |
 | `PATCH /me/notifications` | any subset of those booleans | Same object, updated |
 | `POST /me/push-tokens` | `{ token, platform: "IOS" \| "ANDROID" }` | `201 { ok }`. Call it after sign-in and whenever APNs/FCM rotates the token. Re-registering the same token under another parent moves it |
 | `DELETE /me/push-tokens` | `{ token }` | `{ ok }` |
@@ -519,7 +534,9 @@ Configuration Health. There are 10 checks, one per protection, and each shows th
 ```
 
 - The design's "Fix 2 settings" button is `toFix.length`. Each item opens `FIX_SETTING` for `childId` + `key`.
-- `label`: 10/10 "Fully protected", 8–9 "Good protection", 5–7 "Needs attention", below 5 "Action required".
+- `label`: 10/10 "Fully protected" ("Last known: all set" while a device is offline), 8–9 "Good protection",
+  5–7 "Needs attention", below 5 "Action required". With no paired device it's "No devices yet": show "–" rather
+  than the score, which is 0 only because nothing can be checked.
   10/10 with a device offline is "Last known: all set".
 - `offline` counts devices that haven't synced in over a day. They're scored by their last known state, which isn't a
   verification: only say "verified" or "protected" when `verified` is true (every check passes and no device is offline).
@@ -687,7 +704,7 @@ device, which calls `POST /api/device/v1/pair`.
 { "code": "FJZM7J7H", "expiresAt": "2026-09-27T06:14:58.928Z", "childName": "Mia" }
 ```
 
-The code is 8 characters, single-use, and valid for 15 minutes. Only a child's newest code works: asking for another
+The code is 8 characters, single-use, and valid for 15 minutes. Only a child's newest code of each kind (device, browser) works: asking for another
 replaces the previous one, so show only the latest. `409` means the plan's device limit has been reached. `403 email_unverified` means the parent hasn't verified their email yet (see Email verification).
 `429 rate_limited` means the parent made more than 20 codes in an hour.
 After pairing, `GET /children/{id}` shows the device, and a first full check runs automatically.
@@ -771,7 +788,8 @@ Cancels everything in the batch that isn't verified yet. Response: `{ "cancelled
 
 #### `GET /children/{id}/screen-time?period=today|7d|30d`
 
-`period` defaults to `today`. Any other value returns `400`.
+`period` defaults to `today`. Any other value returns `400`. `30d` is an advanced report: without
+`entitlements.advancedReports` (Family Pro) it returns `403 plan_required`, so lock the 30-day tab on other plans.
 
 ```json
 {
@@ -796,7 +814,8 @@ Cancels everything in the batch that isn't verified yet. Response: `{ "cancelled
 | `hourly` | 24 values (index 0 = midnight, family time zone) for `today` only. `null` for 7d/30d, **or when the child's devices don't send hourly data**. Hide the hourly chart then |
 | `days` | One entry per day, oldest first (1, 7 or 30 entries). Use for the 7/30-day bar charts |
 | `previousAverageMinutes` | Average for the same length of time just before (for "↓ 12% vs last week") |
-| `apps` | Most used first. `appId` / `approval` are `null` for apps without a rule (e.g. `Others`) |
+| `apps` | Most used first. `appId` / `approval` are `null` for apps without a rule (e.g. `Others`). With an `appMonitoringLimit`, only that many are named and the rest are summed into `Others` |
+| `hiddenApps` | How many apps were left unnamed because of the plan's `appMonitoringLimit` (0 otherwise). Show the upgrade note when above 0 |
 
 ### 4.9 Apps
 
@@ -953,7 +972,7 @@ a batch completes.
 | `GET /alerts/unread-count` | `{ "unread": 4 }` | Tab-bar badge: unresolved, unread, above `INFO` severity. Read state is per parent |
 | `POST /alerts/{id}/read` | `{ ok, unread }` | Call when the alert is opened |
 | `POST /alerts/read-all` | `{ marked, unread: 0 }` | |
-| `POST /alerts/{id}/dismiss` | `{ ok }` | Only when `dismissible` (INFO alerts). Others return `409 not_dismissible` |
+| `POST /alerts/{id}/dismiss` | `{ ok }` | Only when `dismissible`: INFO alerts, and notices nothing resolves on its own (e.g. "Device removed"). Alerts that clear once the issue is fixed return `409 not_dismissible`; an already resolved alert returns `{ ok }` |
 
 ### 4.12 Devices and configuration checks
 
@@ -965,23 +984,28 @@ a batch completes.
 | `DELETE /devices/{id}` | `{ password }` | `{ ok }`. The device is unpaired and its token stops working. `403 wrong_password` without the parent's password (`403 password_not_set` for Apple/Google accounts without one). The family gets a "Device removed" alert, emailed to parents, since eGuard stops verifying the device |
 | `GET /browsers` | none | `{ browsers: [{ id, childId, childName, deviceLabel, browser, browserVersion, extensionVersion, platform, lastSeenAt, connected, createdAt }] }`: the eGuard browser extension installs. `connected: false` means eGuard disconnected it for security (its sign-in key was used from two places); remove it and add it again. Browsers don't enforce a policy yet, so never show them as protected |
 | `GET /children/{id}/browser-policy` | none | `{ version, safeBrowsing, safeSearch, blockedCategories[], blockedDomains[], allowedDomains[], unknownSitesPolicy, schedule, updatedBy, updatedAt, categories: [{ key, label, hint }] }`. Created with age-based defaults (`updatedBy: "eGuard defaults"`) the first time it's read. Applies to all of the child's browsers |
-| `PUT /children/{id}/browser-policy` | every field: `{ safeBrowsing, safeSearch, blockedCategories: ["ADULT", …], blockedDomains: ["example.com"], allowedDomains: [], unknownSitesPolicy: "ALLOW" \| "WARN" \| "BLOCK", schedule: { enabled, startTime: "21:00", endTime: "06:00" } \| null }` | Same as GET. Sites are normalised (`https://www.x.com/page` → `www.x.com`), sorted and de-duplicated, up to 500 per list. `400` with a parent-readable `error` for a site that isn't an address, a site in both lists, or equal focus-hour times. Saving identical settings keeps the version; any change adds one, which browsers pick up within 5 minutes. `409 conflict` if another parent saved at the same moment. `unknownSitesPolicy` is for sites on neither list: `ALLOW`, `WARN` (notice first) or `BLOCK` (allowed list only); focus hours block everything not on the allowed list |
+| `PUT /children/{id}/browser-policy` | every field: `{ safeBrowsing, safeSearch, blockedCategories: ["ADULT", …], blockedDomains: ["example.com"], allowedDomains: [], unknownSitesPolicy: "ALLOW" \| "WARN" \| "BLOCK", schedule: { enabled, startTime: "21:00", endTime: "06:00" } \| null }` | Same as GET. Sites are normalised (`https://www.x.com/page` → `www.x.com`), sorted and de-duplicated, up to 500 per list. `400` with a parent-readable `error` for a site that isn't an address, a site in both lists, or equal focus-hour times. Saving identical settings keeps the version; any change adds one, which browsers pick up within 5 minutes. `409 conflict` if another parent saved at the same moment. Optional `baseVersion`: the `version` you showed the parent; if the policy changed since (an approved access request, another parent), the save is refused with `409 stale_version` instead of undoing that change. Reload and let the parent redo their edit. Send it from every editor. `unknownSitesPolicy` is for sites on neither list: `ALLOW`, `WARN` (notice first) or `BLOCK` (allowed list only); focus hours block everything not on the allowed list |
 | `GET /children/{id}/browser-access-requests` | none | `{ pending: [Request], recent: [Request] }` where `Request` is `{ id, domain, reason, status: "PENDING" \| "APPROVED" \| "DENIED", duration, expiresAt, createdAt, decidedAt, decidedBy }`. Sites the child asked to open from the browser's block page; each new one also raises an `ATTENTION` alert "Website access request" (`resolveKey` `WEBREQ:<id>`) |
 | `POST /browser-access-requests/{id}` | `{ decision: "APPROVE", duration: "15M" \| "1H" \| "TODAY" \| "ALWAYS" }` or `{ decision: "DENY" }` | `{ request }`. Approval becomes a new browser policy version the browser picks up within 5 minutes (the child can also tap Check again): `ALWAYS` adds the site to the allowed list, the others allow it until then (`TODAY` = midnight in the family's time zone). Resolves the alert. `409 already_decided` if another parent answered first |
 | `DELETE /browsers/{id}` | `{ password }` | `{ ok }`. Same rules as removing a device; the extension forgets the connection on its next check and the family gets a "Browser removed" alert |
-| `POST /checks` | `{ deviceId? }` (omit for all devices) | `202 { runId }` |
+| `POST /checks` | `{ deviceId? }` (omit for all devices) | `202 { runId }`. `409 no_devices` if the family has no paired device |
 | `GET /checks/{runId}` | none | See below. Poll until `done` |
 
 ```json
 {
   "status": "RUNNING",
   "done": false,
-  "health": { "score": 10, "total": 10 },
+  "health": { "score": 10, "total": 10, "verified": false, "offline": 1 },
   "results": [
     { "deviceId": "…", "deviceName": "iPhone 13", "childName": "Mia", "reachable": null, "issues": null, "reported": false }
   ]
 }
 ```
+
+- `health` covers the devices in this check: one device's score for a `deviceId` check, the family's otherwise.
+- `health.verified` is true only when every protection passes **and** no device is offline (`health.offline` is the
+  number offline). A full score with `verified: false` is the offline devices' last known state: say "Every protection
+  is set, as last reported", never "verified".
 
 - Devices report back on their next sync. A check finishes when every device has reported, or after 12 seconds.
 - Devices that didn't answer end with `reachable: false`; show "Couldn't reach".
@@ -999,20 +1023,25 @@ Settings › Family.
   "name": "Cruz Family",
   "timezone": "Asia/Manila",
   "members": [
-    { "id": "…", "name": "Randy Cruz", "email": "randy@example.com", "role": "FAMILY_ADMIN", "createdAt": "…", "you": true },
-    { "id": "…", "name": "Ana Cruz", "email": "ana@example.com", "role": "PARENT", "createdAt": "…", "you": false }
+    { "id": "…", "name": "Randy Cruz", "email": "randy@example.com", "role": "FAMILY_ADMIN", "createdAt": "…", "you": true, "pending": false },
+    { "id": "…", "name": "Ana Cruz", "email": "ana@example.com", "role": "PARENT", "createdAt": "…", "you": false, "pending": true }
   ],
   "children": [ …ChildSummary ],
   "deviceCount": 5,
+  "devicesUsed": 6,
   "deviceLimit": 8,
   "canManage": true
 }
 ```
 
+`deviceCount` is phones and tablets; `devicesUsed` also counts connected browsers, which take plan slots too.
+Compare `devicesUsed` with `deviceLimit` ("6 of 8 devices").
+
 | Method & path | Body | Response / notes |
 |---|---|---|
-| `POST /family/members` | `{ name, email, password }` (temporary password, ≥ 10 chars) | `201 { id, name, email, role: "PARENT" }`. Admin only. `409` if the email exists. Tell the admin to share the password so the other parent can sign in and change it |
-| `DELETE /family/members/{id}` | none | `{ ok }`. Admin only. Removes a `PARENT` (not yourself) and signs them out everywhere |
+| `POST /family/members` | `{ name, email }` | `201 { id, name, email, role: "PARENT", pending: true, emailSent, expiresInDays }`. Admin only. **Sends an invitation**: they join once they accept it (see Invitations). A `password` from older apps is ignored. `409` if the email already has an eGuard account; `429` after 10 invitations an hour. `emailSent: false` means the email failed: offer Resend |
+| `POST /family/members/{id}/invite` | none | `{ ok }`. Admin only. Sends a pending invitation again with a new 7-day link. `409` if they already accepted, `503 mail_failed` |
+| `DELETE /family/members/{id}` | none | `{ ok }`. Admin only. Removes a `PARENT` (not yourself) and signs them out everywhere, or withdraws a pending invitation |
 | `GET /family/privacy` | none | `{ keepLocationHistory, shareAnalytics, retentionDays }` |
 | `PATCH /family/privacy` | any of `{ keepLocationHistory, shareAnalytics }` | Same object. Admin only. **Turning `keepLocationHistory` off deletes all stored visits**, so confirm with the parent first |
 
@@ -1057,8 +1086,10 @@ Settings › Family.
   - without `locationSharing`, `/locations` and `/children/{id}/location…` → `403 { code: "plan_required" }`, and
     turning on location history is refused
   - with an `appMonitoringLimit`, `GET /children/{id}/apps` lists that many (apps waiting for approval first, then the
-    most used) and `limited: { hidden, message }` says how many more there are
+    most used) and `limited: { hidden, message }` says how many more there are; `/children/{id}/screen-time`
+    names that many apps too (`hiddenApps`)
   - without `realtimeAlerts`, turning on `notifyPush` → `403 plan_required`
+  - without `advancedReports`, `/children/{id}/screen-time?period=30d` → `403 plan_required`
 - **Plans are paid for on the web for now** (PayMongo, in Settings › Subscription on the website). The apps show the
   plan and usage but **don't sell it and don't link to the website**: store policies forbid steering users to
   outside payment for digital subscriptions.
@@ -1071,7 +1102,7 @@ Settings › Family.
 
   Otherwise show no upgrade button.
 - `store`, when set, says how the current plan is paid: `{ name, productId, autoRenewing, expiresAt }`.
-  - `name` is `PAYMONGO` for a web purchase (a pass, or auto-renew) or `GOOGLE_PLAY`.
+  - `name` is `PAYMONGO` for a web purchase (a pass, or auto-renew), `VOUCHER` for a sponsor code an organization gave the family (show it as "Sponsored plan"; codes are redeemed on the web), or `GOOGLE_PLAY`.
   - If `autoRenewing` is false (a pass, or auto-renew turned off), `renewsLabel` reads "Ends on …".
   - For a Google Play plan, "Manage Subscription" opens
     `https://play.google.com/store/account/subscriptions?sku={productId}&package={packageName}`.
@@ -1231,8 +1262,8 @@ PATCH /apps/{appId} { "approval": "ALLOWED" }  or  { "approval": "BLOCKED" }
 
 | KEY | Config (body for `PUT`, or an entry in `overrides` with `key`) | Example label |
 |---|---|---|
-| `SCREEN_TIME` | `dailyMinutes` 15–1440, `weekendMinutes` 15–1440 | "3h / day" |
-| `BEDTIME` | `enabled` bool, `start` "HH:MM", `end` "HH:MM" (24 h), `days` `EVERY_DAY` \| `SCHOOL_NIGHTS` | "9:30 PM – 6:00 AM" |
+| `SCREEN_TIME` | `dailyMinutes` 15–1440, `weekendMinutes` 15–1440 | "3h / day", or "3h / day, 4h weekends" when the limits differ |
+| `BEDTIME` | `enabled` bool, `start` "HH:MM", `end` "HH:MM" (24 h), `days` `EVERY_DAY` \| `SCHOOL_NIGHTS` | "9:30 PM – 6:00 AM", or "9:30 PM – 6:00 AM, school nights" |
 | `APP_RESTRICTIONS` | `maxAgeRating` 4–18 | "Apps rated 9+ and under" |
 | `APP_APPROVAL` | `enabled` bool | "Approval required" |
 | `CONTENT` | `maxAgeRating` 4–18 | "Rated 13+ and under" (the design's "Explicit content") |

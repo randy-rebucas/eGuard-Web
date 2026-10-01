@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ProtectionKey } from "@prisma/client";
 import { Icon } from "./icon";
@@ -227,7 +228,7 @@ function ConfigFlow({ initialKey, initialChild, onClose }: { initialKey?: Protec
   const retry = () => { setError(null); setNotice(null); setCtx(null); setKids(null); setBatchId(null); setBatch(null); setStep(0); setAttempt((n) => n + 1); };
 
   /** Runs one of the flow's actions; a failure becomes the inline notice. */
-  const act = async <T,>(fn: () => Promise<T | { error: string }>): Promise<T | null> => {
+  const act = async <T,>(fn: () => Promise<T | { error: string; code?: string }>): Promise<T | null> => {
     setBusy(true); setNotice(null);
     try {
       const r = await fn();
@@ -330,8 +331,12 @@ function ConfigFlow({ initialKey, initialChild, onClose }: { initialKey?: Protec
             <span className="chev"><Icon name="chevron-right" /></span>
           </button>
         ))}
+        {/* Every row is disabled without a device: give the way forward instead of a dead end */}
+        {kids.every((c) => !c.devices.length) ? (
+          <div className="form-error" style={{ marginTop: 12 }}><Icon name="smartphone" /><span className="grow">Pair a child&apos;s device to set up protections.</span><Link className="link-btn" href="/devices#pair" onClick={onClose}>Pair a device</Link></div>
+        ) : null}
       </>
-    ) : <p className="muted">Add a child first.</p>;
+    ) : <div className="form-error"><Icon name="user-plus" /><span className="grow">Add a child first, then pair their device.</span><Link className="link-btn" href="/children/new" onClick={onClose}>Add a child</Link></div>;
   } else if (!ctx || !draft) {
     body = <Loading height={140} label="Loading current settings" />;
   } else if (step === 1) {
@@ -346,15 +351,23 @@ function ConfigFlow({ initialKey, initialChild, onClose }: { initialKey?: Protec
           ))}
         </div>
         <p className="t-meta" style={{ marginTop: 12 }}>Your setting for {ctx.child.name}: <b style={{ color: "var(--ink-2)" }}>{ctx.policyLabel}</b></p>
-        {!supported.length ? <div className="form-error" style={{ marginTop: 12 }}><Icon name="circle-slash" />{def!.name} isn&apos;t supported on {ctx.child.name}&apos;s devices, so it isn&apos;t counted in health.</div> : null}
+        {!ctx.devices.length ? (
+          <div className="form-error" style={{ marginTop: 12 }}><Icon name="smartphone" /><span className="grow">{ctx.child.name} has no paired device yet. Pair one, then set this up.</span><Link className="link-btn" href="/devices#pair" onClick={onClose}>Pair a device</Link></div>
+        ) : !supported.length ? <div className="form-error" style={{ marginTop: 12 }}><Icon name="circle-slash" />{def!.name} isn&apos;t supported on {ctx.child.name}&apos;s devices, so it isn&apos;t counted in health.</div> : null}
         {ctx.openBatch ? <div className="form-ok" style={{ marginTop: 12 }}><Icon name="loader-circle" />A change is already waiting for verification. <button className="link-btn" onClick={() => resume(ctx.openBatch!)}>Check progress</button></div> : null}
       </>
     );
     foot = <><button className="btn btn-ghost" onClick={close}>Cancel</button><button className="btn btn-primary" disabled={!supported.length} onClick={() => setStep(2)}>Continue</button></>;
   } else if (step === 2) {
-    body = <ConfigForm value={draft} onChange={setDraft} childName={ctx.child.name} />;
+    const problem = draftProblem(draft);
+    body = (
+      <>
+        <ConfigForm value={draft} onChange={setDraft} childName={ctx.child.name} />
+        {problem ? <p className="form-error" id="draft-problem" role="status" style={{ marginTop: 12 }}><Icon name="triangle-alert" />{problem}</p> : null}
+      </>
+    );
     const guided = supported.some((d) => d.capability !== "AVAILABLE");
-    foot = <><button className="btn btn-ghost" onClick={() => setStep(1)}>Back</button><button className="btn btn-primary" onClick={() => setConfirming(true)}>{guided ? "Continue to setup" : "Apply to device"}</button></>;
+    foot = <><button className="btn btn-ghost" onClick={() => setStep(1)}>Back</button><button className="btn btn-primary" disabled={!!problem} onClick={() => setConfirming(true)}>{guided ? "Continue to setup" : "Apply to device"}</button></>;
   } else if (step === 3 || step === 4) {
     const guided = batch?.requests.filter((r) => r.status === "AWAITING_PARENT") ?? [];
     body = (
@@ -404,14 +417,17 @@ function ConfigFlow({ initialKey, initialChild, onClose }: { initialKey?: Protec
     body = (
       <>
         <div className="row" style={{ gap: 16, alignItems: "center" }}>
-          <HealthRing score={batch.score} small label={`${ctx.child.name}'s protection health`} />
+          <HealthRing score={batch.score} total={PROTECTIONS.length} small label={`${ctx.child.name}'s protection health`} />
           <div>
             {failed.length ? (
               <span className="pill tone-warn"><Icon name="triangle-alert" />{failed.length} device{failed.length > 1 ? "s" : ""} didn&apos;t confirm</span>
-            ) : (
+            ) : verified.length ? (
               <span className="pill tone-ok"><Icon name="circle-check" />Verified on {verified.map((v) => v.deviceName).join(" and ")}</span>
+            ) : (
+              // Every request ended without a device answer: cancelled here or by another parent
+              <span className="pill tone-muted"><Icon name="circle-slash" />Not applied</span>
             )}
-            <p style={{ marginTop: 8 }}>{def!.name} is set to <b>{first.to}</b>{verified.length ? "" : " on no devices yet"}. {ctx.child.name}&apos;s protection health is now <b className="num">{batch.score} / 10</b>.</p>
+            <p style={{ marginTop: 8 }}>{verified.length ? <>{def!.name} is set to <b>{first.to}</b>. </> : <>{def!.name} wasn&apos;t changed on any device. </>}{ctx.child.name}&apos;s protection health is now <b className="num">{batch.score} / {PROTECTIONS.length}</b>.</p>
           </div>
         </div>
         {first.from !== first.to ? (
@@ -463,14 +479,33 @@ function Toggle({ id, label, hint, checked, onChange }: { id: string; label: str
   );
 }
 
+/** Ratings the picker offers; a value set elsewhere (the mobile app allows any 4–18) is added so it isn't silently changed. */
+const RATINGS = [4, 9, 12, 13, 16, 17, 18];
+
+/** Why the draft can't be sent, in words for the parent; null when it's fine. Mirrors ConfigSchema on the server. */
+function draftProblem(v: ProtectionConfig): string | null {
+  if (v.key === "SCREEN_TIME") {
+    const bad = (m: number) => !Number.isInteger(m) || m < 15 || m > 1440;
+    if (bad(v.dailyMinutes) || bad(v.weekendMinutes)) return "Set each limit between 15 minutes and 24 hours (1440 minutes), in whole minutes.";
+  }
+  if (v.key === "BEDTIME" && v.enabled) {
+    if (!v.start || !v.end) return "Choose when bedtime starts and ends.";
+    if (v.start === v.end) return "Bedtime needs different start and end times.";
+  }
+  return null;
+}
+
 function ConfigForm({ value, onChange, childName }: { value: ProtectionConfig; onChange: (v: ProtectionConfig) => void; childName: string }) {
   const set = (patch: Partial<ProtectionConfig>) => onChange({ ...value, ...patch } as ProtectionConfig);
+  // An emptied number field stays empty while typing instead of turning into 0
+  const minutes = (s: string) => (s === "" ? Number.NaN : Number(s));
+  const shown = (m: number) => (Number.isNaN(m) ? "" : m);
   switch (value.key) {
     case "SCREEN_TIME":
       return (
         <div className="form-grid">
-          <div className="field"><label htmlFor="st-d">School days (minutes)</label><input className="input" id="st-d" type="number" min={15} step={15} value={value.dailyMinutes} onChange={(e) => set({ dailyMinutes: Number(e.target.value) })} /></div>
-          <div className="field"><label htmlFor="st-w">Weekends (minutes)</label><input className="input" id="st-w" type="number" min={15} step={15} value={value.weekendMinutes} onChange={(e) => set({ weekendMinutes: Number(e.target.value) })} /></div>
+          <div className="field"><label htmlFor="st-d">School days (minutes)</label><input className="input" id="st-d" type="number" min={15} max={1440} step={15} value={shown(value.dailyMinutes)} onChange={(e) => set({ dailyMinutes: minutes(e.target.value) })} aria-describedby="draft-problem" /></div>
+          <div className="field"><label htmlFor="st-w">Weekends (minutes)</label><input className="input" id="st-w" type="number" min={15} max={1440} step={15} value={shown(value.weekendMinutes)} onChange={(e) => set({ weekendMinutes: minutes(e.target.value) })} aria-describedby="draft-problem" /></div>
         </div>
       );
     case "BEDTIME":
@@ -493,7 +528,7 @@ function ConfigForm({ value, onChange, childName }: { value: ProtectionConfig; o
         <div className="field">
           <label htmlFor="rating">{value.key === "CONTENT" ? "Allow content rated up to" : "Allow apps rated up to"}</label>
           <select className="input" id="rating" value={value.maxAgeRating} onChange={(e) => set({ maxAgeRating: Number(e.target.value) })}>
-            {[4, 9, 12, 13, 16, 17, 18].map((r) => <option key={r} value={r}>{r}+</option>)}
+            {[...new Set([...RATINGS, value.maxAgeRating])].sort((a, b) => a - b).map((r) => <option key={r} value={r}>{r}+</option>)}
           </select>
         </div>
       );
@@ -513,7 +548,7 @@ function ConfigForm({ value, onChange, childName }: { value: ProtectionConfig; o
     case "DOWNLOADS":
       return <Toggle id="dl" label="Require approval for downloads and purchases" checked={value.requireApproval} onChange={(v) => set({ requireApproval: v })} />;
     case "LOCATION":
-      return <Toggle id="loc" label="Share current location" hint="Updated when the device moves. eGuard keeps no location history." checked={value.sharing} onChange={(v) => set({ sharing: v })} />;
+      return <Toggle id="loc" label="Share current location" hint="Updated when the device moves. Places are kept only if location history is on in Privacy settings." checked={value.sharing} onChange={(v) => set({ sharing: v })} />;
     case "NOTIFICATIONS":
       return <Toggle id="nt" label="Silence app notifications during bedtime" checked={value.quietDuringBedtime} onChange={(v) => set({ quietDuringBedtime: v })} />;
     case "UNINSTALL_PROTECTION":
@@ -523,7 +558,7 @@ function ConfigForm({ value, onChange, childName }: { value: ProtectionConfig; o
 
 /* ================= Configuration check ================= */
 
-type CheckState = { status: "RUNNING" | "COMPLETED"; score: number; results: { deviceId: string; deviceName: string; childName: string; reachable: boolean | null; issues: number | null; reported: boolean }[] };
+type CheckState = { status: "RUNNING" | "COMPLETED"; score: number; verified: boolean; offline: number; results: { deviceId: string; deviceName: string; childName: string; reachable: boolean | null; issues: number | null; reported: boolean }[] };
 
 function CheckDialog({ deviceId, onClose }: { deviceId?: string; onClose: () => void }) {
   const router = useRouter();
@@ -569,7 +604,7 @@ function CheckDialog({ deviceId, onClose }: { deviceId?: string; onClose: () => 
     <Dialog labelledBy="rc-title" onClose={onClose}>
       <div className="dialog-head">
         <span className="ico-tile"><Icon name="scan-search" /></span>
-        <div className="grow"><h2 id="rc-title">Configuration Check</h2><p className="t-meta">{state ? `${state.results.length} device${state.results.length === 1 ? "" : "s"} · 10 protections` : "Starting…"}</p></div>
+        <div className="grow"><h2 id="rc-title">Configuration Check</h2><p className="t-meta">{state ? `${state.results.length} device${state.results.length === 1 ? "" : "s"} · ${PROTECTIONS.length} protections` : "Starting…"}</p></div>
         <button className="icon-btn" data-close aria-label="Close" onClick={onClose}><Icon name="x" /></button>
       </div>
       <div className="dialog-body">
@@ -590,10 +625,12 @@ function CheckDialog({ deviceId, onClose }: { deviceId?: string; onClose: () => 
           <div aria-live="polite">
             <hr className="divider" style={{ margin: "14px 0" }} />
             <div className="row">
-              <HealthRing score={state.score} small />
+              <HealthRing score={state.score} total={PROTECTIONS.length} small />
               <div>
-                <div className="t-title">Configuration Health: {state.score} / 10</div>
-                <div className="t-meta">{state.score === 10 ? "Every protection is verified." : `${10 - state.score} protection${10 - state.score > 1 ? "s" : ""} still need review.`}{state.results.some((r) => r.reachable === false) ? " Offline devices keep their last verified state." : ""}</div>
+                <div className="t-title">Configuration Health: {state.score} / {PROTECTIONS.length}</div>
+                <div className="t-meta">{/* Same wording as the Protection page: offline devices count with their last known state, never as verified */}
+                  {state.verified ? "Every protection is verified." : state.score === PROTECTIONS.length ? "Every protection is set, as last reported." : `${PROTECTIONS.length - state.score} protection${PROTECTIONS.length - state.score > 1 ? "s" : ""} still need review.`}
+                  {state.offline || state.results.some((r) => r.reachable === false) ? " Devices that didn't answer keep their last known state." : ""}</div>
               </div>
             </div>
           </div>

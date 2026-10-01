@@ -2,13 +2,13 @@ import Link from "next/link";
 import { requireUser } from "@/lib/auth";
 import { getFamily, getFamilyGraph } from "@/lib/queries";
 import { dayTime, dayLabel } from "@/lib/format";
-import { reportData, resolveRange, type Period } from "@/lib/reports";
-import { weeklySeries } from "@/lib/views";
+import { MAX_RANGE_DAYS, reportData, resolveRange, type Period } from "@/lib/reports";
+import { dayRange, weeklySeries } from "@/lib/views";
 import { PROTECTION_BY_KEY, fmtMinutes, fmtMinutesPadded } from "@/lib/protections";
 import { Icon } from "@/components/icon";
 import { EmptyState, PageHead, Timeline, UpgradeNote } from "@/components/ui";
 import { entitlementsFor } from "@/lib/plans";
-import { REPORTS_UPGRADE } from "@/lib/plan-access";
+import { APPS_UPGRADE, REPORTS_UPGRADE, capAppUsage } from "@/lib/plan-access";
 import { WeeklyChart } from "@/components/charts";
 
 export const metadata = { title: "Reports" };
@@ -27,15 +27,21 @@ export default async function ReportsPage(props: PageProps<"/reports">) {
   const locked = !advanced && ADVANCED.includes(asked);
   const period = locked ? "7d" : asked;
   const tz = family.timezone;
-  const range = resolveRange(period, tz, sp.from as string | undefined, sp.to as string | undefined);
+  const str = (v: string | string[] | undefined) => (typeof v === "string" ? v : undefined);
+  const range = resolveRange(period, tz, str(sp.from), str(sp.to));
+  // resolveRange clamps or replaces dates it can't use; say so instead of quietly showing something else
+  const adjusted = period === "custom" && (str(sp.from) || str(sp.to)) && (range.from !== str(sp.from) || range.to !== str(sp.to));
   const [data, weekly] = await Promise.all([reportData(u.familyId, tz, range.from, range.to, { maxChanges: MAX_CHANGES }), weeklySeries(u.familyId, tz, graph)]);
   const { avg, prevAvg } = data;
   const delta = prevAvg ? Math.round(((avg - prevAvg) / prevAvg) * 100) : null;
   const h = graph.familyHealth;
   const healthy = Object.values(graph.deviceStates).filter((s) => s.key === "healthy").length;
   const offline = Object.values(graph.deviceStates).filter((s) => s.key === "offline").length;
-  const maxApp = data.apps[0]?._sum.minutes || 1;
-  const rangeLabel = range.from === range.to ? dayLabel(range.from).date : `${dayLabel(range.from).date} – ${dayLabel(range.to).date}`;
+  // No more app names than the plan's Apps list shows (Free: the most used few)
+  const topApps = capAppUsage(data.apps.map((a) => ({ app: a.app, minutes: a._sum.minutes ?? 0 })), entitlementsFor(family.plan).appMonitoringLimit);
+  const maxApp = topApps.named[0]?.minutes || 1;
+  const rangeLabel = range.from === range.to ? dayLabel(range.from).date : dayRange(range.from, range.to);
+  const unpaired = !graph.devices.length;
   const exportHref = `/api/reports/export?period=${period}&from=${range.from}&to=${range.to}`;
 
   return (
@@ -62,13 +68,16 @@ export default async function ReportsPage(props: PageProps<"/reports">) {
         </form>
       ) : null}
 
-      <p className="t-meta">Showing {rangeLabel}{period === "today" ? " (so far)" : ""}</p>
+      <p className="t-meta">
+        Showing {rangeLabel}{period === "today" ? " (so far)" : ""}
+        {adjusted ? `. Adjusted from the dates you chose: ranges can't end after today or run longer than ${MAX_RANGE_DAYS} days, and the start must come before the end.` : ""}
+      </p>
 
       <section className="report-metrics">
         <div className="card metric" style={{ minHeight: 0 }}>
           <div className="m-top"><span className="m-label">Configuration health</span><span className="ico-tile"><Icon name="shield-check" /></span></div>
-          <div className="m-value num">{h.score} / {h.total}</div>
-          <div className="t-meta">{h.score === h.total ? "Every check passing" : `${h.total - h.score} check${h.total - h.score > 1 ? "s" : ""} need review`}</div>
+          <div className="m-value num">{unpaired ? "–" : h.score} / {h.total}</div>
+          <div className="t-meta">{unpaired ? "No devices to check yet" : h.verified ? "Every check verified" : h.score === h.total ? `Every check passing as last reported, ${h.offline} offline` : `${h.total - h.score} check${h.total - h.score > 1 ? "s" : ""} need review`}</div>
         </div>
         <div className="card metric" style={{ minHeight: 0 }}>
           <div className="m-top"><span className="m-label">{period === "today" ? "Family screen time today" : "Avg. family screen time / day"}</span><span className="ico-tile"><Icon name="hourglass" /></span></div>
@@ -83,13 +92,13 @@ export default async function ReportsPage(props: PageProps<"/reports">) {
         </div>
         <div className="card metric" style={{ minHeight: 0 }}>
           <div className="m-top"><span className="m-label">Protection changes</span><span className="ico-tile"><Icon name="history" /></span></div>
-          <div className="m-value num">{data.changes.length}</div>
+          <div className="m-value num">{data.changes.length >= MAX_CHANGES ? `${MAX_CHANGES}+` : data.changes.length}</div>
           <div className="t-meta">Verified changes and on-device changes</div>
         </div>
         <div className="card metric" style={{ minHeight: 0 }}>
           <div className="m-top"><span className="m-label">Devices healthy</span><span className="ico-tile"><Icon name="tablet-smartphone" /></span></div>
           <div className="m-value num">{healthy} of {graph.devices.length}</div>
-          <div className="t-meta">{offline ? `${offline} offline` : "None offline"}{graph.devices.length - healthy - offline ? `, ${graph.devices.length - healthy - offline} with open issues` : ""}</div>
+          <div className="t-meta">{unpaired ? "No devices paired yet" : offline ? `${offline} offline` : "None offline"}{graph.devices.length - healthy - offline ? `, ${graph.devices.length - healthy - offline} with open issues` : ""}</div>
         </div>
       </section>
 
@@ -97,9 +106,10 @@ export default async function ReportsPage(props: PageProps<"/reports">) {
         <WeeklyChart series={weekly.series} days={weekly.days} subtitle={`Daily totals, ${weekly.range}. Today is still in progress.`} />
         <section className="card card-pad">
           <div className="card-head"><div><h2 style={{ fontSize: 18 }}>Top apps</h2><div className="sub">Family total, {rangeLabel}</div></div></div>
-          {data.apps.length ? data.apps.map((a) => (
-            <div className="hbar" key={a.app}><span>{a.app}</span><span className="track"><span style={{ width: `${Math.round(((a._sum.minutes ?? 0) / maxApp) * 100)}%` }} /></span><b>{fmtMinutes(a._sum.minutes ?? 0)}</b></div>
+          {topApps.named.length ? topApps.named.map((a) => (
+            <div className="hbar" key={a.app}><span>{a.app}</span><span className="track"><span style={{ width: `${Math.round((a.minutes / maxApp) * 100)}%` }} /></span><b>{fmtMinutes(a.minutes)}</b></div>
           )) : <EmptyState icon="app-window" title="No app usage in this period" />}
+          {topApps.hidden ? <div style={{ marginTop: 12 }}><UpgradeNote compact icon="app-window" title="More apps" text={`${family.plan} names the ${topApps.named.length} most used apps. ${APPS_UPGRADE}`} /></div> : null}
         </section>
       </div>
 

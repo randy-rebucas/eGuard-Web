@@ -3,14 +3,18 @@ import { notFound } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { usedDeviceSlots } from "@/lib/device-slots";
+import { browserLabel, listBrowsers } from "@/lib/browser-service";
 import { getFamily, getFamilyGraph } from "@/lib/queries";
-import { dayTime, peso, shortDate } from "@/lib/format";
+import { ageLabel, dayTime, peso, shortDate } from "@/lib/format";
 import { Icon } from "@/components/icon";
 import { Avatar, DeviceIcon } from "@/components/ui";
 import {
-  AccountForm, AddParentForm, DeleteAccountForm, PasswordForm, RemoveParentButton, SettingSwitch, SignOutOthersButton, UnlinkIdentityButton,
+  AccountForm, AddParentForm, DeleteAccountForm, PasswordForm, PendingInviteActions, RemoveParentButton, SettingSwitch, SignOutOthersButton, UnlinkIdentityButton,
 } from "@/components/forms";
+import { pendingInvites } from "@/lib/invitations";
 import { BuyPlan, CancelAutoRenew } from "@/components/billing";
+import { CreateOrgForm, JoinOrgForm, LeaveOrgButton, RedeemCodeForm } from "@/components/organizations";
+import { ORG_KINDS, VOUCHER_STORE, familyOrganizations, managedOrganizations, sponsorOf } from "@/lib/organizations";
 import { SECTIONS } from "../sections";
 import { supportEmail } from "@/lib/support";
 import { currentPurchase, refreshPurchases } from "@/lib/billing";
@@ -42,31 +46,86 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
     }
 
     case "family": {
-      const [members, graph] = await Promise.all([db.user.findMany({ where: { familyId: u.familyId }, orderBy: { createdAt: "asc" } }), getFamilyGraph(u.familyId)]);
+      const [members, graph, invites] = await Promise.all([
+        db.user.findMany({ where: { familyId: u.familyId }, orderBy: { createdAt: "asc" } }), getFamilyGraph(u.familyId), pendingInvites(u.familyId),
+      ]);
+      const inviteNote = (id: string) => {
+        const until = invites.get(id);
+        return until && until > new Date() ? `Invited, hasn't accepted yet · link expires ${shortDate(until, tz)}` : "Invited · the link expired, resend it";
+      };
       return (
         <>
           {head}
           {members.map((m) => (
             <div className="setting-row" key={m.id}>
               <Avatar name={m.name} hue={m.role === "FAMILY_ADMIN" ? 212 : 25} />
-              <div className="grow"><div className="t-title">{m.name}{m.id === u.id ? " (you)" : ""}</div><div className="t-meta">{m.role === "FAMILY_ADMIN" ? "Family Admin" : "Parent"} · {m.email}</div></div>
-              {admin && m.role === "PARENT" ? <RemoveParentButton userId={m.id} name={m.name.split(" ")[0]} /> : null}
+              <div className="grow">
+                <div className="t-title">{m.name}{m.id === u.id ? " (you)" : ""}</div>
+                <div className="t-meta">{invites.has(m.id) ? inviteNote(m.id) : m.role === "FAMILY_ADMIN" ? "Family Admin" : "Parent"} · {m.email}</div>
+              </div>
+              {admin && m.role === "PARENT"
+                ? invites.has(m.id) ? <PendingInviteActions userId={m.id} name={m.name.split(" ")[0]} /> : <RemoveParentButton userId={m.id} name={m.name.split(" ")[0]} />
+                : null}
             </div>
           ))}
           {graph.children.map((c) => (
             <div className="setting-row" key={c.id}>
               <Avatar name={c.name} hue={c.hue} />
-              <div className="grow"><div className="t-title">{c.name}</div><div className="t-meta">Child · {c.age} years old · {c.devices.length} device{c.devices.length === 1 ? "" : "s"}</div></div>
+              <div className="grow"><div className="t-title">{c.name}</div><div className="t-meta">Child · {ageLabel(c.age)} · {c.devices.length} device{c.devices.length === 1 ? "" : "s"}</div></div>
               <Link className="link-btn" href={`/children/${c.id}`}>Open</Link>
             </div>
           ))}
           {admin ? (
             <>
               <hr className="divider" style={{ margin: "18px 0" }} />
-              <h3 style={{ fontSize: 16, marginBottom: 12 }}>Add another parent</h3>
+              <h3 style={{ fontSize: 16, marginBottom: 12 }}>Invite another parent</h3>
               <AddParentForm />
             </>
           ) : <p className="t-meta" style={{ marginTop: 14 }}>Only the family admin can add or remove parents.</p>}
+        </>
+      );
+    }
+
+    case "organizations": {
+      const [joined, managed] = await Promise.all([familyOrganizations(u.familyId), managedOrganizations(u.id)]);
+      return (
+        <>
+          {head}
+          <p className="t-meta" style={{ marginTop: -6 }}>Schools, community groups and businesses can support families who use eGuard. An organization only ever sees how many families joined, never anything about yours.</p>
+          <h3 className="org-sub">Your family&apos;s organizations</h3>
+          {joined.map((o) => (
+            <div className="setting-row" key={o.id}>
+              <span className="ico-tile"><Icon name="building" /></span>
+              <div className="grow"><div className="t-title">{o.name}</div><div className="t-meta">{ORG_KINDS[o.kind as keyof typeof ORG_KINDS] ?? o.kind} · joined {shortDate(o.joinedAt, tz)}</div></div>
+              {admin ? <LeaveOrgButton orgId={o.id} name={o.name} /> : null}
+            </div>
+          ))}
+          {joined.length ? null : <p className="t-meta">Your family hasn&apos;t joined an organization.</p>}
+          {admin ? (
+            <div className="dash-col" style={{ gap: 8, marginTop: 16 }}>
+              <div><div className="t-title">Join with a code</div><div className="t-meta">Enter the code your school, community group or employer gave you.</div></div>
+              <JoinOrgForm />
+            </div>
+          ) : <p className="t-meta" style={{ marginTop: 12 }}>Only the family admin can join or leave an organization. You&apos;ll get an alert when they do.</p>}
+
+          <hr className="divider" style={{ margin: "24px 0 8px" }} />
+          <h3 className="org-sub">Organizations you manage</h3>
+          {managed.map((o) => (
+            <div className="setting-row" key={o.id}>
+              <span className="ico-tile"><Icon name={o.kind === "SCHOOL" ? "school" : o.kind === "BUSINESS" ? "briefcase" : "users"} /></span>
+              <div className="grow"><div className="t-title">{o.name}</div><div className="t-meta">{ORG_KINDS[o.kind]} · {o.role === "OWNER" ? "Owner" : "Admin"} · {o.families} {o.families === 1 ? "family" : "families"} joined</div></div>
+              <Link className="link-btn" href={`/organizations/${o.id}`}>Open</Link>
+            </div>
+          ))}
+          {managed.length ? (
+            <p className="t-meta" style={{ marginTop: 8 }}>
+              We email you when admins or the join code change, when codes are paid for, refunded or close to their redeem-by date, and once a day with how many families joined or left and codes were used. Those emails never say which families.
+            </p>
+          ) : null}
+          <div className="dash-col" style={{ gap: 12, marginTop: managed.length ? 16 : 4 }}>
+            <div><div className="t-title">Create an organization</div><div className="t-meta">For a school, community group or business that wants to help families: share a join code, and buy sponsor codes that pay for families&apos; plans.</div></div>
+            <CreateOrgForm />
+          </div>
         </>
       );
     }
@@ -76,8 +135,8 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
         <>
           {head}
           <SettingSwitch setting="notifyPush" title="Push notifications" desc={plan.realtimeAlerts ? "Protection changes and devices that need attention" : `Push alerts are included with ${planWith((e) => e.realtimeAlerts).name}. Alerts still show in eGuard and by email.`} checked={user.notifyPush && plan.realtimeAlerts} disabled={!plan.realtimeAlerts} />
-          <SettingSwitch setting="notifyEmail" title="Email alerts" desc="Protection changes, devices that stop syncing, and anything that needs action" checked={user.notifyEmail} />
-          <SettingSwitch setting="notifyApproval" title="App approval requests" desc="When a child asks to install an app" checked={user.notifyApproval} />
+          <SettingSwitch setting="notifyEmail" title="Email alerts" desc="Protection changes, devices that stop syncing, anything that needs action, and organization activity" checked={user.notifyEmail} />
+          <SettingSwitch setting="notifyApproval" title="App approval requests" desc="Email me when a child asks for an app or a blocked website (needs Email alerts on)" checked={user.notifyApproval} />
           <SettingSwitch setting="weeklySummary" title="Weekly summary" desc="Every Sunday at 6 PM" checked={user.weeklySummary} />
           <p className="t-meta" style={{ marginTop: 12 }}>Email alerts go to your verified email address. Push notifications and the weekly summary aren&apos;t sent yet; your choices are saved and apply once they are.</p>
         </>
@@ -90,7 +149,7 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
           <SettingSwitch setting="keepLocationHistory" title="Keep location history" desc={!plan.locationSharing ? LOCATION_UPGRADE : family.keepLocationHistory ? "On: recent locations are kept for the retention period. Turning it off deletes the history already kept" : "Off: only the current location is stored"} checked={family.keepLocationHistory} disabled={!admin || (!plan.locationSharing && !family.keepLocationHistory)}
             confirmOff="This deletes every child's location history now. It can't be undone. Current locations keep working." />
           <SettingSwitch setting="shareAnalytics" title="Share anonymous product analytics" desc="Helps improve eGuard. Never includes children's data" checked={family.shareAnalytics} disabled={!admin} />
-          <div className="setting-row"><div className="grow"><div className="t-title">What children can see</div><div className="t-meta">Children see which protections are on and can request more time or new apps</div></div></div>
+          <div className="setting-row"><div className="grow"><div className="t-title">What children can see</div><div className="t-meta">Children see which protections are on, and can ask you for new apps and for blocked websites</div></div></div>
           <div className="setting-row"><div className="grow"><div className="t-title">Data retention</div><div className="t-meta">Screen time, app usage, alerts, change history and location visits are deleted after {family.retentionDays} days</div></div><span className="pill tone-accent">{family.retentionDays} days</span></div>
           {!admin ? <p className="t-meta" style={{ marginTop: 12 }}>Only the family admin can change privacy settings.</p> : null}
         </>
@@ -144,7 +203,9 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
       ]);
       const current = planByName(fam.plan);
       const paidUntil = purchase?.expiresAt ? shortDate(purchase.expiresAt, tz) : null;
-      const how = !purchase ? null : purchase.store === "GOOGLE_PLAY" ? "Google Play" : webProduct(purchase.productId)?.autoRenew ? (purchase.autoRenewing ? "Auto-renew" : "Auto-renew off") : "Prepaid pass";
+      const sponsor = await sponsorOf(purchase);
+      const sponsored = purchase?.store === VOUCHER_STORE;
+      const how = !purchase ? null : purchase.store === "GOOGLE_PLAY" ? "Google Play" : sponsored ? `Sponsored by ${sponsor ?? "an organization"}` : webProduct(purchase.productId)?.autoRenew ? (purchase.autoRenewing ? "Auto-renew" : "Auto-renew off") : "Prepaid pass";
       const nextCharge = purchase?.autoRenewing ? webProduct(purchase.productId) : null;
       // Plans retired before these keep billing at the price they were bought at, which only PayMongo knows
       const nextAmount = nextCharge && !nextCharge.legacy ? peso(webPrice(nextCharge.plan)) : null;
@@ -183,8 +244,14 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
           {current.entitlements.apiAccess ? (
             <div className="setting-row" style={{ marginTop: 12 }}>
               <span className="ico-tile"><Icon name="plug" /></span>
-              <div className="grow"><div className="t-title">API access for schools and organizations</div><div className="t-meta">Included with {current.name}. We set up access with you: tell us who needs it and what for.</div></div>
-              <a className="btn btn-secondary btn-sm" href={`mailto:${supportEmail()}?subject=${encodeURIComponent(`${current.name} API access`)}`}>Request access</a>
+              <div className="grow"><div className="t-title">API access for schools and organizations</div><div className="t-meta">Included with {current.name}. Create API keys on the page of an organization you manage, under API access.</div></div>
+              <Link className="btn btn-secondary btn-sm" href="/settings/organizations">Organizations</Link>
+            </div>
+          ) : null}
+          {admin ? (
+            <div className="setting-row" style={{ flexDirection: "column", alignItems: "stretch", gap: 10, marginTop: 8 }}>
+              <div><div className="t-title">Have a sponsor code?</div><div className="t-meta">Schools, community groups and employers can give families eGuard codes. Enter yours to get the plan it covers.</div></div>
+              <RedeemCodeForm />
             </div>
           ) : null}
           <hr className="divider" style={{ margin: "20px 0" }} />
@@ -196,7 +263,7 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
             <p className="t-meta">Online payment isn&apos;t available yet. To change your plan, contact <a className="link-btn" href={`mailto:${supportEmail()}`}>{supportEmail()}</a>.</p>
           ) : purchase?.autoRenewing && nextCharge ? (
             <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-              <div><div className="t-title">Auto-renew is on</div><div className="t-meta">{purchase.state === "past_due" ? "The last renewal payment failed. PayMongo will try again; check your card or Maya balance." : `Next charge${nextAmount ? ` ${nextAmount}` : ""} on ${paidUntil}. To switch plans, turn auto-renew off; you keep ${fam.plan} until then.`}</div></div>
+              <div><div className="t-title">Auto-renew is on</div><div className="t-meta">{purchase.state === "past_due" ? "The last renewal payment failed. PayMongo will try again; check your card or Maya balance." : `Next charge${nextAmount ? ` ${nextAmount}` : ""} on ${paidUntil ?? "your next billing date"}. To switch plans, turn auto-renew off; you keep ${fam.plan} until then.`}</div></div>
               <CancelAutoRenew plan={fam.plan} endsOn={paidUntil ?? "the end of this period"} />
             </div>
           ) : (
@@ -206,7 +273,7 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
               methods={passMethodLabel()}
               payer={{ name: user.name, email: user.email }}
               autoRenewBlocked={purchase && paidUntil ? `available once your paid time ends on ${paidUntil}.` : null}
-              passOnly={runningPass && paidUntil ? { plan: runningPass.id, reason: `Your ${runningPass.name} pass runs until ${paidUntil}. You can add months to it now, or switch plans after it ends.` } : null}
+              passOnly={runningPass && paidUntil ? { plan: runningPass.id, reason: `Your ${sponsored ? `sponsored ${runningPass.name}` : `${runningPass.name} pass`} runs until ${paidUntil}. You can add months to it now, or switch plans after it ends.` } : null}
             />
           )}
         </>
@@ -214,15 +281,24 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
     }
 
     case "devices": {
-      const graph = await getFamilyGraph(u.familyId);
+      // Browsers take plan slots too, so they're listed here as on Subscription's device count
+      const [graph, browsers] = await Promise.all([getFamilyGraph(u.familyId), listBrowsers(u.familyId)]);
       return (
         <>
           {head}
+          {graph.devices.length || browsers.length ? null : <p className="t-meta">No devices are paired yet. Pair your child&apos;s phone or tablet with the eGuard app.</p>}
           {graph.devices.map((d) => (
             <div className="setting-row" key={d.id}>
               <span className="ico-tile"><DeviceIcon kind={d.kind} /></span>
               <div className="grow"><div className="t-title">{d.name}</div><div className="t-meta">{d.child.name} · {d.osVersion} · synced {dayTime(d.lastSeenAt, tz)}</div></div>
               <Link className="link-btn" href={`/devices/${d.id}`}>Open</Link>
+            </div>
+          ))}
+          {browsers.map((b) => (
+            <div className="setting-row" key={b.id}>
+              <span className="ico-tile"><Icon name="monitor" /></span>
+              <div className="grow"><div className="t-title">{browserLabel(b)}</div><div className="t-meta">{b.child.name} · {b.revokedAt ? "Disconnected for security, doesn't count toward your plan" : `seen ${dayTime(b.lastSeenAt, tz)}`}</div></div>
+              <Link className="link-btn" href="/devices#add-browser">Manage</Link>
             </div>
           ))}
           <Link className="btn btn-secondary" style={{ marginTop: 14 }} href="/devices#pair"><Icon name="plus" />Pair a device</Link>
@@ -247,7 +323,7 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
       return (
         <>
           {head}
-          <div className="setting-row"><div className="grow"><div className="t-title">Export family data</div><div className="t-meta">Settings, children, devices, configuration history and activity summaries as JSON</div></div><form method="post" action="/api/account/export"><button className="btn btn-secondary btn-sm"><Icon name="download" />Download</button></form></div>
+          <div className="setting-row"><div className="grow"><div className="t-title">Export family data</div><div className="t-meta">Settings, children, devices and browsers, configuration history and activity summaries as JSON</div></div><form method="post" action="/api/account/export"><button className="btn btn-secondary btn-sm"><Icon name="download" />Download</button></form></div>
           <div className="setting-row"><div className="grow"><div className="t-title">Delete a child&apos;s data</div><div className="t-meta">Open the child&apos;s page, then Profile. Needs your password.</div></div><Link className="btn btn-secondary btn-sm" href="/children">Choose child</Link></div>
           <div className="setting-row" style={{ flexDirection: "column", alignItems: "stretch" }}>
             <div><div className="t-title">Delete your account</div><div className="t-meta">{admin ? "Deletes your family and everything eGuard stores about it." : "Removes you from the family. The family admin keeps the family."}</div></div>

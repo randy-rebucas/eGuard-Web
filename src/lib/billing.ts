@@ -72,7 +72,9 @@ export async function refreshPurchases(familyId: string, opts: { cfg?: GooglePla
   const cfg = opts.cfg !== undefined ? opts.cfg : googlePlayConfig();
   for (const p of due) {
     try {
-      if (p.store === PAYMONGO) {
+      if (p.store === "VOUCHER") {
+        continue; // a redeemed sponsor code: paid in full, nothing to re-check with a store
+      } else if (p.store === PAYMONGO) {
         await syncWebPurchase(p, opts.web);
       } else if (cfg) {
         const s = summarize(await getSubscription(cfg, p.purchaseToken, opts.fetch), p.productId);

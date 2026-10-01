@@ -136,13 +136,20 @@ describe("passes (pay once)", () => {
     await expect(buyPass(admin, "PLUS", opts)).rejects.toMatchObject({ status: 409, message: expect.stringContaining("Family Pro pass runs until") });
   });
 
-  it("a refund ends that pass right away", async () => {
+  it("a partial refund leaves the pass running; once refunds add up to the payment, it ends", async () => {
     const b = await row(second);
-    expect(await handlePaymongoEvent(event("refund.succeeded", { id: "ref_1", type: "refund", attributes: { payment_id: b.paymentId, status: "succeeded" } }), opts))
-      .toEqual({ handled: true });
+    // A goodwill credit of ₱50 out of ₱249
+    expect(await handlePaymongoEvent(event("refund.succeeded", pm.refund(b.paymentId!, 5000)), opts)).toEqual({ handled: true, partial: true });
+    expect((await row(second)).state).toBe("PAID");
+    expect((await fam()).plan).toBe("Family Pro");
+    // The rest refunded later: together that's the whole payment
+    expect(await handlePaymongoEvent(event("refund.succeeded", pm.refund(b.paymentId!, 24900 - 5000)), opts)).toEqual({ handled: true });
     expect((await row(second)).state).toBe("VOIDED");
+  });
+
+  it("a full refund ends that pass right away", async () => {
     expect((await fam()).renewsAt!.getTime()).toBe((await row(first)).expiresAt!.getTime());
-    await handlePaymongoEvent(event("refund.succeeded", { id: "ref_2", type: "refund", attributes: { payment_id: (await row(first)).paymentId } }), opts);
+    expect(await handlePaymongoEvent(event("refund.succeeded", pm.refund((await row(first)).paymentId!)), opts)).toEqual({ handled: true });
     expect(await fam()).toMatchObject({ plan: "Free", deviceLimit: 2, renewsAt: null });
   });
 
@@ -154,7 +161,7 @@ describe("passes (pay once)", () => {
     await confirmReturn(other.familyId, r.purchaseId, opts);
     expect(await fam(other)).toMatchObject({ plan: "eGuard Plus", deviceLimit: 10 });
     // Refunded again, so the auto-renew tests below start from Free
-    await handlePaymongoEvent(event("refund.succeeded", { id: "ref_plus", type: "refund", attributes: { payment_id: (await row(cs)).paymentId } }), opts);
+    await handlePaymongoEvent(event("refund.succeeded", pm.refund((await row(cs)).paymentId!)), opts);
     expect((await fam(other)).plan).toBe("Free");
   });
 

@@ -15,6 +15,6 @@ export const PATCH = authed<{ id: string }>(async ({ req, user, params }) => {
   const b = await body(req, Body);
   if (b.approval === undefined && b.dailyLimitMinutes === undefined) throw invalid("Send approval or dailyLimitMinutes.");
   let app = b.approval ? await setAppApproval(user, params.id, b.approval, clientLabel(req)) : null;
-  if (b.dailyLimitMinutes !== undefined) app = await setAppLimit(user, params.id, b.dailyLimitMinutes);
+  if (b.dailyLimitMinutes !== undefined) app = await setAppLimit(user, params.id, b.dailyLimitMinutes, clientLabel(req));
   return NextResponse.json({ id: app!.id, name: app!.name, approval: app!.approval, approvalLabel: APPROVAL_LABEL[app!.approval], dailyLimitMinutes: app!.dailyLimitMinutes });
 });

@@ -1,6 +1,7 @@
 import "server-only";
 import { db } from "./db";
-import { PASSWORD_TOO_LONG, hashPassword, newToken, passwordTooLong, sha256 } from "./auth";
+import { MIN_PASSWORD, PASSWORD_TOO_LONG, hashPassword, isPendingInvite, newToken, passwordTooLong, sha256 } from "./auth";
+import { acceptInvite, sendInvite } from "./invitations";
 import { audit } from "./audit";
 import { appUrl } from "./email-verification";
 import { ServiceError, invalid } from "./errors";
@@ -13,7 +14,7 @@ import { LIMITS, enforce, hit, ipKey } from "./rate-limit";
  */
 
 const LINK_MINUTES = 60;
-export const MIN_PASSWORD = 10;
+export { MIN_PASSWORD };
 
 /**
  * Sends a reset link if an account uses this email. Always looks the same to the caller, whether or not
@@ -25,6 +26,9 @@ export async function requestPasswordReset(email: string, ip: string | null) {
   if (!user) return;
   // Per-account cap, applied silently: an error here would reveal that the account exists
   if ((await hit(`reset:acct:${user.id}`, LIMITS.resetEmail)).limited) return;
+  // Not accepted yet: a reset link would put them in the family without seeing which one. Send the invitation
+  // again instead; it names the family and lets them decline.
+  if (isPendingInvite(user)) return void (await sendInvite(user.id));
 
   const token = newToken();
   await db.$transaction([
@@ -59,6 +63,8 @@ export async function resetPassword(token: string, password: string, ip: string 
   if (passwordTooLong(password)) throw invalid(PASSWORD_TOO_LONG);
   const r = token ? await db.passwordReset.findUnique({ where: { tokenHash: sha256(token) }, include: { user: true } }) : null;
   if (!r || r.email !== r.user.email) throw new ServiceError(400, "This link has already been used or isn't valid. Ask for a new one.", "link_invalid");
+  // An invitation link opened on the reset page (an older app): accepting it is what setting a password means here
+  if (isPendingInvite(r.user)) return acceptInvite(token, password);
   if (r.expiresAt < new Date()) throw new ServiceError(400, "This link has expired. Ask for a new one.", "link_expired");
   await db.$transaction([
     db.user.update({

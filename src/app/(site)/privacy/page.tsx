@@ -13,8 +13,11 @@ export const metadata: Metadata = pageMetadata({
 
 const COLLECTED: [string, string][] = [
   ["Your account", "Your name, email address, password (stored only as a one-way hash), your role in the family, notification preferences, and your Apple or Google account ID if you sign in with them."],
+  ["Other parents you invite", "Their name and email address, so we can send the invitation. If they decline or you withdraw it, we delete them; until they accept, they can't sign in or see anything."],
+  ["Organizations", "If your family joins a school, community group or business with its code, which organization it joined and when. If you manage an organization: its name, its admins, and the sponsor codes it bought and when each was redeemed, never by whom."],
   ["Your children", "Each child's first name, birth year, protection settings and, if you add one, a profile photo."],
   ["Your children's devices", "Device name, model, operating system and app version, battery level, and the settings each device reports. A pairing token identifies the device; we store only a hash of it."],
+  ["Your children's browsers", "If you add the eGuard browser extension: the browser's name and version, the computer's operating system, the label you give it, whether its protections are working, and how many pages it blocked each day by category, never which ones. If your child asks to open a blocked site, the site's address and the reason they type."],
   ["Screen time and apps", "Daily and hourly screen-time totals, the names of installed apps, minutes used per app, and app approval requests."],
   ["Location (optional)", "Only if you turn on Location for a child: the device's current location, which each update overwrites. Places visited are kept only if you also turn on location history."],
   ["Alerts and history", "Alerts about protection changes, offline devices and limits, and a record of the changes made in your family and by whom."],
@@ -108,6 +111,7 @@ export default function PrivacyPage() {
             <li><strong>Apple or Google</strong>, if you choose to sign in with them. We receive your name and email from them; we don&apos;t send them your family&apos;s data.</li>
             <li><strong>Authorities</strong>, when the law requires it, or to protect someone&apos;s safety.</li>
           </ul>
+          <p><strong>Organizations</strong> your family joins never see your family&apos;s data: not your name, your children or which code you redeemed. They see only how many families joined and how many of their codes were used. If you manage an organization in eGuard, its other admins see your name and email address.</p>
           <p>Maps in the dashboard are loaded through our own servers, so the map provider never sees your IP address or what you&apos;re looking at.</p>
         </>
       ),
@@ -116,7 +120,7 @@ export default function PrivacyPage() {
       id: "retention", title: "How long we keep it",
       body: (
         <ul>
-          <li><strong>Activity</strong> (screen time, app usage, location history, change history and resolved alerts): 90 days, then deleted automatically.</li>
+          <li><strong>Activity</strong> (screen time, app usage, location history, change history, browser block counts and site requests, and resolved alerts): 90 days, then deleted automatically.</li>
           <li><strong>Current location</strong>: overwritten with every update, and deleted when you remove the device or the child.</li>
           <li><strong>Security records</strong> of account changes: one year.</li>
           <li><strong>Sessions</strong>: until you sign out, or 30 days. Email verification links expire after 24 hours and password-reset links after one hour.</li>

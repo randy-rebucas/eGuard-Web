@@ -2,6 +2,7 @@ import "server-only";
 import { cache } from "react";
 import { db } from "./db";
 import { computeHealth, deviceState } from "./health";
+import { pageByTime } from "./paging";
 
 /** YYYY-MM-DD for a date in the family's timezone */
 export function dayKey(d: Date, tz: string) {
@@ -37,6 +38,12 @@ export function lastNDays(n: number, tz: string, end = new Date()) {
   const base = dateFromKey(todayKey).getTime();
   return Array.from({ length: n }, (_, i) => new Date(base - (n - 1 - i) * 864e5).toISOString().slice(0, 10));
 }
+
+/** A child's configuration history, newest first (web History tab and the mobile API). */
+export const historyPage = (childId: string, limit: number, before?: Date) =>
+  pageByTime(limit, (createdAt, take) => db.configChange.findMany({
+    where: { childId, createdAt }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take,
+  }), (c) => c.createdAt, before);
 
 export const getFamily = cache(async (familyId: string) => {
   return db.family.findUniqueOrThrow({ where: { id: familyId } });
@@ -119,10 +126,11 @@ export async function getAppUsage(familyId: string, from: string, to: string) {
   });
 }
 
-export async function getAlerts(familyId: string, userId: string, opts: { category?: string; take?: number; includeResolved?: boolean } = {}) {
+export async function getAlerts(familyId: string, userId: string, opts: { category?: string; take?: number; includeResolved?: boolean; childId?: string } = {}) {
   const alerts = await db.alert.findMany({
     where: {
       familyId,
+      ...(opts.childId ? { childId: opts.childId } : {}),
       ...(opts.category && opts.category !== "ALL" ? { category: opts.category as never } : {}),
       ...(opts.includeResolved ? {} : { resolvedAt: null }),
     },

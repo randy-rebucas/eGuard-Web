@@ -3,6 +3,13 @@ import { PROTECTIONS, configMatches, isConfigured, type Capability } from "./pro
 
 export const OFFLINE_AFTER_MS = 24 * 3600_000;
 
+/**
+ * Whether a parent may dismiss an alert. One with a resolveKey clears itself once the problem is fixed; the rest
+ * (INFO, and notices like "Device removed") have nothing that would ever resolve them, so the parent can.
+ */
+export const isDismissible = (a: { severity: string; resolveKey: string | null; resolvedAt: Date | null }) =>
+  !a.resolvedAt && (a.severity === "INFO" || !a.resolveKey);
+
 type DeviceLike = {
   id: string;
   name: string;
