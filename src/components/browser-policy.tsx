@@ -39,10 +39,18 @@ export function BrowserPolicyForm({ childId, childName, initial, categories }: {
   const [v, setV] = useState(initial);
   const [blocked, setBlocked] = useState(lines(initial.blockedDomains));
   const [allowed, setAllowed] = useState(lines(initial.allowedDomains));
-  const [result, setResult] = useState<{ ok?: string; error?: string } | null>(null);
+  const [result, setResult] = useState<{ ok?: string; error?: string; stale?: boolean } | null>(null);
   const [pending, start] = useTransition();
+  const [dirty, setDirty] = useState(false);
+  const [seen, setSeen] = useState(initial.version);
+  const load = (p: BrowserPolicyValues) => { setV(p); setBlocked(lines(p.blockedDomains)); setAllowed(lines(p.allowedDomains)); setDirty(false); };
+  // A newer version arrived (an approved access request, another parent): take it unless the parent is mid-edit
+  if (initial.version !== seen) {
+    setSeen(initial.version);
+    if (!dirty && initial.version > v.version) load(initial);
+  }
   const schedule = v.schedule ?? { enabled: false, startTime: "21:00", endTime: "06:00" };
-  const set = (patch: Partial<BrowserPolicyValues>) => { setV({ ...v, ...patch }); setResult(null); };
+  const set = (patch: Partial<BrowserPolicyValues>) => { setV({ ...v, ...patch }); setResult(null); setDirty(true); };
   const toggleCategory = (k: string) =>
     set({ blockedCategories: v.blockedCategories.includes(k) ? v.blockedCategories.filter((c) => c !== k) : [...v.blockedCategories, k] });
 
@@ -51,12 +59,13 @@ export function BrowserPolicyForm({ childId, childName, initial, categories }: {
       safeBrowsing: v.safeBrowsing, safeSearch: v.safeSearch, blockedCategories: v.blockedCategories,
       blockedDomains: parse(blocked), allowedDomains: parse(allowed), unknownSitesPolicy: v.unknownSitesPolicy,
       schedule: v.schedule,
-    });
-    if (r.error !== undefined) { setResult({ error: r.error }); return; }
+    }, v.version);
+    if (r.error !== undefined) { setResult({ error: r.error, stale: r.code === "stale_version" || r.code === "conflict" }); return; }
     setResult({ ok: r.version === v.version ? "No changes to save." : `Saved. ${childName}'s browsers pick this up within 5 minutes.` });
     setV({ ...v, version: r.version });
     setBlocked(lines(r.blockedDomains));
     setAllowed(lines(r.allowedDomains));
+    setDirty(false);
     router.refresh();
   });
 
@@ -94,12 +103,12 @@ export function BrowserPolicyForm({ childId, childName, initial, categories }: {
         <div className="field">
           <label htmlFor={`${id}-blocked`}>Blocked sites</label>
           <textarea id={`${id}-blocked`} className="input bp-textarea" value={blocked} spellCheck={false} placeholder={"example.com\nanother-site.com"}
-            onChange={(e) => { setBlocked(e.target.value); setResult(null); }} aria-describedby={`${id}-lists-hint`} />
+            onChange={(e) => { setBlocked(e.target.value); setResult(null); setDirty(true); }} aria-describedby={`${id}-lists-hint`} />
         </div>
         <div className="field">
           <label htmlFor={`${id}-allowed`}>Always allowed</label>
           <textarea id={`${id}-allowed`} className="input bp-textarea" value={allowed} spellCheck={false} placeholder={"school.edu\nkhanacademy.org"}
-            onChange={(e) => { setAllowed(e.target.value); setResult(null); }} aria-describedby={`${id}-lists-hint`} />
+            onChange={(e) => { setAllowed(e.target.value); setResult(null); setDirty(true); }} aria-describedby={`${id}-lists-hint`} />
         </div>
         <p id={`${id}-lists-hint`} className="t-meta" style={{ gridColumn: "1 / -1" }}>One site per line. A site includes its subdomains: youtube.com also covers m.youtube.com. Allowed sites open even inside a blocked category.</p>
       </div>
@@ -112,6 +121,8 @@ export function BrowserPolicyForm({ childId, childName, initial, categories }: {
           ))}
         </div>
         <p className="t-meta">{UNKNOWN.find((u) => u.key === v.unknownSitesPolicy)?.text}</p>
+        {v.unknownSitesPolicy === "BLOCK" && !parse(allowed).length
+          ? <p className="form-error" role="status"><Icon name="triangle-alert" />The allowed list is empty, so every website will be blocked. Add the sites {childName} needs above.</p> : null}
       </fieldset>
 
       <fieldset className="bp-group">
@@ -128,10 +139,18 @@ export function BrowserPolicyForm({ childId, childName, initial, categories }: {
         ) : null}
       </fieldset>
 
-      {result?.error ? <div className="form-error" role="alert"><Icon name="triangle-alert" />{result.error}</div> : null}
+      {result?.error ? (
+        <div className="form-error" role="alert">
+          <Icon name="triangle-alert" /><span className="grow">{result.error}</span>
+          {result.stale ? <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setResult(null); router.refresh(); load(initial); }}>Load latest settings</button> : null}
+        </div>
+      ) : null}
       {result?.ok ? <div className="form-ok" role="status"><Icon name="circle-check" />{result.ok}</div> : null}
+      {dirty && initial.version > v.version && !result ? (
+        <p className="t-meta" role="status">These settings were changed elsewhere while you were editing (version {initial.version}). Saving now would be refused; load the latest first.</p>
+      ) : null}
       <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap" }}>
-        <span className="t-meta num">Version {v.version}</span>
+        <span className="t-meta num">Version {v.version}{dirty ? " · unsaved changes" : ""}</span>
         <button className="btn btn-primary" disabled={pending}>{pending ? <><Icon name="loader-circle" className="spin" />Saving…</> : "Save browser protection"}</button>
       </div>
     </form>

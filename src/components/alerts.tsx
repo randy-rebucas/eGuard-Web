@@ -11,7 +11,7 @@ import { dismissAlert, markAlertRead, markAllRead } from "@/app/actions/family";
 
 export type AlertItem = {
   id: string; icon: string; title: string; body: string; subject: string; time: string; severity: AlertSeverity;
-  read: boolean; resolved: boolean; fromValue: string | null; toValue: string | null; action: AlertAction | null;
+  read: boolean; resolved: boolean; dismissible: boolean; fromValue: string | null; toValue: string | null; action: AlertAction | null;
 };
 
 /** Matches `unreadCount`: INFO alerts and resolved ones never count as unread. */
@@ -69,7 +69,7 @@ export function NotificationItem({ a }: { a: AlertItem }) {
         {isUnread(a) ? (
           <button className="icon-btn" aria-label={`Mark ${a.title} as read`} title="Mark as read" disabled={pending} onClick={() => run(() => markAlertRead(a.id))}><Icon name={pending ? "loader-circle" : "check"} className={pending ? "spin" : undefined} /></button>
         ) : null}
-        {a.severity === "INFO" && !a.resolved ? (
+        {a.dismissible ? (
           <button className="icon-btn" aria-label={`Dismiss ${a.title}`} disabled={pending} onClick={() => run(() => dismissAlert(a.id))}><Icon name={pending ? "loader-circle" : "x"} className={pending ? "spin" : undefined} /></button>
         ) : null}
       </div>

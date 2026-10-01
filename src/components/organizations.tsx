@@ -6,6 +6,7 @@ import { Icon } from "./icon";
 import { Feedback } from "./forms";
 import { useAction, useFlow } from "./flow";
 import { peso } from "@/lib/format";
+import { planById } from "@/lib/plans";
 import {
   addOrgAdmin, buyCodes, cancelCode, createApiKey, createOrganization, joinOrganization, leaveOrganization, makeOrgOwner, previewJoin,
   redeemCode, removeOrgAdmin, replaceJoinCode, revokeApiKey,
@@ -135,7 +136,9 @@ export function JoinCodeCard({ orgId, code }: { orgId: string; code: string }) {
   );
 }
 
-const PLAN_NAMES = { PLUS: "eGuard Plus", PRO: "Family Pro" } as const;
+/** From plans.ts, so the names and child limits stay in step with the pricing page */
+const PLAN_NAMES = { PLUS: planById("PLUS").name, PRO: planById("PRO").name };
+const planOption = (id: "PLUS" | "PRO") => `${PLAN_NAMES[id]} (up to ${planById(id).entitlements.childLimit} children)`;
 
 /** Plan, months, quantity and a live total; pays through PayMongo's checkout. */
 export function BuyCodesForm({ orgId, monthly, maxQuantity, methods }: {
@@ -148,8 +151,9 @@ export function BuyCodesForm({ orgId, monthly, maxQuantity, methods }: {
   const [state, action, pending] = useActionState(buyCodes.bind(null, orgId), undefined);
   const [plan, setPlan] = useState<"PLUS" | "PRO">("PLUS");
   const [months, setMonths] = useState(3);
-  const [quantity, setQuantity] = useState(10);
-  const q = Math.min(maxQuantity, Math.max(0, Math.floor(quantity) || 0));
+  // Kept as typed, so clearing the field leaves it empty instead of turning it into 0
+  const [quantity, setQuantity] = useState("10");
+  const q = Math.min(maxQuantity, Math.max(0, Math.floor(Number(quantity)) || 0));
   const each = monthly[plan] * months;
   return (
     <form action={action} className="dash-col" style={{ gap: 14 }}>
@@ -158,8 +162,8 @@ export function BuyCodesForm({ orgId, monthly, maxQuantity, methods }: {
         <div className="field">
           <label htmlFor="b-plan">Plan</label>
           <select className="input" id="b-plan" name="plan" value={plan} onChange={(e) => setPlan(e.target.value as "PLUS" | "PRO")}>
-            <option value="PLUS">eGuard Plus (up to 5 children)</option>
-            <option value="PRO">Family Pro (up to 10 children)</option>
+            <option value="PLUS">{planOption("PLUS")}</option>
+            <option value="PRO">{planOption("PRO")}</option>
           </select>
         </div>
         <div className="field">
@@ -170,7 +174,7 @@ export function BuyCodesForm({ orgId, monthly, maxQuantity, methods }: {
         </div>
         <div className="field">
           <label htmlFor="b-qty">Number of codes</label>
-          <input className="input" id="b-qty" name="quantity" type="number" min={1} max={maxQuantity} value={quantity} onChange={(e) => setQuantity(Number(e.target.value))} />
+          <input className="input" id="b-qty" name="quantity" type="number" min={1} max={maxQuantity} value={quantity} onChange={(e) => setQuantity(e.target.value)} />
         </div>
       </div>
       <div className="org-total">

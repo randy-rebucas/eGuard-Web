@@ -1,21 +1,26 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
-import { dateFromKey, dayKey, getFamily, getFamilyGraph } from "@/lib/queries";
+import { dateFromKey, dayKey, getFamily, getFamilyGraph, limitOn } from "@/lib/queries";
 import { db } from "@/lib/db";
 import { fmtMinutes, fmtMinutesPadded } from "@/lib/protections";
 import { Icon } from "@/components/icon";
 import { EmptyState, PageHead, UpgradeNote } from "@/components/ui";
 import { childLimitReached } from "@/lib/family-service";
 import { ChildCard } from "@/components/cards";
+import { entitlementsFor } from "@/lib/plans";
+import { locationOf } from "@/lib/views";
 
 export const metadata = { title: "Children" };
+
+const LOCATION_LABEL = { available: "Available", waiting: "Waiting for first location", off: "Sharing off", nodevice: "No device", plan: "Not on your plan" } as const;
 
 export default async function ChildrenPage() {
   const u = await requireUser();
   const [family, { children }] = await Promise.all([getFamily(u.familyId), getFamilyGraph(u.familyId)]);
   const full = childLimitReached(family.plan, children.length);
-  const today = dateFromKey(dayKey(new Date(), family.timezone));
-  const usage = await db.screenTimeDaily.groupBy({ by: ["childId"], where: { child: { familyId: u.familyId }, date: today }, _sum: { minutes: true } });
+  const tz = family.timezone, todayKey = dayKey(new Date(), tz);
+  const locationSharing = entitlementsFor(family.plan).locationSharing;
+  const usage = await db.screenTimeDaily.groupBy({ by: ["childId"], where: { child: { familyId: u.familyId }, date: dateFromKey(todayKey) }, _sum: { minutes: true } });
 
   return (
     <>
@@ -34,14 +39,15 @@ export default async function ChildrenPage() {
                 <tbody>
                   {children.map((c) => {
                     const used = usage.find((x) => x.childId === c.id)?._sum.minutes ?? 0;
-                    const sharing = c.devices.some((d) => d.location?.sharing);
+                    const loc = locationOf(c, locationSharing, tz);
                     return (
                       <tr key={c.id}>
                         <td><Link className="link-btn" href={`/children/${c.id}`}>{c.name}</Link></td>
-                        <td>{c.health.score} / 10</td>
+                        {/* Say when part of the score is an offline device's last known state, as the card's status does */}
+                        <td>{c.devices.length ? `${c.health.score} / ${c.health.total}${c.health.offline ? `, ${c.health.offline} offline` : ""}` : "No devices yet"}</td>
                         <td>{c.devices.length}</td>
-                        <td>{fmtMinutesPadded(used)} of {fmtMinutes(c.dailyLimitMinutes)}</td>
-                        <td>{sharing ? "Available" : "Unavailable"}</td>
+                        <td>{fmtMinutesPadded(used)} of {fmtMinutes(limitOn(c, todayKey))}</td>
+                        <td>{LOCATION_LABEL[loc.state]}</td>
                       </tr>
                     );
                   })}

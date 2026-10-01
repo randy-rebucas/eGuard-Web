@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useActionState, useState } from "react";
-import { forgotPassword, login, register, resetPasswordWithToken } from "@/app/actions/auth";
+import { acceptInvitation, declineInvitation, forgotPassword, login, register, resetPasswordWithToken } from "@/app/actions/auth";
 import { Icon } from "./icon";
 
 function ErrorBox({ error }: { error?: string }) {
@@ -50,12 +50,14 @@ function PasswordInput({ label, id, children, ...rest }: Omit<InputProps, "icon"
   );
 }
 
-export function LoginForm() {
+/** `next`: the signed-in page to return to after signing in (already checked by safeNext on the server). */
+export function LoginForm({ next = "" }: { next?: string }) {
   const [state, action, pending] = useActionState(login, undefined);
   return (
     <form action={action} className="auth-form" noValidate>
-      <Header title="Welcome back" sub="Sign in to manage your family's digital safety." />
+      <Header title="Welcome back" sub={next ? "Sign in to continue where you left off." : "Sign in to manage your family's digital safety."} />
       <ErrorBox error={state?.error} />
+      {next ? <input type="hidden" name="next" value={next} /> : null}
       <IconInput id="email" label="Email address" icon="mail" type="email" autoComplete="email" placeholder="you@example.com" required defaultValue={state?.fields?.email ?? ""} />
       <PasswordInput id="password" label="Password" autoComplete="current-password" placeholder="Enter your password" required>
         <Link className="auth-forgot" href="/forgot-password">Forgot password?</Link>
@@ -150,5 +152,48 @@ export function ResetPasswordForm({ token }: { token: string }) {
       <button className="btn btn-primary auth-submit" disabled={pending}>{pending ? "Saving…" : "Save password"}</button>
       {state?.error ? <p className="auth-foot"><Link href="/forgot-password">Send a new link</Link></p> : null}
     </form>
+  );
+}
+
+type Invite = { name: string; email: string; familyName: string; invitedBy: string | null };
+
+/** /accept-invite: says which family it is before anything happens, then accept (with a password) or decline. */
+export function AcceptInviteForm({ token, invite }: { token: string; invite: Invite }) {
+  const [state, action, pending] = useActionState(acceptInvitation, undefined);
+  const [declined, decline, declining] = useActionState(declineInvitation, undefined);
+  const [password, setPassword] = useState("");
+  const longEnough = password.length >= MIN_PASSWORD;
+  if (declined?.ok) {
+    return (
+      <div className="auth-form">
+        <Header title="Invitation declined" sub={declined.ok} />
+        <p className="auth-foot">Want eGuard for your own family? <Link href="/register">Create an account</Link></p>
+      </div>
+    );
+  }
+  const busy = pending || declining;
+  return (
+    <div className="auth-form">
+      <Header title={`Join ${invite.familyName}`}
+        sub={`${invite.invitedBy ?? "The family admin"} invited you (${invite.email}) to help manage this family's protections on eGuard. You'll see the children, their devices and alerts.`} />
+      <ErrorBox error={state?.error ?? declined?.error} />
+      <form action={action} className="auth-form" noValidate style={{ padding: 0 }}>
+        <input type="hidden" name="token" value={token} />
+        <PasswordInput
+          id="password" label="Choose your password" autoComplete="new-password" placeholder="Create a password" minLength={MIN_PASSWORD} required
+          aria-describedby="pw-rules" value={password} onChange={(e) => setPassword(e.target.value)}
+        >
+          <ul className="auth-rules" id="pw-rules">
+            <li data-ok={longEnough}><Icon name={longEnough ? "circle-check" : "circle-dashed"} />At least {MIN_PASSWORD} characters</li>
+          </ul>
+        </PasswordInput>
+        <button className="btn btn-primary auth-submit" disabled={busy}>{pending ? "Joining…" : `Accept and join ${invite.familyName}`}</button>
+      </form>
+      <form action={decline}>
+        <input type="hidden" name="token" value={token} />
+        <button className="btn btn-ghost auth-submit" disabled={busy}>{declining ? "Declining…" : "Decline"}</button>
+      </form>
+      <p className="auth-foot">Don&apos;t know this family? Decline, or ignore the email. Nothing is set up until you accept.</p>
+    </div>
   );
 }

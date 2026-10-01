@@ -14,11 +14,14 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/checks/[id]">) 
   await simulateTick(u.familyId);
   const run = await finalizeCheckRun(id);
   const results = await db.checkRunResult.findMany({ where: { runId: id }, include: { device: { include: { child: true } } } });
-  const devices = await db.device.findMany({ where: { familyId: u.familyId }, include: { protections: true } });
+  // Score the devices this check covered: a check of one device shouldn't report the family's score
+  const devices = await db.device.findMany({ where: { familyId: u.familyId, id: { in: results.map((r) => r.deviceId) } }, include: { protections: true } });
   const health = computeHealth(devices);
   return NextResponse.json({
     status: run?.status,
     score: health.score,
+    verified: health.verified,
+    offline: health.offline,
     results: results.map((r) => ({
       deviceId: r.deviceId, deviceName: r.device.name, childName: r.device.child.name,
       reachable: r.reachable, issues: r.issues, reported: !!r.reportedAt,

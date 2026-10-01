@@ -1,6 +1,6 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import type { StorePurchase } from "@prisma/client";
+import type { Prisma, StorePurchase } from "@prisma/client";
 import { db } from "./db";
 import { ServiceError, conflict, forbidden } from "./errors";
 import { audit } from "./audit";
@@ -12,7 +12,7 @@ import { BASE_PLAN, type Interval, type PaidPlanId, planById, planByName, planBy
 import { applyEntitlement, currentPurchase, isEntitled } from "./entitlement";
 import {
   type PaymongoConfig, type WebhookEvent, cancelSubscription, createCheckoutSession, createSubscription, customerFor, endOfBillingDay,
-  getCheckoutSession, getPaymentIntent, getSubscription, paidPayment, paymongoConfig, planFor,
+  getCheckoutSession, getPayment, getPaymentIntent, getSubscription, isFullyRefunded, paidPayment, paymongoConfig, planFor,
 } from "./paymongo";
 
 /**
@@ -90,6 +90,13 @@ async function assertCanBuy(familyId: string, plan: PaidPlanId, autoRenew: boole
   if (now && now.id !== plan) throw conflict(`Your ${now.name} pass runs until ${until}. Switch to ${planById(plan).name} after that, or buy another ${now.name} month to extend it.`);
 }
 
+/**
+ * Serializes anything that starts paid time "when the current paid time ends" (passes, sponsor codes) for one
+ * family. Released when the transaction ends.
+ */
+export const lockPaidTime = (tx: Prisma.TransactionClient, familyId: string) =>
+  tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`paid-time:${familyId}`}))`;
+
 /* ---------- Pass (Checkout) ---------- */
 
 export async function buyPass(actor: Actor, planId: PaidPlanId, o: WebBillingOpts = {}) {
@@ -122,14 +129,19 @@ async function syncPass(p: StorePurchase, cfg: PaymongoConfig, f: Fetch | undefi
   const cs = (await getCheckoutSession(cfg, p.purchaseToken, f)).attributes;
   const pay = paidPayment(cs);
   if (pay) {
-    // Starts when the family's current paid time ends, so an early renewal loses nothing
-    // Only time on the same plan counts; another plan over paid time is refused (assertCanBuy)
-    const plan = planByProduct(p.productId);
-    const others = (await db.storePurchase.findMany({ where: { familyId: p.familyId, id: { not: p.id } } })).filter((x) => planByProduct(x.productId) === plan);
-    const paidUntil = Math.max(now.getTime(), ...others.filter((x) => isEntitled(x, now.getTime())).map((x) => x.expiresAt!.getTime()));
-    const expiresAt = addInterval(new Date(paidUntil), webProduct(p.productId)!.interval);
-    // Conditional, so the webhook and the parent's return from checkout can't both extend the plan
-    const won = await db.storePurchase.updateMany({ where: { id: p.id, state: "PENDING" }, data: { state: "PAID", paymentId: pay.id, expiresAt, checkedAt: now } });
+    const won = await db.$transaction(async (tx) => {
+      // Under the family's purchase lock (shared with sponsor codes): two passes confirmed at once would
+      // otherwise both start from the same paid-until date and overlap, losing a paid month
+      await lockPaidTime(tx, p.familyId);
+      // Starts when the family's current paid time ends, so an early renewal loses nothing
+      // Only time on the same plan counts; another plan over paid time is refused (assertCanBuy)
+      const plan = planByProduct(p.productId);
+      const others = (await tx.storePurchase.findMany({ where: { familyId: p.familyId, id: { not: p.id } } })).filter((x) => planByProduct(x.productId) === plan);
+      const paidUntil = Math.max(now.getTime(), ...others.filter((x) => isEntitled(x, now.getTime())).map((x) => x.expiresAt!.getTime()));
+      const expiresAt = addInterval(new Date(paidUntil), webProduct(p.productId)!.interval);
+      // Conditional, so the webhook and the parent's return from checkout can't both extend the plan
+      return tx.storePurchase.updateMany({ where: { id: p.id, state: "PENDING" }, data: { state: "PAID", paymentId: pay.id, expiresAt, checkedAt: now } });
+    });
     if (won.count) await audit(p.familyId, "PayMongo", "purchase.paid", `${p.productId} ${(pay.attributes.amount / 100).toFixed(2)} PHP`);
   } else if (cs.status === "expired" || now.getTime() - p.createdAt.getTime() > ABANDONED_MS) {
     await db.storePurchase.updateMany({ where: { id: p.id, state: "PENDING" }, data: { state: "EXPIRED", checkedAt: now } });
@@ -289,6 +301,12 @@ export async function handlePaymongoEvent(e: WebhookEvent, o: WebBillingOpts = {
   if (e.type === "refund.succeeded" || e.type === "refund.updated") {
     if (e.type === "refund.updated" && a.status !== "succeeded") return { handled: false };
     const paymentId = typeof a.payment_id === "string" ? a.payment_id : null;
+    // Only a full refund ends a pass or voids a batch of codes; re-read the payment rather than trust the event
+    if (paymentId) {
+      const payment = (await getPayment(requireConfig(o), paymentId, o.fetch)).attributes;
+      const amount = typeof a.amount === "number" ? a.amount : 0;
+      if (!isFullyRefunded(payment, { id: r.id, amount })) return { handled: true, partial: true };
+    }
     const hits = paymentId ? await db.storePurchase.findMany({ where: { paymentId, store: STORE, state: { not: "VOIDED" } } }) : [];
     for (const p of hits) {
       await db.storePurchase.update({ where: { id: p.id }, data: { state: "VOIDED", autoRenewing: false, checkedAt: new Date() } });

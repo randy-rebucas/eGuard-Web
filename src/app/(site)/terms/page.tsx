@@ -85,7 +85,7 @@ export default function TermsPage() {
       id: "plans", title: "Plans and payments",
       body: (
         <>
-          <p>eGuard is free for one child. Paid plans (eGuard Plus and Family Pro) add more children, devices and features, as described on our <Link href="/#pricing">pricing section</Link>. Prices are in Philippine pesos. Payments are processed by PayMongo.</p>
+          <p>eGuard is free for one child. Paid plans (eGuard Plus and Family Pro) add more children, devices and features, as described on our <Link href="/pricing">pricing page</Link>. Prices are in Philippine pesos. Payments are processed by PayMongo.</p>
           <ul>
             <li><strong>Auto-renew</strong> plans are charged to your card or Maya account at the start of each billing period, until you cancel.</li>
             <li><strong>Passes</strong> are paid once, with GCash, Maya, a card or QR Ph, and don&apos;t renew. We&apos;ll email you before a pass ends.</li>

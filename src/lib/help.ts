@@ -1,4 +1,11 @@
 /** Help & Support content for the apps. Static for now; a CMS can replace `HELP_ARTICLES` later. */
+import { planById, webPrice, type PaidPlanId } from "./plans";
+
+/** Price and limits from the plan catalogue, since prices can change without a release (PRICE_*_MONTHLY). */
+function planLine(id: PaidPlanId) {
+  const c = webPrice(id), e = planById(id).entitlements;
+  return `${planById(id).name} (₱${c % 100 ? (c / 100).toFixed(2) : c / 100} a month) covers up to ${e.childLimit} children and ${e.deviceLimit} devices`;
+}
 
 export type HelpCategory = "SETUP" | "TROUBLESHOOTING" | "PRIVACY" | "FAQ";
 
@@ -14,7 +21,7 @@ export type HelpArticle = { slug: string; category: HelpCategory; title: string;
 export const HELP_ARTICLES: HelpArticle[] = [
   {
     slug: "pair-a-device", category: "SETUP", title: "Add your child's device",
-    summary: "Pair an Android or iOS device with a one-time code.",
+    summary: "Pair your child's phone or tablet with a one-time code.",
     body: [
       "Open your child's profile and tap Add device. eGuard shows an 8-character code that works for 15 minutes.",
       "Install eGuard on your child's device, choose I'm setting up my child's device, and enter the code.",
@@ -59,7 +66,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     summary: "What each plan includes, and how to upgrade.",
     body: [
       "Free covers 1 child with basic protection setup, screen time management, limited app monitoring and email support.",
-      "eGuard Plus (₱149 a month) covers up to 5 children and adds location sharing, full app monitoring and priority support. Family Pro (₱249 a month) covers up to 10 children and adds advanced reports, API access for schools and organizations, and dedicated support.",
+      `${planLine("PLUS")}, and adds location sharing, full app monitoring and priority support. ${planLine("PRO")}, and adds advanced reports, API access for schools and organizations, and dedicated support.`,
       "Upgrade in Settings › Subscription on the web, with a card, Maya, GCash or QR Ph. If you move to a smaller plan, children and devices you already added stay protected; you just can't add more until you upgrade.",
       "You can cancel any time. Your plan stays active until the end of the paid period.",
       "Only the family admin can change the plan.",
@@ -94,7 +101,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     slug: "data-we-keep", category: "PRIVACY", title: "What data eGuard keeps",
     summary: "Configuration, daily screen-time totals and alerts. Never messages or browsing content.",
     body: [
-      "eGuard stores protection settings, daily and hourly screen-time totals, app names and usage, alerts, and the current location.",
+      "eGuard stores protection settings, daily and hourly screen-time totals, app names and usage, alerts, and the current location if location is on. For browsers, it keeps a daily count of blocked pages by category, never which sites.",
       "You can export all of your family's data or delete a child's data at any time from Settings.",
     ],
   },

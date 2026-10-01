@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import type { BrowserPolicy } from "@prisma/client";
 import { db } from "@/lib/db";
 import { notFound } from "@/lib/errors";
@@ -31,8 +32,13 @@ export const GET = authed<{ id: string }>(async ({ user, params }) => {
   return NextResponse.json(json(await getOrCreateBrowserPolicy(params.id)));
 });
 
-/** Replaces the whole policy (send every field). Browsers apply it on their next sync, within 5 minutes. */
+/**
+ * Replaces the whole policy (send every field). Browsers apply it on their next sync, within 5 minutes.
+ * `baseVersion` (optional, the `version` the app showed) refuses the save with 409 `stale_version` if the policy
+ * changed since, so an approved access request or another parent's edit isn't silently undone.
+ */
 export const PUT = authed<{ id: string }>(async ({ req, user, params }) => {
-  const input = await body(req, BrowserPolicyInput);
-  return NextResponse.json(json(await updateBrowserPolicy(user, params.id, input, clientLabel(req))));
+  const raw = await body(req, z.looseObject({ baseVersion: z.number().int().positive().optional() }));
+  const input = BrowserPolicyInput.parse(raw);
+  return NextResponse.json(json(await updateBrowserPolicy(user, params.id, input, clientLabel(req), raw.baseVersion)));
 });

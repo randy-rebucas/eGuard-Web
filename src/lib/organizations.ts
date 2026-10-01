@@ -5,13 +5,14 @@ import { z } from "zod";
 import { db } from "./db";
 import { ServiceError, conflict, forbidden, invalid, isUniqueViolation, notFound } from "./errors";
 import { audit } from "./audit";
+import { isPendingInvite } from "./auth";
 import type { Actor } from "./config-service";
 import { appUrl, requireVerifiedEmail } from "./email-verification";
 import { LIMITS, enforce } from "./rate-limit";
 import { shortDate } from "./format";
 import { type PaidPlanId, planById, planByProduct, webPrice, webProductFor } from "./plans";
 import { applyEntitlement, currentPurchase, isEntitled } from "./entitlement";
-import { passMethods, type WebBillingOpts } from "./web-billing";
+import { lockPaidTime, passMethods, type WebBillingOpts } from "./web-billing";
 import { type PaymongoConfig, createCheckoutSession, getCheckoutSession, paidPayment, paymongoConfig } from "./paymongo";
 import * as notify from "./org-notifications";
 
@@ -84,12 +85,15 @@ const requireFamilyAdmin = (actor: Actor, what: string) => {
 export async function createOrganization(actor: Actor, input: z.infer<typeof OrgSchema>) {
   const { name, kind } = OrgSchema.parse(input);
   await requireVerifiedEmail(actor.id);
-  const count = await db.orgMember.count({ where: { userId: actor.id } });
-  if (count >= MAX_ORGS_PER_USER) throw conflict(`You can manage up to ${MAX_ORGS_PER_USER} organizations.`);
   for (let attempt = 0; ; attempt++) {
     try {
-      const org = await db.organization.create({
-        data: { name, kind, joinCode: randomCode(JOIN_CODE_LENGTH), members: { create: { userId: actor.id, role: "OWNER" } } },
+      const org = await db.$transaction(async (tx) => {
+        // Count and create under one lock per person, so two tabs can't both pass the limit
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`org.manage:${actor.id}`}))`;
+        if ((await tx.orgMember.count({ where: { userId: actor.id } })) >= MAX_ORGS_PER_USER) throw conflict(`You can manage up to ${MAX_ORGS_PER_USER} organizations.`);
+        return tx.organization.create({
+          data: { name, kind, joinCode: randomCode(JOIN_CODE_LENGTH), members: { create: { userId: actor.id, role: "OWNER" } } },
+        });
       });
       await audit(actor.familyId, actor.name, "org.created", `${org.name} (${org.id})`);
       return org;
@@ -118,12 +122,17 @@ export async function addOrgAdmin(actor: Actor, orgId: string, email: string) {
   await requireOrgAdmin(actor.id, orgId, { owner: true });
   const address = z.string().trim().toLowerCase().email("Enter a valid email address.").parse(email);
   const user = await db.user.findUnique({ where: { email: address } });
-  if (!user) throw invalid("There's no eGuard account with that email. Ask them to sign up first, then add them.");
+  // An invitation they haven't accepted isn't an account they can sign in with
+  if (!user || isPendingInvite(user)) throw invalid("There's no eGuard account with that email. Ask them to sign up first, then add them.");
   const existing = await db.orgMember.findUnique({ where: { orgId_userId: { orgId, userId: user.id } } });
   if (existing) throw conflict(`${user.name} already manages this organization.`);
   const managed = await db.orgMember.count({ where: { userId: user.id } });
   if (managed >= MAX_ORGS_PER_USER) throw conflict(`${user.name} already manages ${MAX_ORGS_PER_USER} organizations.`);
-  const { org } = await db.orgMember.create({ data: { orgId, userId: user.id, role: "ADMIN" }, include: { org: true } });
+  const { org } = await db.orgMember.create({ data: { orgId, userId: user.id, role: "ADMIN" }, include: { org: true } }).catch((e) => {
+    // Added at the same moment by another owner or tab
+    if (isUniqueViolation(e)) throw conflict(`${user.name} already manages this organization.`);
+    throw e;
+  });
   await notify.notifyAdminAdded(org, user.id, actor);
   return { name: user.name };
 }
@@ -132,13 +141,18 @@ export async function addOrgAdmin(actor: Actor, orgId: string, email: string) {
 export async function removeOrgAdmin(actor: Actor, orgId: string, userId: string) {
   const me = await requireOrgAdmin(actor.id, orgId);
   if (userId !== actor.id && me.role !== "OWNER") throw forbidden("Only an owner of this organization can remove admins.");
-  const target = await db.orgMember.findUnique({ where: { orgId_userId: { orgId, userId } }, include: { org: true, user: true } });
-  if (!target) throw notFound("Admin");
-  if (target.role === "OWNER") {
-    const owners = await db.orgMember.count({ where: { orgId, role: "OWNER" } });
-    if (owners <= 1) throw conflict("An organization needs at least one owner. Make someone else an owner first.");
-  }
-  await db.orgMember.delete({ where: { orgId_userId: { orgId, userId } } });
+  const target = await db.$transaction(async (tx) => {
+    // One change to the admin list at a time: two owners removing each other at once would otherwise both see
+    // "another owner is left" and leave the organization, and its paid codes, with no owner
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`org.members:${orgId}`}))`;
+    const t = await tx.orgMember.findUnique({ where: { orgId_userId: { orgId, userId } }, include: { org: true, user: true } });
+    if (!t) throw notFound("Admin");
+    if (t.role === "OWNER" && (await tx.orgMember.count({ where: { orgId, role: "OWNER" } })) <= 1) {
+      throw conflict("An organization needs at least one owner. Make someone else an owner first.");
+    }
+    await tx.orgMember.delete({ where: { orgId_userId: { orgId, userId } } });
+    return t;
+  });
   // Their API keys stop working with them
   await db.orgApiKey.updateMany({ where: { orgId, createdById: userId, revokedAt: null }, data: { revokedAt: new Date() } });
   await notify.notifyAdminRemoved(target.org, target.user, actor);
@@ -236,10 +250,15 @@ export async function joinOrganization(actor: Actor, code: string) {
   const org = await orgByJoinCode(actor, code);
   const existing = await db.orgMembership.findUnique({ where: { orgId_familyId: { orgId: org.id, familyId: actor.familyId } } });
   if (existing) return { name: org.name };
-  const count = await db.orgMembership.count({ where: { familyId: actor.familyId } });
-  if (count >= MAX_ORGS_PER_FAMILY) throw conflict(`A family can join up to ${MAX_ORGS_PER_FAMILY} organizations. Leave one to join another.`);
   try {
-    await db.orgMembership.create({ data: { orgId: org.id, familyId: actor.familyId } });
+    await db.$transaction(async (tx) => {
+      // Count and join under one lock per family: two codes entered at once can't both pass the limit
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`org.join:${actor.familyId}`}))`;
+      if ((await tx.orgMembership.count({ where: { familyId: actor.familyId } })) >= MAX_ORGS_PER_FAMILY) {
+        throw conflict(`A family can join up to ${MAX_ORGS_PER_FAMILY} organizations. Leave one to join another.`);
+      }
+      await tx.orgMembership.create({ data: { orgId: org.id, familyId: actor.familyId } });
+    });
   } catch (e) {
     if (!isUniqueViolation(e)) throw e;
     return { name: org.name }; // joined at the same moment in another request, which tells everyone
@@ -460,21 +479,24 @@ export async function redeemCode(actor: Actor, code: string, o: { now?: Date } =
     if (currentPlan && currentPlan.id !== plan.id) throw conflict(`This code is for ${plan.name}, and your ${currentPlan.name} runs until ${until}. Redeem it after that date.`);
   }
 
-  // Starts when the family's paid time on the same plan ends, so no paid days are lost
-  const same = (await db.storePurchase.findMany({ where: { familyId: actor.familyId, state: { not: "REPLACED" } } }))
-    .filter((p) => planByProduct(p.productId)?.id === plan.id && isEntitled(p, now.getTime()));
-  const start = new Date(Math.max(now.getTime(), ...same.map((p) => p.expiresAt!.getTime())));
-  const expiresAt = addMonths(start, v.batch.months);
-
-  await db.$transaction(async (tx) => {
+  const expiresAt = await db.$transaction(async (tx) => {
+    // One at a time per family, with passes too: two codes (or a code and a pass) at once would both start from
+    // the same paid-until date and overlap, instead of one starting when the other ends
+    await lockPaidTime(tx, actor.familyId);
     const won = await tx.voucher.updateMany({ where: { id: v.id, redeemedAt: null, revokedAt: null }, data: { redeemedAt: now, familyId: actor.familyId } });
     if (!won.count) throw conflict("This code has already been used.");
+    // Starts when the family's paid time on the same plan ends, so no paid days are lost
+    const same = (await tx.storePurchase.findMany({ where: { familyId: actor.familyId, state: { not: "REPLACED" } } }))
+      .filter((p) => planByProduct(p.productId)?.id === plan.id && isEntitled(p, now.getTime()));
+    const start = new Date(Math.max(now.getTime(), ...same.map((p) => p.expiresAt!.getTime())));
+    const expiresAt = addMonths(start, v.batch.months);
     await tx.storePurchase.create({
       data: {
         familyId: actor.familyId, store: VOUCHER_STORE, productId: webProductFor(plan.id as PaidPlanId, false).id,
         purchaseToken: `voucher:${v.id}`, state: "PAID", autoRenewing: false, expiresAt, checkedAt: now,
       },
     });
+    return expiresAt;
   });
   const length = `${v.batch.months} month${v.batch.months === 1 ? "" : "s"}`;
   await audit(actor.familyId, actor.name, "voucher.redeemed", `${plan.name}, ${length}, from ${v.batch.org.name}`);

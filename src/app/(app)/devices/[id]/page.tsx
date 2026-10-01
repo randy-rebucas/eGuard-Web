@@ -3,12 +3,15 @@ import { notFound } from "next/navigation";
 import { getUser, requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { dateFromKey, dayKey, getFamily, getFamilyGraph, limitOn } from "@/lib/queries";
-import { dayTime } from "@/lib/format";
+import { dayTime, shortDate } from "@/lib/format";
+import { entitlementsFor } from "@/lib/plans";
 import { CAPABILITY_META, PROTECTIONS, PROTECTION_BY_KEY, describeConfig, fmtMinutes, fmtMinutesPadded, isConfigured } from "@/lib/protections";
 import { Icon } from "@/components/icon";
 import { CheckBadge, DeviceIcon, StatusBadge, Timeline, platformName } from "@/components/ui";
 import { CheckButton, FlowButton } from "@/components/flow";
 import { RemoveDeviceButton, RenameDeviceForm } from "@/components/forms";
+
+const REQUESTS_SHOWN = 6;
 
 export async function generateMetadata(props: PageProps<"/devices/[id]">) {
   const { id } = await props.params;
@@ -32,7 +35,7 @@ export default async function DevicePage(props: PageProps<"/devices/[id]">) {
     db.screenTimeDaily.findUnique({ where: { deviceId_date: { deviceId: d.id, date: today } } }),
     // The limit covers all of the child's devices, so compare it with their total, not this device's share
     db.screenTimeDaily.aggregate({ where: { childId: d.childId, date: today }, _sum: { minutes: true } }),
-    db.configRequest.findMany({ where: { deviceId: d.id }, orderBy: { createdAt: "desc" }, take: 6 }),
+    db.configRequest.findMany({ where: { deviceId: d.id }, orderBy: { createdAt: "desc" }, take: REQUESTS_SHOWN }),
     db.checkRunResult.findFirst({ where: { deviceId: d.id, reportedAt: { not: null } }, orderBy: { reportedAt: "desc" } }),
   ]);
   const prot = (key: string) => d.protections.find((p) => p.key === key);
@@ -67,7 +70,10 @@ export default async function DevicePage(props: PageProps<"/devices/[id]">) {
               {d.simulated ? <span className="pill tone-accent" title="Driven by the development device simulator">Simulated</span> : null}
             </div>
           </div>
-          <CheckButton deviceId={d.id} disabled={state.key === "offline"}><Icon name="scan-search" />Run Configuration Check</CheckButton>
+          <div className="dash-col" style={{ gap: 6, alignItems: "flex-end" }}>
+            <CheckButton deviceId={d.id} disabled={offline}><Icon name="scan-search" />Run Configuration Check</CheckButton>
+            {offline ? <span className="t-meta">Available when the device is back online</span> : null}
+          </div>
         </section>
       </div>
 
@@ -87,7 +93,7 @@ export default async function DevicePage(props: PageProps<"/devices/[id]">) {
           {child.devices.length > 1 ? <dd className="t-meta">{fmtMinutesPadded(usage?.minutes ?? 0)} on this device</dd> : null}
         </div>
         <div><dt>Bedtime</dt><dd>{reported("BEDTIME")}</dd></div>
-        <div><dt>Location</dt><dd>{loc?.sharing ? <><Icon name="map-pin" />Sharing</> : <><Icon name="map-pin-off" />Off</>}</dd></div>
+        <div><dt>Location</dt><dd>{!entitlementsFor(family.plan).locationSharing ? <><Icon name="map-pin-off" />Not on your plan</> : loc?.sharing ? <><Icon name="map-pin" />Sharing</> : <><Icon name="map-pin-off" />Off</>}</dd></div>
         <div><dt>App approval</dt><dd>{approvalOn ? <><Icon name="badge-check" />Required</> : reported("APP_APPROVAL")}</dd></div>
         <div><dt>Battery</dt><dd className="num">{d.battery != null ? `${d.battery}%` : "Unknown"}</dd></div>
       </dl>
@@ -104,7 +110,9 @@ export default async function DevicePage(props: PageProps<"/devices/[id]">) {
                 <span className={`ico-tile ${tone}`}><Icon name={p.icon} /></span>
                 <div className="grow" style={{ minWidth: 180 }}>
                   <div className="t-title">{p.name}</div>
-                  <div className="t-meta"><Icon name={CAPABILITY_META[cap].icon} size={13} style={{ verticalAlign: -2 }} /> {CAPABILITY_META[cap].label} · {status === "NOT_CONFIGURED" ? "Not configured" : describeConfig(row?.reported)}{row?.lastVerifiedAt ? ` · checked ${dayTime(row.lastVerifiedAt, tz)}` : ""}</div>
+                  <div className="t-meta"><Icon name={CAPABILITY_META[cap].icon} size={13} style={{ verticalAlign: -2 }} /> {CAPABILITY_META[cap].label} · {reported(p.key)}{row?.lastVerifiedAt ? ` · checked ${dayTime(row.lastVerifiedAt, tz)}` : ""}</div>
+                  {/* Why it isn't passing, in the device's words (the same message the mobile app shows) */}
+                  {row?.message && tone === "warn" ?<div className="t-meta" style={{ color: "var(--warn-ink)", marginTop: 2 }}>{row.message}</div> : null}
                 </div>
                 <CheckBadge status={status} />
                 {cap !== "UNSUPPORTED" ? <FlowButton protection={p.key} childId={child.id} className="btn btn-ghost btn-sm">Manage</FlowButton> : null}
@@ -117,9 +125,12 @@ export default async function DevicePage(props: PageProps<"/devices/[id]">) {
             <div className="card-head"><h2 style={{ fontSize: 18 }}>Recent requests</h2></div>
             {requests.length ? <Timeline items={requests.map((r) => ({
               id: r.id, icon: reqIcon[r.status] ?? "loader-circle",
-              title: `${PROTECTION_BY_KEY[r.key].name}: ${reqLabel[r.status]}`, by: `${r.createdBy} · ${r.mode === "GUIDED" ? "Guided setup" : "Applied remotely"}`,
+              // A failure says why ("Device reported …"), not just that it didn't match
+              title: `${PROTECTION_BY_KEY[r.key].name}: ${r.status === "FAILED" && r.failureReason ? r.failureReason : reqLabel[r.status]}`,
+              by: `${r.createdBy} · ${r.mode === "GUIDED" ? "Guided setup" : "Applied remotely"}`,
               time: dayTime(r.verifiedAt ?? r.createdAt, tz), to: describeConfig(r.desired),
             }))} /> : <p className="t-meta">No configuration requests yet.</p>}
+            {requests.length === REQUESTS_SHOWN ? <Link className="link-btn" href={`/children/${child.id}?tab=history`} style={{ marginTop: 8 }}>All of {child.name}&apos;s changes <Icon name="arrow-right" /></Link> : null}
             {lastCheck ? <p className="t-meta" style={{ marginTop: 10 }}>Last configuration check {dayTime(lastCheck.reportedAt, tz)}: {lastCheck.issues ? `${lastCheck.issues} to review` : "no issues found"}.</p> : null}
           </section>
           <section className="card card-pad">
@@ -127,7 +138,7 @@ export default async function DevicePage(props: PageProps<"/devices/[id]">) {
             <RenameDeviceForm deviceId={d.id} name={d.name} />
             <dl className="kv" style={{ gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", margin: "16px 0" }}>
               <div><dt>eGuard app</dt><dd>{d.appVersion ?? "Unknown"}</dd></div>
-              <div><dt>Added</dt><dd>{dayTime(d.createdAt, tz)}</dd></div>
+              <div><dt>Added</dt><dd>{shortDate(d.createdAt, tz)}</dd></div>
             </dl>
             <RemoveDeviceButton deviceId={d.id} name={d.name} />
           </section>

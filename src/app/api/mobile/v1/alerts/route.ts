@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { getFamily, unreadCount } from "@/lib/queries";
+import { pageByTime } from "@/lib/paging";
 import { authed, query } from "@/lib/mobile-api";
 import { ALERT_FILTERS, alertJson, refreshFamily } from "@/lib/mobile-views";
 
@@ -10,7 +11,7 @@ const Query = z.object({
   childId: z.string().optional(),
   includeResolved: z.enum(["true", "false"]).default("false"),
   limit: z.coerce.number().int().min(1).max(100).default(50),
-  before: z.string().datetime().optional(),
+  before: z.iso.datetime({ offset: true, error: "before must be an ISO 8601 time, e.g. a nextBefore value." }).optional(),
 });
 
 /** Alerts, newest first. Each has `day` ({ key, label: "Today" | "Yesterday" | … }) for section headers. */
@@ -18,26 +19,25 @@ export const GET = authed(async ({ req, user }) => {
   const q = query(req, Query);
   await refreshFamily(user.familyId);
   const cats = ALERT_FILTERS[q.filter];
-  const [family, rows, unread] = await Promise.all([
+  const [family, page, unread] = await Promise.all([
     getFamily(user.familyId),
-    db.alert.findMany({
+    pageByTime(q.limit, (createdAt, take) => db.alert.findMany({
       where: {
         familyId: user.familyId,
         ...(cats ? { category: { in: cats } } : {}),
         ...(q.childId ? { childId: q.childId } : {}),
         ...(q.includeResolved === "true" ? {} : { resolvedAt: null }),
-        ...(q.before ? { createdAt: { lt: new Date(q.before) } } : {}),
+        createdAt,
       },
-      orderBy: { createdAt: "desc" },
-      take: q.limit + 1,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take,
       include: { reads: { where: { userId: user.id } } },
-    }),
+    }), (a) => a.createdAt, q.before ? new Date(q.before) : undefined),
     unreadCount(user.familyId, user.id),
   ]);
-  const page = rows.slice(0, q.limit);
   return NextResponse.json({
-    alerts: page.map((a) => alertJson({ ...a, read: a.reads.length > 0 }, family.timezone)),
+    alerts: page.rows.map((a) => alertJson({ ...a, read: a.reads.length > 0 }, family.timezone)),
     unread,
-    nextBefore: rows.length > q.limit ? page[page.length - 1].createdAt : null,
+    nextBefore: page.nextBefore,
   });
 });

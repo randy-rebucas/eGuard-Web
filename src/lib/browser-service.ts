@@ -4,7 +4,7 @@ import { db } from "./db";
 import { confirmPassword, newToken, sha256 } from "./auth";
 import { audit } from "./audit";
 import { refreshPurchases } from "./billing";
-import { usedDeviceSlots } from "./device-slots";
+import { withDeviceSlot } from "./device-slots";
 import { ServiceError, notFound } from "./errors";
 import { OFFLINE_AFTER_MS } from "./health";
 import type { Actor } from "./config-service";
@@ -51,22 +51,22 @@ export async function pairBrowser(input: PairInput) {
   if (!claimed.count) throw invalidCode();
 
   await refreshPurchases(code.familyId);
-  const [family, used] = await Promise.all([db.family.findUniqueOrThrow({ where: { id: code.familyId } }), usedDeviceSlots(code.familyId)]);
-  if (used >= family.deviceLimit) {
-    // Give the code back so the parent can use it after removing a device
-    await db.pairingCode.update({ where: { id: code.id }, data: { usedAt: null } });
-    throw new ServiceError(409, "Device limit reached for this plan", "device_limit");
-  }
-
+  const family = await db.family.findUniqueOrThrow({ where: { id: code.familyId } });
   const { grant, hashes } = newGrant();
-  const inst = await db.browserInstallation.create({
+  // Same slot lock as device pairing: a phone and a browser can't both take the last slot
+  const inst = await withDeviceSlot(code.familyId, family.deviceLimit, (tx) => tx.browserInstallation.create({
     data: {
       familyId: code.familyId, childId: code.childId, deviceLabel: code.deviceLabel ?? "Computer",
       browser: input.browser, browserVersion: input.browserVersion, extensionVersion: input.extensionVersion, platform: input.platform,
       ...hashes, lastSeenAt: new Date(),
     },
     include: { child: true },
-  });
+  }));
+  if (!inst) {
+    // Give the code back so the parent can use it after removing a device
+    await db.pairingCode.update({ where: { id: code.id }, data: { usedAt: null } });
+    throw new ServiceError(409, "Device limit reached for this plan", "device_limit");
+  }
   const label = `${inst.child.name}'s ${browserLabel(inst)}`;
   await audit(code.familyId, "eGuard browser extension", "browser.paired", label);
   await db.alert.create({
@@ -158,7 +158,8 @@ export async function removeBrowser(actor: Actor, installationId: string, passwo
   const b = await db.browserInstallation.findFirst({ where: { id: installationId, familyId: actor.familyId }, include: { child: true } });
   if (!b) throw notFound("Browser");
   await confirmPassword(actor.id, password);
-  await db.browserInstallation.delete({ where: { id: b.id } });
+  // deleteMany: another parent removing it at the same moment is a 404 here, not a Prisma error
+  if (!(await db.browserInstallation.deleteMany({ where: { id: b.id } })).count) throw notFound("Browser");
   const label = `${b.child.name}'s ${browserLabel(b)}`;
   await audit(actor.familyId, actor.name, "browser.removed", label);
   // Its open alerts (disconnected for security, drift, private windows, offline…) no longer apply

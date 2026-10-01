@@ -48,12 +48,16 @@ export async function createApiKey(actor: Actor, orgId: string, input: { name: s
   await requireOrgAdmin(actor.id, orgId);
   const { name, access } = KeySchema.parse(input);
   if (!(await canCreateApiKeys(actor))) throw planRequired(`API keys are included with ${apiPlanName()}. Upgrade your family's plan in Settings › Subscription to create one.`);
-  const active = await db.orgApiKey.count({ where: { orgId, revokedAt: null } });
-  if (active >= MAX_KEYS_PER_ORG) throw conflict(`An organization can have up to ${MAX_KEYS_PER_ORG} API keys. Revoke one you no longer use first.`);
   const token = `${API_KEY_PREFIX}${newToken(32)}`;
-  const key = await db.orgApiKey.create({
-    data: { orgId, name, access, prefix: token.slice(0, API_KEY_PREFIX.length + 8), tokenHash: sha256(token), createdById: actor.id },
-    include: { org: true },
+  const key = await db.$transaction(async (tx) => {
+    // Count and create under one lock, so two admins creating keys at once can't pass the limit together
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`org.keys:${orgId}`}))`;
+    const active = await tx.orgApiKey.count({ where: { orgId, revokedAt: null } });
+    if (active >= MAX_KEYS_PER_ORG) throw conflict(`An organization can have up to ${MAX_KEYS_PER_ORG} API keys. Revoke one you no longer use first.`);
+    return tx.orgApiKey.create({
+      data: { orgId, name, access, prefix: token.slice(0, API_KEY_PREFIX.length + 8), tokenHash: sha256(token), createdById: actor.id },
+      include: { org: true },
+    });
   });
   await audit(actor.familyId, actor.name, "org.api_key.created", `${name} (${ACCESS_LABELS[access]}) for ${key.org.name}`);
   await notifyApiKeyCreated(key.org, key, actor);

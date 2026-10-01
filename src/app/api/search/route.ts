@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { PROTECTIONS } from "@/lib/protections";
+import { ageLabel } from "@/lib/format";
 
 const SETTINGS = [
   ["account", "Account"], ["family", "Family members"], ["notifications", "Notification settings"], ["privacy", "Privacy controls"],
@@ -22,7 +23,7 @@ export async function GET(req: Request) {
   ]);
   const ql = q.toLowerCase();
   const results = [
-    ...children.map((c) => ({ group: "Children", icon: "user", title: c.name, sub: `Child · ${new Date().getFullYear() - c.birthYear} years old`, href: `/children/${c.id}` })),
+    ...children.map((c) => ({ group: "Children", icon: "user", title: c.name, sub: `Child · ${ageLabel(new Date().getFullYear() - c.birthYear)}`, href: `/children/${c.id}` })),
     ...devices.map((d) => ({ group: "Devices", icon: d.kind === "TABLET" ? "tablet" : "smartphone", title: d.name, sub: `${d.child.name} · ${d.osVersion}`, href: `/devices/${d.id}` })),
     ...PROTECTIONS.filter((p) => p.name.toLowerCase().includes(ql) || p.checkName.toLowerCase().includes(ql))
       .map((p) => ({ group: "Protection policies", icon: p.icon, title: p.checkName, sub: "Protection", href: `/protection#${p.slug}` })),

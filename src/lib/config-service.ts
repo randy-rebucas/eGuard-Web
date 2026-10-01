@@ -15,10 +15,11 @@ import { ServiceError, notFound } from "./errors";
 
 export type Actor = { id: string; name: string; familyId: string; role: Role };
 
-const time = z.string().regex(/^\d{2}:\d{2}$/, "Use HH:MM (24-hour) times.");
+const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use HH:MM (24-hour) times.");
 export const ConfigSchema = z.discriminatedUnion("key", [
   z.object({ key: z.literal("SCREEN_TIME"), dailyMinutes: z.number().int().min(15).max(1440), weekendMinutes: z.number().int().min(15).max(1440) }),
-  z.object({ key: z.literal("BEDTIME"), enabled: z.boolean(), start: time, end: time, days: z.enum(["EVERY_DAY", "SCHOOL_NIGHTS"]) }),
+  z.object({ key: z.literal("BEDTIME"), enabled: z.boolean(), start: time, end: time, days: z.enum(["EVERY_DAY", "SCHOOL_NIGHTS"]) })
+    .refine((b) => !b.enabled || b.start !== b.end, { message: "Bedtime needs different start and end times.", path: ["end"] }),
   z.object({ key: z.literal("APP_RESTRICTIONS"), maxAgeRating: z.number().int().min(4).max(18) }),
   z.object({ key: z.literal("APP_APPROVAL"), enabled: z.boolean() }),
   z.object({ key: z.literal("CONTENT"), maxAgeRating: z.number().int().min(4).max(18) }),
@@ -27,6 +28,26 @@ export const ConfigSchema = z.discriminatedUnion("key", [
   z.object({ key: z.literal("LOCATION"), sharing: z.boolean() }),
   z.object({ key: z.literal("NOTIFICATIONS"), quietDuringBedtime: z.boolean() }),
   z.object({ key: z.literal("UNINSTALL_PROTECTION"), enabled: z.boolean() }),
+]);
+
+/**
+ * What a device may report for a protection (docs/child-app-spec.md: "exactly the fields in ProtectionConfig").
+ * Same fields and types as ConfigSchema, but bounds a device can legitimately read back (0 minutes when no limit
+ * is set, any age rating the OS uses). Reports are rendered on parents' pages, so a malformed one must not be stored.
+ */
+const minutes = z.number().int().min(0).max(1440);
+const rating = z.number().int().min(0).max(21);
+export const ReportedConfigSchema = z.discriminatedUnion("key", [
+  z.strictObject({ key: z.literal("SCREEN_TIME"), dailyMinutes: minutes, weekendMinutes: minutes }),
+  z.strictObject({ key: z.literal("BEDTIME"), enabled: z.boolean(), start: time, end: time, days: z.enum(["EVERY_DAY", "SCHOOL_NIGHTS"]) }),
+  z.strictObject({ key: z.literal("APP_RESTRICTIONS"), maxAgeRating: rating }),
+  z.strictObject({ key: z.literal("APP_APPROVAL"), enabled: z.boolean() }),
+  z.strictObject({ key: z.literal("CONTENT"), maxAgeRating: rating }),
+  z.strictObject({ key: z.literal("WEB"), mode: z.enum(["OFF", "FILTER", "ALLOWLIST"]), blockedSites: z.number().int().min(0).max(1_000_000) }),
+  z.strictObject({ key: z.literal("DOWNLOADS"), requireApproval: z.boolean() }),
+  z.strictObject({ key: z.literal("LOCATION"), sharing: z.boolean() }),
+  z.strictObject({ key: z.literal("NOTIFICATIONS"), quietDuringBedtime: z.boolean() }),
+  z.strictObject({ key: z.literal("UNINSTALL_PROTECTION"), enabled: z.boolean() }),
 ]);
 
 const OPEN: RequestStatus[] = ["PENDING", "DELIVERED", "AWAITING_PARENT"];

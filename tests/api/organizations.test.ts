@@ -242,7 +242,10 @@ describe("sponsor codes", () => {
     const [free] = await family("Aquino");
     await redeemCode(free, used);
     const batch = await db.voucherBatch.findFirstOrThrow({ where: { vouchers: { some: { code: used } } } });
-    const r = await handlePaymongoEvent(event("refund.succeeded", { id: `ref_${RUN}`, type: "refund", attributes: { payment_id: batch.paymentId, status: "succeeded" } }), opts);
+    // A partial refund changes nothing: the codes stay usable
+    expect(await handlePaymongoEvent(event("refund.succeeded", pm.refund(batch.paymentId!, 1000)), opts)).toEqual({ handled: true, partial: true });
+    expect((await db.voucherBatch.findUniqueOrThrow({ where: { id: batch.id } })).state).toBe("PAID");
+    const r = await handlePaymongoEvent(event("refund.succeeded", pm.refund(batch.paymentId!, batch.amount - 1000)), opts);
     expect(r).toEqual({ handled: true });
     expect((await db.voucherBatch.findUniqueOrThrow({ where: { id: batch.id } })).state).toBe("VOIDED");
     expect((await db.voucher.findUniqueOrThrow({ where: { code: unused } })).revokedAt).not.toBeNull();
@@ -374,7 +377,8 @@ describe("notifications", () => {
 
   it("tells admins about a refund and how many codes it cancelled", async () => {
     const batch = await db.voucherBatch.findFirstOrThrow({ where: { orgId, state: "PAID" } });
-    const refund = () => handlePaymongoEvent(event("refund.succeeded", { id: `ref2_${RUN}`, type: "refund", attributes: { payment_id: batch.paymentId, status: "succeeded" } }), opts);
+    const full = pm.refund(batch.paymentId!);
+    const refund = () => handlePaymongoEvent(event("refund.succeeded", full), opts);
     await refund();
     await refund(); // delivered twice
     expect(inbox(addr("admin.tan"))).toEqual(["Refund for Barangay Malinis's sponsor codes"]);

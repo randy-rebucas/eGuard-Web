@@ -13,7 +13,8 @@ import avatar3 from "../../../public/landing/avatar-3.png";
 const POINTS = [
   { icon: "shield-check", label: "Easy setup and configuration" },
   { icon: "badge-check", label: "Verified protection" },
-  { icon: "bell-ring", label: "Instant email alerts" },
+  // Alert emails go out with the maintenance run (every few minutes), so not "instant"
+  { icon: "bell-ring", label: "Email alerts when something changes" },
   { icon: "shield", label: "Peace of mind" },
 ];
 

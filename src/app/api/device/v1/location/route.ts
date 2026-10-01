@@ -8,7 +8,8 @@ const Body = z.object({
   lat: z.number().min(-90).max(90),
   lng: z.number().min(-180).max(180),
   accuracyM: z.number().min(0).max(100000).optional(),
-  placeLabel: z.string().max(80).optional(),
+  // A blank label would show as an empty place name and stop "same place" from matching: treat it as none
+  placeLabel: z.string().trim().max(80).optional().transform((s) => s || undefined),
 });
 
 /**

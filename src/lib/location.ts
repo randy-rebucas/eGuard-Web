@@ -2,6 +2,7 @@ import { db } from "./db";
 import { isOffline } from "./health";
 import { isConfigured } from "./protections";
 import { entitlementsFor } from "./plans";
+import { pageByTime } from "./paging";
 
 /** A new report within this distance of the last visit extends that visit instead of starting a new one. */
 export const SAME_PLACE_M = 150;
@@ -68,20 +69,23 @@ export function distanceM(a: { lat: number; lng: number }, b: { lat: number; lng
  * page's `nextBefore`. Callers check that the family keeps history; retention already pruned older visits.
  */
 export async function visitsPage(childId: string, { before, limit }: { before?: Date; limit: number }) {
-  const rows = await db.locationVisit.findMany({
-    where: { childId, ...(before ? { arrivedAt: { lt: before } } : {}) },
-    orderBy: { arrivedAt: "desc" }, take: limit + 1, include: { device: { select: { name: true } } },
-  });
-  const visits = rows.slice(0, limit);
-  return { visits, nextBefore: rows.length > limit ? visits[visits.length - 1].arrivedAt : null };
+  const { rows, nextBefore } = await pageByTime(limit, (arrivedAt, take) => db.locationVisit.findMany({
+    where: { childId, arrivedAt }, orderBy: [{ arrivedAt: "desc" }, { id: "desc" }], take, include: { device: { select: { name: true } } },
+  }), (v) => v.arrivedAt, before);
+  return { visits: rows, nextBefore };
 }
 
-/** Places the family's children were at in the past day, newest first (the Location page's "Recent places"). */
-export const recentVisits = (familyId: string, now = Date.now()) =>
-  db.locationVisit.findMany({
-    where: { child: { familyId }, lastSeenAt: { gte: new Date(now - 864e5) } },
-    orderBy: { arrivedAt: "desc" }, take: 60, select: { id: true, childId: true, placeLabel: true, arrivedAt: true },
-  });
+/**
+ * Each child's last few places in the past day, newest first (the Location page's "Recent places"). Fetched per
+ * child: one shared cap let a child who moves around a lot crowd the others out ("No places" when there were some).
+ */
+export async function recentVisits(childIds: string[], perChild: number, now = Date.now()) {
+  const rows = await Promise.all(childIds.map((childId) => db.locationVisit.findMany({
+    where: { childId, lastSeenAt: { gte: new Date(now - 864e5) } },
+    orderBy: { arrivedAt: "desc" }, take: perChild, select: { id: true, childId: true, placeLabel: true, arrivedAt: true },
+  })));
+  return rows.flat();
+}
 
 type Fix = { lat: number; lng: number; accuracyM?: number; placeLabel?: string };
 
@@ -99,10 +103,13 @@ export async function recordLocation(device: { id: string; childId: string; fami
   if (current && !current.sharing) return;
   // Location sharing is a paid feature: on Free, fixes aren't kept at all
   if (!entitlementsFor(family.plan).locationSharing) return;
+  // Each fix replaces the last one whole: a fix without a label or accuracy must not keep the previous place's
+  // ("At school" shown for wherever the child is now)
+  const latest = { lat: fix.lat, lng: fix.lng, accuracyM: fix.accuracyM ?? null, placeLabel: fix.placeLabel ?? null, locatedAt: now };
   await db.deviceLocation.upsert({
     where: { deviceId: device.id },
-    create: { deviceId: device.id, sharing: true, locatedAt: now, ...fix },
-    update: { locatedAt: now, ...fix },
+    create: { deviceId: device.id, sharing: true, ...latest },
+    update: latest,
   });
   if (!family.keepLocationHistory) return;
 

@@ -23,7 +23,7 @@ export const planRequired = (message: string) => new ServiceError(403, message, 
 export const isUniqueViolation = (e: unknown) => typeof e === "object" && e !== null && (e as { code?: unknown }).code === "P2002";
 
 /** What a server action returns: its data, or a message safe to show the parent. */
-export type Result<T extends object = object> = (T & { error?: undefined }) | { error: string };
+export type Result<T extends object = object> = (T & { error?: undefined }) | { error: string; code?: string };
 
 /**
  * Runs a server action body so expected failures come back as `{ error }`.
@@ -34,7 +34,7 @@ export async function toResult<T extends object>(fn: () => Promise<T>): Promise<
   try {
     return (await fn()) as Result<T>;
   } catch (e) {
-    if (e instanceof ServiceError) return { error: e.message };
+    if (e instanceof ServiceError) return { error: e.message, code: e.code };
     if (e instanceof ZodError) return { error: e.issues[0]?.message ?? "Check the details and try again." };
     throw e;
   }

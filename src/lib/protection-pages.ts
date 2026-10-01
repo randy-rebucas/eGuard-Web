@@ -1,5 +1,9 @@
 import type { ProtectionKey } from "@prisma/client";
+import { PLANS, type Entitlements } from "./plans";
 import { fmtMinutes, describeConfig, type ProtectionConfig } from "./protections";
+
+/** "eGuard Plus and Family Pro": the plans that include a feature, from the catalogue so the copy follows it. */
+const plansWith = (has: (e: Entitlements) => boolean) => PLANS.filter((p) => has(p.entitlements)).map((p) => p.name).join(" and ");
 
 /**
  * Public copy for the /protections pages, one entry per protection in protections.ts.
@@ -37,7 +41,7 @@ export const PROTECTION_PAGES: Record<ProtectionKey, ProtectionPage> = {
     faqs: [
       ["Does the limit count every app?", "It counts time on the phone or tablet. Apps you've given their own limit also stop when that limit runs out, even if daily time is left."],
       ["What counts as the weekend?", "Saturday and Sunday, in the device's own time zone."],
-      ["Can I see how the time was spent?", "Yes. The Screen Time view shows today, 7 days or 30 days, with the top apps and the hours of the day they were used."],
+      ["Can I see how the time was spent?", `Yes. The Screen Time view shows today or the last 7 days, with the top apps and the hours of the day they were used. ${plansWith((e) => e.advancedReports)} adds 30 days, custom ranges and CSV export.`],
     ],
   },
   BEDTIME: {
@@ -136,6 +140,7 @@ export const PROTECTION_PAGES: Record<ProtectionKey, ProtectionPage> = {
     what: [
       "When sharing is on, your child's current location appears on the family map in the app and on the web.",
       "A history of places visited is kept only if your family turns on location history. Otherwise eGuard keeps just the latest location.",
+      `Location sharing is included with ${plansWith((e) => e.locationSharing)}.`,
     ],
     childSees: "eGuard's home screen shows that location is shared with the family. It's never hidden.",
     check: "The device reports whether location permission and sharing are on. If location is switched off, you get “Location sharing turned off”.",

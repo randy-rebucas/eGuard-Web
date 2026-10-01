@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { BASE, PASSWORD, call, childDevice, cleanup, db, email, inbox, pairDevice, resetToken, verifyInbox } from "./helpers";
+import { BASE, PASSWORD, call, childDevice, cleanup, db, email, inbox, inviteAndAccept, pairDevice, resetToken, verifyInbox } from "./helpers";
 
 /**
  * Fixes from the security audit: password reset, sign-in lockout, account deletion, pairing races,
@@ -161,8 +161,7 @@ describe("account", () => {
   });
 
   it("a parent can delete their own account; the family stays", async () => {
-    await call("POST", "/family/members", { token, body: { name: "Jo Reyes", email: email("jo"), password: PASSWORD } });
-    const jo = (await call("POST", "/auth/login", { body: { email: email("jo"), password: PASSWORD } })).data.token;
+    const { token: jo } = await inviteAndAccept(token, "Jo Reyes", email("jo"), PASSWORD);
     expect((await call("DELETE", "/me", { token: jo, body: { password: "wrong-one-here" } })).status).toBe(403);
     expect((await call("DELETE", "/me", { token: jo, body: { password: PASSWORD } })).data).toMatchObject({ ok: true, deleted: "account" });
     expect(await db.user.count({ where: { email: email("jo") } })).toBe(0);

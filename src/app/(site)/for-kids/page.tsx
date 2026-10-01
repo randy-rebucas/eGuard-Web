@@ -101,7 +101,7 @@ export default function ForKidsPage() {
           <p>A block isn&apos;t the end. If you need an app or a website, ask. Your parent gets your request on their phone or computer and can say yes in a moment.</p>
           <ol className="kd-ask">
             <li><span>1</span><b>Tap Ask</b>Use <em>Ask for an app</em> in eGuard, or <em>Ask a parent</em> on a blocked website.</li>
-            <li><span>2</span><b>Say why</b>Add a reason, like &ldquo;for my science homework&rdquo;. It really helps.</li>
+            <li><span>2</span><b>Say why</b>On a website, add a reason, like &ldquo;for my science homework&rdquo;. For an app, tell your parent why. It really helps.</li>
             <li><span>3</span><b>Wait a little</b>When your parent says yes, the app or site opens. Sometimes it&apos;s just for a while.</li>
           </ol>
         </div>

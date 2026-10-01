@@ -82,6 +82,22 @@ export function createCheckoutSession(cfg: PaymongoConfig, o: {
 export const getCheckoutSession = (cfg: PaymongoConfig, id: string, f: Fetch = fetch) =>
   call<CheckoutSession>(cfg, "GET", `/v1/checkout_sessions/${encodeURIComponent(id)}`, undefined, f);
 
+export type Payment = { amount: number; status: string; refunds?: Resource<{ amount: number; status: string }>[] };
+
+export const getPayment = (cfg: PaymongoConfig, id: string, f: Fetch = fetch) =>
+  call<Payment>(cfg, "GET", `/v1/payments/${encodeURIComponent(id)}`, undefined, f);
+
+/**
+ * Whether a payment has been refunded in full: its succeeded refunds add up to what was paid. `latest` is the
+ * refund a webhook is about, counted even if the payment doesn't list it yet. Partial refunds (a goodwill
+ * credit) leave the purchase running.
+ */
+export function isFullyRefunded(p: Payment, latest?: { id: string; amount: number }) {
+  const refunds = (p.refunds ?? []).filter((r) => r.attributes.status === "succeeded").map((r) => ({ id: r.id, amount: r.attributes.amount }));
+  if (latest && !refunds.some((r) => r.id === latest.id)) refunds.push(latest);
+  return p.amount > 0 && refunds.reduce((s, r) => s + r.amount, 0) >= p.amount;
+}
+
 /** The paid payment of a checkout session, if any. */
 export const paidPayment = (cs: CheckoutSession) => cs.payments?.find((p) => p.attributes.status === "paid") ?? null;
 

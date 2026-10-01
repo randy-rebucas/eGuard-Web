@@ -18,9 +18,12 @@ import { escapeHtml, sendMail } from "./mail";
 /** Audit entries are kept longer than activity: they're the security record. */
 const AUDIT_RETENTION_DAYS = 365;
 
-/** Alerts worth an email: anything needing action, and protection changes / devices going quiet (tampering). */
-const worthEmail = (a: Alert) =>
-  a.severity === "ACTION_REQUIRED" || a.severity === "CRITICAL"
+/** A child asking for something (an app, a blocked website): emailed only to parents with "App approval requests" on. */
+export const isChildRequest = (a: Pick<Alert, "resolveKey">) => !!a.resolveKey && /^(APPREQ|WEBREQ):/.test(a.resolveKey);
+
+/** Alerts worth an email: anything needing action, protection changes / devices going quiet (tampering), and children's requests. */
+export const worthEmail = (a: Pick<Alert, "severity" | "category" | "resolveKey">) =>
+  a.severity === "ACTION_REQUIRED" || a.severity === "CRITICAL" || isChildRequest(a)
   || (a.severity === "ATTENTION" && (a.category === "PROTECTION" || a.category === "DEVICES" || a.category === "LOCATION"));
 
 export async function raiseOfflineAlerts() {
@@ -40,8 +43,8 @@ export async function refreshAllPurchases() {
 
 /**
  * Deletes activity older than each family's retention period (Settings › Privacy): screen time, app
- * usage, location visits, change history, finished requests and checks, browser health reports and daily
- * block counts, and alerts that are no longer open. Plus expired sessions, links, pairing codes and rate-limit counters.
+ * usage, location visits, change history, finished requests and checks, browser health reports, daily
+ * block counts and site requests, and alerts that are no longer open. Plus expired sessions, links, pairing codes and rate-limit counters.
  */
 export async function purgeExpiredData(now = new Date()) {
   const cutoff = (col: string) => `${col} < now() - make_interval(days => f."retentionDays")`;
@@ -54,6 +57,8 @@ export async function purgeExpiredData(now = new Date()) {
     checks: await db.$executeRawUnsafe(`DELETE FROM "CheckRun" t USING "Family" f WHERE t."familyId" = f.id AND t.status = 'COMPLETED' AND ${cutoff('t."createdAt"')}`),
     browserHealth: await db.$executeRawUnsafe(`DELETE FROM "BrowserHealthCheck" t USING "BrowserInstallation" b JOIN "Family" f ON f.id = b."familyId" WHERE t."installationId" = b.id AND ${cutoff('t."createdAt"')}`),
     browserEvents: await db.$executeRawUnsafe(`DELETE FROM "BrowserEventDaily" t USING "BrowserInstallation" b JOIN "Family" f ON f.id = b."familyId" WHERE t."installationId" = b.id AND ${cutoff('t."date"')}`),
+    // A site the child asked for and their reason: activity like the rest (one still unanswered by then is stale too)
+    accessRequests: await db.$executeRawUnsafe(`DELETE FROM "BrowserAccessRequest" t USING "Family" f WHERE t."familyId" = f.id AND ${cutoff('t."createdAt"')}`),
     alerts: await db.$executeRawUnsafe(`DELETE FROM "Alert" t USING "Family" f WHERE t."familyId" = f.id AND (t."resolvedAt" IS NOT NULL OR t.severity = 'INFO') AND ${cutoff('t."createdAt"')}`),
     orgEvents: await db.orgEvent.deleteMany({ where: { createdAt: { lt: new Date(now.getTime() - ORG_EVENT_RETENTION_DAYS * 864e5) } } }).then((r) => r.count),
     auditLog: await db.auditLog.deleteMany({ where: { createdAt: { lt: new Date(now.getTime() - AUDIT_RETENTION_DAYS * 864e5) } } }).then((r) => r.count),
@@ -68,13 +73,14 @@ export async function purgeExpiredData(now = new Date()) {
 function alertEmail(a: Alert, name: string) {
   const link = `${appUrl()}/notifications`;
   const lines = [a.body, a.fromValue && a.toValue ? `Was: ${a.fromValue}\nNow: ${a.toValue}` : null].filter(Boolean).join("\n\n");
+  const why = isChildRequest(a) ? `"Email alerts" and "App approval requests" are on` : `"Email alerts" is on`;
   return {
     subject: `eGuard: ${a.title} (${a.subject})`,
-    text: `Hi ${name},\n\n${a.title}: ${a.subject}\n\n${lines}\n\nOpen eGuard: ${link}\n\nYou get these emails because "Email alerts" is on in Settings › Notifications.\n\n— eGuard`,
+    text: `Hi ${name},\n\n${a.title}: ${a.subject}\n\n${lines}\n\nOpen eGuard: ${link}\n\nYou get these emails because ${why} in Settings › Notifications.\n\n— eGuard`,
     html: `<p>Hi ${escapeHtml(name)},</p><p><b>${escapeHtml(a.title)}</b>: ${escapeHtml(a.subject)}</p><p>${escapeHtml(a.body)}</p>`
       + (a.fromValue && a.toValue ? `<p style="color:#555">Was: ${escapeHtml(a.fromValue)}<br>Now: ${escapeHtml(a.toValue)}</p>` : "")
       + `<p><a href="${link}" style="display:inline-block;padding:12px 20px;border-radius:10px;background:#1a73e8;color:#fff;text-decoration:none;font-weight:600">Open eGuard</a></p>`
-      + `<p style="color:#555;font-size:13px">You get these emails because "Email alerts" is on in Settings › Notifications.</p>`,
+      + `<p style="color:#555;font-size:13px">You get these emails because ${escapeHtml(why)} in Settings › Notifications.</p>`,
   };
 }
 
@@ -89,7 +95,9 @@ export async function emailNewAlerts() {
     // Claim it first so two overlapping runs never send the same alert twice
     const claimed = await db.alert.updateMany({ where: { id: a.id, notifiedAt: null }, data: { notifiedAt: new Date() } });
     if (!claimed.count || a.resolvedAt || !worthEmail(a)) continue;
-    const parents = await db.user.findMany({ where: { familyId: a.familyId, notifyEmail: true, emailVerifiedAt: { not: null } } });
+    const parents = await db.user.findMany({
+      where: { familyId: a.familyId, notifyEmail: true, emailVerifiedAt: { not: null }, ...(isChildRequest(a) ? { notifyApproval: true } : {}) },
+    });
     for (const p of parents) {
       try {
         await sendMail({ to: p.email, ...alertEmail(a, p.name.split(/\s+/)[0]) });
@@ -102,15 +110,23 @@ export async function emailNewAlerts() {
   return { alerts: alerts.length, sent };
 }
 
+/**
+ * Every step runs even if an earlier one fails: one bad family or a mail outage mustn't stop alert emails
+ * and data retention for everyone. Failed steps are logged and named in `failed`.
+ */
 export async function runMaintenance() {
-  const offlineFamilies = await raiseOfflineAlerts();
-  const offlineBrowsers = await raiseBrowserOfflineAlerts();
-  const purchases = await refreshAllPurchases();
-  const passReminders = await sendPassReminders();
-  const codeBatches = await refreshPendingBatches().catch((e) => { console.error("[maintenance] code batch refresh failed", e); return -1; });
-  const codeReminders = await sendCodeExpiryReminders().catch((e) => { console.error("[maintenance] code expiry reminders failed", e); return null; });
-  const orgDigests = await sendOrgDigests().catch((e) => { console.error("[maintenance] organization digests failed", e); return null; });
-  const emails = await emailNewAlerts();
-  const purged = await purgeExpiredData();
-  return { offlineFamilies, offlineBrowsers, purchases, passReminders, codeBatches, codeReminders, orgDigests, emails, purged };
+  const failed: string[] = [];
+  const step = async <T,>(name: string, fn: () => Promise<T>): Promise<T | null> => {
+    try { return await fn(); } catch (e) { failed.push(name); console.error(`[maintenance] ${name} failed`, e); return null; }
+  };
+  const offlineFamilies = await step("offline alerts", raiseOfflineAlerts);
+  const offlineBrowsers = await step("browser offline alerts", raiseBrowserOfflineAlerts);
+  const purchases = await step("purchase refresh", refreshAllPurchases);
+  const passReminders = await step("pass reminders", () => sendPassReminders());
+  const codeBatches = await step("code batch refresh", () => refreshPendingBatches());
+  const codeReminders = await step("code expiry reminders", () => sendCodeExpiryReminders());
+  const orgDigests = await step("organization digests", () => sendOrgDigests());
+  const emails = await step("alert emails", emailNewAlerts);
+  const purged = await step("data retention", () => purgeExpiredData());
+  return { offlineFamilies, offlineBrowsers, purchases, passReminders, codeBatches, codeReminders, orgDigests, emails, purged, failed };
 }

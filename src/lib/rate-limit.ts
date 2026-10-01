@@ -23,6 +23,8 @@ export const LIMITS = {
   resetEmail: { max: 3, windowMs: 60 * 60_000 },
   resetIp: { max: 10, windowMs: 60 * 60_000 },
   supportUser: { max: 10, windowMs: 60 * 60_000 },
+  /** parent invitations an admin sends or resends: each emails someone outside the family */
+  inviteUser: { max: 10, windowMs: 60 * 60_000 },
   /** events one child device reports (each can add an app row or an alert); a real phone sends a handful an hour */
   deviceEvents: { max: 120, windowMs: 60 * 60_000 },
   /** organization join codes a user tries (a wrong guess only joins an organization, but don't allow enumeration) */

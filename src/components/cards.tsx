@@ -6,23 +6,23 @@ import { isOffline } from "@/lib/health";
 import { Avatar, DeviceIcon, SEVERITY, StatusBadge, statusLabel, platformName } from "./ui";
 import type { ChildView, DeviceView } from "@/lib/queries";
 import type { DeviceState } from "@/lib/health";
-import { dayTime } from "@/lib/format";
+import { ageLabel, dayTime } from "@/lib/format";
 import { PROTECTION_BY_KEY } from "@/lib/protections";
 
 export function ChildCard({ c }: { c: ChildView }) {
   const d = c.primary;
   return (
-    <Link href={`/children/${c.id}`} className="card child-card interactive" aria-label={`${c.name}, ${c.age} years old, ${statusLabel(c.status)}`}>
+    <Link href={`/children/${c.id}`} className="card child-card interactive" aria-label={`${c.name}, ${ageLabel(c.age)}, ${statusLabel(c.status)}`}>
       <div className="cc-head">
         <Avatar name={c.name} hue={c.hue} size="lg" />
-        <div className="grow"><div className="cc-name">{c.name}</div><div className="t-meta">{c.age} years old</div></div>
+        <div className="grow"><div className="cc-name">{c.name}</div><div className="t-meta">{ageLabel(c.age)}</div></div>
       </div>
       <div><StatusBadge status={c.status} /></div>
       <div className="cc-dev">
         {d ? <DeviceIcon kind={d.kind} className="dev" /> : <Icon name="plus" className="dev" />}
         <div className="grow">
           <div className="t-title" style={{ fontSize: 14 }}>{d ? d.name : "No device yet"}</div>
-          <div className="t-meta">{d ? `${d.osVersion}${c.devices.length > 1 ? ` · +${c.devices.length - 1} more` : ""}` : "Add one from the eGuard app"}</div>
+          <div className="t-meta">{d ? `${d.osVersion}${c.devices.length > 1 ? ` · +${c.devices.length - 1} more` : ""}` : "Pair one with a code from Devices"}</div>
         </div>
         <span className="go"><Icon name="arrow-right" /></span>
       </div>

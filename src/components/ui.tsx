@@ -64,8 +64,16 @@ export function Avatar({ name, hue, size }: { name: string; hue: number; size?: 
   );
 }
 
-export function AvatarGroup({ people }: { people: { name: string; hue: number }[] }) {
-  return <div className="avatar-group">{people.map((p) => <Avatar key={p.name} name={p.name} hue={p.hue} />)}</div>;
+/** Overlapping avatars; past `max`, the rest collapse into a "+N" chip. */
+export function AvatarGroup({ people, max = 6 }: { people: { id: string; name: string; hue: number }[]; max?: number }) {
+  const shown = people.length > max ? people.slice(0, max - 1) : people;
+  const more = people.length - shown.length;
+  return (
+    <div className="avatar-group">
+      {shown.map((p) => <Avatar key={p.id} name={p.name} hue={p.hue} />)}
+      {more ? <span className="avatar" style={{ ["--h" as string]: 220 }} aria-hidden="true">+{more}</span> : null}
+    </div>
+  );
 }
 
 export function DeviceIcon({ kind, className }: { kind: "PHONE" | "TABLET"; className?: string }) {

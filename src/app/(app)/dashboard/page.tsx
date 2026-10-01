@@ -14,13 +14,19 @@ import { LogoMark } from "@/components/logo";
 import { SectionBoundary } from "@/components/boundary";
 import { currentPurchase, renewalWord } from "@/lib/entitlement";
 import { entitlementsFor, nextPlan } from "@/lib/plans";
+import { planWith } from "@/lib/plan-access";
 
 export const metadata = { title: "Dashboard" };
 
 /* The slower panels stream in after the summary, each with its own skeleton and error boundary. */
 
-async function Activity({ graph, tz }: { graph: FamilyGraph; tz: string }) {
-  return <ActivityPanel kids={await todayActivity(graph, tz)} dateLabel={`Today, ${longDate(new Date(), tz)}`} />;
+/** How many children the hero's status card lists before linking to the rest. */
+const HERO_CHILDREN = 4;
+/** How many device icons the Devices metric draws before "+N". */
+const METRIC_DEVICES = 8;
+
+async function Activity({ graph, tz, locationSharing }: { graph: FamilyGraph; tz: string; locationSharing: boolean }) {
+  return <ActivityPanel kids={await todayActivity(graph, tz, { locationSharing })} dateLabel={`Today, ${longDate(new Date(), tz)}`} />;
 }
 
 async function Weekly({ familyId, graph, tz }: { familyId: string; graph: FamilyGraph; tz: string }) {
@@ -50,8 +56,16 @@ export default async function Dashboard() {
   const issues = health.checks.filter((c) => c.status !== "PASS" && c.status !== "UNSUPPORTED").length;
   const attention = Object.values(deviceStates).filter((s) => s.key !== "healthy").length;
   const protectedKids = children.filter((c) => c.status === "protected").length;
-  const firstName = u.name.split(" ")[0];
+  const firstName = u.name.trim().split(/\s+/)[0] || "there";
   const lastSync = devices.reduce<Date | null>((m, d) => (d.lastSeenAt && (!m || d.lastSeenAt > m) ? d.lastSeenAt : m), null);
+  const ent = entitlementsFor(family.plan), upgrade = nextPlan(family.plan);
+  // Children added but nothing paired: health checks have nothing to verify, so don't report them as failing
+  const unpaired = !devices.length;
+  // Health covers paired devices only: a child without one isn't protected, however healthy the rest are
+  const unpairedKids = children.filter((c) => !c.devices.length);
+  const unpairedText = unpairedKids.length === 1 ? `${unpairedKids[0].name} has no paired device yet.` : `${unpairedKids.length} children have no paired device yet.`;
+  // Near-complete: at most one or two protections left to review (relative, so it holds if protections are added)
+  const good = health.score >= health.total - 2, nearlyAll = health.score >= health.total - 1;
 
   if (!children.length) {
     return (
@@ -79,22 +93,26 @@ export default async function Dashboard() {
           <span className="greet">{greeting(tz)}</span>
           <h1 id="hero-title">{firstName}</h1>
           <p className="lede">
-            {issues === 0 && health.verified ? <>Every protection is verified.<br />Your family is set.</>
+            {unpaired ? <>Your family is almost set.<br />Pair a device to start protecting them.</>
+              : issues === 0 && unpairedKids.length ? <>Every paired device is {health.verified ? "verified" : "set, as last reported"}.<br />{unpairedText}</>
+              : issues === 0 && health.verified ? <>Every protection is verified.<br />Your family is set.</>
               : issues === 0 ? <>Every protection matched when devices last synced.<br />{health.offline} {health.offline === 1 ? "device is" : "devices are"} offline, so we can&apos;t verify {health.offline === 1 ? "it" : "them"} now.</>
-              : <>Your family&apos;s digital safety<br />{health.score >= 8 ? "looks good today." : "needs a little attention."}</>}
+              : <>Your family&apos;s digital safety<br />{good ? "looks good today." : "needs a little attention."}</>}
           </p>
           <div className="hero-stats">
             <span className="hero-stat"><Icon name="shield-check" /><span className="num">{protectedKids}</span>&nbsp;{protectedKids === 1 ? "child" : "children"} protected</span>
             <span className="hero-stat"><Icon name="tablet-smartphone" /><span className="num">{devices.length}</span>&nbsp;{devices.length === 1 ? "device" : "devices"} connected{health.offline ? `, ${health.offline} offline` : ""}</span>
-            {issues ? <Link className="hero-stat warn" href="/protection"><Icon name="triangle-alert" /><span className="num">{issues}</span>&nbsp;{issues === 1 ? "setting needs" : "settings need"} attention</Link> : null}
+            {unpaired ? <Link className="hero-stat warn" href="/devices#pair"><Icon name="plus" />Pair a device</Link>
+              : issues === 0 && unpairedKids.length ? <Link className="hero-stat warn" href={`/devices?child=${unpairedKids[0].id}#pair`}><Icon name="plus" />Pair {unpairedKids.length === 1 ? `${unpairedKids[0].name}'s` : "a"} device</Link>
+              : issues ?<Link className="hero-stat warn" href="/protection"><Icon name="triangle-alert" /><span className="num">{issues}</span>&nbsp;{issues === 1 ? "setting needs" : "settings need"} attention</Link> : null}
           </div>
         </div>
         <div className="hero-side">
           <div className="glass">
             <div className="row" style={{ justifyContent: "space-between", marginBottom: 6 }}>
-              <span className="t-meta">Current status</span><span className="t-meta num">Synced {dayTime(lastSync, tz).replace("Today, ", "")}</span>
+              <span className="t-meta">Current status</span><span className="t-meta num">{lastSync ? `Synced ${dayTime(lastSync, tz).replace("Today, ", "")}` : "Not synced yet"}</span>
             </div>
-            {children.map((c) => (
+            {children.slice(0, HERO_CHILDREN).map((c) => (
               <Link key={c.id} href={`/children/${c.id}`} className="glass-child">
                 <Avatar name={c.name} hue={c.hue} />
                 <span><span className="t-title" style={{ display: "block" }}>{c.name}</span><span className="t-meta">{c.primary?.name ?? "No device"}</span></span>
@@ -103,6 +121,7 @@ export default async function Dashboard() {
                 </span>
               </Link>
             ))}
+            {children.length > HERO_CHILDREN ? <Link className="glass-child t-meta" href="/children">+{children.length - HERO_CHILDREN} more <Icon name="arrow-right" /></Link> : null}
           </div>
         </div>
       </section>
@@ -110,10 +129,11 @@ export default async function Dashboard() {
       <section className="metrics" aria-label="Family summary">
         <Link className="card metric interactive" href="/protection">
           <div className="m-top"><span className="m-label">Family Protection</span><span className="ico-tile"><Icon name="shield-check" /></span></div>
-          <div className="m-value num">{health.score}<small> / 10</small></div>
-          <SegMeter score={health.score} />
+          {unpaired ? <div className="m-value num">–<small> / {health.total}</small></div> : <div className="m-value num">{health.score}<small> / {health.total}</small></div>}
+          <SegMeter score={unpaired ? 0 : health.score} total={health.total} />
           <div className="m-foot">
-            <span className={`pill ${health.score >= 9 ? "tone-ok" : "tone-accent"}`}><Icon name={health.score >= 9 ? "circle-check" : "shield"} />{health.verified ? "All verified" : health.score === health.total ? "Last known: all set" : health.score >= 8 ? "Good protection" : "Needs review"}</span>
+            {unpaired ? <span className="pill tone-muted"><Icon name="circle-dashed" />No devices to check</span>
+              : <span className={`pill ${nearlyAll ? "tone-ok" : "tone-accent"}`}><Icon name={nearlyAll ? "circle-check" : "shield"} />{health.verified ? "All verified" : health.score === health.total ? "Last known: all set" : good ? "Good protection" : "Needs review"}</span>}
             <span className="muted"><Icon name="arrow-right" /></span>
           </div>
         </Link>
@@ -123,19 +143,24 @@ export default async function Dashboard() {
           <AvatarGroup people={children} />
           <div className="m-foot"><span className="link-btn">View children <Icon name="arrow-right" /></span></div>
         </Link>
-        <Link className="card metric interactive" href="/devices">
+        <Link className="card metric interactive" href={unpaired ? "/devices#pair" : "/devices"}>
           <div className="m-top"><span className="m-label">Devices</span><span className="ico-tile"><Icon name="tablet-smartphone" /></span></div>
           <div className="m-value num">{devices.length}</div>
-          <div className="row" style={{ gap: 6, color: "var(--ink-3)" }}>{devices.map((d) => <Icon key={d.id} name={d.kind === "TABLET" ? "tablet" : "smartphone"} />)}</div>
+          <div className="row" style={{ gap: 6, color: "var(--ink-3)" }} aria-hidden="true">
+            {devices.slice(0, METRIC_DEVICES).map((d) => <Icon key={d.id} name={d.kind === "TABLET" ? "tablet" : "smartphone"} />)}
+            {devices.length > METRIC_DEVICES ? <span className="t-meta num">+{devices.length - METRIC_DEVICES}</span> : null}
+          </div>
           <div className="m-foot">
-            {attention ? <span className="link-btn" style={{ color: "var(--warn-ink)" }}>{attention} need attention <Icon name="arrow-right" /></span> : <span className="link-btn">All healthy <Icon name="arrow-right" /></span>}
+            {unpaired ? <span className="link-btn">Pair a device <Icon name="arrow-right" /></span>
+              : attention ? <span className="link-btn" style={{ color: "var(--warn-ink)" }}>{attention} need attention <Icon name="arrow-right" /></span>
+              : <span className="link-btn">All healthy <Icon name="arrow-right" /></span>}
           </div>
         </Link>
         <Link className="card metric interactive" href="/settings/subscription">
           <div className="m-top"><span className="m-label">Active Plan</span><span className="ico-tile"><Icon name="crown" /></span></div>
           <div className="m-value" style={{ fontSize: 26 }}>{family.plan}</div>
-          <div className="t-meta">Up to {entitlementsFor(family.plan).childLimit} {entitlementsFor(family.plan).childLimit === 1 ? "child" : "children"} · {family.deviceLimit} devices</div>
-          <div className="m-foot"><span className="muted num">{family.renewsAt ? `${renewalWord(purchase)} ${shortDate(family.renewsAt, tz)}` : nextPlan(family.plan) ? `Upgrade to ${nextPlan(family.plan)!.name}` : "No renewal date"}</span></div>
+          <div className="t-meta">Up to {ent.childLimit} {ent.childLimit === 1 ? "child" : "children"} · {family.deviceLimit} devices</div>
+          <div className="m-foot"><span className="muted num">{family.renewsAt ? `${renewalWord(purchase)} ${shortDate(family.renewsAt, tz)}` : upgrade ? `Upgrade to ${upgrade.name}` : "No renewal date"}</span></div>
         </Link>
       </section>
 
@@ -146,14 +171,18 @@ export default async function Dashboard() {
             <div className="children-grid">{children.map((c) => <ChildCard key={c.id} c={c} />)}</div>
           </section>
 
-          <Streamed title="Today's activity" height={340}><Activity graph={graph} tz={tz} /></Streamed>
+          <Streamed title="Today's activity" height={340}><Activity graph={graph} tz={tz} locationSharing={ent.locationSharing} /></Streamed>
 
           <section className="card card-pad" aria-labelledby="dev-title">
             <div className="card-head">
               <div><h2 id="dev-title">Device Protection Status</h2><div className="sub">Configuration state reported by each device</div></div>
               <ViewAll href="/devices" />
             </div>
-            <div className="devices-grid">{devices.map((d) => <DeviceCard key={d.id} d={d} state={deviceStates[d.id]} tz={tz} />)}</div>
+            {unpaired ? (
+              <EmptyState icon="smartphone" title="No devices paired yet" text="Install eGuard on your child's Android or iOS device, then enter a pairing code from the Devices page.">
+                <Link className="btn btn-primary" href="/devices#pair"><Icon name="plus" />Pair a device</Link>
+              </EmptyState>
+            ) : <div className="devices-grid">{devices.map((d) => <DeviceCard key={d.id} d={d} state={deviceStates[d.id]} tz={tz} />)}</div>}
           </section>
 
           <Streamed title="Weekly screen time" height={380}><Weekly familyId={u.familyId} graph={graph} tz={tz} /></Streamed>
@@ -173,11 +202,13 @@ export default async function Dashboard() {
           <section className="card card-pad">
             <div className="card-head"><h2 style={{ fontSize: 18 }}>Quick Actions</h2></div>
             <div style={{ display: "flex", flexDirection: "column", gap: 2, margin: "0 -12px" }}>
-              <CheckButton className="list-row"><span className="ico-tile"><Icon name="scan-search" /></span><span className="grow t-title">Run Configuration Check</span><span className="chev"><Icon name="chevron-right" /></span></CheckButton>
+              {unpaired
+                ? <Link href="/devices#pair" className="list-row"><span className="ico-tile"><Icon name="plus" /></span><span className="grow t-title">Pair a Device</span><span className="chev"><Icon name="chevron-right" /></span></Link>
+                : <CheckButton className="list-row"><span className="ico-tile"><Icon name="scan-search" /></span><span className="grow t-title">Run Configuration Check</span><span className="chev"><Icon name="chevron-right" /></span></CheckButton>}
               <FlowButton protection="SCREEN_TIME" className="list-row"><span className="ico-tile"><Icon name="hourglass" /></span><span className="grow t-title">Set Screen Time Limits</span><span className="chev"><Icon name="chevron-right" /></span></FlowButton>
               <FlowButton protection="APP_RESTRICTIONS" className="list-row"><span className="ico-tile"><Icon name="layout-grid" /></span><span className="grow t-title">Manage Apps</span><span className="chev"><Icon name="chevron-right" /></span></FlowButton>
               <FlowButton protection="BEDTIME" className="list-row"><span className="ico-tile"><Icon name="moon" /></span><span className="grow t-title">Set Bedtime Schedule</span><span className="chev"><Icon name="chevron-right" /></span></FlowButton>
-              <Link href="/location" className="list-row"><span className="ico-tile"><Icon name="map-pin" /></span><span className="grow t-title">View Location</span><span className="chev"><Icon name="chevron-right" /></span></Link>
+              <Link href="/location" className="list-row"><span className="ico-tile"><Icon name="map-pin" /></span><span className="grow t-title">View Location</span>{ent.locationSharing ? null : <span className="pill tone-accent"><Icon name="crown" />{planWith((e) => e.locationSharing).name}</span>}<span className="chev"><Icon name="chevron-right" /></span></Link>
             </div>
           </section>
           <section className="promo" aria-label="eGuard">

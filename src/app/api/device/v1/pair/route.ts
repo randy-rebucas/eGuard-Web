@@ -5,10 +5,11 @@ import { newToken, sha256 } from "@/lib/auth";
 import { badRequest, readJson } from "@/lib/device-auth";
 import { refreshPurchases } from "@/lib/billing";
 import { LIMITS, clientIpFrom, hit, ipKey } from "@/lib/rate-limit";
-import { usedDeviceSlots } from "@/lib/device-slots";
+import { withDeviceSlot } from "@/lib/device-slots";
 
 const Body = z.object({
-  code: z.string().trim().min(6).max(12),
+  // Parents may type "ABCD-2345" or "abcd 2345" (same as the browser extension)
+  code: z.string().transform((s) => s.replace(/[\s-]/g, "").toUpperCase()).pipe(z.string().min(6).max(12)),
   platform: z.enum(["ANDROID", "IOS"]),
   name: z.string().trim().min(1).max(60),
   model: z.string().trim().min(1).max(60),
@@ -26,7 +27,7 @@ export async function POST(req: Request) {
   if (!parsed.success) return badRequest(parsed.error.issues[0].message);
   const b = parsed.data;
   const invalidCode = () => NextResponse.json({ error: "Pairing code is invalid or expired" }, { status: 400 });
-  const code = await db.pairingCode.findUnique({ where: { code: b.code.toUpperCase() } });
+  const code = await db.pairingCode.findUnique({ where: { code: b.code } });
   if (!code || code.usedAt || code.expiresAt < new Date()) return invalidCode();
   if (code.kind !== "DEVICE") {
     return NextResponse.json({ error: "This code is for the eGuard browser extension. In the parent dashboard, choose Pair a device to get a code for this app." }, { status: 400 });
@@ -35,25 +36,24 @@ export async function POST(req: Request) {
   const claimed = await db.pairingCode.updateMany({ where: { id: code.id, usedAt: null, expiresAt: { gt: new Date() } }, data: { usedAt: new Date() } });
   if (!claimed.count) return invalidCode();
   await refreshPurchases(code.familyId);
-  const [family, count] = await Promise.all([
-    db.family.findUniqueOrThrow({ where: { id: code.familyId } }),
-    usedDeviceSlots(code.familyId),
-  ]);
-  if (count >= family.deviceLimit) {
+  const family = await db.family.findUniqueOrThrow({ where: { id: code.familyId } });
+  const token = newToken();
+  // The slot lock also serializes the primary check, so two devices pairing at once can't both be primary
+  const device = await withDeviceSlot(code.familyId, family.deviceLimit, async (tx) => {
+    const hasPrimary = await tx.device.count({ where: { childId: code.childId, isPrimary: true } });
+    return tx.device.create({
+      data: {
+        familyId: code.familyId, childId: code.childId, name: b.name, model: b.model, kind: b.kind, platform: b.platform,
+        osVersion: b.osVersion, appVersion: b.appVersion, tokenHash: sha256(token), lastSeenAt: new Date(), isPrimary: !hasPrimary,
+      },
+      include: { child: true },
+    });
+  });
+  if (!device) {
     // Give the code back so the parent can use it after removing a device
     await db.pairingCode.update({ where: { id: code.id }, data: { usedAt: null } });
     return NextResponse.json({ error: "Device limit reached for this plan" }, { status: 409 });
   }
-
-  const token = newToken();
-  const hasPrimary = await db.device.count({ where: { childId: code.childId, isPrimary: true } });
-  const device = await db.device.create({
-    data: {
-      familyId: code.familyId, childId: code.childId, name: b.name, model: b.model, kind: b.kind, platform: b.platform,
-      osVersion: b.osVersion, appVersion: b.appVersion, tokenHash: sha256(token), lastSeenAt: new Date(), isPrimary: !hasPrimary,
-    },
-    include: { child: true },
-  });
   await db.alert.create({
     data: {
       familyId: code.familyId, childId: code.childId, deviceId: device.id, severity: "INFO", category: "DEVICES", icon: "refresh-cw",

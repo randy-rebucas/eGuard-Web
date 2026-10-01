@@ -13,6 +13,9 @@ import { LazyMap, LocationRefresh } from "./lazy-map";
 
 export const metadata = { title: "Location" };
 
+/** Places listed per child under "Recent places" */
+const RECENT_PLACES = 3;
+
 export default async function LocationPage() {
   const u = await requireUser();
   const [family, { children }] = await Promise.all([getFamily(u.familyId), getFamilyGraph(u.familyId)]);
@@ -27,7 +30,7 @@ export default async function LocationPage() {
   const tz = family.timezone;
   const rows = children.map((c) => ({ c, l: childLocation(c.devices) }));
   // History on: each child's last few places from the past day, with a link to all of them
-  const recent = family.keepLocationHistory ? await recentVisits(u.familyId) : [];
+  const recent = family.keepLocationHistory ? await recentVisits(children.filter((c) => c.devices.length).map((c) => c.id), RECENT_PLACES) : [];
   const people: MapPerson[] = rows.filter(({ l }) => l.location).map(({ c, l }) => ({
     id: c.id, name: c.name, hue: c.hue, lat: l.location!.lat!, lng: l.location!.lng!,
     label: `${l.location!.placeLabel ?? "Current location"}${l.approximate ? " (approximate)" : ""}`,
@@ -71,7 +74,7 @@ export default async function LocationPage() {
             <section className="card card-pad" aria-labelledby="recent-places">
               <div className="card-head"><h2 id="recent-places" style={{ fontSize: 18 }}>Recent places</h2></div>
               {rows.filter(({ c }) => c.devices.length).map(({ c }) => {
-                const places = recent.filter((v) => v.childId === c.id).slice(0, 3);
+                const places = recent.filter((v) => v.childId === c.id);
                 return (
                   <div className="setting-row" key={c.id}>
                     <Avatar name={c.name} hue={c.hue} />

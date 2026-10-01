@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { NAME_MAX, NAME_TOO_LONG, changeEmail, deleteAccount } from "@/lib/family-service";
 import { meJson } from "@/lib/mobile-account";
 import { authed, body } from "@/lib/mobile-api";
+import { ServiceError } from "@/lib/errors";
 
 export const GET = authed(async ({ user }) => NextResponse.json(await meJson(user.id)));
 
@@ -25,6 +26,11 @@ const Body = z.object({
  */
 export const PATCH = authed(async ({ req, user }) => {
   const b = await body(req, Body);
+  // Say so rather than return 200 and quietly keep the old zone
+  if (b.timezone && user.role !== "FAMILY_ADMIN") {
+    const { timezone } = await db.family.findUniqueOrThrow({ where: { id: user.familyId }, select: { timezone: true } });
+    if (timezone !== b.timezone) throw new ServiceError(403, "Only the family admin can change the family's time zone.", "forbidden");
+  }
   const emailChanged = b.email ? await changeEmail(user, b.email, b.password ?? "") : false;
   if (b.name) await db.user.update({ where: { id: user.id }, data: { name: b.name } });
   if (emailChanged) await sendVerificationEmailLater(user.id);

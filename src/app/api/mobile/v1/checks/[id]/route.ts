@@ -11,15 +11,15 @@ export const GET = authed<{ id: string }>(async ({ user, params }) => {
   if (!(await db.checkRun.findFirst({ where: { id: params.id, familyId: user.familyId } }))) throw notFound("Check");
   await simulateTick(user.familyId);
   const run = await finalizeCheckRun(params.id);
-  const [results, devices] = await Promise.all([
-    db.checkRunResult.findMany({ where: { runId: params.id }, include: { device: { include: { child: true } } } }),
-    db.device.findMany({ where: { familyId: user.familyId }, include: { protections: true } }),
-  ]);
+  const results = await db.checkRunResult.findMany({ where: { runId: params.id }, include: { device: { include: { child: true } } } });
+  // Score the devices this check covered: a check of one device shouldn't report the family's score
+  const devices = await db.device.findMany({ where: { familyId: user.familyId, id: { in: results.map((r) => r.deviceId) } }, include: { protections: true } });
   const health = computeHealth(devices);
   return NextResponse.json({
     status: run!.status,
     done: run!.status === "COMPLETED",
-    health: { score: health.score, total: health.total },
+    // A full score with offline devices is their last known state, not a verification
+    health: { score: health.score, total: health.total, verified: health.verified, offline: health.offline },
     results: results.map((r) => ({
       deviceId: r.deviceId, deviceName: r.device.name, childName: r.device.child.name,
       reachable: r.reachable, issues: r.issues, reported: !!r.reportedAt,

@@ -38,7 +38,7 @@ export const metadata: Metadata = pageMetadata({
   title: "eGuard · Parental controls you can verify, for families in the Philippines",
   absoluteTitle: true,
   path: "/",
-  description: "Set screen time, bedtime, app and web rules on your child's Android or iPhone, and see each one confirmed on the device. Free for 1 child; plans from ₱149 a month.",
+  description: `Set screen time, bedtime, app and web rules on your child's Android phone or tablet, and see each one confirmed on the device. Free for 1 child; plans from ₱${webPrice("PLUS") / 100} a month.`,
   share: {
     title: "eGuard: parental controls you can verify",
     description: "Set screen time, bedtime and app rules on your child's phone, and see each one confirmed on the device. Free for 1 child.",
@@ -55,12 +55,13 @@ const AUDIENCES: [StaticImageData, string, string][] = [
 ];
 
 const FEATURES: [StaticImageData, string, string][] = [
-  [iconGuidedSetup, "Guided Setup", "Step-by-step setup for Android and iOS"],
+  [iconGuidedSetup, "Guided Setup", "Step-by-step setup for Android, with iPhone coming soon"],
   [iconProtection, "Configuration Health", "Verify if protections are correctly applied"],
   [iconScreenTime, "Screen Time Management", "Set healthy device limits"],
   [iconApps, "App & Content Controls", "Manage and approve apps"],
   [iconLocation, "Location Guidance", "Set up location sharing with confidence"],
-  [iconAlerts, "Instant Alerts", "Email and in-app alerts when settings change"],
+  // Alert emails go out with the maintenance run (every few minutes), so not "instant"
+  [iconAlerts, "Alerts", "Email and in-app alerts when settings change"],
 ];
 
 const HABITS: [LucideIcon, string, string, string][] = [
@@ -71,8 +72,8 @@ const HABITS: [LucideIcon, string, string, string][] = [
 
 const STEPS: [LucideIcon, string, string][] = [
   [Smartphone, "Create Your Account", "Set up your family and add your children."],
-  [Settings, "Configure Protection", "Follow our guided setup for Android and iOS."],
-  [ShieldCheck, "Verify & Monitor", "Check configuration health and get instant alerts."],
+  [Settings, "Configure Protection", "Follow our guided setup for Android, with iPhone coming soon."],
+  [ShieldCheck, "Verify & Monitor", "Check configuration health and get alerts when something changes."],
   [ChartNoAxesColumnIncreasing, "Build Healthy Habits", "Manage screen time, apps, and location settings."],
 ];
 
@@ -193,7 +194,7 @@ export default async function Home() {
               <ul className="lp-checks">
                 <li><CircleCheck />Easy setup and configuration</li>
                 <li><ShieldCheck />Verified protection</li>
-                <li><BellRing />Instant email alerts</li>
+                <li><BellRing />Email alerts when something changes</li>
                 <li><CircleCheck />Peace of mind</li>
               </ul>
               <div className="lp-hero-actions">

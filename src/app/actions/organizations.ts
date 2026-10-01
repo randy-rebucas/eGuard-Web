@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { ZodError } from "zod";
+import { ZodError, z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { ServiceError, toResult, type Result } from "@/lib/errors";
 import * as orgs from "@/lib/organizations";
@@ -19,15 +19,19 @@ function failed(e: unknown): FormState {
 
 const orgPath = (orgId: string) => `/organizations/${orgId}`;
 
+// Server actions take whatever the client sends: ids and codes are checked before they reach Prisma
+const Id = z.string().min(1, "Not found.").max(64, "Not found.");
+const Code = z.string({ error: "Enter the code you were given." }).max(64, "That code is too long.");
+
 /* ---------- Families ---------- */
 
 export async function previewJoin(code: string): Promise<Result<{ name: string; kind: string; alreadyJoined: boolean }>> {
-  return toResult(async () => orgs.previewJoin(await requireUser(), code));
+  return toResult(async () => orgs.previewJoin(await requireUser(), Code.parse(code)));
 }
 
 export async function joinOrganization(code: string): Promise<Result<{ name: string }>> {
   return toResult(async () => {
-    const r = await orgs.joinOrganization(await requireUser(), code);
+    const r = await orgs.joinOrganization(await requireUser(), Code.parse(code));
     revalidatePath("/settings/organizations");
     return r;
   });
@@ -35,7 +39,7 @@ export async function joinOrganization(code: string): Promise<Result<{ name: str
 
 export async function leaveOrganization(orgId: string): Promise<Result<{ name: string }>> {
   return toResult(async () => {
-    const r = await orgs.leaveOrganization(await requireUser(), orgId);
+    const r = await orgs.leaveOrganization(await requireUser(), Id.parse(orgId));
     revalidatePath("/settings/organizations");
     return r;
   });
@@ -68,7 +72,7 @@ export async function createOrganization(_: FormState, form: FormData): Promise<
 
 export async function replaceJoinCode(orgId: string): Promise<Result<{ joinCode: string }>> {
   return toResult(async () => {
-    const r = await orgs.replaceJoinCode(await requireUser(), orgId);
+    const r = await orgs.replaceJoinCode(await requireUser(), Id.parse(orgId));
     revalidatePath(orgPath(orgId));
     return r;
   });
@@ -78,7 +82,7 @@ export async function replaceJoinCode(orgId: string): Promise<Result<{ joinCode:
 export async function buyCodes(orgId: string, _: FormState, form: FormData): Promise<FormState> {
   let url: string;
   try {
-    url = (await orgs.buyCodes(await requireUser(), orgId, {
+    url = (await orgs.buyCodes(await requireUser(), Id.parse(orgId), {
       plan: String(form.get("plan") ?? ""), months: String(form.get("months") ?? ""), quantity: String(form.get("quantity") ?? ""),
     })).checkoutUrl;
   } catch (e) {
@@ -89,7 +93,7 @@ export async function buyCodes(orgId: string, _: FormState, form: FormData): Pro
 
 export async function cancelCode(orgId: string, voucherId: string): Promise<Result> {
   return toResult(async () => {
-    await orgs.cancelCode(await requireUser(), orgId, voucherId);
+    await orgs.cancelCode(await requireUser(), Id.parse(orgId), Id.parse(voucherId));
     revalidatePath(orgPath(orgId));
     return {};
   });
@@ -97,7 +101,7 @@ export async function cancelCode(orgId: string, voucherId: string): Promise<Resu
 
 export async function addOrgAdmin(orgId: string, _: FormState, form: FormData): Promise<FormState> {
   try {
-    const r = await orgs.addOrgAdmin(await requireUser(), orgId, String(form.get("email") ?? ""));
+    const r = await orgs.addOrgAdmin(await requireUser(), Id.parse(orgId), String(form.get("email") ?? ""));
     revalidatePath(orgPath(orgId));
     return { ok: `${r.name} can now manage this organization.` };
   } catch (e) {
@@ -108,7 +112,7 @@ export async function addOrgAdmin(orgId: string, _: FormState, form: FormData): 
 export async function removeOrgAdmin(orgId: string, userId: string): Promise<Result> {
   return toResult(async () => {
     const u = await requireUser();
-    await orgs.removeOrgAdmin(u, orgId, userId);
+    await orgs.removeOrgAdmin(u, Id.parse(orgId), Id.parse(userId));
     revalidatePath(orgPath(orgId));
     revalidatePath("/settings/organizations");
     return {};
@@ -120,7 +124,7 @@ export async function removeOrgAdmin(orgId: string, userId: string): Promise<Res
 /** Returns the full key once; it isn't stored. */
 export async function createApiKey(orgId: string, input: { name: string; access: string }): Promise<Result<{ name: string; token: string }>> {
   return toResult(async () => {
-    const r = await orgApi.createApiKey(await requireUser(), orgId, input);
+    const r = await orgApi.createApiKey(await requireUser(), Id.parse(orgId), input);
     revalidatePath(orgPath(orgId));
     return { name: r.name, token: r.token };
   });
@@ -128,7 +132,7 @@ export async function createApiKey(orgId: string, input: { name: string; access:
 
 export async function revokeApiKey(orgId: string, keyId: string): Promise<Result> {
   return toResult(async () => {
-    await orgApi.revokeApiKey(await requireUser(), orgId, keyId);
+    await orgApi.revokeApiKey(await requireUser(), Id.parse(orgId), Id.parse(keyId));
     revalidatePath(orgPath(orgId));
     return {};
   });
@@ -136,7 +140,7 @@ export async function revokeApiKey(orgId: string, keyId: string): Promise<Result
 
 export async function makeOrgOwner(orgId: string, userId: string): Promise<Result> {
   return toResult(async () => {
-    await orgs.makeOrgOwner(await requireUser(), orgId, userId);
+    await orgs.makeOrgOwner(await requireUser(), Id.parse(orgId), Id.parse(userId));
     revalidatePath(orgPath(orgId));
     return {};
   });

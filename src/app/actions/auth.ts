@@ -10,6 +10,8 @@ import { requestPasswordResetQuietly, resetPassword } from "@/lib/password-reset
 import { type VerifyResult, sendVerificationEmail, sendVerificationEmailLater, verifyEmailToken } from "@/lib/email-verification";
 import { ServiceError } from "@/lib/errors";
 import { RegisterSchema, createFamily } from "@/lib/family-service";
+import { safeNext } from "@/lib/return-to";
+import { acceptInvite, declineInvite } from "@/lib/invitations";
 
 export type FormState = { error?: string; ok?: string; fields?: Record<string, string> } | undefined;
 
@@ -27,7 +29,8 @@ export async function login(_: FormState, form: FormData): Promise<FormState> {
     throw e;
   }
   await createSession(userId);
-  redirect("/dashboard");
+  // Checked again here: the hidden field is whatever the browser sent
+  redirect(safeNext(form.get("next")) ?? "/dashboard");
 }
 
 export async function register(_: FormState, form: FormData): Promise<FormState> {
@@ -76,6 +79,31 @@ export async function resetPasswordWithToken(_: FormState, form: FormData): Prom
     throw e;
   }
   redirect("/dashboard");
+}
+
+/** /accept-invite: chooses a password, joins the family, and signs in here. */
+export async function acceptInvitation(_: FormState, form: FormData): Promise<FormState> {
+  try {
+    await enforce(ipKey("token", clientIpFrom(await headers())), LIMITS.tokenIp);
+    const user = await acceptInvite(String(form.get("token") ?? ""), String(form.get("password") ?? ""));
+    await createSession(user.id);
+  } catch (e) {
+    if (e instanceof ServiceError) return { error: e.message };
+    throw e;
+  }
+  redirect("/dashboard");
+}
+
+/** /accept-invite › Decline: nothing about the person stays with that family. */
+export async function declineInvitation(_: FormState, form: FormData): Promise<FormState> {
+  try {
+    await enforce(ipKey("token", clientIpFrom(await headers())), LIMITS.tokenIp);
+    const { familyName } = await declineInvite(String(form.get("token") ?? ""));
+    return { ok: `You declined the invitation to ${familyName}. Nothing was set up, and they can't add you without a new invitation.` };
+  } catch (e) {
+    if (e instanceof ServiceError) return { error: e.message };
+    throw e;
+  }
 }
 
 /** "Resend link" on the verify-your-email banner. */

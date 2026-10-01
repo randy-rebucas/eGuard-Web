@@ -7,8 +7,9 @@ import type { AppApproval } from "@prisma/client";
 import { Icon } from "./icon";
 import { useAction, useFlow } from "./flow";
 import type { FormState } from "@/app/actions/auth";
+import { PROFILES, recommendedProfile, type ProfileId } from "@/lib/profiles";
 import {
-  addParent, changePassword, createChild, createPairingCode, deleteAccount, deleteChildData, pairingStatus, removeBrowser, removeDevice, removeParent, renameDevice,
+  addParent, changePassword, createChild, createPairingCode, deleteAccount, deleteChildData, pairingStatus, removeBrowser, removeDevice, removeParent, renameDevice, resendInvitation,
   setAppApproval, setAppLimit, setToggle, signOutOthers, unlinkIdentity, updateAccount, updateChild,
 } from "@/app/actions/family";
 
@@ -21,19 +22,43 @@ export function Feedback({ state }: { state: FormState }) {
 export function ChildForm({ child }: { child?: { id: string; name: string; birthYear: number } }) {
   const [state, action, pending] = useActionState(child ? updateChild.bind(null, child.id) : createChild, undefined);
   const year = new Date().getFullYear();
+  // Always offer the child's saved year: a select without it shows its first option, and saving would change their age
+  const years = [...new Set([...Array.from({ length: 18 }, (_, i) => year - 1 - i), ...(child ? [child.birthYear] : [])])].sort((a, b) => b - a);
+  const [birthYear, setBirthYear] = useState(child?.birthYear ?? year - 10);
+  // Follows the age (as in the app) until the parent picks one
+  const [picked, setPicked] = useState<ProfileId | null>(null);
+  const recommended = recommendedProfile(year - birthYear);
+  const profile = picked ?? recommended;
   return (
     <form action={action} className="dash-col" style={{ gap: 16, maxWidth: 520 }}>
       <Feedback state={state} />
       <div className="form-grid">
-        <div className="field"><label htmlFor="c-name">Name</label><input className="input" id="c-name" name="name" required maxLength={40} defaultValue={child?.name} /></div>
+        <div className="field"><label htmlFor="c-name">Name</label><input className="input" id="c-name" name="name" required maxLength={40} defaultValue={child?.name} autoComplete="off" /></div>
         <div className="field">
           <label htmlFor="c-year">Birth year</label>
-          <select className="input" id="c-year" name="birthYear" defaultValue={child?.birthYear ?? year - 10}>
-            {Array.from({ length: 18 }, (_, i) => year - 1 - i).map((y) => <option key={y} value={y}>{y} ({year - y} years old)</option>)}
+          <select className="input" id="c-year" name="birthYear" value={birthYear} onChange={(e) => setBirthYear(Number(e.target.value))}>
+            {years.map((y) => <option key={y} value={y}>{y} (about {year - y} {year - y === 1 ? "year" : "years"} old)</option>)}
           </select>
         </div>
       </div>
-      {!child ? <p className="t-meta">eGuard sets age-appropriate protections to start. You can change any of them afterwards.</p> : null}
+      {!child ? (
+        <fieldset className="bp-group">
+          <legend className="t-title">Starting protections</legend>
+          <div className="check-list" role="radiogroup" aria-label="Starting protections">
+            {/* Custom is the app's review-each-setting step; here everything is adjustable on the child's page afterwards */}
+            {PROFILES.filter((p) => p.id !== "CUSTOM").map((p) => (
+              <label key={p.id} className="check">
+                <input type="radio" name="profile" value={p.id} checked={profile === p.id} onChange={() => setPicked(p.id)} />
+                <span>
+                  <span className="t-title" style={{ fontSize: 14 }}>{p.name}{p.id === recommended ? " (recommended)" : ""}</span>
+                  <span className="t-meta" style={{ display: "block" }}>{p.description}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+          <p className="t-meta">Both start with every protection on, set for your child&apos;s age. You can change any of them afterwards.</p>
+        </fieldset>
+      ) : null}
       <div><button className="btn btn-primary" disabled={pending}>{pending ? "Saving…" : child ? "Save changes" : "Add child"}</button></div>
     </form>
   );
@@ -57,6 +82,7 @@ const APPROVALS: [AppApproval, string][] = [["ALLOWED", "Allowed"], ["ALWAYS_ALL
 
 export function AppControls({ app }: { app: { id: string; name: string; approval: AppApproval; dailyLimitMinutes: number | null; requested?: boolean } }) {
   const [pending, run] = useAction();
+  const { toast } = useFlow();
   const saved = app.dailyLimitMinutes ? String(app.dailyLimitMinutes) : "";
   const [limit, setLimit] = useState(saved);
   // Shown immediately; the server's value takes over once the page refreshes, or comes back on failure
@@ -68,7 +94,7 @@ export function AppControls({ app }: { app: { id: string; name: string; approval
   const saveLimit = () => {
     if (limit === saved) return;
     const minutes = limit ? Number(limit) : null;
-    if (minutes != null && (!Number.isFinite(minutes) || minutes < 0)) { setLimit(saved); return; }
+    if (minutes != null && (!Number.isFinite(minutes) || minutes < 0 || minutes > 1440)) { setLimit(saved); toast("Enter a daily limit between 0 and 1440 minutes.", "error"); return; }
     run(() => setAppLimit(app.id, minutes), {
       ok: minutes ? `${app.name} limited to ${minutes} minutes a day.` : `Daily limit removed for ${app.name}.`,
       onError: () => setLimit(saved),
@@ -93,7 +119,7 @@ export function AppControls({ app }: { app: { id: string; name: string; approval
             {APPROVALS.filter(([k]) => k !== "PENDING").map(([k, l]) => <option key={k} value={k}>{l}</option>)}
           </select>
           <label className="sr-only" htmlFor={`lim-${app.id}`}>Daily limit for {app.name} in minutes</label>
-          <input id={`lim-${app.id}`} className="input" style={{ height: 36, width: 110 }} type="number" min={0} step={15} placeholder="No limit" value={limit}
+          <input id={`lim-${app.id}`} className="input" style={{ height: 36, width: 110 }} type="number" min={0} max={1440} step={15} placeholder="No limit" value={limit}
             onChange={(e) => setLimit(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
             onBlur={saveLimit} />
@@ -112,8 +138,8 @@ const mmss = (ms: number) => { const s = Math.max(0, Math.ceil(ms / 1000)); retu
 const PAIR_POLL_MS = 3000;
 
 /** `kind="BROWSER"` makes a code for the eGuard browser extension, for a computer the parent names. */
-export function PairDevice({ kids: children, used, limit, kind = "DEVICE" }: { kids: { id: string; name: string }[]; used: number; limit: number; kind?: "DEVICE" | "BROWSER" }) {
-  const [childId, setChildId] = useState(children[0]?.id ?? "");
+export function PairDevice({ kids: children, used, limit, kind = "DEVICE", initialChildId }: { kids: { id: string; name: string }[]; used: number; limit: number; kind?: "DEVICE" | "BROWSER"; initialChildId?: string }) {
+  const [childId, setChildId] = useState(initialChildId ?? children[0]?.id ?? "");
   const [label, setLabel] = useState("");
   const browser = kind === "BROWSER";
   const idp = browser ? "pair-browser" : "pair";
@@ -158,7 +184,7 @@ export function PairDevice({ kids: children, used, limit, kind = "DEVICE" }: { k
     setNow(Date.now());
   });
 
-  if (!children.length) return <p className="t-meta">Add a child before pairing a device.</p>;
+  if (!children.length) return <p className="t-meta"><Link className="inline-link" href="/children/new">Add a child</Link> before pairing a {browser ? "browser" : "device"}.</p>;
   const left = result?.expiresAt ? new Date(result.expiresAt).getTime() - now : 0;
   const expired = pair?.status === "expired" || (!!code && !pair && left <= 0);
   return (
@@ -374,27 +400,39 @@ export function AddParentForm() {
     <form action={action} className="dash-col" style={{ gap: 14 }}>
       <Feedback state={state} />
       <div className="form-grid">
-        <div className="field"><label htmlFor="ap-n">Name</label><input className="input" id="ap-n" name="name" /></div>
-        <div className="field"><label htmlFor="ap-e">Email</label><input className="input" id="ap-e" name="email" type="email" /></div>
-        <div className="field"><label htmlFor="ap-p">Temporary password</label><input className="input" id="ap-p" name="password" type="text" minLength={10} autoComplete="off" /></div>
+        <div className="field"><label htmlFor="ap-n">Name</label><input className="input" id="ap-n" name="name" autoComplete="off" /></div>
+        <div className="field"><label htmlFor="ap-e">Email</label><input className="input" id="ap-e" name="email" type="email" autoComplete="off" /></div>
       </div>
-      <div><button className="btn btn-secondary" disabled={pending}>{pending ? "Adding…" : <><Icon name="user-plus" />Add parent</>}</button></div>
+      <p className="t-meta">We email them an invitation. They see your family&apos;s name, choose their own password, and join once they accept.</p>
+      <div><button className="btn btn-secondary" disabled={pending}>{pending ? "Sending…" : <><Icon name="user-plus" />Send invitation</>}</button></div>
     </form>
   );
 }
 
-export function RemoveParentButton({ userId, name }: { userId: string; name: string }) {
+/** For a parent who hasn't accepted yet: send the email again, or withdraw the invitation. */
+export function PendingInviteActions({ userId, name }: { userId: string; name: string }) {
+  const [pending, run] = useAction();
+  return (
+    <div className="row" style={{ gap: 6 }}>
+      <button className="btn btn-secondary btn-sm" disabled={pending} onClick={() => run(() => resendInvitation(userId), { ok: `Invitation sent to ${name} again.` })}>Resend</button>
+      <RemoveParentButton userId={userId} name={name} invite />
+    </div>
+  );
+}
+
+/** `invite`: withdraws an invitation that hasn't been accepted (same action: the pending account is removed). */
+export function RemoveParentButton({ userId, name, invite = false }: { userId: string; name: string; invite?: boolean }) {
   const [pending, run] = useAction();
   const [confirm, setConfirm] = useState(false);
   return confirm ? (
     <div className="row" style={{ gap: 6 }}>
-      <button className="btn btn-ghost btn-sm" disabled={pending} onClick={() => setConfirm(false)}>Cancel</button>
+      <button className="btn btn-ghost btn-sm" disabled={pending} onClick={() => setConfirm(false)}>Keep</button>
       <button className="btn btn-primary btn-sm" style={{ background: "var(--crit)" }} disabled={pending}
-        onClick={() => run(() => removeParent(userId), { ok: `${name} was removed from your family.`, onError: () => setConfirm(false) })}>
-        {pending ? <><Icon name="loader-circle" className="spin" />Removing…</> : `Remove ${name}`}
+        onClick={() => run(() => removeParent(userId), { ok: invite ? `Invitation to ${name} withdrawn.` : `${name} was removed from your family.`, onError: () => setConfirm(false) })}>
+        {pending ? <><Icon name="loader-circle" className="spin" />{invite ? "Withdrawing…" : "Removing…"}</> : invite ? "Withdraw invitation" : `Remove ${name}`}
       </button>
     </div>
-  ) : <button className="btn btn-secondary btn-sm" onClick={() => setConfirm(true)}>Remove</button>;
+  ) : <button className="btn btn-secondary btn-sm" onClick={() => setConfirm(true)}>{invite ? "Withdraw" : "Remove"}</button>;
 }
 
 export function SignOutOthersButton() {

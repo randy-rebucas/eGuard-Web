@@ -8,7 +8,7 @@ import { authed, query } from "@/lib/mobile-api";
 import { dayGroup } from "@/lib/mobile-views";
 import { requireLocationSharing } from "@/lib/plan-access";
 
-const Query = z.object({ limit: z.coerce.number().int().min(1).max(100).default(50), before: z.string().datetime().optional() });
+const Query = z.object({ limit: z.coerce.number().int().min(1).max(100).default(50), before: z.iso.datetime({ offset: true, error: "before must be an ISO 8601 time, e.g. a nextBefore value." }).optional() });
 
 /**
  * Location › "View All": every visit kept (up to the family's retention period), newest first.

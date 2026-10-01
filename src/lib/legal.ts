@@ -17,7 +17,7 @@ export const LEGAL = {
   /** Working days to act on an emailed deletion request (/delete-account) */
   deletionDays: 7,
   /** Shown as "Last updated" on both pages; change it whenever either page changes */
-  updated: "2026-09-29",
+  updated: "2026-10-01",
 };
 
 export const legalDate = (iso: string) =>

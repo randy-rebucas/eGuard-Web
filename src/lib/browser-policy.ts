@@ -179,23 +179,38 @@ async function writeVersion(current: BrowserPolicy, data: Prisma.BrowserPolicyUp
  * blocked list). Used by access-request approvals. A new version, like any other change.
  */
 export async function allowDomain(childId: string, domain: string, until: Date | null, actorName: string) {
-  const current = await getOrCreateBrowserPolicy(childId);
-  if (!until) {
-    return writeVersion(current, {
-      allowedDomains: [...new Set([...current.allowedDomains, domain])].sort(),
-      blockedDomains: current.blockedDomains.filter((d) => d !== domain),
-    }, actorName);
+  // It only adds this one site, so when another change landed first (two approvals at once), re-read and apply it
+  // on top instead of failing like a stale form would
+  for (let attempt = 0; ; attempt++) {
+    const current = await getOrCreateBrowserPolicy(childId);
+    try {
+      if (!until) {
+        return await writeVersion(current, {
+          allowedDomains: [...new Set([...current.allowedDomains, domain])].sort(),
+          blockedDomains: current.blockedDomains.filter((d) => d !== domain),
+        }, actorName);
+      }
+      const others = activeTemporaryAllows(current).filter((t) => t.domain !== domain);
+      return await writeVersion(current, { temporaryAllows: [...others, { domain, until: until.toISOString() }] }, actorName);
+    } catch (e) {
+      if (!(e instanceof ServiceError && e.status === 409) || attempt >= 4) throw e;
+    }
   }
-  const others = activeTemporaryAllows(current).filter((t) => t.domain !== domain);
-  return writeVersion(current, { temporaryAllows: [...others, { domain, until: until.toISOString() }] }, actorName);
 }
 
 /** Saves a parent's change as a new version. Browsers pick it up on their next sync (within 5 minutes). */
-export async function updateBrowserPolicy(actor: Actor, childId: string, input: BrowserPolicyInput, via: string) {
+/**
+ * `baseVersion` is the version the parent was editing. When the policy moved on since (an approved access request,
+ * another parent), saving the whole form would quietly undo that change, so it's refused instead.
+ */
+export async function updateBrowserPolicy(actor: Actor, childId: string, input: BrowserPolicyInput, via: string, baseVersion?: number) {
   const child = await db.child.findFirst({ where: { id: childId, familyId: actor.familyId } });
   if (!child) throw notFound("Child");
   const current = await getOrCreateBrowserPolicy(childId);
   if (sameSettings(current, input)) return current;
+  if (baseVersion != null && baseVersion !== current.version) {
+    throw new ServiceError(409, "These settings changed since you opened them, for example an approved request or another parent's edit. Load the latest settings, then make your change again.", "stale_version");
+  }
 
   const next = await writeVersion(current, { ...input, schedule: input.schedule ?? Prisma.DbNull }, actor.name);
 

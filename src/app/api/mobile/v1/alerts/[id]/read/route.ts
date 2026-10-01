@@ -6,6 +6,7 @@ import { authed } from "@/lib/mobile-api";
 
 export const POST = authed<{ id: string }>(async ({ user, params }) => {
   if (!(await db.alert.findFirst({ where: { id: params.id, familyId: user.familyId } }))) throw notFound("Alert");
-  await db.alertRead.upsert({ where: { alertId_userId: { alertId: params.id, userId: user.id } }, create: { alertId: params.id, userId: user.id }, update: {} });
+  // skipDuplicates rather than upsert: two taps at once would both try to insert, and the second would fail
+  await db.alertRead.createMany({ data: [{ alertId: params.id, userId: user.id }], skipDuplicates: true });
   return NextResponse.json({ ok: true, unread: await unreadCount(user.familyId, user.id) });
 });

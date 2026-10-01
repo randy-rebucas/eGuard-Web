@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeHealth, deviceState, evaluate, worst } from "./health";
+import { computeHealth, deviceState, evaluate, isDismissible, worst } from "./health";
 import { PROTECTIONS, configMatches, describeConfig, defaultConfig } from "./protections";
 
 const now = new Date();
@@ -94,12 +94,31 @@ describe("deviceState", () => {
   });
 });
 
+describe("isDismissible", () => {
+  const alert = (severity: string, resolveKey: string | null, resolvedAt: Date | null = null) => ({ severity, resolveKey, resolvedAt });
+  it("lets parents clear what nothing else would", () => {
+    expect(isDismissible(alert("INFO", null))).toBe(true);
+    // "Device removed": ATTENTION with no resolveKey would otherwise stay open forever
+    expect(isDismissible(alert("ATTENTION", null))).toBe(true);
+  });
+  it("keeps alerts that resolve once the problem is fixed", () => {
+    expect(isDismissible(alert("ATTENTION", "OFFLINE:d1"))).toBe(false);
+    expect(isDismissible(alert("ACTION_REQUIRED", "BROWSER_REVOKED:b1"))).toBe(false);
+    expect(isDismissible(alert("INFO", null, new Date()))).toBe(false);
+  });
+});
+
 describe("helpers", () => {
   it("picks the most severe status", () => {
     expect(worst(["PASS", "WARNING", "UNSUPPORTED"])).toBe("WARNING");
   });
   it("describes configs for people", () => {
     expect(describeConfig({ key: "BEDTIME", enabled: true, start: "21:30", end: "06:00", days: "EVERY_DAY" })).toBe("9:30 PM – 6:00 AM");
-    expect(describeConfig({ key: "SCREEN_TIME", dailyMinutes: 150, weekendMinutes: 200 })).toBe("2h 30m / day");
+    expect(describeConfig({ key: "BEDTIME", enabled: true, start: "21:30", end: "06:00", days: "SCHOOL_NIGHTS" })).toBe("9:30 PM – 6:00 AM, school nights");
+    expect(describeConfig({ key: "SCREEN_TIME", dailyMinutes: 150, weekendMinutes: 150 })).toBe("2h 30m / day");
+    expect(describeConfig({ key: "SCREEN_TIME", dailyMinutes: 150, weekendMinutes: 240 })).toBe("2h 30m / day, 4h weekends");
+    // A weekend-only change must read differently before and after
+    expect(describeConfig({ key: "SCREEN_TIME", dailyMinutes: 120, weekendMinutes: 180 }))
+      .not.toBe(describeConfig({ key: "SCREEN_TIME", dailyMinutes: 120, weekendMinutes: 240 }));
   });
 });

@@ -2,14 +2,20 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { fmtMinutes } from "@/lib/protections";
+import { createAlertUnless } from "@/lib/engine";
 import { authDevice, badRequest, readJson, unauthorized } from "@/lib/device-auth";
 import { LIMITS, hit } from "@/lib/rate-limit";
+import { isUniqueViolation } from "@/lib/errors";
+
+/** Trimmed, so " YouTube" and "YouTube" are one app, and a blank name is refused */
+const appName = z.string().trim().min(1, "app is required").max(80);
 
 const Body = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("APP_INSTALLED"), app: z.string().min(1).max(80), ageRating: z.number().int().optional() }),
-  z.object({ type: z.literal("APP_REQUESTED"), app: z.string().min(1).max(80) }),
-  z.object({ type: z.literal("LIMIT_REACHED"), minutes: z.number().int().min(0) }),
-  z.object({ type: z.literal("APP_BLOCKED"), app: z.string().min(1).max(80) }),
+  // Same bounds as a reported age rating (ReportedConfigSchema)
+  z.object({ type: z.literal("APP_INSTALLED"), app: appName, ageRating: z.number().int().min(0).max(21).optional() }),
+  z.object({ type: z.literal("APP_REQUESTED"), app: appName }),
+  z.object({ type: z.literal("LIMIT_REACHED"), minutes: z.number().int().min(0).max(1440) }),
+  z.object({ type: z.literal("APP_BLOCKED"), app: appName }),
 ]);
 
 /** Repeated attempts to open the same blocked app raise one alert per this window. */
@@ -34,10 +40,13 @@ export async function POST(req: Request) {
   const base = { familyId: device.familyId, childId: device.childId, deviceId: device.id };
 
   if (e.type === "APP_INSTALLED") {
-    const known = await db.childApp.findUnique({ where: { childId_name: { childId: device.childId, name: e.app } } });
-    // Only a newly seen app is news; reinstalls and reports from a second device don't raise another alert
-    if (!known) {
-      await db.childApp.create({ data: { childId: device.childId, name: e.app } }).catch(() => {});
+    // Only a newly seen app is news; reinstalls and reports from a second device don't raise another alert.
+    // Whoever creates the row raises it, so two devices reporting the same app at once raise one alert, not two.
+    const created = await db.childApp.create({ data: { childId: device.childId, name: e.app } }).then(() => true, (err) => {
+      if (isUniqueViolation(err)) return false;
+      throw err;
+    });
+    if (created) {
       await db.alert.create({ data: { ...base, severity: "INFO", category: "APPS", icon: "layout-grid", title: "New app installed",
         body: `${e.app} was installed${e.ageRating ? `. Rated ${e.ageRating}+` : ""}.`, subject: `${e.app} · ${who}` } });
     }
@@ -51,13 +60,10 @@ export async function POST(req: Request) {
     if (app?.approval === "BLOCKED") {
       // A blocked app stays blocked. Asking again is passed on, but at most once per window, so a
       // declined request can't be turned into a stream of alerts.
-      const recent = await db.alert.findFirst({
-        where: { familyId: device.familyId, resolveKey, OR: [{ resolvedAt: null }, { createdAt: { gt: new Date(Date.now() - DECLINED_REQUEST_WINDOW_MS) } }] },
-      });
-      if (!recent) {
-        await db.alert.create({ data: { ...base, severity: "ATTENTION", category: "APPS", icon: "app-window", title: "App approval requested",
-          body: `${device.child.name} asked again for ${e.app}, which you blocked.`, subject: `${e.app} · ${who}`, resolveKey } });
-      }
+      await createAlertUnless(resolveKey,
+        { familyId: device.familyId, resolveKey, OR: [{ resolvedAt: null }, { createdAt: { gt: new Date(Date.now() - DECLINED_REQUEST_WINDOW_MS) } }] },
+        { ...base, severity: "ATTENTION", category: "APPS", icon: "app-window", title: "App approval requested",
+          body: `${device.child.name} asked again for ${e.app}, which you blocked.`, subject: `${e.app} · ${who}`, resolveKey });
       await db.device.update({ where: { id: device.id }, data: { lastSeenAt: new Date() } });
       return NextResponse.json({ ok: true, approval: app.approval });
     }
@@ -66,27 +72,20 @@ export async function POST(req: Request) {
       create: { childId: device.childId, name: e.app, approval: "PENDING" },
       update: { approval: "PENDING" },
     });
-    const open = await db.alert.findFirst({ where: { familyId: device.familyId, resolveKey, resolvedAt: null } });
-    if (!open) {
-      await db.alert.create({ data: { ...base, severity: "ATTENTION", category: "APPS", icon: "app-window", title: "App approval requested",
-        body: `${device.child.name} asked to install ${e.app}.`, subject: `${e.app} · ${who}`, resolveKey } });
-    }
+    // Asking several times in a row (or from two devices) raises one request
+    await createAlertUnless(resolveKey, { familyId: device.familyId, resolveKey, resolvedAt: null },
+      { ...base, severity: "ATTENTION", category: "APPS", icon: "app-window", title: "App approval requested",
+        body: `${device.child.name} asked to install ${e.app}.`, subject: `${e.app} · ${who}`, resolveKey });
   } else if (e.type === "APP_BLOCKED") {
-    const recent = await db.alert.findFirst({
-      where: { ...base, title: "App blocked", subject: `${e.app} · ${who}`, createdAt: { gt: new Date(Date.now() - BLOCKED_ALERT_WINDOW_MS) } },
-    });
-    if (!recent) {
-      await db.alert.create({ data: { ...base, severity: "INFO", category: "APPS", icon: "ban", title: "App blocked",
-        body: `${device.child.name} tried to open ${e.app}, which is blocked.`, subject: `${e.app} · ${who}` } });
-    }
+    await createAlertUnless(`APPBLOCKED:${device.id}:${e.app}`,
+      { ...base, title: "App blocked", subject: `${e.app} · ${who}`, createdAt: { gt: new Date(Date.now() - BLOCKED_ALERT_WINDOW_MS) } },
+      { ...base, severity: "INFO", category: "APPS", icon: "ban", title: "App blocked",
+        body: `${device.child.name} tried to open ${e.app}, which is blocked.`, subject: `${e.app} · ${who}` });
   } else {
-    const recent = await db.alert.findFirst({
-      where: { ...base, title: "Screen time limit reached", createdAt: { gt: new Date(Date.now() - LIMIT_ALERT_WINDOW_MS) } },
-    });
-    if (!recent) {
-      await db.alert.create({ data: { ...base, severity: "INFO", category: "SCREEN_TIME", icon: "hourglass", title: "Screen time limit reached",
-        body: `${device.child.name} reached the ${fmtMinutes(e.minutes)} daily limit. Apps were paused as scheduled.`, subject: who } });
-    }
+    await createAlertUnless(`LIMIT:${device.id}`,
+      { ...base, title: "Screen time limit reached", createdAt: { gt: new Date(Date.now() - LIMIT_ALERT_WINDOW_MS) } },
+      { ...base, severity: "INFO", category: "SCREEN_TIME", icon: "hourglass", title: "Screen time limit reached",
+        body: `${device.child.name} reached the ${fmtMinutes(e.minutes)} daily limit. Apps were paused as scheduled.`, subject: who });
   }
   await db.device.update({ where: { id: device.id }, data: { lastSeenAt: new Date() } });
   return NextResponse.json({ ok: true });
