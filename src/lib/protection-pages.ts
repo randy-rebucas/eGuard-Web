@@ -108,7 +108,7 @@ export const PROTECTION_PAGES: Record<ProtectionKey, ProtectionPage> = {
     summary: "Block harmful sites on your child's phone and in their computer's browser, or allow only the sites you choose.",
     what: [
       "Choose Filter to block harmful sites and any you add, or Allowed sites only for younger children, so only sites you've approved open.",
-      "On computers, the eGuard extension for Chrome and Edge (Firefox coming soon) adds more: SafeSearch, blocked categories, focus hours, and a way for your child to ask for a blocked site.",
+      "On computers, the eGuard extension for Chrome, Edge and Firefox adds more: SafeSearch, blocked categories, focus hours, and a way for your child to ask for a blocked site.",
     ],
     childSees: "A clear “This site is blocked” page with an Ask a parent button, instead of a broken page.",
     check: "Phones report the filter mode they're using. The browser extension keeps checking itself and alerts you if private windows aren't covered or protection was changed.",

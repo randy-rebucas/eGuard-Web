@@ -270,15 +270,12 @@
 .lp-browser-perks .lucide{width:17px; height:17px; color:var(--ok); stroke-width:2.6}
 .lp-browser-grid{list-style:none; margin:0; padding:0; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:18px}
 .lp-browser{position:relative; display:flex; flex-direction:column; align-items:center; text-align:center; padding:30px 22px 24px; background:#fff; border:1px solid var(--line); border-radius:18px; box-shadow:var(--card-shadow); transition:transform .22s var(--ease), box-shadow .22s var(--ease)}
-.lp-browser:not(.lp-browser-soon):hover{transform:translateY(-3px); box-shadow:0 2px 4px rgba(11,35,72,.04), 0 22px 40px -18px rgba(20,80,160,.3)}
+.lp-browser:hover{transform:translateY(-3px); box-shadow:0 2px 4px rgba(11,35,72,.04), 0 22px 40px -18px rgba(20,80,160,.3)}
 .lp-browser-mark{width:64px; height:64px; border-radius:18px; display:grid; place-items:center; background:#F4F8FD; margin-bottom:16px}
 .lp-browser-mark svg{width:40px; height:40px}
 .lp-browser h3{font-size:17px; font-weight:600; letter-spacing:-.01em}
 .lp-browser p{font-size:14px; color:var(--ink-3); margin-top:4px}
 .lp-browser .lp-btn{width:100%; min-height:46px; margin-top:20px; padding:0 18px; font-size:14.5px}
-.lp-browser-blur{display:flex; flex-direction:column; align-items:center; width:100%; filter:blur(3px) grayscale(.35); opacity:.6; user-select:none; pointer-events:none}
-.lp-browser-soon{cursor:not-allowed; background:#FBFDFF}
-.lp-browser-soon-badge{position:absolute; top:50%; left:50%; translate:-50% -50%; z-index:1; height:34px; padding:0 16px; border-radius:17px; display:grid; place-items:center; background:var(--ink); color:#fff; font-size:13px; font-weight:600; white-space:nowrap; box-shadow:0 10px 24px -10px rgba(11,35,72,.6)}
 .lp-browsers-note{grid-column:1 / -1; font-size:14.5px; color:var(--ink-3); text-align:center}
 .lp-browsers-note b{color:var(--ink-2); font-weight:600}
 

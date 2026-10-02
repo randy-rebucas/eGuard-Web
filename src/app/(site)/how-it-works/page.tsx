@@ -42,7 +42,7 @@ const PIECES: { icon: LucideIcon; tone: string; who: string; name: string; body:
     avail: [{ mark: AndroidMark, label: "Android", live: true }, { mark: AppleMark, label: "iPhone & iPad: soon", live: false }] },
   { icon: Puzzle, tone: "green", who: "On your child's computer", name: "Browser extension",
     body: "Blocks harmful sites and categories, turns on SafeSearch, and lets your child ask before opening a blocked site.",
-    avail: [{ mark: ChromeMark, label: "Chrome", live: true }, { mark: EdgeMark, label: "Edge", live: true }, { mark: FirefoxMark, label: "Firefox: soon", live: false }] },
+    avail: [{ mark: ChromeMark, label: "Chrome", live: true }, { mark: EdgeMark, label: "Edge", live: true }, { mark: FirefoxMark, label: "Firefox", live: true }] },
 ];
 
 const TRACK: { time: string; title: string; body: string; chip: [string, string] }[] = [
@@ -165,7 +165,7 @@ export default function HowItWorksPage() {
                 </div>
                 <h3>Their phone and browser</h3>
                 <p>eGuard applies your rules on their phone or tablet, and the extension does it in their browser.</p>
-                <Platforms items={[[AndroidMark, "Android"], [ChromeMark, "Chrome"], [EdgeMark, "Edge"], [AppleMark, "iPhone & iPad: soon"], [FirefoxMark, "Firefox: soon"]]} />
+                <Platforms items={[[AndroidMark, "Android"], [ChromeMark, "Chrome"], [EdgeMark, "Edge"], [FirefoxMark, "Firefox"], [AppleMark, "iPhone & iPad: soon"]]} />
               </div>
             </div>
           </div>
@@ -230,7 +230,7 @@ export default function HowItWorksPage() {
                 <span className="hw-num">3</span>
                 <h3>Connect your child&apos;s phone and browser</h3>
                 <p><b>Phone or tablet:</b> install eGuard, choose <b>I&apos;m setting up my child&apos;s device</b>, and enter the code. eGuard explains each permission before your phone asks for it.</p>
-                <p><b>Computer:</b> add the eGuard extension to Chrome or Edge (Firefox is coming soon), and type the browser code on its setup page.</p>
+                <p><b>Computer:</b> add the eGuard extension to Chrome, Edge or Firefox, and type the browser code on its setup page.</p>
               </div>
             </li>
 
@@ -410,10 +410,10 @@ export default function HowItWorksPage() {
               <div><b>Microsoft Edge</b><span>Edge Add-ons</span></div>
               <a href={STORE_LINKS.edge} className="lp-btn lp-btn-outline" target="_blank" rel="noopener noreferrer">Add<ArrowRight /></a>
             </li>
-            <li className="soon">
+            <li>
               <span className="hw-get-mark"><FirefoxMark /></span>
               <div><b>Firefox</b><span>Firefox Add-ons</span></div>
-              <span className="hw-soon">Coming soon</span>
+              <a href={STORE_LINKS.firefox} className="lp-btn lp-btn-outline" target="_blank" rel="noopener noreferrer">Add<ArrowRight /></a>
             </li>
           </ul>
         </Section>

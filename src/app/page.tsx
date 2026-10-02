@@ -115,8 +115,7 @@ const FAQS = [
 const BROWSERS = [
   { name: "Chrome", Mark: ChromeMark, store: "Chrome Web Store", cta: "Add to Chrome", href: STORE_LINKS.chrome },
   { name: "Microsoft Edge", Mark: EdgeMark, store: "Microsoft Edge Add-ons", cta: "Add to Edge", href: STORE_LINKS.edge },
-  // Still in Firefox Add-ons review: shown blurred, with no link, until it's published.
-  { name: "Firefox", Mark: FirefoxMark, store: "Firefox Add-ons", cta: "Coming soon", href: STORE_LINKS.firefox },
+  { name: "Firefox", Mark: FirefoxMark, store: "Firefox Add-ons", cta: "Add to Firefox", href: STORE_LINKS.firefox },
 ] as const;
 
 const BROWSER_PERKS = ["Blocks harmful sites and categories", "Forces SafeSearch", "Lets your child ask before opening a blocked site"];
@@ -323,23 +322,12 @@ export default function Home() {
               <ul className="lp-browser-perks">{BROWSER_PERKS.map((perk) => <li key={perk}><Check />{perk}</li>)}</ul>
             </div>
             <ul className="lp-browser-grid">
-              {BROWSERS.map(({ name, Mark, store, cta, href }) => href ? (
+              {BROWSERS.map(({ name, Mark, store, cta, href }) => (
                 <li key={name} className="lp-browser">
                   <span className="lp-browser-mark"><Mark /></span>
                   <h3>{name}</h3>
                   <p>{store}</p>
                   <a className="lp-btn lp-btn-outline" href={href} target="_blank" rel="noopener noreferrer">{cta}<ArrowRight /></a>
-                </li>
-              ) : (
-                <li key={name} className="lp-browser lp-browser-soon">
-                  <span className="lp-browser-soon-badge">Coming soon</span>
-                  <div className="lp-browser-blur" aria-hidden="true">
-                    <span className="lp-browser-mark"><Mark /></span>
-                    <h3>{name}</h3>
-                    <p>{store}</p>
-                    <span className="lp-btn lp-btn-soft">{cta}</span>
-                  </div>
-                  <span className="sr-only">{name}: coming soon</span>
                 </li>
               ))}
             </ul>

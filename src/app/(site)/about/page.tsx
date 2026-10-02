@@ -75,14 +75,14 @@ export default function AboutPage() {
           <p>Prices are in pesos, and you can pay with GCash, Maya, a card or QR Ph. Schools and communities can use eGuard too: Family Pro includes API access for organizations.</p>
           <div className="st-facts">
             <div><b>10</b><span>protections, each checked on the device</span></div>
-            <div><b>Android &amp; browsers</b><span>phones, tablets, Chrome and Edge, managed from one dashboard. iPhone and iPad coming soon</span></div>
+            <div><b>Android &amp; browsers</b><span>phones, tablets, Chrome, Edge and Firefox, managed from one dashboard. iPhone and iPad coming soon</span></div>
             <div><b>₱0</b><span>for one child, with no card needed to start</span></div>
           </div>
         </div>
 
         <div className="st-block">
           <h2>Where we are today</h2>
-          <p>The parent dashboard is live on the web, the Android app is on Google Play, and the browser extension is available for Chrome and Edge. The iPhone app and the Firefox extension are on their way. If something doesn&apos;t work the way you expect, or there&apos;s a protection you need, we want to hear it.</p>
+          <p>The parent dashboard is live on the web, the Android app is on Google Play, and the browser extension is available for Chrome, Edge and Firefox. The iPhone app is on its way. If something doesn&apos;t work the way you expect, or there&apos;s a protection you need, we want to hear it.</p>
           <p>Write to us at <a href={`mailto:${supportEmail()}`}>{supportEmail()}</a>.</p>
         </div>
 
