@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Image, { type StaticImageData } from "next/image";
+import Image from "next/image";
 import Link from "next/link";
 import {
   ArrowRight, BellRing, CalendarClock, ChartNoAxesColumnIncreasing, Check, ChevronDown, ChevronRight, CircleCheck,
@@ -13,6 +13,7 @@ import { SiteFooter, SiteHeader } from "@/components/site-chrome";
 import { SignedIn, StartLink } from "@/components/signed-in";
 import { PhoneDashboard, PhoneScreenTime } from "@/components/landing-phones";
 import { ChromeMark, EdgeMark, FirefoxMark, STORE_LINKS } from "@/components/brand-marks";
+import { AudienceIcon, FeatureIcon, type Audience, type Feature } from "@/components/landing-icons";
 import "./landing.css";
 
 import heroBackground from "../../public/landing/hero-background.jpg";
@@ -23,16 +24,6 @@ import ctaFamily from "../../public/landing/cta-family.jpg";
 import avatar1 from "../../public/landing/avatar-1.png";
 import avatar2 from "../../public/landing/avatar-2.png";
 import avatar3 from "../../public/landing/avatar-3.png";
-import iconFamily from "../../public/landing/icon-family.png";
-import iconSchool from "../../public/landing/icon-school.png";
-import iconCommunity from "../../public/landing/icon-community.png";
-import iconBusiness from "../../public/landing/icon-business.png";
-import iconGuidedSetup from "../../public/landing/icon-guided-setup.png";
-import iconProtection from "../../public/landing/icon-protection.png";
-import iconScreenTime from "../../public/landing/icon-screen-time.png";
-import iconApps from "../../public/landing/icon-apps.png";
-import iconLocation from "../../public/landing/icon-location.png";
-import iconAlerts from "../../public/landing/icon-alerts.png";
 
 export const metadata: Metadata = pageMetadata({
   title: "eGuard · Parental controls you can verify, for families in the Philippines",
@@ -47,21 +38,21 @@ export const metadata: Metadata = pageMetadata({
 
 const AVATARS = [avatar1, avatar2, avatar3];
 
-const AUDIENCES: [StaticImageData, string, string][] = [
-  [iconFamily, "Families", "Everyday parents"],
-  [iconSchool, "Schools", "Educational institutions"],
-  [iconCommunity, "Communities", "Local organizations"],
-  [iconBusiness, "Businesses", "Workforce families"],
+const AUDIENCES: [Audience, string, string][] = [
+  ["family", "Families", "Everyday parents"],
+  ["school", "Schools", "Educational institutions"],
+  ["community", "Communities", "Local organizations"],
+  ["business", "Businesses", "Workforce families"],
 ];
 
-const FEATURES: [StaticImageData, string, string][] = [
-  [iconGuidedSetup, "Guided Setup", "Step-by-step setup for Android, with iPhone coming soon"],
-  [iconProtection, "Configuration Health", "Verify if protections are correctly applied"],
-  [iconScreenTime, "Screen Time Management", "Set healthy device limits"],
-  [iconApps, "App & Content Controls", "Manage and approve apps"],
-  [iconLocation, "Location Guidance", "Set up location sharing with confidence"],
+const FEATURES: [Feature, string, string][] = [
+  ["setup", "Guided Setup", "Step-by-step setup for Android, with iPhone coming soon"],
+  ["health", "Configuration Health", "Verify if protections are correctly applied"],
+  ["screen-time", "Screen Time Management", "Set healthy device limits"],
+  ["apps", "App & Content Controls", "Manage and approve apps"],
+  ["location", "Location Guidance", "Set up location sharing with confidence"],
   // Alert emails go out with the maintenance run (every few minutes), so not "instant"
-  [iconAlerts, "Alerts", "Email and in-app alerts when settings change"],
+  ["alerts", "Alerts", "Email and in-app alerts when settings change"],
 ];
 
 const HABITS: [LucideIcon, string, string, string][] = [
@@ -255,7 +246,7 @@ export default function Home() {
             </div>
             <ul className="lp-audiences">
               {AUDIENCES.map(([icon, title, sub]) => (
-                <li key={title}><Image src={icon} alt="" width={84} height={84} /><b>{title}</b><span>{sub}</span></li>
+                <li key={title}><AudienceIcon name={icon} /><b>{title}</b><span>{sub}</span></li>
               ))}
             </ul>
           </div>
@@ -272,7 +263,7 @@ export default function Home() {
               <div className="lp-feature-grid">
                 {FEATURES.map(([icon, title, body]) => (
                   <article key={title} className="lp-feature">
-                    <Image src={icon} alt="" width={60} height={60} />
+                    <FeatureIcon name={icon} />
                     <h3>{title}</h3>
                     <p>{body}</p>
                   </article>

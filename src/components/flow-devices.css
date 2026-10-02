@@ -8,7 +8,8 @@
 /* The figure is the size container, so the frame's own padding and radius can use cqw too. */
 .hw-phone, .hw-laptop{container-type:inline-size; width:100%; margin:0; display:flex; flex-direction:column; align-items:center; min-width:0}
 .hw-os{display:inline-flex; align-items:center; gap:7px; margin-top:14px; height:30px; padding:0 12px; border-radius:15px; background:#fff; border:1px solid var(--line); font-size:13px; font-weight:600; color:var(--ink-2); white-space:nowrap}
-.hw-os svg{width:16px; height:16px; flex:none}
+/* svg.lucide too: the marketing layout sizes every .lucide (.lp .lucide), which would beat a plain svg rule */
+.hw-os svg, .hw-os svg.lucide{width:16px; height:16px; flex:none}
 .hw-phone-ios .hw-os svg{color:#111}
 
 /* Phones */

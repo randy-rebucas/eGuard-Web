@@ -1,8 +1,6 @@
 import Link from "next/link";
-import type { Alert, BrowserInstallation, ProtectionKey } from "@prisma/client";
+import type { Alert, ProtectionKey } from "@prisma/client";
 import { Icon } from "./icon";
-import { RemoveBrowserButton } from "./forms";
-import { isOffline } from "@/lib/health";
 import { Avatar, DeviceIcon, SEVERITY, StatusBadge, statusLabel, platformName } from "./ui";
 import type { ChildView, DeviceView } from "@/lib/queries";
 import type { DeviceState } from "@/lib/health";
@@ -50,37 +48,6 @@ export function DeviceCard({ d, state, tz }: { d: DeviceView; state: DeviceState
         <span className="t-meta num" title="Last synchronization"><Icon name="refresh-cw" size={13} style={{ verticalAlign: -2 }} /> {dayTime(d.lastSeenAt, tz).replace("Today, ", "")}</span>
       </div>
     </Link>
-  );
-}
-
-export type BrowserView = Pick<BrowserInstallation, "id" | "deviceLabel" | "browser" | "browserVersion" | "extensionVersion" | "lastSeenAt" | "revokedAt"> & { child: { name: string } };
-
-/**
- * A connected eGuard browser extension. Browser policies aren't enforced yet, so a connected browser is
- * described as connected, never as protected.
- */
-export function BrowserCard({ b, tz }: { b: BrowserView; tz: string }) {
-  const quiet = isOffline(b);
-  const major = b.browserVersion?.split(".")[0];
-  const name = `${b.browser} on ${b.deviceLabel}`;
-  const [tone, text] = b.revokedAt ? ["tone-crit", "Disconnected for security"] : quiet ? ["tone-warn", "Not seen for a day"] : ["tone-accent", "Connected"];
-  return (
-    <div className="card device-card" aria-label={`${name}, ${b.child.name}'s browser, ${text}`}>
-      <div className="device-visual">
-        <Icon name="monitor" />
-        <span className="pill tone-muted plat-chip" style={{ background: "var(--surface)" }}><Icon name="globe" size={12} style={{ verticalAlign: -2 }} /> {b.browser}</span>
-      </div>
-      <div>
-        <div className="t-title">{b.deviceLabel}</div>
-        <div className="t-meta">{b.child.name} · {b.browser}{major ? ` ${major}` : ""} · eGuard {b.extensionVersion}</div>
-      </div>
-      <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-        <span className={`pill ${tone}`}>{text}</span>
-        <span className="t-meta num" title="Last check-in"><Icon name="refresh-cw" size={13} style={{ verticalAlign: -2 }} /> {dayTime(b.lastSeenAt, tz).replace("Today, ", "")}</span>
-      </div>
-      <p className="t-meta">{b.revokedAt ? "Remove it, then add it again with a new code." : "Website protection for browsers is coming soon. Nothing is blocked in this browser yet."}</p>
-      <RemoveBrowserButton installationId={b.id} name={name} />
-    </div>
   );
 }
 

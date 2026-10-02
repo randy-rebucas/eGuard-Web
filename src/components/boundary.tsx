@@ -3,7 +3,10 @@
 import Link from "next/link";
 import { useEffect, useTransition } from "react";
 import { catchError, type ErrorInfo } from "next/error";
-import { Icon } from "./icon";
+// Its own three icons, not ./icon: error boundaries load with every page, and the full icon map would come with them
+import { LoaderCircle, RefreshCw, TriangleAlert } from "lucide-react";
+
+const ico = { "aria-hidden": true, strokeWidth: 1.75 } as const;
 
 type Failure = Error & { digest?: string };
 
@@ -24,13 +27,13 @@ export function ErrorPanel({ error, retry, title = "This page couldn't load", ho
   return (
     <section className="card card-pad" role="alert">
       <div className="empty">
-        <span className="ico-tile crit"><Icon name="triangle-alert" /></span>
+        <span className="ico-tile crit"><TriangleAlert {...ico} /></span>
         <h3>{title}</h3>
         <p>{reason(error) ?? "Something went wrong on our side. Your protections on devices aren't affected."}</p>
         {error.digest ? <p className="t-meta num">Reference: {error.digest}</p> : null}
         <div className="row" style={{ gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
           <button className="btn btn-primary" onClick={again} disabled={pending}>
-            {pending ? <><Icon name="loader-circle" className="spin" />Trying again…</> : <><Icon name="refresh-cw" />Try again</>}
+            {pending ? <><LoaderCircle {...ico} className="spin" />Trying again…</> : <><RefreshCw {...ico} />Try again</>}
           </button>
           <Link className="btn btn-ghost" href={home}>Go to dashboard</Link>
         </div>
@@ -43,13 +46,13 @@ function SectionError({ title, error, retry }: { title: string; error: Failure; 
   const [pending, again] = useRetry(error, retry);
   return (
     <section className="card section-error" role="alert">
-      <span className="ico-tile crit"><Icon name="triangle-alert" /></span>
+      <span className="ico-tile crit"><TriangleAlert {...ico} /></span>
       <div className="grow">
         <div className="t-title">{title} couldn&apos;t load</div>
         <div className="t-meta">{reason(error) ?? "The rest of the page is fine. Try this part again."}</div>
       </div>
       <button className="btn btn-secondary btn-sm" onClick={again} disabled={pending}>
-        {pending ? <><Icon name="loader-circle" className="spin" />Retrying…</> : <><Icon name="refresh-cw" />Retry</>}
+        {pending ? <><LoaderCircle {...ico} className="spin" />Retrying…</> : <><RefreshCw {...ico} />Retry</>}
       </button>
     </section>
   );

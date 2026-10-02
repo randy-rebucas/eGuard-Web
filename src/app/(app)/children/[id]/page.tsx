@@ -13,7 +13,7 @@ import { DeviceCard } from "@/components/cards";
 import { AlertRow, ViewAll } from "@/components/alerts";
 import { WeeklyChart } from "@/components/charts";
 import { FlowButton } from "@/components/flow";
-import { AppControls, ChildForm, DeleteChildForm } from "@/components/forms";
+import { AppControls, ChildForm, DeleteChildForm } from "@/components/child-forms";
 import { requestedApps } from "@/lib/family-service";
 import { CATEGORY_META, WEB_CATEGORIES, activeTemporaryAllows, describeBrowserPolicy, getOrCreateBrowserPolicy } from "@/lib/browser-policy";
 import { categoryCoverage } from "@/lib/category-lists";

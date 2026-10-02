@@ -110,10 +110,7 @@ export function UpgradeNote({ title, text, icon = "crown", compact }: { title: s
   );
 }
 
-/** A placeholder while something loads; announced to screen readers once. */
-export function Loading({ height, label = "Loading", radius, style }: { height: number; label?: string; radius?: number; style?: React.CSSProperties }) {
-  return <div className="skeleton" role="status" aria-label={label} style={{ height, borderRadius: radius, ...style }} />;
-}
+export { Loading } from "./skeleton";
 
 /** Page-level skeleton pieces for route `loading.tsx` files. */
 export function PageHeadSkeleton({ action }: { action?: boolean }) {

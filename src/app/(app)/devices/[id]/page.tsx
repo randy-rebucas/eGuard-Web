@@ -9,7 +9,7 @@ import { CAPABILITY_META, PROTECTIONS, PROTECTION_BY_KEY, describeConfig, fmtMin
 import { Icon } from "@/components/icon";
 import { CheckBadge, DeviceIcon, StatusBadge, Timeline, platformName } from "@/components/ui";
 import { CheckButton, FlowButton } from "@/components/flow";
-import { RemoveDeviceButton, RenameDeviceForm } from "@/components/forms";
+import { RemoveDeviceButton, RenameDeviceForm } from "@/components/device-forms";
 
 const REQUESTS_SHOWN = 6;
 

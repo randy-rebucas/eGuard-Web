@@ -2,8 +2,9 @@ import { requireUser } from "@/lib/auth";
 import { getFamily, getFamilyGraph } from "@/lib/queries";
 import { listBrowsers } from "@/lib/browser-service";
 import { Avatar, EmptyState, PageHead } from "@/components/ui";
-import { BrowserCard, DeviceCard } from "@/components/cards";
-import { PairDevice } from "@/components/forms";
+import { DeviceCard } from "@/components/cards";
+import { BrowserCard } from "@/components/browser-card";
+import { PairDevice } from "@/components/device-forms";
 
 export const metadata = { title: "Devices" };
 

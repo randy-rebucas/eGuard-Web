@@ -448,7 +448,7 @@ button.check-item:hover{border-color:var(--line-strong); background:var(--surfac
 .guide-steps li{counter-increment:g; display:grid; grid-template-columns:28px 1fr; gap:10px; font-size:14px}
 .guide-steps li::before{content:counter(g); width:26px; height:26px; border-radius:50%; display:grid; place-items:center; background:var(--accent-soft); color:var(--accent-ink); font-weight:700; font-size:13px}
 .check{display:flex; gap:10px; align-items:flex-start; padding:12px; border-radius:12px; border:1px solid var(--line); cursor:pointer}
-.check input{width:20px; height:20px; margin:1px 0 0; accent-color:var(--accent-btn)}
+.check input{flex:none; width:20px; height:20px; margin:1px 0 0; accent-color:var(--accent-btn)}
 .toasts{position:fixed; right:24px; bottom:calc(24px + env(safe-area-inset-bottom,0px)); z-index:80; display:flex; flex-direction:column; gap:10px; max-width:min(380px, calc(100vw - 32px))}
 .toast{display:flex; gap:10px; align-items:flex-start; padding:14px 16px; border-radius:14px; background:var(--ink); color:var(--bg); box-shadow:var(--shadow-lg); font-size:14px; animation:rise .25s var(--ease)}
 .toast .lucide{color:var(--accent); flex:none; margin-top:1px}

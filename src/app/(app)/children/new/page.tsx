@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { getFamily } from "@/lib/queries";
 import { childLimitReached } from "@/lib/family-service";
 import { PageHead, UpgradeNote } from "@/components/ui";
-import { ChildForm } from "@/components/forms";
+import { ChildForm } from "@/components/child-forms";
 
 export const metadata = { title: "Add child" };
 

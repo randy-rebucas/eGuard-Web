@@ -34,12 +34,17 @@ const nextConfig: NextConfig = {
     return [{ source: "/:path*", headers: securityHeaders }];
   },
   async redirects() {
-    return OLD_HOSTS.map((host) => ({
-      source: "/:path((?!api(?:/|$)).*)",
-      has: [{ type: "host" as const, value: host }],
-      destination: "https://www.eguard.family/:path",
-      permanent: true,
-    }));
+    return [
+      ...OLD_HOSTS.map((host) => ({
+        source: "/:path((?!api(?:/|$)).*)",
+        has: [{ type: "host" as const, value: host }],
+        destination: "https://www.eguard.family/:path",
+        permanent: true,
+      })),
+      // Settings opens on its first section. Done here, not in a page: a page that only redirects can't render, so
+      // instant-navigation validation fails on it.
+      { source: "/settings", destination: "/settings/account", permanent: false },
+    ];
   },
 };
 

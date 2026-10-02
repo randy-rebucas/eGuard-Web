@@ -45,7 +45,8 @@
 
 .hw-platforms{list-style:none; margin:14px 0 0; padding:0; display:flex; flex-wrap:wrap; justify-content:center; gap:6px}
 .hw-platforms li{display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 10px; border-radius:14px; background:#F3F8FE; border:1px solid var(--line); font-size:12.5px; font-weight:600; color:var(--ink-2)}
-.hw-platforms svg{width:14px; height:14px; flex:none}
+/* svg.lucide too: the marketing layout sizes every .lucide (.lp .lucide), which would beat a plain svg rule */
+.hw-platforms svg, .hw-platforms svg.lucide{width:14px; height:14px; flex:none}
 .hw-platforms .lucide{color:var(--blue-2)}
 
 /* Flow lanes between the columns */
@@ -72,7 +73,7 @@
 .hw-piece p{font-size:14px; color:var(--ink-3); margin-top:8px}
 .hw-avail{list-style:none; margin:auto 0 0; padding:16px 0 0; display:flex; flex-wrap:wrap; gap:6px}
 .hw-avail li{display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 10px; border-radius:14px; font-size:12.5px; font-weight:600}
-.hw-avail svg{width:14px; height:14px; flex:none}
+.hw-avail svg, .hw-avail svg.lucide{width:14px; height:14px; flex:none}
 .hw-avail .live{background:#E3F7EE; color:#0E7A48}
 .hw-avail .soon{background:#EEF1F5; color:#5F6E84}
 .hw-avail .soon svg{opacity:.7}
@@ -173,7 +174,7 @@
 .hw-get b{display:block; font-family:var(--display); font-size:16px; font-weight:600}
 .hw-get li > div span{display:block; font-size:13.5px; color:var(--ink-3)}
 .hw-get-mark{flex:none; width:50px; height:50px; border-radius:14px; display:grid; place-items:center; background:#F4F8FD; color:var(--blue-2)}
-.hw-get-mark svg{width:28px; height:28px}
+.hw-get-mark svg, .hw-get-mark svg.lucide{width:28px; height:28px}
 .hw-get .lp-btn{min-height:42px; padding:0 16px; font-size:14px; gap:8px}
 .hw-get .soon{background:#FBFDFF}
 .hw-get .soon .hw-get-mark{opacity:.55}
