@@ -75,8 +75,8 @@ Also list what you checked and found fine, so the user knows it was covered. If 
 - Fix at the right layer: a shared service fixes web and mobile together; update the other caller if you change a
   rule (e.g. both the web action and the mobile PATCH).
 - Match the surrounding code: its comment density, naming and idiom. Comments explain why, briefly.
-- Keep API changes backward compatible (optional fields) and update the docs that describe them (`docs/mobile-api-parent.md`,
-  `docs/mobile-api-child.md`, `docs/child-app-spec.md`).
+- Keep API changes backward compatible (optional fields) and update the docs that describe them (`docs/mobile-api.md`,
+  `docs/child-app-spec.md`).
 - Add focused unit tests for logic you fix (validation, date math, safe-redirect checks), mocking `server-only` and the
   database the way existing `src/lib/*.test.ts` files do.
 

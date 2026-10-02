@@ -3,8 +3,8 @@
 The spec for two things in the eGuard Android and iOS app:
 
 1. **One app for everyone.** The same install works as a parent's app (parent mode) or as the app on a child's
-   device (child device mode). This doc defines how the app picks a mode, how it moves between them safely, and
-   what the two modes share. There is no separate parent app or child app.
+   device (child device mode). There is no separate parent app or child app. How the app picks a mode, moves
+   between modes safely, and what the two modes share now live in [mobile-api.md › Part A](mobile-api.md#part-a-one-app-for-parents-and-children).
 2. **Organizations in parent mode.** Families join and leave schools, community groups and businesses; organization
    admins manage their organization from their phone. Phase 1 of [organizations.md](organizations.md), brought to
    the app.
@@ -14,7 +14,7 @@ mobile endpoints for it are not (section 7). The native app isn't built yet. Pro
 are in [mobile-organizations-prompts.md](mobile-organizations-prompts.md).
 
 **Related:** [organizations.md](organizations.md) (the feature and its privacy rule),
-[mobile-api-parent.md](mobile-api-parent.md) (parent mode API), [mobile-api-child.md](mobile-api-child.md) (child device mode API),
+[mobile-api.md](mobile-api.md) (one app with both modes, the parent API and the child device API),
 [child-app-spec.md](child-app-spec.md) (child device mode),
 [app-listing.md](app-listing.md) (store listing, permissions, privacy forms).
 
@@ -43,17 +43,17 @@ doesn't do yet is marked **Server gap** and collected in [section 7.3](#73-serve
 |---|---|---|
 | Who | A parent or guardian, signed in | Nobody signs in. The device is paired to one child |
 | Credential | Parent session token (`/api/mobile/v1`, 30 days) | Device token (`/api/device/v1`, until removed) |
-| Does | Everything in [mobile-api-parent.md](mobile-api-parent.md) §3, plus **Organizations** | Everything in [child-app-spec.md](child-app-spec.md), over [mobile-api-child.md](mobile-api-child.md) |
+| Does | Everything in [mobile-api.md](mobile-api.md#part-b-parent-api) §P3, plus **Organizations** | Everything in [child-app-spec.md](child-app-spec.md), over [mobile-api.md › Part C](mobile-api.md#part-c-child-device-api) |
 | Sensitive permissions | None (photo picker only) | Usage access, location, VPN, device admin, Screen Time… |
 | Organizations | Join, leave, see sponsored plan; manage organizations you admin | Never shown |
-| Switch away | Any time, from Settings (section 4) | Only after a parent removes the device |
+| Switch away | Any time, from Settings ([mobile-api.md › A4](mobile-api.md#a4-moving-between-modes)) | Only after a parent removes the device |
 
 ## 2. Who uses the app
 
 - **Parents and guardians (18+).** They create the account, add children, and run parent mode on their own phone.
   Some parents are also **organization admins** (a teacher, a barangay officer, an HR person). They use the same
   account; managing an organization is an extra role, not a different app or login.
-- **Children.** Children never get accounts ([mobile-api-parent.md](mobile-api-parent.md) › `POST /auth/register` requires
+- **Children.** Children never get accounts ([mobile-api.md › Part B](mobile-api.md#part-b-parent-api) › `POST /auth/register` requires
   `guardian: true`). They use the app only in child device mode, on a device a parent paired. They see their own
   protections and can ask for apps; they never see parent screens, other children, or organizations.
 
@@ -61,127 +61,20 @@ The store user is still the parent in both modes (app-listing.md: target age 18+
 
 ## 3. Modes
 
-The app stores one value, `mode`, in encrypted storage: `UNSET`, `PARENT` or `CHILD`.
-
-```
-             launch
-               │
-     mode? ────┼──────────────┬───────────────────────┐
-     UNSET     │ PARENT       │ CHILD                 │
-       │       │              │                       │
- "Who's using  │ parent token?│ device token?         │
-  this device?"│  no → Sign in│  no → wipe, mode=UNSET│
-       │       │  yes → Home  │  yes → Child home     │
-       ▼       ▼              ▼                       ▼
-```
-
-### First launch: "Who's using this device?"
-
-| Choice | Goes to | `mode` is set |
-|---|---|---|
-| **"I'm a parent or guardian"** | Welcome / Sign in / Create account ([mobile-api-parent.md](mobile-api-parent.md) §3 screens 2–3) | `PARENT`, once sign-in succeeds |
-| **"This is my child's device"** | Child setup ([child-app-spec.md](child-app-spec.md) §4, from screen 2) | `CHILD`, once `/pair` returns `201` |
-
-Until sign-in or pairing succeeds, the person can go back and choose again. `mode` is never set by the choice alone.
-
-### Parent mode
-
-Parent mode is everything in [mobile-api-parent.md](mobile-api-parent.md): dashboard, children, protections, screen time, apps,
-location, alerts, settings, subscription, help. This spec adds the **Organizations** section (section 6) and the
-**Set up this device for a child** action (section 4).
-
-### Child device mode
-
-Child device mode is everything in [child-app-spec.md](child-app-spec.md). This spec changes only how it ends
-(section 4, "Child → parent") and adds nothing for organizations. Organizations never push anything to a child's
-device in Phase 1. In Phase 2, school-approved sites and homework schedules will arrive through the child's
-existing protections (`WEB`, `BEDTIME`, the browser policy), so the child app still won't need an organizations
-screen.
-
-### Rules
-
-1. **One mode at a time.** The app never holds a parent token and a device token together. Switching deletes the
-   old credential before the new mode starts.
-2. **No parent credentials on a child's device.** Child device mode can't open parent screens, and there is no
-   "parent unlock" on the child's device ([child-app-spec.md](child-app-spec.md) D7).
-3. **The child can't switch modes.** Leaving child device mode needs a parent to remove the device from their own
-   app or the web.
-4. **Mode-specific code stays apart.** Parent screens never read device-token storage, and child screens never read
-   the parent session. Keep them in separate modules (section 5).
+Moved to [mobile-api.md › A2. Choosing a mode](mobile-api.md#a2-choosing-a-mode) and
+[A3. Rules that keep the two modes apart](mobile-api.md#a3-rules-that-keep-the-two-modes-apart). Organizations add
+nothing to child device mode: in Phase 1 they never push anything to a child's device, and in Phase 2
+school-approved sites and homework schedules will arrive through the child's existing protections (`WEB`,
+`BEDTIME`, the browser policy), so the child app still won't need an organizations screen.
 
 ## 4. Moving between modes
 
-| From → to | How | What the app does |
-|---|---|---|
-| Unset → parent | Sign in or create an account | Save token, `mode = PARENT` |
-| Unset → child | Pair with a code from a parent | Save device token, `mode = CHILD` |
-| Parent → parent (other account) | Sign out, sign in | Same as today |
-| **Parent → child** | Settings › **Set up this device for a child** | See below |
-| Parent → unset | Settings › Sign out | `POST /auth/logout?pushToken=…`, delete token, `mode = UNSET`, back to "Who's using this device?" |
-| **Child → parent** | A parent removes the device; then the child's device shows the removed screen | See below |
-
-### Parent → child: "Set up this device for a child"
-
-For a parent handing down an old phone, or setting up a tablet they're holding. It saves walking to a second phone
-for a pairing code.
-
-1. Settings › **Set up this device for a child** (every parent; it's hidden when the family has no children).
-2. Choose the child. Explain: *"You'll be signed out of eGuard on this device. It will become {child}'s device and
-   can only be changed back by removing it from eGuard on another phone or on the web."* Confirm.
-3. `POST /api/mobile/v1/children/{id}/pairing-code` (parent token). Errors as in mobile-api-parent.md: `403
-   email_unverified` (show the verify banner), `409` device limit, `429`.
-4. Ask for the device name ([child-app-spec.md](child-app-spec.md) §4 screen 4).
-5. `POST /api/device/v1/pair` with that code. On `201`: save the device token, then `POST /auth/logout?pushToken=…`,
-   delete the parent token, `mode = CHILD`.
-6. Continue child setup at the permissions step (child-app-spec §4 screen 5).
-
-If pairing fails, the parent stays signed in and nothing changes. If sign-out fails (offline), delete the parent
-token locally anyway; the session expires on the server within 30 days and the parent can end it from **Sessions**.
-
-### Child → parent: after removal
-
-Today, a removed child device says "You can now uninstall eGuard" ([child-app-spec.md](child-app-spec.md) §5
-Removal). Change it so the same install can be reused:
-
-1. A parent removes the device (`DELETE /api/mobile/v1/devices/{id}`, which asks for their password).
-2. The child's device gets `401` on its next call, stops enforcing, deletes the device token, saved policy and queue,
-   and releases device admin / clears `ManagedSettings` (unchanged).
-3. The removed screen: *"This device was removed from eGuard by your parent."* with two buttons:
-   **Set up eGuard again** (`mode = UNSET`, back to "Who's using this device?") and **Close**.
-
-Nothing about the device's past (usage, settings) is kept, so the new mode starts clean. Update child-app-spec §5
-"Removal" to match when this is built.
+Moved to [mobile-api.md › A4. Moving between modes](mobile-api.md#a4-moving-between-modes) ("Set up this device for
+a child", and reusing the install after removal).
 
 ## 5. What the two modes share
 
-One codebase, kept in modules so each mode only pulls in what it needs.
-
-| Module | Used by | Contents |
-|---|---|---|
-| `core-ui` | Both | Theme (light and dark), typography, components, icons (Lucide names → SF Symbols / Material), strings |
-| `core-net` | Both | HTTP client, TLS settings and pinning (child-app-spec D6), JSON, error mapping, retry |
-| `parent` | Parent mode | Mobile API client and all parent screens, including Organizations |
-| `child` | Child device mode | Device API client, sync engine, enforcers, block screens, extensions (iOS) |
-| `app` | Both | Launch routing on `mode`, "Who's using this device?", mode switching, push registration |
-
-On Android these are Gradle modules (`:core-ui`, `:core-net`, `:parent`, `:child`, `:app`); on iOS, Swift packages
-plus the app and extension targets. The iOS extensions (`DeviceActivityMonitor`, `ShieldConfiguration`) depend only on
-`child` and `core-*`.
-
-**Shared behavior:**
-
-- **Base URL** `https://www.eguard.family`, with a debug override for a dev server on the LAN.
-- **Headers:** parent calls send `X-eGuard-Client: ios|android` and a readable `User-Agent`
-  ([mobile-api-parent.md](mobile-api-parent.md) §1). Device calls send `appVersion` in bodies as the device API asks.
-- **Version checks:** parent mode uses `GET /app-info` `minimumAppVersion`; child mode uses `minAppVersion` from
-  `/sync` when present (child-app-spec G10). Each shows the same "Please update" screen.
-- **Push:** one FCM / APNs token per install. In parent mode register it with `POST /me/push-tokens`; in child mode
-  send it on `/sync` once child-app-spec G1 is built. Unregister from the old mode when switching.
-- **Links:** email verification and password reset links (mobile-api-parent.md §4.2) are for parents. In child mode, show
-  *"Open this link on your parent's phone or at eguard.family"* instead of handling them.
-- **No analytics, ads or tracking SDKs in the app at all.** The same binary runs on children's devices, so the rule
-  in child-app-spec §11 applies to the whole app, not just one mode.
-- **Accessibility and language** as child-app-spec §12, for both modes.
+Moved to [mobile-api.md › A5. One codebase, two modes](mobile-api.md#a5-one-codebase-two-modes).
 
 ## 6. Organizations in parent mode
 
@@ -251,7 +144,7 @@ admin) can be an organization owner.
 **Organizations you manage** lists each with name, kind, the role badge (Owner / Admin) and *"{n} families"*.
 **Create an organization** asks for the name (2–80 characters) and kind (School / Community group / Business), then
 opens the new organization. It needs a verified email: on `403 email_unverified` show the verify banner with
-**Resend link** (mobile-api-parent.md §4.2). At 10 organizations, show *"You can manage up to 10 organizations."*
+**Resend link** (mobile-api.md §P4.2). At 10 organizations, show *"You can manage up to 10 organizations."*
 
 **Organization screen** (`GET /organizations/{id}`):
 
@@ -295,7 +188,7 @@ use the response, then reload the list behind it.
 
 ### 7.1 New parent API endpoints
 
-Base `https://www.eguard.family/api/mobile/v1`, the conventions in [mobile-api-parent.md](mobile-api-parent.md) §1 (bearer token,
+Base `https://www.eguard.family/api/mobile/v1`, the conventions in [mobile-api.md](mobile-api.md#part-b-parent-api) §P1 (bearer token,
 error shape, IDs, ISO timestamps). Each endpoint is a thin route over `src/lib/organizations.ts`, using `authed()`
 and `body()` from `src/lib/mobile-api.ts`, like the other mobile routes. The service already does every check.
 
@@ -363,11 +256,11 @@ There is deliberately **no** mobile endpoint for buying codes, redeeming codes, 
 
 | # | Gap | Fix |
 |---|---|---|
-| S1 | No organization endpoints in the parent API | Add the routes in 7.1, document them in mobile-api-parent.md (new §4.16 and screen-map row), add API tests |
+| S1 | No organization endpoints in the parent API | Add the routes in 7.1, document them in mobile-api.md (new §P4.16 and screen-map row), add API tests |
 | S2 | `GET /subscription` doesn't say who sponsors a `VOUCHER` plan | Add `store.sponsor` (org name or `null`) using `sponsorOf()` |
 | S3 | `joinOrganization` returns only `{ name }` | Return the `Joined` shape (`id`, `name`, `kind`, `joinedAt`) so the app can add the row without reloading |
 | S4 | Join codes can only be typed | **Later** (M6): `https://www.eguard.family/join/{code}` as an app link / universal link that opens the join confirm sheet, with a web fallback page |
-| S5 | No mode-reuse after removal in the child spec | Update child-app-spec §5 "Removal" (section 4 above). No server change |
+| S5 | No mode-reuse after removal in the child spec | Update child-app-spec §5 "Removal" (mobile-api.md A4). No server change |
 
 ## 8. Store policy
 
@@ -377,7 +270,7 @@ to pay elsewhere. That decides what organizations can do in the app:
 | Action | In the app? | Why |
 |---|---|---|
 | Join or leave an organization | **Yes** | Not a purchase. Joining grants nothing |
-| See a sponsored plan | **Yes** | Showing the plan is fine; mobile-api-parent.md already shows `VOUCHER` plans |
+| See a sponsored plan | **Yes** | Showing the plan is fine; mobile-api.md already shows `VOUCHER` plans |
 | Redeem a sponsor code | **No** (M1) | A code unlocks a paid plan. Apple guideline 3.1.1 forbids unlocking features with codes outside In-App Purchase; Google Play's payments policy treats it the same way |
 | Buy sponsor codes | **No** (M2) | A purchase of digital subscriptions |
 | Point to the web for either | **No** | Anti-steering rules. No "Redeem at eguard.family" text or link |
@@ -450,7 +343,7 @@ Server
 | M1 | Redeem sponsor codes in the app | No · Yes on Android only · Yes everywhere | **No.** Store rules; the web already does it. Revisit only with written store guidance |
 | M2 | Buy sponsor codes in the app | No · Through In-App Purchase | **No.** Organizations buy on the web, often with a work card or GCash |
 | M3 | How much organization admin in the app | Full (minus buying and API keys) · Read-only | **Full minus buying, API keys and CSV.** Teachers and barangay staff are phone-first |
-| M4 | Parent → child on the same phone | Shortcut (section 4) · Sign out and pair by hand | **Shortcut.** Common case: handing down an old phone |
+| M4 | Parent → child on the same phone | Shortcut (mobile-api.md A4) · Sign out and pair by hand | **Shortcut.** Common case: handing down an old phone |
 | M5 | Child → parent after removal | Reuse the install · Uninstall and reinstall | **Reuse.** The device is already clean after `401` |
 | M6 | Join links or QR codes | Now · Later | **Later** (S4). Typing 8 characters is fine for v1, and QR scanning adds a camera permission on iOS |
 | M7 | `kind` shape in mobile responses | Keep the service's mix · Always send `kind` + `kindLabel` | **Decided: `kind` + `kindLabel` everywhere** in the new mobile routes; it's a new API, so no clients break |

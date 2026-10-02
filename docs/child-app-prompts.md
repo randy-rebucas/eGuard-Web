@@ -161,7 +161,7 @@ on childId + name). Phones need a stable ID: the Android package name, or an iOS
 - which parent screens (web and mobile API) change, if any.
 
 After I approve: implement it with one migration, keep name-only clients working, add API tests, and update the
-spec, README, docs/mobile-api-child.md and docs/mobile-api-parent.md where the shapes change. Mark G4 done in the spec.
+spec, README, docs/mobile-api.md (Parts B and C) where the shapes change. Mark G4 done in the spec.
 ```
 
 ### 0.6 Device rename and unpair (G6)

@@ -332,14 +332,14 @@ The server exposes four versioned APIs, one per kind of client. All are JSON, an
 
 | API | Base path | Client | Auth | Reference |
 |---|---|---|---|---|
-| Device API | `/api/device/v1` | eGuard app on the child's phone/tablet | Device token | [docs/mobile-api-child.md](docs/mobile-api-child.md) |
-| Parent mobile API | `/api/mobile/v1` | Parent app (iOS/Android) | Session token | [docs/mobile-api-parent.md](docs/mobile-api-parent.md) |
+| Device API | `/api/device/v1` | eGuard app on the child's phone/tablet | Device token | [docs/mobile-api.md › Part C](docs/mobile-api.md#part-c-child-device-api) |
+| Parent mobile API | `/api/mobile/v1` | Parent app (iOS/Android) | Session token | [docs/mobile-api.md › Part B](docs/mobile-api.md#part-b-parent-api) |
 | Browser extension API | `/api/browser/v1` | eGuard extension in the child's browser | 15-minute access token + rotating refresh token | [docs/browser-extension-api.md](docs/browser-extension-api.md) |
 | Organization API | `/api/org/v1` | A school's or company's own systems | Organization API key (Family Pro) | [docs/organization-api.md](docs/organization-api.md) |
 
 ### Device API (`/api/device/v1`)
 
-**Full reference for app developers: [docs/mobile-api-child.md](docs/mobile-api-child.md).**
+**Full reference for app developers: [docs/mobile-api.md › Part C](docs/mobile-api.md#part-c-child-device-api).**
 
 Every endpoint except `pair` needs `Authorization: Bearer <device token>`. Only a SHA-256 hash of the token is stored.
 
@@ -360,7 +360,7 @@ Config objects match `ProtectionConfig` in [src/lib/protections.ts](src/lib/prot
 
 ### Parent mobile API (`/api/mobile/v1`)
 
-Everything the parent app's screens need. **Full reference for app developers: [docs/mobile-api-parent.md](docs/mobile-api-parent.md).**
+Everything the parent app's screens need. **Full reference for app developers: [docs/mobile-api.md › Part B](docs/mobile-api.md#part-b-parent-api).**
 
 - **Auth:** `POST /auth/login` returns `{ token, expiresAt, user }`. Send `Authorization: Bearer <token>` on every
   other call and keep the token in the Keychain / Keystore. Tokens are ordinary 30-day sessions, so "sign out other
@@ -562,8 +562,7 @@ docs/                  developer and launch documentation
 
 | Document | For |
 |---|---|
-| [docs/mobile-api-parent.md](docs/mobile-api-parent.md) | Parent app developers: every endpoint, object, flow and enum |
-| [docs/mobile-api-child.md](docs/mobile-api-child.md) | Child device app developers: the device API's endpoints, objects, flows, errors and verification rules |
+| [docs/mobile-api.md](docs/mobile-api.md) | App developers: one app for parents and children (modes, how they differ, switching), then the parent API and the child device API: every endpoint, object, flow, error and enum |
 | [docs/child-app-spec.md](docs/child-app-spec.md) | Child device app: pairing, what the child sees, enforcing each protection, sync and reporting, server gaps |
 | [docs/browser-extension-api.md](docs/browser-extension-api.md) | Browser extension developers: pairing, tokens, signed policies, health, events |
 | [docs/subscriptions.md](docs/subscriptions.md) | Plans, PayMongo flows, entitlements, operations |
