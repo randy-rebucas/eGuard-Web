@@ -99,7 +99,7 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
           {joined.map((o) => (
             <div className="setting-row" key={o.id}>
               <span className="ico-tile"><Icon name="building" /></span>
-              <div className="grow"><div className="t-title">{o.name}</div><div className="t-meta">{ORG_KINDS[o.kind as keyof typeof ORG_KINDS] ?? o.kind} · joined {shortDate(o.joinedAt, tz)}</div></div>
+              <div className="grow"><div className="t-title">{o.name}</div><div className="t-meta">{o.kindLabel} · joined {shortDate(o.joinedAt, tz)}</div></div>
               {admin ? <LeaveOrgButton orgId={o.id} name={o.name} /> : null}
             </div>
           ))}

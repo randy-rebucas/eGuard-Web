@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import type { AppApproval } from "@prisma/client";
 import { Icon } from "./icon";
 import { Feedback } from "./feedback";
+import { ConfirmField, confirmHint } from "./confirm-field";
 import { useAction, useFlow } from "./flow";
 import { PROFILES, recommendedProfile, type ProfileId } from "@/lib/profiles";
 import { createChild, deleteChildData, setAppApproval, setAppLimit, updateChild } from "@/app/actions/family";
@@ -53,15 +54,15 @@ export function ChildForm({ child }: { child?: { id: string; name: string; birth
   );
 }
 
-export function DeleteChildForm({ childId, name }: { childId: string; name: string }) {
+export function DeleteChildForm({ childId, name, hasPassword }: { childId: string; name: string; hasPassword: boolean }) {
   const [open, setOpen] = useState(false);
   const [state, action, pending] = useActionState(deleteChildData.bind(null, childId), undefined);
   if (!open) return <button className="btn btn-secondary btn-sm" style={{ color: "var(--crit-ink)" }} onClick={() => setOpen(true)}><Icon name="trash" />Remove {name}…</button>;
   return (
     <form action={action} className="dash-col" style={{ gap: 12, maxWidth: 420 }}>
-      <p className="t-meta" style={{ color: "var(--ink-2)" }}>This deletes {name}&apos;s activity, history and devices from eGuard. Protections on the devices stop being managed. Enter your password to confirm.</p>
+      <p className="t-meta" style={{ color: "var(--ink-2)" }}>This deletes {name}&apos;s activity, history and devices from eGuard. Protections on the devices stop being managed. {confirmHint(hasPassword)}</p>
       <Feedback state={state} />
-      <div className="field"><label htmlFor="del-pw">Your password</label><input className="input" id="del-pw" name="password" type="password" required autoComplete="current-password" /></div>
+      <ConfirmField id="del-confirm" hasPassword={hasPassword} />
       <div className="row"><button type="button" className="btn btn-ghost" disabled={pending} onClick={() => setOpen(false)}>Cancel</button><button className="btn btn-primary" style={{ background: "var(--crit)" }} disabled={pending}>{pending ? "Deleting…" : <>Delete {name}&apos;s data</>}</button></div>
     </form>
   );

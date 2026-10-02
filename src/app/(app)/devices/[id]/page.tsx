@@ -140,7 +140,7 @@ export default async function DevicePage(props: PageProps<"/devices/[id]">) {
               <div><dt>eGuard app</dt><dd>{d.appVersion ?? "Unknown"}</dd></div>
               <div><dt>Added</dt><dd>{shortDate(d.createdAt, tz)}</dd></div>
             </dl>
-            <RemoveDeviceButton deviceId={d.id} name={d.name} />
+            <RemoveDeviceButton deviceId={d.id} name={d.name} hasPassword={u.hasPassword} />
           </section>
         </div>
       </div>

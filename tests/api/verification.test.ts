@@ -96,15 +96,15 @@ describe("removing a device", () => {
   it("needs the parent's password, revokes the device and tells the family", async () => {
     const tab = await device("Old Tablet");
     const token = await db.device.findUniqueOrThrow({ where: { id: tab.id }, select: { tokenHash: true } });
-    await expect(removeDevice(admin, tab.id, "wrong").catch(code)).resolves.toBe("wrong_password");
-    await expect(removeDevice(admin, tab.id, "").catch(code)).resolves.toBe("wrong_password");
+    await expect(removeDevice(admin, tab.id, { password: "wrong" }).catch(code)).resolves.toBe("wrong_password");
+    await expect(removeDevice(admin, tab.id, { password: "" }).catch(code)).resolves.toBe("wrong_password");
     expect(await db.device.count({ where: { id: tab.id } })).toBe(1);
 
-    await removeDevice(admin, tab.id, PASSWORD);
+    await removeDevice(admin, tab.id, { password: PASSWORD });
     expect(await db.device.count({ where: { tokenHash: token.tokenHash } })).toBe(0);
     expect(await db.alert.count({ where: { familyId: admin.familyId, title: "Device removed", subject: "Lia's Old Tablet", severity: "ATTENTION", category: "DEVICES" } })).toBe(1);
     // Already gone: 404, before any password check
-    await expect(removeDevice(admin, tab.id, "").catch(code)).resolves.toBe("not_found");
+    await expect(removeDevice(admin, tab.id, { password: "" }).catch(code)).resolves.toBe("not_found");
   });
 
   it("can't touch another family's device", async () => {
@@ -114,7 +114,7 @@ describe("removing a device", () => {
       include: { users: true },
     });
     const intruder: Actor = { id: eve.users[0].id, name: "Eve", familyId: eve.id, role: "FAMILY_ADMIN" };
-    await expect(removeDevice(intruder, tab.id, PASSWORD).catch(code)).resolves.toBe("not_found");
+    await expect(removeDevice(intruder, tab.id, { password: PASSWORD }).catch(code)).resolves.toBe("not_found");
     expect(await db.device.count({ where: { id: tab.id } })).toBe(1);
   });
 });

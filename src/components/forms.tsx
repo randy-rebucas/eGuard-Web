@@ -5,6 +5,7 @@
 import { useActionState, useState } from "react";
 import { Icon } from "./icon";
 import { Feedback } from "./feedback";
+import { ConfirmField } from "./confirm-field";
 import { useAction } from "./flow";
 import {
   addParent, changePassword, deleteAccount, removeParent, resendInvitation, setToggle, signOutOthers, unlinkIdentity, updateAccount,
@@ -104,11 +105,7 @@ export function DeleteAccountForm({ isAdmin, hasPassword }: { isAdmin: boolean; 
           : "This deletes your account. The family and its children stay with the family admin. This can't be undone."}
       </p>
       <Feedback state={state} />
-      {hasPassword ? (
-        <div className="field"><label htmlFor="da-pw">Your password</label><input className="input" id="da-pw" name="password" type="password" required autoComplete="current-password" /></div>
-      ) : (
-        <div className="field"><label htmlFor="da-ph">Type DELETE to confirm</label><input className="input" id="da-ph" name="phrase" required autoComplete="off" /></div>
-      )}
+      <ConfirmField id="da-confirm" hasPassword={hasPassword} />
       <div className="row"><button type="button" className="btn btn-ghost" onClick={() => setOpen(false)}>Cancel</button><button className="btn btn-primary" style={{ background: "var(--crit)" }} disabled={pending}>{pending ? "Deleting…" : isAdmin ? "Delete family and account" : "Delete my account"}</button></div>
     </form>
   );

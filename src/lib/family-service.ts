@@ -3,7 +3,7 @@ import { randomInt } from "node:crypto";
 import { z } from "zod";
 import type { AppApproval, PairingKind, Prisma } from "@prisma/client";
 import { db } from "./db";
-import { PASSWORD_TOO_LONG, confirmPassword, hashPassword, isPendingInvite, passwordTooLong } from "./auth";
+import { PASSWORD_TOO_LONG, confirmDestructive, confirmPassword, hashPassword, isPendingInvite, passwordTooLong } from "./auth";
 import { refreshPurchases } from "./billing";
 import { cancelSubscriptionsBeforeDeletion } from "./web-billing";
 import { handOverOrganizations } from "./organizations";
@@ -22,6 +22,9 @@ import { usedDeviceSlots } from "./device-slots";
 export { audit };
 
 const requireAdminActor = (a: Actor) => { if (a.role !== "FAMILY_ADMIN") throw forbidden(); };
+
+/** How a parent confirms a deletion: their password, or typing DELETE when they have none (see confirmDestructive). */
+export type Confirm = { password?: string; phrase?: string };
 
 /** Longest parent or family name; it appears in emails, alerts and history lines. */
 export const NAME_MAX = 80;
@@ -91,9 +94,9 @@ export async function assertNameFree(familyId: string, name: string, exceptChild
   }
 }
 
-export async function deleteChild(actor: Actor, childId: string, password: string) {
+export async function deleteChild(actor: Actor, childId: string, confirm: Confirm) {
   requireAdminActor(actor);
-  await confirmPassword(actor.id, password);
+  await confirmDestructive(actor.id, confirm);
   const child = await db.child.findFirst({ where: { id: childId, familyId: actor.familyId } });
   if (!child) throw notFound("Child");
   const [, gone] = await db.$transaction([
@@ -244,10 +247,10 @@ export async function pairingCodeStatus(actor: Actor, code: string) {
  * Removes a device from the family. Its token stops working and eGuard stops verifying it, which would also
  * silence tamper alerts, so it needs the parent's password and tells the family (the alert is emailed).
  */
-export async function removeDevice(actor: Actor, deviceId: string, password: string) {
+export async function removeDevice(actor: Actor, deviceId: string, confirm: Confirm) {
   const d = await db.device.findFirst({ where: { id: deviceId, familyId: actor.familyId }, include: { child: true } });
   if (!d) throw notFound("Device");
-  await confirmPassword(actor.id, password);
+  await confirmDestructive(actor.id, confirm);
   const [gone] = await db.$transaction([
     // deleteMany: another parent removing it at the same moment is a 404 here, not a Prisma error
     db.device.deleteMany({ where: { id: d.id } }),
@@ -329,10 +332,9 @@ export async function unlinkIdentity(actor: Actor, identityId: string) {
  * (children, devices, history, other parents) and first cancels any PayMongo auto-renew; another parent's
  * account removes only them. Needs the password, or for Apple/Google accounts without one, typing DELETE.
  */
-export async function deleteAccount(actor: Actor, confirm: { password?: string; phrase?: string }) {
+export async function deleteAccount(actor: Actor, confirm: Confirm) {
   const user = await db.user.findUniqueOrThrow({ where: { id: actor.id } });
-  if (user.passwordSet) await confirmPassword(actor.id, confirm.password ?? "");
-  else if (confirm.phrase !== "DELETE") throw invalid("Type DELETE to confirm.");
+  await confirmDestructive(actor.id, confirm);
   if (actor.role === "FAMILY_ADMIN") {
     await cancelSubscriptionsBeforeDeletion(actor.familyId);
     const members = await db.user.findMany({ where: { familyId: actor.familyId }, select: { id: true } });

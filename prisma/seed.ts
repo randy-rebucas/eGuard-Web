@@ -17,7 +17,8 @@ async function main() {
   const family = await createDemoFamily(db, {
     familyName: "Cruz Family",
     parents: [
-      { email: "randy@example.com", name: "Randy Cruz", role: "FAMILY_ADMIN", passwordHash: pw, twoFactor: true },
+      // Two-step verification off: turning it on takes an authenticator secret (Settings › Privacy & security)
+      { email: "randy@example.com", name: "Randy Cruz", role: "FAMILY_ADMIN", passwordHash: pw },
       { email: "ana@example.com", name: "Ana Cruz", role: "PARENT", passwordHash: pw },
     ],
   });

@@ -27,6 +27,8 @@ export const LIMITS = {
   inviteUser: { max: 10, windowMs: 60 * 60_000 },
   /** events one child device reports (each can add an app row or an alert); a real phone sends a handful an hour */
   deviceEvents: { max: 120, windowMs: 60 * 60_000 },
+  /** an event id seen once is a retry after that (device/v1/events `eventId`); devices retry for up to a few days */
+  deviceEventId: { max: 1, windowMs: 7 * 24 * 60 * 60_000 },
   /** organization join codes a user tries (a wrong guess only joins an organization, but don't allow enumeration) */
   joinCodeUser: { max: 20, windowMs: 60 * 60_000 },
   /** sponsor codes a family tries; codes are worth money, so keep guessing slow */

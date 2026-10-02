@@ -32,7 +32,7 @@ export default async function DevicesPage(props: PageProps<"/devices">) {
             {c.devices.length || own.length ? (
               <div className="devices-grid">
                 {c.devices.map((d) => <DeviceCard key={d.id} d={d} state={deviceStates[d.id]} tz={family.timezone} />)}
-                {own.map((b) => <BrowserCard key={b.id} b={b} tz={family.timezone} />)}
+                {own.map((b) => <BrowserCard key={b.id} b={b} tz={family.timezone} hasPassword={u.hasPassword} />)}
               </div>
             ) : (
               <div className="card"><EmptyState icon="smartphone" title={`No devices for ${c.name}`} text="Get a pairing code below and enter it in the eGuard app on their device, or in the eGuard browser extension." /></div>

@@ -55,7 +55,7 @@ export async function userForToken(token: string): Promise<SessionUser | null> {
     where: { tokenHash: sha256(token) },
     select: {
       id: true, expiresAt: true, lastSeenAt: true,
-      user: { select: { id: true, name: true, email: true, emailVerifiedAt: true, role: true, familyId: true } },
+      user: { select: { id: true, name: true, email: true, emailVerifiedAt: true, role: true, familyId: true, passwordSet: true } },
     },
   });
   if (!s || s.expiresAt < new Date()) return null;
@@ -63,7 +63,7 @@ export async function userForToken(token: string): Promise<SessionUser | null> {
     await db.session.update({ where: { id: s.id }, data: { lastSeenAt: new Date() } }).catch(() => {});
   }
   const u = s.user;
-  return { id: u.id, name: u.name, email: u.email, emailVerified: !!u.emailVerifiedAt, role: u.role, familyId: u.familyId, sessionId: s.id };
+  return { id: u.id, name: u.name, email: u.email, emailVerified: !!u.emailVerifiedAt, hasPassword: u.passwordSet, role: u.role, familyId: u.familyId, sessionId: s.id };
 }
 
 export async function createSession(userId: string) {
@@ -96,6 +96,8 @@ export type SessionUser = {
   name: string;
   email: string;
   emailVerified: boolean;
+  /** false for Apple/Google accounts until they set one: they confirm deletions by typing DELETE instead */
+  hasPassword: boolean;
   role: Role;
   familyId: string;
   sessionId: string;
@@ -158,4 +160,21 @@ export async function confirmPassword(userId: string, password: string) {
   }
   await clearLimit(key);
   return user;
+}
+
+/** What a parent types to confirm a deletion when their account has no password (Apple/Google sign-in). */
+export const DELETE_PHRASE = "DELETE";
+
+/**
+ * Confirms a deletion (the account, a child, a device, a browser): the password when the account has one, else the
+ * typed phrase, so Apple/Google parents aren't sent off to set a password first. Changing the password or email
+ * still needs confirmPassword.
+ */
+export async function confirmDestructive(userId: string, confirm: { password?: string; phrase?: string }) {
+  const user = await db.user.findUniqueOrThrow({ where: { id: userId }, select: { passwordSet: true } });
+  if (user.passwordSet) {
+    await confirmPassword(userId, confirm.password ?? "");
+    return;
+  }
+  if (confirm.phrase?.trim() !== DELETE_PHRASE) throw new ServiceError(400, `Type ${DELETE_PHRASE} to confirm.`, "confirm_required");
 }

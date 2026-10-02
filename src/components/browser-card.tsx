@@ -12,7 +12,7 @@ export type BrowserView = Pick<BrowserInstallation, "id" | "deviceLabel" | "brow
  * A connected eGuard browser extension. Browser policies aren't enforced yet, so a connected browser is
  * described as connected, never as protected.
  */
-export function BrowserCard({ b, tz }: { b: BrowserView; tz: string }) {
+export function BrowserCard({ b, tz, hasPassword }: { b: BrowserView; tz: string; hasPassword: boolean }) {
   const quiet = isOffline(b);
   const major = b.browserVersion?.split(".")[0];
   const name = `${b.browser} on ${b.deviceLabel}`;
@@ -32,7 +32,7 @@ export function BrowserCard({ b, tz }: { b: BrowserView; tz: string }) {
         <span className="t-meta num" title="Last check-in"><Icon name="refresh-cw" size={13} style={{ verticalAlign: -2 }} /> {dayTime(b.lastSeenAt, tz).replace("Today, ", "")}</span>
       </div>
       <p className="t-meta">{b.revokedAt ? "Remove it, then add it again with a new code." : "Website protection for browsers is coming soon. Nothing is blocked in this browser yet."}</p>
-      <RemoveBrowserButton installationId={b.id} name={name} />
+      <RemoveBrowserButton installationId={b.id} name={name} hasPassword={hasPassword} />
     </div>
   );
 }

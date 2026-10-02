@@ -74,6 +74,11 @@ export type Tone = "ok" | "warn" | "crit" | "muted" | "accent";
 
 /* ---------- Config shapes and display ---------- */
 
+/**
+ * Days are counted in the family's time zone (/sync returns it). Weekend limits apply on Saturday and Sunday
+ * (limitOn). Bedtime `SCHOOL_NIGHTS` means the nights before a school day, Sunday to Thursday: a window that starts on
+ * one of those evenings, including the part after midnight. Friday and Saturday nights have no bedtime.
+ */
 export type ProtectionConfig =
   | { key: "SCREEN_TIME"; dailyMinutes: number; weekendMinutes: number }
   | { key: "BEDTIME"; enabled: boolean; start: string; end: string; days: "EVERY_DAY" | "SCHOOL_NIGHTS" }
@@ -85,6 +90,34 @@ export type ProtectionConfig =
   | { key: "LOCATION"; sharing: boolean }
   | { key: "NOTIFICATIONS"; quietDuringBedtime: boolean }
   | { key: "UNINSTALL_PROTECTION"; enabled: boolean };
+
+type Bedtime = Extract<ProtectionConfig, { key: "BEDTIME" }>;
+
+/** Sunday (0) to Thursday (4): the evenings before a school day. */
+export const isSchoolNight = (weekday: number) => weekday >= 0 && weekday <= 4;
+
+/**
+ * Whether a bedtime is in force at a local time: `weekday` 0 = Sunday, `minutes` since local midnight. Each window
+ * belongs to a night: the evening it starts on, or the evening before when it starts after midnight (before noon).
+ * So with SCHOOL_NIGHTS, 21:30–06:00 covers Thursday 21:30 to Friday 06:00 but not Friday or Saturday night, and
+ * 00:30–06:00 on Friday morning is Thursday's. Not used for enforcement on the server; it pins down the meaning the
+ * child app must follow (docs/child-app-spec.md section 6).
+ */
+export function bedtimeActive(c: Bedtime, at: { weekday: number; minutes: number }) {
+  if (!c.enabled) return false;
+  const start = minutesOf(c.start), end = minutesOf(c.end);
+  if (start === end) return false;
+  const crosses = start > end;
+  const inside = crosses ? at.minutes >= start || at.minutes < end : at.minutes >= start && at.minutes < end;
+  if (!inside) return false;
+  if (c.days === "EVERY_DAY") return true;
+  // The calendar day the window started on, then the night that day's start belongs to
+  const startDay = crosses && at.minutes < end ? at.weekday + 6 : at.weekday;
+  const night = start < 12 * 60 ? startDay + 6 : startDay;
+  return isSchoolNight(night % 7);
+}
+
+const minutesOf = (t: string) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
 
 export function to12h(t: string) {
   const [hRaw, m] = t.split(":").map(Number);

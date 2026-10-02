@@ -81,6 +81,12 @@ export function open<P = Record<string, never>>(fn: (c: { req: Request; params: 
   };
 }
 
+/**
+ * Body of a deletion (account, child, device, browser): the parent's `password`, or `confirm: "DELETE"` when the
+ * account has none (`hasPassword: false`, Apple/Google sign-in).
+ */
+export const ConfirmBody = z.object({ password: z.string().max(200).optional(), confirm: z.string().max(20).optional() });
+
 export function requireAdminUser(user: SessionUser) {
   if (user.role !== "FAMILY_ADMIN") throw new ServiceError(403, "Only the family admin can do this.", "forbidden");
 }

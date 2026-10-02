@@ -35,23 +35,31 @@ export async function POST(req: Request) {
   // Claim the code first, atomically: of two devices racing with the same code, only one gets past here
   const claimed = await db.pairingCode.updateMany({ where: { id: code.id, usedAt: null, expiresAt: { gt: new Date() } }, data: { usedAt: new Date() } });
   if (!claimed.count) return invalidCode();
-  await refreshPurchases(code.familyId);
-  const family = await db.family.findUniqueOrThrow({ where: { id: code.familyId } });
+  // Give the code back: after removing a device (limit reached), or after a failure here, the parent can use it again
+  const release = () => db.pairingCode.update({ where: { id: code.id }, data: { usedAt: null } });
+  // A store that can't be reached right now mustn't stop pairing: the plan as last known decides the limit
+  await refreshPurchases(code.familyId).catch((e) => console.error("[pair] refreshing purchases failed", code.familyId, e));
   const token = newToken();
-  // The slot lock also serializes the primary check, so two devices pairing at once can't both be primary
-  const device = await withDeviceSlot(code.familyId, family.deviceLimit, async (tx) => {
-    const hasPrimary = await tx.device.count({ where: { childId: code.childId, isPrimary: true } });
-    return tx.device.create({
-      data: {
-        familyId: code.familyId, childId: code.childId, name: b.name, model: b.model, kind: b.kind, platform: b.platform,
-        osVersion: b.osVersion, appVersion: b.appVersion, tokenHash: sha256(token), lastSeenAt: new Date(), isPrimary: !hasPrimary,
-      },
-      include: { child: true },
+  let device;
+  try {
+    const family = await db.family.findUniqueOrThrow({ where: { id: code.familyId } });
+    // The slot lock also serializes the primary check, so two devices pairing at once can't both be primary
+    device = await withDeviceSlot(code.familyId, family.deviceLimit, async (tx) => {
+      const hasPrimary = await tx.device.count({ where: { childId: code.childId, isPrimary: true } });
+      return tx.device.create({
+        data: {
+          familyId: code.familyId, childId: code.childId, name: b.name, model: b.model, kind: b.kind, platform: b.platform,
+          osVersion: b.osVersion, appVersion: b.appVersion, tokenHash: sha256(token), lastSeenAt: new Date(), isPrimary: !hasPrimary,
+        },
+        include: { child: true },
+      });
     });
-  });
+  } catch (e) {
+    await release().catch(() => {});
+    throw e;
+  }
   if (!device) {
-    // Give the code back so the parent can use it after removing a device
-    await db.pairingCode.update({ where: { id: code.id }, data: { usedAt: null } });
+    await release();
     return NextResponse.json({ error: "Device limit reached for this plan" }, { status: 409 });
   }
   await db.alert.create({

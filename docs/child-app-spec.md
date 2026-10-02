@@ -243,10 +243,13 @@ Additional rules:
 - **Guided and verify-only protections never arrive in `requests`.** `/sync` only delivers `APPLY` requests. For
   these, the parent follows steps and taps "Verify now", and the device sees `fullReportRequested: true` on its
   next sync. It then reads the state and sends a full report.
-- **Time zone and days.** Bedtime and weekend limits use the device's local time. Weekend means Saturday and
+- **Time zone and days.** Count days in the family's time zone, `timezone` from `/sync` (e.g. `Asia/Manila`), so
+  the device and the parent agree on "today" even when the device's own zone differs. Weekend means Saturday and
   Sunday, which is how the server counts it (`limitOn` in [src/lib/queries.ts](../src/lib/queries.ts)).
-  `SCHOOL_NIGHTS` means the nights before a school day: Sunday to Thursday. **Server gap G2:** that definition isn't
-  written down on the server yet.
+  `SCHOOL_NIGHTS` means the nights before a school day, Sunday to Thursday. A bedtime window belongs to the evening
+  it starts on (or the evening before, when it starts after midnight): 21:30–06:00 on school nights runs from
+  Thursday 21:30 to Friday 06:00, and not on Friday or Saturday night. `bedtimeActive` in
+  [src/lib/protections.ts](../src/lib/protections.ts) is the reference, with tests.
 
 ## 7. Apps: approval, blocking and per-app limits
 
@@ -278,7 +281,7 @@ All calls: `Authorization: Bearer <device token>`, JSON, HTTPS only. Errors are 
 
 | Call | When | Body |
 |---|---|---|
-| `POST /sync` | Every `nextSyncSeconds` (300 today), at app start, after network returns, after boot | `{ battery, osVersion, appVersion }` |
+| `POST /sync` | Every `nextSyncSeconds` (300 today), at app start, after network returns, after boot | `{ battery, osVersion, appVersion }`. Returns `{ deviceId, policy, requests, apps, fullReportRequested, nextSyncSeconds, timezone, features: { locationSharing }, minAppVersion }` |
 | `POST /report` | After applying anything from `/sync`, after any on-device change, and in full when `fullReportRequested` | `{ protections: [{ key, config }], full?, battery?, osVersion?, appVersion? }` |
 | `POST /usage` | Every sync cycle for today, and once for yesterday after midnight | `{ date, totalMinutes, apps, hourly }` |
 | `POST /location` | Section 9 | `{ lat, lng, accuracyM, placeLabel? }` |
@@ -297,8 +300,15 @@ schedule next run in nextSyncSeconds
 ```
 
 - Apply `requests` in the order given. Also reconcile against `policy`: if the policy says a protection is on and
-  the device doesn't have it, re-apply it. The `policy` is the source of truth for enforcement; `requests` just
-  tells you what's new.
+  the device doesn't have it, re-apply it. The `policy` is the source of truth for enforcement; `requests` tells you
+  what the parent changed and hasn't been verified yet.
+- A request keeps coming back in every `/sync` until the device reports that protection (then it's `VERIFIED` or
+  `FAILED`), so a sync response lost on the way doesn't strand a change. Applying it again must be harmless: apply,
+  read back, report. Report every protection that arrived in `requests`, even when nothing changed on the device.
+- `minAppVersion`: when it's set and above the app's version, show an update screen and stop syncing until updated.
+  `null` means no minimum.
+- `features.locationSharing: false` means the family's plan doesn't include location: don't collect or send fixes,
+  whatever the `LOCATION` policy says. Still report the `LOCATION` protection as usual.
 - A full report must answer quickly. The parent's "Run a check" waits 12 seconds
   (`CHECK_TIMEOUT_MS` in [engine.ts](../src/lib/engine.ts)), and after that marks the device unreachable. On
   Android, answer within the same sync. On iOS, answer when the app next runs (see below).
@@ -343,8 +353,9 @@ the last threshold crossed and no `apps`, and change the listing copy.
 
 ### Location (`/location`)
 
-- Only when the child's `LOCATION` policy has `sharing: true` **and** the permission is granted. The server drops
-  fixes on the Free plan and while sharing is off, but the device shouldn't send them at all.
+- Only when the child's `LOCATION` policy has `sharing: true`, the permission is granted **and** `/sync` says
+  `features.locationSharing: true`. The server drops fixes on the Free plan and while sharing is off, but the device
+  shouldn't collect or send them at all.
 - Send a fix every sync cycle while moving, or after moving more than 150 m (the server's same-place radius). At
   rest, one fix every 15 minutes is enough to count as "live" in the parent app.
 - Use balanced accuracy (not GPS-always). Send `accuracyM`.
@@ -361,8 +372,10 @@ the last threshold crossed and no `apps`, and change the listing copy.
 | `APP_BLOCKED` `{ app }` | The child opens a `BLOCKED` app | One alert per app per hour |
 | `LIMIT_REACHED` `{ minutes }` | The daily screen-time limit is hit (`minutes` is the limit) | One alert per 12 hours |
 
-Send each event once. The server throttles alerts, but events have no ID, so a retried event is counted as a new
-one (**Server gap G8**).
+Give each event an `eventId` (8–64 characters; a UUID made once per event) and send the same one on every retry.
+The server answers a repeat from the same device within 7 days with `{ "ok": true, "duplicate": true }` and does
+nothing else, so a retry after a timeout can't raise a second request. Without `eventId`, a retried event counts as
+a new one.
 
 ## 10. Security and tamper resistance
 
@@ -415,7 +428,7 @@ Nothing else. In child device mode:
 | Accessibility | Screen reader labels on every control, dynamic type, 4.5:1 contrast, block screens readable at 200% text |
 | Language | English at launch. Strings in resource files so Filipino can follow. **Decide** (D8) |
 | Age range | Readable for a 7-year-old: short sentences, no jargon ("Screen time is up", not "Quota exceeded") |
-| Versioning | Send `appVersion` on every call. **Server gap G10:** there's no minimum version for the child app yet (`MOBILE_MIN_APP_VERSION` is for parent mode) |
+| Versioning | Send `appVersion` on every call. Show an update screen when `/sync` returns a `minAppVersion` above it (set on the server with `CHILD_MIN_APP_VERSION`, per platform) |
 | Theme | Light and dark, following the system |
 
 ## 13. Server gaps
@@ -425,15 +438,15 @@ Found while writing this spec. Each needs a server change or a written decision 
 | # | Gap | Why it matters | Suggested fix |
 |---|---|---|---|
 | G1 | No way to wake the device. Changes arrive only on the next poll | iOS devices may poll hours apart; "Run a check" times out after 12 s | Store an FCM/APNs token per device on `/sync`; send a silent push on new requests and check runs. Make the check timeout longer for iOS |
-| G2 | `SCHOOL_NIGHTS` isn't defined on the server; the family time zone isn't sent to the device | Parent and device may disagree about which nights count, and about "today" when the device's zone differs from the family's | Define it in `protections.ts`; return `timezone` from `/sync` |
+| G2 | `SCHOOL_NIGHTS` isn't defined on the server; the family time zone isn't sent to the device | Parent and device may disagree about which nights count, and about "today" when the device's zone differs from the family's | **Done:** `bedtimeActive` / `isSchoolNight` in `protections.ts` define it (section 6); `/sync` returns `timezone` |
 | G3 | Guided and verify-only protections assume the device can read the setting back. On iOS, settings the parent makes in the Settings app aren't readable by the Screen Time API, and usage totals can't leave the report extension | Web, Downloads and iOS screen-time charts may be unverifiable | Prototype. If unreadable, change the iOS capability to one the server can honestly check, or report a "can't verify" status (new `CheckStatus`) |
 | G4 | Apps are keyed by display name only | Two apps with the same name collide; renamed apps lose their rules; iOS has no names | Add an optional `bundleId` / `packageName` to `/events`, `/usage` and the `apps` list |
 | G5 | `ALWAYS_ALLOWED` and `FILTERED` have no written meaning | The device can't enforce them consistently | Define them in the schema comments and here |
 | G6 | No device rename or unpair from the device | Name must be chosen before pairing; the child can't leave cleanly even with a parent present | `PATCH /device/v1/me { name }`; `DELETE /device/v1/me` with a parent approval |
 | G7 | No website access requests on the phone | The browser extension has them; phones only block | Reuse `browser-access` for devices later |
-| G8 | Events have no idempotency key | A retried event after a timeout can create a duplicate request | Accept an optional `eventId` and ignore repeats |
+| G8 | Events have no idempotency key | A retried event after a timeout can create a duplicate request | **Done:** optional `eventId`; a repeat within 7 days returns `duplicate: true` (section 9) |
 | G9 | "Offline" takes 24 hours | A child who force-stops the app goes unnoticed for a day | A shorter "stopped reporting" alert for devices that normally sync every 5 minutes (Android only) |
-| G10 | No minimum child-app version | Can't force an update after a protocol change | Return `minAppVersion` from `/sync`; the app shows an update screen when below it |
+| G10 | No minimum child-app version | Can't force an update after a protocol change | **Done:** `/sync` returns `minAppVersion` from `CHILD_MIN_APP_VERSION` (per platform, null when unset) |
 
 ## 14. Acceptance criteria
 

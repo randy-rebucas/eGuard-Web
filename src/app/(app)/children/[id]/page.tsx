@@ -154,7 +154,7 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
             <div className="card-head"><h2>Profile</h2></div>
             <ChildForm child={{ id: c!.id, name: c!.name, birthYear: c!.birthYear }} />
             <hr className="divider" style={{ margin: "20px 0" }} />
-            {u.role === "FAMILY_ADMIN" ? <DeleteChildForm childId={c!.id} name={c!.name} /> : <p className="t-meta">Only the family admin can remove {c!.name} from eGuard.</p>}
+            {u.role === "FAMILY_ADMIN" ? <DeleteChildForm childId={c!.id} name={c!.name} hasPassword={u.hasPassword} /> : <p className="t-meta">Only the family admin can remove {c!.name} from eGuard.</p>}
           </section>
         </div>
         <div className="dash-col">

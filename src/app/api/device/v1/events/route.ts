@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { fmtMinutes } from "@/lib/protections";
 import { createAlertUnless } from "@/lib/engine";
 import { authDevice, badRequest, readJson, unauthorized } from "@/lib/device-auth";
-import { LIMITS, hit } from "@/lib/rate-limit";
+import { LIMITS, clearLimit, hit } from "@/lib/rate-limit";
 import { isUniqueViolation } from "@/lib/errors";
 
 /** Trimmed, so " YouTube" and "YouTube" are one app, and a blank name is refused */
@@ -17,6 +17,9 @@ const Body = z.discriminatedUnion("type", [
   z.object({ type: z.literal("LIMIT_REACHED"), minutes: z.number().int().min(0).max(1440) }),
   z.object({ type: z.literal("APP_BLOCKED"), app: appName }),
 ]);
+
+/** Optional on every event: an id the device makes once per event (e.g. a UUID) and reuses when it retries. */
+const EventId = z.object({ eventId: z.string().trim().min(8, "eventId must be 8–64 characters").max(64, "eventId must be 8–64 characters").optional() });
 
 /** Repeated attempts to open the same blocked app raise one alert per this window. */
 const BLOCKED_ALERT_WINDOW_MS = 60 * 60_000;
@@ -33,9 +36,24 @@ export async function POST(req: Request) {
   if ((await hit(`deviceevents:${device.id}`, LIMITS.deviceEvents)).limited) {
     return NextResponse.json({ error: "Too many events. eGuard will accept the next one shortly." }, { status: 429 });
   }
-  const parsed = Body.safeParse(await readJson(req));
+  const raw = await readJson(req);
+  const parsed = Body.safeParse(raw);
   if (!parsed.success) return badRequest(parsed.error.issues[0].message);
-  const e = parsed.data;
+  const id = EventId.safeParse(raw);
+  if (!id.success) return badRequest(id.error.issues[0].message);
+  // A retry of an event already handled (the response was lost): same answer, nothing done twice
+  const seenKey = id.data.eventId ? `deviceevent:${device.id}:${id.data.eventId}` : null;
+  if ((await hit(seenKey, LIMITS.deviceEventId)).limited) return NextResponse.json({ ok: true, duplicate: true });
+  try {
+    return await handle(device, parsed.data);
+  } catch (err) {
+    // Not handled after all: let the device's retry through
+    if (seenKey) await clearLimit(seenKey).catch(() => {});
+    throw err;
+  }
+}
+
+async function handle(device: NonNullable<Awaited<ReturnType<typeof authDevice>>>, e: z.infer<typeof Body>) {
   const who = `${device.child.name}'s ${device.name}`;
   const base = { familyId: device.familyId, childId: device.childId, deviceId: device.id };
 

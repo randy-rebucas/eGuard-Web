@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useActionState, useEffect, useState, useTransition } from "react";
 import { Icon } from "./icon";
 import { Feedback } from "./feedback";
+import { ConfirmField, confirmHint } from "./confirm-field";
 import { useFlow } from "./flow";
 import { createPairingCode, pairingStatus, removeBrowser, removeDevice, renameDevice } from "@/app/actions/family";
 
@@ -129,19 +130,19 @@ export function RenameDeviceForm({ deviceId, name }: { deviceId: string; name: s
   );
 }
 
-export function RemoveBrowserButton({ installationId, name }: { installationId: string; name: string }) {
+export function RemoveBrowserButton({ installationId, name, hasPassword }: { installationId: string; name: string; hasPassword: boolean }) {
   const [open, setOpen] = useState(false);
   const [state, action, pending] = useActionState(removeBrowser.bind(null, installationId), undefined);
-  const pw = `rm-br-pw-${installationId}`;
+  const pw = `rm-br-confirm-${installationId}`;
   if (!open) return <button className="btn btn-ghost btn-sm" style={{ color: "var(--crit-ink)" }} onClick={() => setOpen(true)}><Icon name="trash" />Remove</button>;
   if (state?.fields?.gone) return <div className="form-error" role="alert"><Icon name="triangle-alert" />{state.error}</div>;
   return (
     <form action={action} className="dash-col" style={{ gap: 10 }}>
       <p className="t-meta" style={{ color: "var(--ink-2)" }}>
-        Removing {name} disconnects eGuard from it: it stops protecting and verifying that browser. Other parents in your family are told. Enter your password to confirm.
+        Removing {name} disconnects eGuard from it: it stops protecting and verifying that browser. Other parents in your family are told. {confirmHint(hasPassword)}
       </p>
       <Feedback state={state} />
-      <div className="field"><label htmlFor={pw}>Your password</label><input className="input" id={pw} name="password" type="password" required autoComplete="current-password" /></div>
+      <ConfirmField id={pw} hasPassword={hasPassword} />
       {/* Short label: this sits inside a narrow device card */}
       <div className="row" style={{ flexWrap: "wrap" }}><button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpen(false)}>Cancel</button>
         <button className="btn btn-primary btn-sm" style={{ background: "var(--crit)" }} disabled={pending}>{pending ? "Removing…" : "Remove browser"}</button></div>
@@ -149,7 +150,7 @@ export function RemoveBrowserButton({ installationId, name }: { installationId: 
   );
 }
 
-export function RemoveDeviceButton({ deviceId, name }: { deviceId: string; name: string }) {
+export function RemoveDeviceButton({ deviceId, name, hasPassword }: { deviceId: string; name: string; hasPassword: boolean }) {
   const [open, setOpen] = useState(false);
   const [state, action, pending] = useActionState(removeDevice.bind(null, deviceId), undefined);
   if (!open) return <button className="btn btn-secondary btn-sm" style={{ color: "var(--crit-ink)" }} onClick={() => setOpen(true)}><Icon name="trash" />Remove device</button>;
@@ -159,10 +160,10 @@ export function RemoveDeviceButton({ deviceId, name }: { deviceId: string; name:
   return (
     <form action={action} className="dash-col" style={{ gap: 10 }}>
       <p className="t-meta" style={{ color: "var(--ink-2)" }}>
-        Removing {name} stops eGuard verifying it, so you won&apos;t hear if its protections change. Protections already on the device stay until someone changes them there. Other parents in your family are told. Enter your password to confirm.
+        Removing {name} stops eGuard verifying it, so you won&apos;t hear if its protections change. Protections already on the device stay until someone changes them there. Other parents in your family are told. {confirmHint(hasPassword)}
       </p>
       <Feedback state={state} />
-      <div className="field"><label htmlFor="rm-dev-pw">Your password</label><input className="input" id="rm-dev-pw" name="password" type="password" required autoComplete="current-password" /></div>
+      <ConfirmField id="rm-dev-confirm" hasPassword={hasPassword} />
       <div className="row"><button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpen(false)}>Cancel</button>
         <button className="btn btn-primary btn-sm" style={{ background: "var(--crit)" }} disabled={pending}>{pending ? "Removing…" : `Remove ${name}`}</button></div>
     </form>

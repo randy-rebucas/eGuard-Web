@@ -34,10 +34,14 @@ function messageFor(status: CheckStatus, key: ProtectionKey, label: string, repo
   return `${name} on ${label} doesn't match your setting (${describeConfig(reported)})`;
 }
 
-/** Called when the device sends a heartbeat/sync. Delivers pending APPLY requests. */
+/**
+ * Called when the device sends a heartbeat/sync. Delivers open APPLY requests: new ones, and delivered ones the device
+ * hasn't reported on yet, since a sync response lost on the way (timeout, app killed) would otherwise strand them.
+ * Applying the same config again is harmless; the first report on that protection verifies or fails the request.
+ */
 export async function deviceSync(deviceId: string, info: { battery?: number | null; osVersion?: string; appVersion?: string } = {}) {
   const now = new Date();
-  const [device, pending] = await Promise.all([
+  const [device, open] = await Promise.all([
     db.device.update({
       where: { id: deviceId },
       data: {
@@ -49,17 +53,19 @@ export async function deviceSync(deviceId: string, info: { battery?: number | nu
       include: { child: { include: { policies: true } } },
     }),
     db.configRequest.findMany({
-      where: { deviceId, status: "PENDING", mode: "APPLY" },
+      where: { deviceId, status: { in: ["PENDING", "DELIVERED"] }, mode: "APPLY" },
       orderBy: { createdAt: "asc" },
     }),
   ]);
+  const fresh = open.filter((r) => r.status === "PENDING");
   await Promise.all([
-    pending.length && db.configRequest.updateMany({ where: { id: { in: pending.map((p) => p.id) } }, data: { status: "DELIVERED", deliveredAt: now } }),
+    // Only the first delivery is recorded: deliveredAt says when the device first had the chance to apply it
+    fresh.length && db.configRequest.updateMany({ where: { id: { in: fresh.map((p) => p.id) }, status: "PENDING" }, data: { status: "DELIVERED", deliveredAt: now } }),
     resolveAlerts(device.familyId, `OFFLINE:${deviceId}`),
   ]);
   return {
     device,
-    requests: pending.map((r) => ({ id: r.id, key: r.key, config: r.desired })),
+    requests: open.map((r) => ({ id: r.id, key: r.key, config: r.desired })),
     policy: device.child.policies.map((p) => ({ key: p.key, config: p.config })),
     checkRequested: !!device.checkRequestedAt,
   };
@@ -187,7 +193,8 @@ export async function processReport(deviceId: string, report: DeviceReport) {
   }
 
   if (rpHasLocation(report)) {
-    const sharing = !!report.protections.find((p) => p.key === "LOCATION")!.config.sharing;
+    // The last LOCATION entry, like the status above when a report repeats a key
+    const sharing = !!report.protections.findLast((p) => p.key === "LOCATION")!.config.sharing;
     // Sharing off: forget where the device was, so no stale position is kept, shown or exported
     const cleared = sharing ? {} : { lat: null, lng: null, accuracyM: null, placeLabel: null, locatedAt: null };
     await db.deviceLocation.upsert({

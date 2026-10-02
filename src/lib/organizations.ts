@@ -236,12 +236,20 @@ async function orgByJoinCode(actor: Actor, code: string) {
   return org;
 }
 
+/** A join code as typed by the parent (dashes and spaces allowed; normalizeCode cleans it). */
+export const JoinCodeInput = z.object({ code: z.string().trim().min(1, "Enter the code you were given.").max(40) });
+
+/** What joining shares. Shown before joining and on the family's list, on the web and in the app. */
+export const ORG_PRIVACY = "An organization only ever sees how many families joined, never anything about yours.";
+export const joinNotice = (org: string) =>
+  `${org} will see that one more family joined. It never sees your family's name, children, devices, settings, activity or location. You can leave at any time.`;
+
 /** Step 1 of joining: who the code belongs to, so the family admin can confirm. */
 export async function previewJoin(actor: Actor, code: string) {
   requireFamilyAdmin(actor, "join an organization");
   const org = await orgByJoinCode(actor, code);
   const joined = await db.orgMembership.findUnique({ where: { orgId_familyId: { orgId: org.id, familyId: actor.familyId } } });
-  return { name: org.name, kind: ORG_KINDS[org.kind], alreadyJoined: !!joined };
+  return { name: org.name, kind: ORG_KINDS[org.kind], kindKey: org.kind, alreadyJoined: !!joined };
 }
 
 /** Step 2: join. Joining again is fine. */
@@ -282,7 +290,7 @@ export async function leaveOrganization(actor: Actor, orgId: string) {
 /** The organizations a family joined, for its own settings page. */
 export async function familyOrganizations(familyId: string) {
   const rows = await db.orgMembership.findMany({ where: { familyId }, include: { org: true }, orderBy: { joinedAt: "asc" } });
-  return rows.map((m) => ({ id: m.org.id, name: m.org.name, kind: ORG_KINDS[m.org.kind], joinedAt: m.joinedAt }));
+  return rows.map((m) => ({ id: m.org.id, name: m.org.name, kind: m.org.kind, kindLabel: ORG_KINDS[m.org.kind], joinedAt: m.joinedAt }));
 }
 
 /* ---------- Buying codes ---------- */

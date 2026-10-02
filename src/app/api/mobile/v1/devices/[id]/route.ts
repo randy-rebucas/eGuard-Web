@@ -5,7 +5,7 @@ import { removeDevice } from "@/lib/family-service";
 import { notFound } from "@/lib/errors";
 import { CAPABILITY_META, PROTECTIONS, describeConfig } from "@/lib/protections";
 import { getFamily } from "@/lib/queries";
-import { authed, body } from "@/lib/mobile-api";
+import { ConfirmBody, authed, body } from "@/lib/mobile-api";
 import { deviceJson, getFamilyGraph } from "@/lib/mobile-views";
 
 async function detail(familyId: string, deviceId: string) {
@@ -44,7 +44,7 @@ export const PATCH = authed<{ id: string }>(async ({ req, user, params }) => {
  */
 export const DELETE = authed<{ id: string }>(async ({ req, user, params }) => {
   // A missing password gets 403 wrong_password (after the 404 check), like a wrong one
-  const b = await body(req, z.object({ password: z.string().optional() }));
-  await removeDevice(user, params.id, b.password ?? "");
+  const b = await body(req, ConfirmBody);
+  await removeDevice(user, params.id, { password: b.password, phrase: b.confirm });
   return NextResponse.json({ ok: true });
 });

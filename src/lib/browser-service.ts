@@ -1,7 +1,7 @@
 import "server-only";
 import type { BrowserInstallation } from "@prisma/client";
 import { db } from "./db";
-import { confirmPassword, newToken, sha256 } from "./auth";
+import { confirmDestructive, newToken, sha256 } from "./auth";
 import { audit } from "./audit";
 import { refreshPurchases } from "./billing";
 import { withDeviceSlot } from "./device-slots";
@@ -154,10 +154,10 @@ export const browserOfflineKey = (id: string) => `BROWSER_OFFLINE:${id}`;
  * Removes a browser from the family. Its tokens stop working and the extension forgets the connection on its
  * next sync, which also ends verification, so it needs the parent's password and tells the family.
  */
-export async function removeBrowser(actor: Actor, installationId: string, password: string) {
+export async function removeBrowser(actor: Actor, installationId: string, confirm: { password?: string; phrase?: string }) {
   const b = await db.browserInstallation.findFirst({ where: { id: installationId, familyId: actor.familyId }, include: { child: true } });
   if (!b) throw notFound("Browser");
-  await confirmPassword(actor.id, password);
+  await confirmDestructive(actor.id, confirm);
   // deleteMany: another parent removing it at the same moment is a 404 here, not a Prisma error
   if (!(await db.browserInstallation.deleteMany({ where: { id: b.id } })).count) throw notFound("Browser");
   const label = `${b.child.name}'s ${browserLabel(b)}`;

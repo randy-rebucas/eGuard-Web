@@ -139,6 +139,7 @@ development.
 | **Sign-in** | | |
 | `APPLE_CLIENT_IDS`, `GOOGLE_CLIENT_IDS` | optional | Comma-separated client IDs for "Continue with Apple / Google". Empty hides the buttons |
 | `MOBILE_MIN_APP_VERSION` | | Oldest parent-app version the server supports |
+| `CHILD_MIN_APP_VERSION` | optional | Oldest child-device app version: `1.2.0`, or per platform `android:1.2.0,ios:1.1.0`. Sent to devices as `minAppVersion`; empty means none |
 | **Payments** | | |
 | `PAYMONGO_SECRET_KEY`, `PAYMONGO_PUBLIC_KEY`, `PAYMONGO_WEBHOOK_SECRET` | to sell plans | PayMongo keys. Empty hides buying |
 | `PAYMONGO_PASS_METHODS` | | Methods for one-time passes (default `gcash,paymaya,card,qrph`) |
@@ -343,11 +344,11 @@ Every endpoint except `pair` needs `Authorization: Bearer <device token>`. Only 
 | Endpoint | Body | Purpose |
 |---|---|---|
 | `POST /pair` | `{ code, platform: "ANDROID"\|"IOS", name, model, kind: "PHONE"\|"TABLET", osVersion, appVersion? }` | Exchange a one-time code from the Devices page for `{ deviceId, token }`. Enforces the plan's device limit |
-| `POST /sync` | `{ battery?, osVersion?, appVersion? }` | Heartbeat. Returns `policy` (all 10 protections), `requests` to apply, `apps` rules, `fullReportRequested`, `nextSyncSeconds` |
+| `POST /sync` | `{ battery?, osVersion?, appVersion? }` | Heartbeat. Returns `policy` (all 10 protections), `requests` to apply (re-sent until the device reports on that protection), `apps` rules, `fullReportRequested`, `nextSyncSeconds`, the family's `timezone`, `features: { locationSharing }` (false: don't collect or send location) and `minAppVersion` (or null) |
 | `POST /report` | `{ protections: [{ key, config }], full?: boolean }` | The config the device actually has. Send `full: true` with all protections when `fullReportRequested` |
 | `POST /usage` | `{ date: "YYYY-MM-DD", totalMinutes, apps: [{ name, minutes }], hourly?: number[24] }` | Daily totals, optionally per local hour. Idempotent: the latest total wins |
 | `POST /location` | `{ lat, lng, accuracyM?, placeLabel? }` | Current location, overwriting the last one. Visits are recorded only when the family turns on location history |
-| `POST /events` | `{ type: "APP_INSTALLED", app }` \| `{ type: "APP_REQUESTED", app }` \| `{ type: "LIMIT_REACHED", minutes }` \| `{ type: "APP_BLOCKED", app }` | Raise alerts or approval requests. `APP_BLOCKED` alerts at most once per app per hour |
+| `POST /events` | `{ type: "APP_INSTALLED", app }` \| `{ type: "APP_REQUESTED", app }` \| `{ type: "LIMIT_REACHED", minutes }` \| `{ type: "APP_BLOCKED", app }` | Raise alerts or approval requests. `APP_BLOCKED` alerts at most once per app per hour. Optional `eventId` (8–64 chars, e.g. a UUID) on any event: a repeat from the same device within 7 days returns `{ ok: true, duplicate: true }` and does nothing |
 
 Config objects match `ProtectionConfig` in [src/lib/protections.ts](src/lib/protections.ts), for example:
 

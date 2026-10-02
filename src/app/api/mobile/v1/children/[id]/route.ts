@@ -5,14 +5,15 @@ import { ChildSchema, assertNameFree, deleteChild } from "@/lib/family-service";
 import { notFound } from "@/lib/errors";
 import { audit } from "@/lib/audit";
 import { getFamily } from "@/lib/queries";
-import { authed, body } from "@/lib/mobile-api";
+import { entitlementsFor } from "@/lib/plans";
+import { ConfirmBody, authed, body } from "@/lib/mobile-api";
 import { childOverview, getFamilyGraph, refreshFamily } from "@/lib/mobile-views";
 
 /** Child Profile › Overview. */
 export const GET = authed<{ id: string }>(async ({ user, params }) => {
   await refreshFamily(user.familyId);
   const [family, graph] = await Promise.all([getFamily(user.familyId), getFamilyGraph(user.familyId)]);
-  return NextResponse.json(await childOverview(graph, params.id, family.timezone));
+  return NextResponse.json(await childOverview(graph, params.id, family.timezone, entitlementsFor(family.plan)));
 });
 
 const Patch = z.object({
@@ -37,12 +38,15 @@ export const PATCH = authed<{ id: string }>(async ({ req, user, params }) => {
     await audit(user.familyId, user.name, "child.updated", data.name === current.name ? current.name : `${current.name} → ${data.name}`);
   }
   const [family, graph] = await Promise.all([getFamily(user.familyId), getFamilyGraph(user.familyId)]);
-  return NextResponse.json(await childOverview(graph, params.id, family.timezone));
+  return NextResponse.json(await childOverview(graph, params.id, family.timezone, entitlementsFor(family.plan)));
 });
 
-/** Deletes the child and all their data. Family admin only; needs their password. */
+/**
+ * Deletes the child and all their data. Family admin only; needs their password, or `confirm: "DELETE"` when the
+ * account has none (Apple/Google sign-in, `hasPassword: false`).
+ */
 export const DELETE = authed<{ id: string }>(async ({ req, user, params }) => {
-  const b = await body(req, z.object({ password: z.string().min(1, "Enter your password to confirm.") }));
-  await deleteChild(user, params.id, b.password);
+  const b = await body(req, ConfirmBody);
+  await deleteChild(user, params.id, { password: b.password, phrase: b.confirm });
   return NextResponse.json({ ok: true });
 });

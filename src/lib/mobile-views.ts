@@ -10,6 +10,8 @@ import { touchSimulated } from "./simulator";
 import { notFound } from "./errors";
 import { isDismissible } from "./health";
 import { capAppUsage } from "./plan-access";
+import { childLocation } from "./location";
+import type { Entitlements } from "./plans";
 import { requestedApps } from "./family-service";
 
 /**
@@ -196,7 +198,26 @@ export async function screenTime(child: ChildView, tz: string, period: Period, a
 
 /* ---------- Child overview ---------- */
 
-export async function childOverview(graph: FamilyGraph, childId: string, tz: string) {
+/**
+ * The overview's location card. Same rules as /children/{id}/location and the web overview (the newest fix from a
+ * device that shares), and nothing on plans without location sharing.
+ */
+export function overviewLocation(devices: Parameters<typeof childLocation>[0], plan: Pick<Entitlements, "locationSharing">, now = Date.now()) {
+  if (!plan.locationSharing) return { sharing: false, state: "plan_required" as const, placeLabel: null, updatedAt: null, label: "Not on your plan" };
+  const l = childLocation(devices, now);
+  return {
+    sharing: l.sharing,
+    state: l.state,
+    placeLabel: l.location?.placeLabel ?? null,
+    updatedAt: l.locatedAt,
+    label: l.state === "located" ? "Sharing enabled" : l.state === "waiting" ? "Waiting for location" : l.state === "no_devices" ? "No devices yet" : "Sharing off",
+  };
+}
+
+/** How many apps the overview names; the rest are left to the Screen Time tab. Same as the web overview. */
+const OVERVIEW_APPS = 5;
+
+export async function childOverview(graph: FamilyGraph, childId: string, tz: string, plan: Entitlements) {
   const c = childFromGraph(graph, childId);
   const todayKey = dayKey(new Date(), tz);
   const [photos, minutes, appsToday, pending, changes] = await Promise.all([
@@ -209,8 +230,8 @@ export async function childOverview(graph: FamilyGraph, childId: string, tz: str
   ]);
   const policy = (key: ProtectionKey) => c.policies.find((p) => p.key === key)?.config as ProtectionConfig | undefined;
   const bedtime = policy("BEDTIME") as Extract<ProtectionConfig, { key: "BEDTIME" }> | undefined;
-  const loc = c.devices.map((d) => d.location).find((l) => l?.sharing && l.lat != null) ?? null;
-  const sharing = c.devices.some((d) => d.location?.sharing);
+  // No more app names than the plan's Apps tab shows
+  const named = capAppUsage(appsToday, Math.min(OVERVIEW_APPS, plan.appMonitoringLimit ?? OVERVIEW_APPS)).named;
   const worstDevice = c.devices.map((d) => graph.deviceStates[d.id]).sort((a, b) => b.issues - a.issues)[0];
 
   return {
@@ -223,15 +244,10 @@ export async function childOverview(graph: FamilyGraph, childId: string, tz: str
       minutes: minutes.get(c.id) ?? 0,
       limitMinutes: limitOn(c, todayKey),
       appsUsed: appsToday.filter((a) => a.app !== "Others").length,
-      topApps: appsToday.slice(0, 5).map((a) => ({ name: a.app, minutes: a.minutes })),
+      topApps: named.map((a) => ({ name: a.app, minutes: a.minutes })),
     },
     bedtime: bedtime ? { enabled: bedtime.enabled, start: bedtime.start, end: bedtime.end, days: bedtime.days, label: describeConfig(bedtime) } : null,
-    location: {
-      sharing,
-      placeLabel: loc?.placeLabel ?? null,
-      updatedAt: loc ? loc.locatedAt ?? loc.updatedAt : null,
-      label: !sharing ? "Sharing off" : loc ? "Sharing enabled" : "Waiting for location",
-    },
+    location: overviewLocation(c.devices, plan),
     deviceProtection: {
       state: !c.devices.length ? "no_devices" : worstDevice.issues ? "issues" : c.devices.every((d) => graph.deviceStates[d.id].key === "offline") ? "offline" : "healthy",
       label: !c.devices.length ? "No devices yet" : worstDevice.issues ? `${worstDevice.issues} issue${worstDevice.issues > 1 ? "s" : ""}` : "Healthy",

@@ -58,8 +58,9 @@ Cover:
   400 with the extension message; plan device limit → 409, and the code works again after a device is removed;
   rate limit → 429 (skip if the IP is allowlisted).
 - 401 on every endpoint with no token and with a wrong token.
-- sync: returns policy, requests, apps, fullReportRequested, nextSyncSeconds; delivers PENDING APPLY requests once
-  (second sync returns none); never returns GUIDED requests.
+- sync: returns policy, requests, apps, fullReportRequested, nextSyncSeconds, timezone, features.locationSharing
+  (false on Free) and minAppVersion; re-sends an APPLY request on every sync until the device reports that
+  protection (then it's gone), so a lost response doesn't strand it; never returns GUIDED requests.
 - report: a matching config verifies the request and updates policy; a mismatch fails a DELIVERED request; a config
   with an extra field or a string instead of a number does NOT verify (this is the exact-match rule in the spec);
   turning a passing protection off raises "Protection setting changed" (or "Location sharing turned off").
@@ -67,7 +68,8 @@ Cover:
 - usage: idempotent per day (the latest total wins); hourly must be 24 values.
 - location: dropped while sharing is off and on the Free plan; stored otherwise.
 - events: each type raises its alert once inside its throttle window; APP_REQUESTED for an allowed app returns its
-  approval and raises nothing.
+  approval and raises nothing; a repeated eventId returns `duplicate: true` and raises nothing, a missing one works
+  as before.
 
 Use the parent mobile API to set up state (children, pairing codes, protection changes) rather than writing to the
 database, unless an existing suite already does that for the same thing.
@@ -77,6 +79,9 @@ no existing suite changed behavior. Don't change any route to make a test pass; 
 ```
 
 ### 0.2 Define the undefined values
+
+> **Partly done (2026-10-02):** step 1 is in (`bedtimeActive` / `isSchoolNight` in `protections.ts`, tested in
+> `device-rules.test.ts`). Steps 2 and 3 (the AppApproval meanings, G5) are still open.
 
 ```
 Read docs/child-app-spec.md section 6 (the "Time zone and days" rule), section 7 and section 13 (G2, G5).
@@ -99,6 +104,10 @@ what FILTERED means or asked.
 
 ### 0.3 Sync additions (G2, G10)
 
+> **Done (2026-10-02)**, except the API tests, which wait for 0.1: `timezone`, `minAppVersion` from
+> `CHILD_MIN_APP_VERSION` (`1.2.0` or `android:1.2.0,ios:1.1.0`, null when unset; `src/lib/child-app.ts`), plus
+> `features.locationSharing`. Docs and G2/G10 in the spec are updated.
+
 ```
 Read docs/child-app-spec.md sections 8 and 13 (G2, G10) and src/app/api/device/v1/sync/route.ts.
 
@@ -118,6 +127,11 @@ Done when: typecheck, unit and API tests pass.
 ```
 
 ### 0.4 Event idempotency (G8)
+
+> **Done differently (2026-10-02):** no new table. A seen `eventId` is recorded in the existing `RateLimit` table
+> (key `deviceevent:<device>:<eventId>`, 7-day window), which the maintenance job already purges, and is released if
+> handling the event fails so the retry gets through. A repeat returns `{ ok: true, duplicate: true }`. Only the API
+> tests remain, with 0.1. Use this prompt only if you want a dedicated table instead.
 
 ```
 Read docs/child-app-spec.md sections 9 ("Events") and 13 (G8), and src/app/api/device/v1/events/route.ts.

@@ -61,9 +61,9 @@ Every error has the same shape. `error` is always written for the parent and saf
 
 | Status | `code` | Meaning / what the app should do |
 |---|---|---|
-| 400 | `invalid`, `invalid_json` | Validation failed. For body fields, `error` starts with the field path, e.g. `"email: Enter a valid email address."`, so you can highlight the field |
+| 400 | `invalid`, `invalid_json`, `confirm_required` | `confirm_required`: a deletion by a parent without a password didn't include `confirm: "DELETE"` (see [Confirming deletions](#confirming-deletions)). Otherwise validation failed. For body fields, `error` starts with the field path, e.g. `"email: Enter a valid email address."`, so you can highlight the field |
 | 401 | `unauthorized`, `invalid_credentials`, `invalid_token` | Session gone (sign out locally), wrong password, or a rejected Apple/Google token |
-| 403 | `forbidden`, `wrong_password`, `email_unverified` | Family-admin-only action, a password confirmation was wrong, or pairing a device before verifying email |
+| 403 | `forbidden`, `wrong_password`, `password_not_set`, `email_unverified` | Family-admin-only action, a password confirmation was wrong, changing the email of an account without a password, or pairing a device before verifying email |
 | 404 | `not_found` | Doesn't exist **or belongs to another family**. The API never reveals which |
 | 409 | `conflict`, `unsupported`, `not_dismissible` | Duplicate email/app, device limit reached, protection unsupported on the child's devices, alert can't be dismissed |
 | 413 | `too_large` | Photo over 2 MB |
@@ -71,6 +71,17 @@ Every error has the same shape. `error` is always written for the parent and saf
 | 429 | `rate_limited` | 5 failed sign-ins in 10 minutes (per email and IP) |
 | 501 | `provider_not_configured` | Apple/Google sign-in isn't enabled on this server (check `/app-info` first) |
 | 500 | `server_error` | Unexpected. Show `error` and let the parent retry |
+
+### Confirming deletions
+
+Deleting the account, a child, a device or a browser needs a confirmation in the body:
+
+| `user.hasPassword` | Body | Show |
+|---|---|---|
+| `true` | `{ "password": "…" }` | A password field. Wrong: `403 wrong_password`; too many wrong tries: `429 rate_limited` |
+| `false` (Apple/Google sign-in) | `{ "confirm": "DELETE" }` | "Type DELETE to confirm". Anything else: `400 confirm_required` |
+
+A parent with a password can't use `confirm` instead of it.
 
 ### Data types
 
@@ -113,6 +124,7 @@ Returned by `/me`, every sign-in, and `dashboard.user`.
   "firstName": "Randy",
   "email": "randy@example.com",
   "role": "FAMILY_ADMIN",
+  "emailVerified": true,
   "family": { "id": "cmujeoltx0000ncgsox90ftwt", "name": "Cruz Family", "timezone": "Asia/Manila" },
   "notifications": { "notifyPush": true, "notifyEmail": true, "notifyApproval": true, "weeklySummary": true },
   "hasPassword": true,
@@ -297,7 +309,7 @@ Returned by `PUT /children/{id}/protections/{KEY}`, `POST /children/{id}/setup` 
 | 13 | App Management | `GET /children/{id}/apps?filter=`, `PATCH /apps/{id}`, `POST /children/{id}/apps` (Request to Install App) |
 | 14 | Location | `GET /children/{id}/location`, "View All" → `GET /children/{id}/location/visits`, `GET /locations` |
 | 15 | Alerts | `GET /alerts?filter=`, `POST /alerts/{id}/read`, `/read-all`, `/dismiss`, `GET /alerts/unread-count` (includes "App blocked") |
-| 16 | Settings | `GET /family`, `/me`, `/me/notifications`, `/family/privacy`, `/me/sessions`, `/me/password`, `POST /auth/logout` |
+| 16 | Settings | `GET /family`, `/me`, `/me/notifications`, `/family/privacy`, `/me/sessions`, `POST /me/password`, `/me/two-factor`, `/me/identities`, `POST /me/export`, `DELETE /me`, `GET /organizations`, `POST /auth/logout` |
 | 17 | Subscription | `GET /subscription`. Android upgrade: `GET /subscription/plans` → Play Billing → `POST /subscription/google-play` |
 | 18 | Help & Support | `GET /help?q=`, `GET /help/{slug}`, `POST /support/tickets` |
 | — | Tab-bar badge | `GET /alerts/unread-count` |
@@ -393,7 +405,7 @@ Parents must verify their email before they can pair a child's device. Everythin
 
 | Endpoint | Body | Response |
 |---|---|---|
-| `POST /me/verify-email` | none | Sends a new link. `202 { sent: true, email }`, or `200 { sent: false }` if already verified. `429 rate_limited` if a link went out in the last minute |
+| `POST /me/verify-email` | none | Sends a new link. `202 { sent: true, email }`, or `200 { sent: false, email }` if already verified. `429 rate_limited` if a link went out in the last minute |
 | `POST /auth/verify-email` (no auth) | `{ token }` | For apps that open the link themselves (universal link / app link). `200 { ok: true }`, `400 link_expired` or `400 link_invalid` (used, replaced or unknown) |
 
 Otherwise the link opens a web page, where the parent taps **Verify my email**. The link doesn't verify on page load, so email scanners that open links can't use it up.
@@ -490,7 +502,8 @@ Ends this session only. Pass the device's push token so this phone stops receivi
 |---|---|---|
 | `GET /me` | none | `User` |
 | `PATCH /me` | any of `{ name, email, password, timezone }` | `User`. `timezone` (IANA, e.g. `Asia/Manila`) is the family's: only the family admin can change it (`403 forbidden` for another parent sending a different zone). Changing `email` needs the current `password` (`403 wrong_password`, or `403 password_not_set` when `hasPassword` is false). `409` if the email is taken. A new email sets `emailVerified: false`, sends a link to the new address, and unlinks Apple/Google sign-ins |
-| `DELETE /me` | `{ password }`, or `{ confirm: "DELETE" }` when `hasPassword` is false | `{ ok, deleted: "family" \| "account" }`. **Deletes the account.** The family admin's account deletes the whole family (children, devices, history, other parents). Another parent's account removes only them. Sign out locally afterwards |
+| `DELETE /me` | `{ password }`, or `{ confirm: "DELETE" }` when `hasPassword` is false ([Confirming deletions](#confirming-deletions)) | `{ ok, deleted: "family" \| "account" }`. **Deletes the account.** The family admin's account deletes the whole family (children, devices, history, other parents). Another parent's account removes only them. Sign out locally afterwards |
+| `POST /me/export` | none | The family's data as a JSON file (`Content-Disposition: attachment; filename="eguard-family-export.json"`): parents, children, settings, devices, app rules, screen time, location visits, history, alerts, browsers, support requests and purchases. Never includes passwords or tokens. Save it or hand it to the share sheet. Any parent can export; each export is recorded in the family's audit log. Same file as the website's export |
 | `GET /me/identities` | none | `{ identities: [{ id, provider, email, createdAt }] }`: linked Apple/Google sign-ins |
 | `DELETE /me/identities/{id}` | none | `{ ok }`. `409` if it's the only way to sign in (no password set) |
 | `POST /me/password` | `{ current, next }` | `{ ok, message }`. `403 wrong_password`, `400` if `next` < 10 chars. **Signs out every other session**; this one stays |
@@ -525,8 +538,12 @@ One call for the whole Home tab.
 }
 ```
 
-`summary` is "Your family's digital safety looks good today.", "N children need attention." or, when the family has
-no children yet, "Add your first child to get started." (show the Add Child call to action).
+`summary` is one of:
+- "Add your first child to get started." when the family has no children yet (show the Add Child call to action)
+- "N children need attention." / "1 child needs attention."
+- "Pair Mia's device to start protecting them." or "N children have no paired device yet." when a child has no device
+  (show the pairing call to action)
+- "Your family's digital safety looks good today."
 
 #### `GET /health[?childId=]`
 
@@ -668,10 +685,10 @@ Child Profile › Overview.
 ```json
 {
   "child": { …ChildSummary },
-  "health": { "score": 10, "total": 10, "label": "Fully protected", "checks": [ …same as /health checks ] },
+  "health": { "score": 10, "total": 10, "offline": 0, "verified": true, "label": "Fully protected", "checks": [ …same as /health checks ] },
   "today": { "minutes": 134, "limitMinutes": 240, "appsUsed": 3, "topApps": [ { "name": "YouTube", "minutes": 54 } ] },
   "bedtime": { "enabled": true, "start": "21:30", "end": "06:00", "days": "EVERY_DAY", "label": "9:30 PM – 6:00 AM" },
-  "location": { "sharing": true, "placeLabel": "Home", "updatedAt": "2026-09-27T05:28:40.136Z", "label": "Sharing enabled" },
+  "location": { "sharing": true, "state": "located", "placeLabel": "Home", "updatedAt": "2026-09-27T05:28:40.136Z", "label": "Sharing enabled" },
   "deviceProtection": { "state": "healthy", "label": "Healthy" },
   "pendingApprovals": 0,
   "devices": [ …Device ],
@@ -682,7 +699,14 @@ Child Profile › Overview.
 }
 ```
 
-- `location.label` is "Sharing enabled", "Sharing off" or "Waiting for location".
+- `health.verified` / `health.offline` work as in [`GET /health`](#get-healthchildid): only say "verified" when
+  `verified` is true.
+- `today.topApps` names up to 5 apps, most used first, and never more than the plan's `appMonitoringLimit`.
+  `appsUsed` counts every app used today.
+- `location.state` is the same as in `GET /locations` (`located`, `waiting`, `sharing_off`, `no_devices`), plus
+  `plan_required` on plans without location sharing (then `sharing` is false and there's no place). `location.label`
+  is "Sharing enabled", "Waiting for location", "Sharing off", "No devices yet" or "Not on your plan".
+  `updatedAt` is when the newest fix was taken.
 - `deviceProtection.state` is `healthy`, `issues`, `offline` or `no_devices`.
 - `pendingApprovals` counts app requests waiting for the parent (use it for a badge on the Apps tab).
 
@@ -692,8 +716,10 @@ Body: any of `{ name, age }` (or `birthYear`). Returns the same shape as `GET /c
 
 #### `DELETE /children/{id}`
 
-Family admin only. Body: `{ "password": "…" }` (the admin's own password). This permanently deletes the child, their
-devices and all their data. Errors: `403 wrong_password`, `403 forbidden`.
+Family admin only. Body: `{ "password": "…" }` (the admin's own password), or `{ "confirm": "DELETE" }` when the
+admin has no password (see [Confirming deletions](#confirming-deletions)). This permanently deletes the child,
+their devices and all their data. Errors: `403 forbidden`, `403 wrong_password`, `400 confirm_required`,
+`429 rate_limited`.
 
 #### Photo: `PUT` / `GET` / `DELETE /children/{id}/photo`
 
@@ -855,9 +881,13 @@ Cancels everything in the batch that isn't verified yet. Response: `{ "cancelled
   "apps": [
     { "id": "cmujeom2c0008ncgsgn8kylmz", "name": "Roblox", "approval": "ALLOWED", "approvalLabel": "Allowed",
       "requested": false, "allowed": true, "dailyLimitMinutes": null, "todayMinutes": 42, "installedAt": "2026-09-27T00:56:40.499Z" }
-  ]
+  ],
+  "limited": null
 }
 ```
+
+- `limited` is `null`, or `{ hidden, message }` on a plan with an `appMonitoringLimit`: only that many apps are
+  listed (requests first, then the most used), `hidden` more exist. Show `message` as the upgrade note.
 
 - `requested` is true while a request waits for the parent. Show Approve (`PATCH /apps/{id}` with `ALLOWED`) and
   Decline (`BLOCKED`); either one resolves the request, even when the app is already blocked.
@@ -887,7 +917,9 @@ about 5 minutes).
 { "name": "Khan Academy", "approval": "ALWAYS_ALLOWED", "dailyLimitMinutes": null }
 ```
 
-`approval` defaults to `ALLOWED`. Returns `409` if an app with that name is already on the child's list.
+`name` is 1–80 characters; `approval` is any app `approval` value and defaults to `ALLOWED`; `dailyLimitMinutes` is
+1–1440 or `null`. Response: `201 { id, name, approval, approvalLabel, dailyLimitMinutes }`, the same shape as
+`PATCH /apps/{id}`. Returns `409` if an app with that name is already on the child's list.
 
 ### 4.10 Location
 
@@ -1005,13 +1037,13 @@ a batch completes.
 | `GET /devices` | none | `{ devices: [ …Device ], limit: 8 }` |
 | `GET /devices/{id}` | none | `Device` + `protections: [{ key, name, icon, capability, capabilityLabel, status, reportedLabel, message, lastVerifiedAt }]` (all 10) |
 | `PATCH /devices/{id}` | `{ name }` (1–60 chars) | Same as GET |
-| `DELETE /devices/{id}` | `{ password }` | `{ ok }`. The device is unpaired and its token stops working. `403 wrong_password` without the parent's password (`403 password_not_set` for Apple/Google accounts without one). The family gets a "Device removed" alert, emailed to parents, since eGuard stops verifying the device |
+| `DELETE /devices/{id}` | `{ password }`, or `{ confirm: "DELETE" }` without one ([Confirming deletions](#confirming-deletions)) | `{ ok }`. The device is unpaired and its token stops working. `403 wrong_password` / `400 confirm_required` without the confirmation. The family gets a "Device removed" alert, emailed to parents, since eGuard stops verifying the device |
 | `GET /browsers` | none | `{ browsers: [{ id, childId, childName, deviceLabel, browser, browserVersion, extensionVersion, platform, lastSeenAt, connected, createdAt }] }`: the eGuard browser extension installs. `connected: false` means eGuard disconnected it for security (its sign-in key was used from two places); remove it and add it again. Browsers don't enforce a policy yet, so never show them as protected |
 | `GET /children/{id}/browser-policy` | none | `{ version, safeBrowsing, safeSearch, blockedCategories[], blockedDomains[], allowedDomains[], unknownSitesPolicy, schedule, updatedBy, updatedAt, categories: [{ key, label, hint }] }`. Created with age-based defaults (`updatedBy: "eGuard defaults"`) the first time it's read. Applies to all of the child's browsers |
 | `PUT /children/{id}/browser-policy` | every field: `{ safeBrowsing, safeSearch, blockedCategories: ["ADULT", …], blockedDomains: ["example.com"], allowedDomains: [], unknownSitesPolicy: "ALLOW" \| "WARN" \| "BLOCK", schedule: { enabled, startTime: "21:00", endTime: "06:00" } \| null }` | Same as GET. Sites are normalised (`https://www.x.com/page` → `www.x.com`), sorted and de-duplicated, up to 500 per list. `400` with a parent-readable `error` for a site that isn't an address, a site in both lists, or equal focus-hour times. Saving identical settings keeps the version; any change adds one, which browsers pick up within 5 minutes. `409 conflict` if another parent saved at the same moment. Optional `baseVersion`: the `version` you showed the parent; if the policy changed since (an approved access request, another parent), the save is refused with `409 stale_version` instead of undoing that change. Reload and let the parent redo their edit. Send it from every editor. `unknownSitesPolicy` is for sites on neither list: `ALLOW`, `WARN` (notice first) or `BLOCK` (allowed list only); focus hours block everything not on the allowed list |
 | `GET /children/{id}/browser-access-requests` | none | `{ pending: [Request], recent: [Request] }` where `Request` is `{ id, domain, reason, status: "PENDING" \| "APPROVED" \| "DENIED", duration, expiresAt, createdAt, decidedAt, decidedBy }`. Sites the child asked to open from the browser's block page; each new one also raises an `ATTENTION` alert "Website access request" (`resolveKey` `WEBREQ:<id>`) |
 | `POST /browser-access-requests/{id}` | `{ decision: "APPROVE", duration: "15M" \| "1H" \| "TODAY" \| "ALWAYS" }` or `{ decision: "DENY" }` | `{ request }`. Approval becomes a new browser policy version the browser picks up within 5 minutes (the child can also tap Check again): `ALWAYS` adds the site to the allowed list, the others allow it until then (`TODAY` = midnight in the family's time zone). Resolves the alert. `409 already_decided` if another parent answered first |
-| `DELETE /browsers/{id}` | `{ password }` | `{ ok }`. Same rules as removing a device; the extension forgets the connection on its next check and the family gets a "Browser removed" alert |
+| `DELETE /browsers/{id}` | `{ password }` or `{ confirm: "DELETE" }` | `{ ok }`. Same rules as removing a device; the extension forgets the connection on its next check and the family gets a "Browser removed" alert |
 | `POST /checks` | `{ deviceId? }` (omit for all devices) | `202 { runId }`. `409 no_devices` if the family has no paired device |
 | `GET /checks/{runId}` | none | See below. Poll until `done` |
 
@@ -1054,6 +1086,10 @@ Settings › Family.
   "deviceCount": 5,
   "devicesUsed": 6,
   "deviceLimit": 8,
+  "childCount": 3,
+  "childLimit": 5,
+  "plan": "eGuard Plus",
+  "entitlements": { …same as GET /subscription },
   "canManage": true
 }
 ```
@@ -1068,6 +1104,21 @@ Compare `devicesUsed` with `deviceLimit` ("6 of 8 devices").
 | `DELETE /family/members/{id}` | none | `{ ok }`. Admin only. Removes a `PARENT` (not yourself) and signs them out everywhere, or withdraws a pending invitation |
 | `GET /family/privacy` | none | `{ keepLocationHistory, shareAnalytics, retentionDays }` |
 | `PATCH /family/privacy` | any of `{ keepLocationHistory, shareAnalytics }` | Same object. Admin only. **Turning `keepLocationHistory` off deletes all stored visits**, so confirm with the parent first |
+
+#### Organizations
+
+Schools, community groups and businesses give families a **join code** (8 characters; dashes and spaces are
+ignored). Joining shares nothing about the family: the organization only sees how many families joined. Other
+parents in the family get an alert when the admin joins or leaves.
+
+| Method & path | Body | Response / notes |
+|---|---|---|
+| `GET /organizations` | none | `{ organizations: [{ id, name, kind, kindLabel, joinedAt }], canManage, privacy }`. `kind` is `SCHOOL`, `COMMUNITY` or `BUSINESS` (pick an icon); `kindLabel` is "School", "Community group" or "Business". `privacy` is a sentence to show under the list. Hide join and leave when `canManage` is false |
+| `POST /organizations/preview` | `{ code }` | `{ name, kind, kindLabel, alreadyJoined, message }`. Show `name` and `message` (what the organization will and won't see) before the parent confirms. `400 invalid` for a code that matches no organization; `429 rate_limited` after several wrong codes. Admin only |
+| `POST /organizations` | `{ code }` | `201 { ok, name, organizations }`. Joins; joining again is fine. `409 conflict` at the limit of organizations per family. Admin only |
+| `DELETE /organizations/{id}` | none | `{ ok, name }`. Leaves. A plan the organization already sponsored keeps running until it ends. Admin only |
+
+Sponsor codes, which pay for a plan, are redeemed on the website only (see [Known gaps](#7-known-gaps)).
 
 ### 4.14 Subscription
 
@@ -1344,6 +1395,7 @@ These parts of the design aren't backed by the API yet. Plan the UI accordingly.
 | "Gaming time 1 hour/day" (Recommended Setup) | No app categories exist, so there's no per-category limit | Leave it out, or use per-app limits (`PATCH /apps/{id}`) for game apps |
 | Push notifications | Sent through Firebase Cloud Messaging once the server has `FCM_SERVICE_ACCOUNT`; alerts go out with the maintenance job (every few minutes), not instantly | Register FCM tokens; still refresh with `/alerts/unread-count` on foreground. A push's `data` has `type: "alert"`, `alertId`, `category` and `childId?`: open the alert |
 | Upgrade / Manage Subscription in the apps | Plans are sold on the web only (PayMongo) for now; Google Play billing is turned off and App Store purchases aren't supported, so `billingAvailable` is `false` | Show the plan and usage without a buy button or a link to the website |
-| Password for Apple/Google accounts | Social accounts have no password, so they can't change one or confirm deleting a child | Hide "Change password" for social sign-ins; route child deletion to support |
+| Password for Apple/Google accounts | Social accounts have no password until they set one, so they can't change one or change their email | Hide "Change password" while `hasPassword` is false and offer "Forgot password?" to set one. Deletions use "Type DELETE" instead ([Confirming deletions](#confirming-deletions)) |
+| Sponsor codes | Redeeming a code that pays for a plan happens on the website only: unlocking a paid plan with a code inside a store app can break App Store and Google Play payment rules. Joining an organization (free) works in the app | Show a sponsored plan (`store.name: "VOUCHER"`) as "Sponsored plan"; no in-app redeem and no link to the website |
 | Realtime updates | No WebSocket/SSE | Poll as described in [Polling](#polling) |
 | Location history on the web | Visits are available only through this API | none |

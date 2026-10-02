@@ -103,7 +103,7 @@ export async function updateChild(childId: string, _: FormState, form: FormData)
 export async function deleteChildData(childId: string, _: FormState, form: FormData): Promise<FormState> {
   if (!Id.safeParse(childId).success) return { error: "Child not found." };
   try {
-    await family.deleteChild(await requireAdmin(), childId, String(form.get("password") ?? ""));
+    await family.deleteChild(await requireAdmin(), childId, confirmFrom(form));
   } catch (e) {
     return failed(e);
   }
@@ -113,6 +113,9 @@ export async function deleteChildData(childId: string, _: FormState, form: FormD
 // Server actions take whatever the client sends, so arguments are checked before they reach Prisma
 // (an object such as { not: "" } would otherwise be read as a filter and match every row in the family)
 const Id = z.string().min(1).max(64);
+
+/** A deletion form's confirmation: the password field, or "Type DELETE" for parents without a password. */
+const confirmFrom = (form: FormData): family.Confirm => ({ password: String(form.get("password") ?? ""), phrase: String(form.get("phrase") ?? "") });
 const Approval = z.enum(["ALLOWED", "ALWAYS_ALLOWED", "FILTERED", "BLOCKED", "PENDING"] satisfies AppApproval[], { error: "Choose a valid setting." });
 const AppLimit = z.number({ error: "Enter the limit in minutes." }).finite().min(0).max(1440, "A daily limit can be up to 24 hours.").nullable();
 
@@ -165,7 +168,7 @@ export async function removeDevice(deviceId: string, _: FormState, form: FormDat
   const u = await requireUser();
   if (!Id.safeParse(deviceId).success) return { error: "This device was already removed.", fields: { gone: "1" } };
   try {
-    await family.removeDevice(u, deviceId, String(form.get("password") ?? ""));
+    await family.removeDevice(u, deviceId, confirmFrom(form));
   } catch (e) {
     // Already removed (another tab, another parent): nothing left to do here
     if (e instanceof ServiceError && e.status === 404) return { error: "This device was already removed.", fields: { gone: "1" } };
@@ -179,7 +182,7 @@ export async function removeBrowser(installationId: string, _: FormState, form: 
   const u = await requireUser();
   if (!Id.safeParse(installationId).success) return { error: "This browser was already removed.", fields: { gone: "1" } };
   try {
-    await browsers.removeBrowser(u, installationId, String(form.get("password") ?? ""));
+    await browsers.removeBrowser(u, installationId, confirmFrom(form));
   } catch (e) {
     if (e instanceof ServiceError && e.status === 404) return { error: "This browser was already removed.", fields: { gone: "1" } };
     return failed(e);
