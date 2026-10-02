@@ -9,7 +9,7 @@
 - APIs: parent app `src/app/api/mobile/v1` (wrapper `authed`/`open` in `src/lib/mobile-api.ts`), child devices
   `src/app/api/device/v1` (`authDevice`), browser extension `src/app/api/browser/v1`, organizations `src/app/api/org/v1`
   (`orgApi`), webhooks under `src/app/api/billing`, cron `src/app/api/cron/maintenance`.
-- Docs for app teams: `docs/mobile-api.md`, `docs/child-app-spec.md`, `docs/browser-extension-api.md`.
+- Docs for app teams: `docs/mobile-api-parent.md`, `docs/mobile-api-child.md`, `docs/child-app-spec.md`, `docs/browser-extension-api.md`.
 - `src/proxy.ts` records the requested path so sign-in can return there (`src/lib/return-to.ts`).
 
 ## Helpers worth reusing

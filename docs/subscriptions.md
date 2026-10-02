@@ -3,7 +3,7 @@
 How eGuard plans are sold, paid for, kept in sync with the payment provider, and enforced.
 
 This document covers the server side: data model, flows, state handling, configuration and operations. For the
-mobile API's request and response shapes, see [mobile-api.md › 4.14 Subscription](mobile-api.md#414-subscription).
+mobile API's request and response shapes, see [mobile-api-parent.md › 4.14 Subscription](mobile-api-parent.md#414-subscription).
 
 ## Contents
 

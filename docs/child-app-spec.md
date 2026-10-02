@@ -9,7 +9,8 @@ what the child sees, how each protection is enforced, and exactly how the app ta
 server doesn't support yet is marked **Server gap** and collected in [section 13](#13-server-gaps).
 
 **Related:** [app-listing.md](app-listing.md) (store policies, permissions, privacy forms),
-[mobile-api.md](mobile-api.md) (parent mode), and the README's "Device API" and "How verification works".
+[mobile-api-child.md](mobile-api-child.md) (the device API this app calls: every endpoint, field and error),
+[mobile-api-parent.md](mobile-api-parent.md) (parent mode), and the README's "How verification works".
 
 ## Contents
 

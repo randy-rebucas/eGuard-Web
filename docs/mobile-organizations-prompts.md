@@ -14,7 +14,7 @@ one app repo and one binary.
 - **Two repositories.** Phase A runs in this repo (`eguard`, the server). Phases B to D run in the app repo
   (`eguard-app`), created by child-app-prompts 1.0.
 - **Keep the app repo's docs current.** The app repo can't see this repo. Before each app prompt, copy the latest
-  `docs/mobile-organizations.md`, `docs/mobile-api.md` and `docs/child-app-spec.md` into the app repo's `docs/`
+  `docs/mobile-organizations.md`, `docs/mobile-api-parent.md`, `docs/mobile-api-child.md` and `docs/child-app-spec.md` into the app repo's `docs/`
   (prompt B.0 sets up a script for it).
 - **Stack:** Kotlin + Jetpack Compose on Android, Swift + SwiftUI on iOS, as in child-app-prompts. If you change it,
   change the app repo's `CLAUDE.md`; the prompts still apply.
@@ -84,7 +84,7 @@ Add tests/api/mobile-organizations.test.ts following the existing suites' helper
 - privacy: walk every organization response body and assert it contains no family id, family name, child or device
   id from the test family. This test matters more than the others.
 
-Then document the endpoints in docs/mobile-api.md: a new "4.16 Organizations" section in the same style as the
+Then document the endpoints in docs/mobile-api-parent.md: a new "4.16 Organizations" section in the same style as the
 others, a row in the section 3 screen map ("Settings › Organizations"), and a contents entry.
 
 Done when: `npm run typecheck`, `npm test` and `npm run test:api` pass, the web organization pages still work, and
@@ -102,7 +102,7 @@ Add `sponsor` to the `store` object of GET /api/mobile/v1/subscription: the orga
 VOUCHER, otherwise null. Keep every other field unchanged.
 
 Extend the existing subscription API test (or the A.1 suite) with a redeemed code: store.name is VOUCHER and
-store.sponsor is the organization's name. Update docs/mobile-api.md section 4.14 where it describes `store`.
+store.sponsor is the organization's name. Update docs/mobile-api-parent.md section 4.14 where it describes `store`.
 
 Done when: typecheck, unit and API tests pass.
 ```
@@ -140,8 +140,8 @@ Every prompt in this phase runs in the app repo and assumes the previous ones ar
 ```
 Read docs/mobile-organizations.md sections 1, 3 and 5, and the repo's CLAUDE.md.
 
-This app has two modes in one binary: parent mode (the parent API, docs/mobile-api.md) and child device mode (the
-device API, docs/child-app-spec.md). Restructure the repo so each mode only pulls in what it needs, as section 5
+This app has two modes in one binary: parent mode (the parent API, docs/mobile-api-parent.md) and child device mode (the
+device API, docs/mobile-api-child.md and docs/child-app-spec.md). Restructure the repo so each mode only pulls in what it needs, as section 5
 describes, without building any features:
 
 Android: Gradle modules :core-ui (theme, components, strings), :core-net (OkHttp client, JSON, error mapping,
@@ -155,8 +155,8 @@ tests). The DeviceActivityMonitor and ShieldConfiguration extensions depend on C
 Also:
 - Update CLAUDE.md: the two modes, the module rule, that docs/mobile-organizations.md is the spec for modes and
   organizations, and that the "no analytics, ads or tracking SDKs" rule now covers the whole app.
-- Add scripts/sync-docs.sh (and .ps1) that copies docs/mobile-organizations.md, docs/mobile-api.md and
-  docs/child-app-spec.md from a path given as an argument (the eguard repo) into docs/.
+- Add scripts/sync-docs.sh (and .ps1) that copies docs/mobile-organizations.md, docs/mobile-api-parent.md,
+  docs/mobile-api-child.md and docs/child-app-spec.md from a path given as an argument (the eguard repo) into docs/.
 
 Done when: both platforms build and every existing test passes, and the dependency check fails if :parent imports
 :child.
@@ -184,10 +184,10 @@ choosing each mode and backing out.
 ### B.2 Android parent API client and sign-in
 
 ```
-Read CLAUDE.md and docs/mobile-api.md sections 1, 2, 4.1 to 4.3 and 5.1.
+Read CLAUDE.md and docs/mobile-api-parent.md sections 1, 2, 4.1 to 4.3 and 5.1.
 
 In :parent, build the parent API client and the sign-in screens:
-- Kotlin data classes for the shapes in docs/mobile-api.md sections 1 and 2; errors mapped from { error, code } to a
+- Kotlin data classes for the shapes in docs/mobile-api-parent.md sections 1 and 2; errors mapped from { error, code } to a
   sealed type, keeping `error` to show to the parent as-is.
 - Headers: Authorization Bearer, X-eGuard-Client: android, and a readable User-Agent (section 1 "Headers").
 - Parent token in EncryptedSharedPreferences, never logged. Any 401 → clear it and go to sign-in.
@@ -209,9 +209,9 @@ Configuration Health, **(b)** Children, Add Child and onboarding (screens 4–9)
 **(h)** Settings, Family, Subscription and Help.
 
 ```
-Read CLAUDE.md, docs/mobile-api.md sections 1–3 and the endpoint sections for: {group, e.g. "Alerts (4.11)"}.
+Read CLAUDE.md, docs/mobile-api-parent.md sections 1–3 and the endpoint sections for: {group, e.g. "Alerts (4.11)"}.
 
-(plan first) Build the {group} screens in :parent from the screen map in docs/mobile-api.md section 3, using the
+(plan first) Build the {group} screens in :parent from the screen map in docs/mobile-api-parent.md section 3, using the
 API client from B.2. Rules from the API doc that can't bend:
 - never show a setting as saved until its batch item is VERIFIED;
 - hide admin-only actions for role PARENT, and the upgrade button unless billingAvailable, upgrade and canManage
@@ -227,7 +227,7 @@ and a run against a local server with seeded data.
 
 ```
 Read CLAUDE.md and docs/mobile-organizations.md sections 6.1 to 6.3, 6.5, 7 and 9, and the Organizations section
-of docs/mobile-api.md.
+of docs/mobile-api-parent.md.
 
 In :parent, add Settings › Organizations (between Family and Subscription) with the family part:
 - the joined list, its empty state, and the PARENT (not family admin) variant, from section 6.2;
@@ -301,7 +301,7 @@ Run each after its Android equivalent is committed, so the behavior is settled. 
 ### C.1 iOS launch, mode choice and parent client
 
 ```
-Read CLAUDE.md, docs/mobile-organizations.md sections 3–5, and docs/mobile-api.md sections 1, 2, 4.1–4.3 and 5.1.
+Read CLAUDE.md, docs/mobile-organizations.md sections 3–5, and docs/mobile-api-parent.md sections 1, 2, 4.1–4.3 and 5.1.
 
 Build the iOS equivalents of B.1 and B.2: ModeStore in the Keychain (not in the App Group: the extensions never
 need the parent token), launch routing, "Who's using this device?", the single mode-switch function, and in

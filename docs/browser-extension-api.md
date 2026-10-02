@@ -1,7 +1,7 @@
 # eGuard Browser Extension API — v1
 
 The API the eGuard browser extension calls from the child's computer. Parents manage browsers, policies and access
-requests through the [Parent Mobile API](mobile-api.md) (§4.6 "Browser codes", §4.12); this page covers only the
+requests through the [Parent Mobile API](mobile-api-parent.md) (§4.6 "Browser codes", §4.12); this page covers only the
 extension's side.
 
 - **Base URL:** `https://www.eguard.family/api/browser/v1`
