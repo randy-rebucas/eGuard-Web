@@ -162,7 +162,9 @@ export async function setAppApproval(actor: Actor, appId: string, approval: AppA
 
 export async function setAppLimit(actor: Actor, appId: string, minutes: number | null, via: string) {
   const app = await appFor(actor.familyId, appId);
-  const m = minutes && minutes > 0 ? Math.min(1440, Math.round(minutes)) : null;
+  // Round before the zero test: 0.4 would otherwise be stored as 0, which devices read as "no time at all"
+  const rounded = Math.min(1440, Math.round(minutes ?? 0));
+  const m = rounded > 0 ? rounded : null;
   if (app.dailyLimitMinutes === m) return app;
   const updated = await db.childApp.update({ where: { id: appId }, data: { dailyLimitMinutes: m } });
   // In the child's history like approvals, so "who changed what" covers limits too

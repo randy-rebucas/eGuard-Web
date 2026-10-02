@@ -123,7 +123,8 @@ Returned by `/me`, every sign-in, and `dashboard.user`.
 
 `hasPassword` is false for parents who signed up with Apple/Google and haven't set a password. For them, hide
 "Change password" and point to "Forgot password?". Deleting the account asks them to type DELETE instead of a
-password. `twoFactor` is always false; two-step verification isn't available yet.
+password. `twoFactor` is true when two-step verification is on: signing in then needs a code (see
+[Two-step verification](#two-step-verification-post-authtwo-factor)).
 
 `role` is `FAMILY_ADMIN` or `PARENT`. Admin-only actions return `403` for a `PARENT`, so hide them in the UI:
 - deleting a child
@@ -403,7 +404,8 @@ Otherwise the link opens a web page, where the parent taps **Verify my email**. 
 { "email": "randy@example.com", "password": "ChangeMe123!" }
 ```
 
-Response: `{ token, expiresAt, user }`. Errors: `401 invalid_credentials`, `429 rate_limited`. After 10 wrong
+Response: `{ token, expiresAt, user }`, or `{ twoFactorRequired: true, challenge, expiresAt }` when the parent has
+two-step verification on (see below). Errors: `401 invalid_credentials`, `429 rate_limited`. After 10 wrong
 passwords in 15 minutes the account is locked for the rest of that window, even with the right password; offer
 "Forgot password?", since a reset lifts the lock.
 
@@ -417,7 +419,8 @@ too many requests from one address.
 #### `POST /auth/reset-password` → `200`
 
 `{ "token": "<from the link>", "password": "at least 10 characters" }`. For apps that open reset links
-themselves. Sets the password, **signs out every session**, and returns a new one: `{ token, expiresAt, user }`.
+themselves. Sets the password, **signs out every session**, and returns a new one: `{ token, expiresAt, user }`
+(or `twoFactorRequired`, like sign-in: an emailed link alone never gets past two-step verification).
 Errors: `400 invalid` (password too short), `400 link_invalid` (used, replaced or unknown), `400 link_expired`.
 
 #### Invitations (no auth): `GET /auth/invite`, `POST /auth/accept-invite`, `POST /auth/decline-invite`
@@ -446,7 +449,8 @@ address emails the invitation again rather than a reset link.
 | `name` | string, optional | Apple only gives the name on the **first** authorization. Forward `fullName` so the account gets a name |
 | `guardian` | boolean, optional | Needed only when this creates a new account. Without it, a new sign-up gets `400 guardian_required`: show the parent/guardian (18+) confirmation and retry the same `idToken` with `guardian: true` |
 
-Response: `{ token, expiresAt, user, isNew }`. Continue with onboarding when `isNew` is true.
+Response: `{ token, expiresAt, user, isNew }`, or `{ twoFactorRequired: true, challenge, expiresAt, isNew: false }`
+when the linked account has two-step verification on. Continue with onboarding when `isNew` is true.
 
 - If the provider account is already linked, the parent is signed in.
 - Otherwise, an existing eGuard account with **exactly** the same email gets linked. Aliases (`+tag`, Gmail dots)
@@ -459,6 +463,21 @@ Errors: `400 email_required` (no verified email; Apple "Hide my email" relay add
 
 > Server setup: the ID token's audience must be listed in `APPLE_CLIENT_IDS` (the iOS bundle ID) or
 > `GOOGLE_CLIENT_IDS` (the iOS and Android OAuth client IDs). Send these IDs to the backend team.
+
+#### Two-step verification: `POST /auth/two-factor`
+
+When `/auth/login`, `/auth/social` or `/auth/reset-password` answer `{ twoFactorRequired: true, challenge, expiresAt }`,
+no session exists yet. Ask for the 6-digit code from the parent's authenticator app (offer "Use a recovery code"
+too), then:
+
+```json
+{ "challenge": "<from the sign-in response>", "code": "123456" }
+```
+
+Response: `{ token, expiresAt, user }`, plus `usedRecoveryCode: true, recoveryCodesLeft` when a recovery code was
+used (tell the parent it's used up, and suggest new codes when few are left). Errors: `400 wrong_code` (try
+again), `401 challenge_expired` (10 minutes passed, 5 wrong codes, or already used: go back to the sign-in screen),
+`429 rate_limited`. Each authenticator code works once.
 
 #### `POST /auth/logout[?pushToken=<token>]` → `200`
 
@@ -475,12 +494,17 @@ Ends this session only. Pass the device's push token so this phone stops receivi
 | `GET /me/identities` | none | `{ identities: [{ id, provider, email, createdAt }] }`: linked Apple/Google sign-ins |
 | `DELETE /me/identities/{id}` | none | `{ ok }`. `409` if it's the only way to sign in (no password set) |
 | `POST /me/password` | `{ current, next }` | `{ ok, message }`. `403 wrong_password`, `400` if `next` < 10 chars. **Signs out every other session**; this one stays |
-| `GET /me/notifications` | none | `{ notifyPush, notifyEmail, notifyApproval, weeklySummary }`. `notifyEmail` emails alerts that need attention; `notifyApproval` (with `notifyEmail` on) also emails a child's requests for an app or a blocked website |
+| `GET /me/notifications` | none | `{ notifyPush, notifyEmail, notifyApproval, weeklySummary }`. `notifyEmail` emails alerts that need attention; `notifyPush` pushes the same alerts to this parent's phones (plans with `realtimeAlerts`); `notifyApproval` also sends a child's requests for an app or a blocked website, by whichever of email and push is on |
 | `PATCH /me/notifications` | any subset of those booleans | Same object, updated |
-| `POST /me/push-tokens` | `{ token, platform: "IOS" \| "ANDROID" }` | `201 { ok }`. Call it after sign-in and whenever APNs/FCM rotates the token. Re-registering the same token under another parent moves it |
+| `POST /me/push-tokens` | `{ token, platform: "IOS" \| "ANDROID" }` | `201 { ok }`. `token` is an **FCM registration token** on both platforms (iOS: from the Firebase Messaging SDK, not the raw APNs token). Call it after sign-in and whenever FCM rotates the token. Re-registering the same token under another parent moves it. Tokens FCM reports as uninstalled are removed |
 | `DELETE /me/push-tokens` | `{ token }` | `{ ok }` |
 | `GET /me/sessions` | none | `{ sessions: [{ id, userAgent, createdAt, lastSeenAt, current }] }` |
 | `DELETE /me/sessions` | none | `{ signedOut: n }`. Signs out everywhere except this session |
+| `GET /me/two-factor` | none | `{ available, enabled, recoveryCodesLeft }`. `available` false: the server isn't set up for it; hide the option |
+| `POST /me/two-factor/setup` | none | `{ secret, uri }`. Show `uri` (an `otpauth://` link) as a QR code, or open it to hand it to an authenticator app on this phone; show `secret` for typing in by hand. Calling again replaces the secret. `409` if already on |
+| `POST /me/two-factor/confirm` | `{ code }` | `{ recoveryCodes: [10 strings] }`. A code from the app turns it on. **Show the recovery codes once** with copy/save; they're never returned again. `400 wrong_code`, `400 setup_missing` |
+| `POST /me/two-factor/recovery-codes` | `{ code }` (authenticator or recovery code) | `{ recoveryCodes }`. The old codes stop working |
+| `DELETE /me/two-factor` | `{ code }` (authenticator or recovery code) | `{ available, enabled: false, recoveryCodesLeft: 0 }`. Turns it off |
 
 ### 4.4 Dashboard and Configuration Health
 
@@ -1318,9 +1342,8 @@ These parts of the design aren't backed by the API yet. Plan the UI accordingly.
 | Design element | Status | Suggested UI for now |
 |---|---|---|
 | "Gaming time 1 hour/day" (Recommended Setup) | No app categories exist, so there's no per-category limit | Leave it out, or use per-app limits (`PATCH /apps/{id}`) for game apps |
-| Push notifications | Tokens are stored (`/me/push-tokens`), but nothing sends pushes yet | Register tokens anyway; refresh with `/alerts/unread-count` on foreground |
+| Push notifications | Sent through Firebase Cloud Messaging once the server has `FCM_SERVICE_ACCOUNT`; alerts go out with the maintenance job (every few minutes), not instantly | Register FCM tokens; still refresh with `/alerts/unread-count` on foreground. A push's `data` has `type: "alert"`, `alertId`, `category` and `childId?`: open the alert |
 | Upgrade / Manage Subscription in the apps | Plans are sold on the web only (PayMongo) for now; Google Play billing is turned off and App Store purchases aren't supported, so `billingAvailable` is `false` | Show the plan and usage without a buy button or a link to the website |
 | Password for Apple/Google accounts | Social accounts have no password, so they can't change one or confirm deleting a child | Hide "Change password" for social sign-ins; route child deletion to support |
-| Two-step verification | `twoFactor` is a stored flag only | Show "Coming soon" |
 | Realtime updates | No WebSocket/SSE | Poll as described in [Polling](#polling) |
 | Location history on the web | Visits are available only through this API | none |

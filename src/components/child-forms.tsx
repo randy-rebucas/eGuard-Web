@@ -83,9 +83,12 @@ export function AppControls({ app }: { app: { id: string; name: string; approval
   const saveLimit = () => {
     if (limit === saved) return;
     const minutes = limit ? Number(limit) : null;
-    if (minutes != null && (!Number.isFinite(minutes) || minutes < 0 || minutes > 1440)) { setLimit(saved); toast("Enter a daily limit between 0 and 1440 minutes.", "error"); return; }
+    if (minutes != null && (!Number.isFinite(minutes) || minutes < 0 || minutes > 1440)) { setLimit(saved); toast("Enter a daily limit up to 1440 minutes, or leave it empty for no limit.", "error"); return; }
+    // The server keeps whole minutes and treats 0 as no limit: show what it saved, not what was typed
+    const stored = Math.round(minutes ?? 0) || null;
     run(() => setAppLimit(app.id, minutes), {
-      ok: minutes ? `${app.name} limited to ${minutes} minutes a day.` : `Daily limit removed for ${app.name}.`,
+      ok: stored ? `${app.name} limited to ${stored} minutes a day.` : `Daily limit removed for ${app.name}.`,
+      onOk: () => setLimit(stored ? String(stored) : ""),
       onError: () => setLimit(saved),
     });
   };

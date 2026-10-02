@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { clientIp, sessionResponse } from "@/lib/mobile-account";
+import { clientIp, signInResponse } from "@/lib/mobile-account";
 import { body, open } from "@/lib/mobile-api";
 import { LIMITS, enforce, ipKey } from "@/lib/rate-limit";
 import { verifyIdToken } from "@/lib/social-auth";
@@ -23,5 +23,5 @@ export const POST = open(async ({ req }) => {
   const b = await body(req, Body);
   const id = await verifyIdToken(b.provider, b.idToken);
   const r = await signInWithIdentity(id, { name: b.name, guardian: b.guardian });
-  return sessionResponse(req, r.userId, r.isNew ? 201 : 200, { isNew: r.isNew });
+  return signInResponse(req, r.userId, r.isNew ? 201 : 200, { isNew: r.isNew });
 });

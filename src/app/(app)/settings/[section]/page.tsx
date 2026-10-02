@@ -22,6 +22,9 @@ import { renewalWord } from "@/lib/entitlement";
 import { PLANS, entitlementsFor, planByName, planByProduct, webPrice, webProduct } from "@/lib/plans";
 import { LOCATION_UPGRADE, planWith } from "@/lib/plan-access";
 import { confirmReturn, passMethods, webBillingAvailable } from "@/lib/web-billing";
+import { status as twoFactorStatus } from "@/lib/two-factor";
+import { pushAvailable } from "@/lib/push";
+import { TwoStepSettings } from "@/components/two-step";
 
 export async function generateMetadata(props: PageProps<"/settings/[section]">) {
   const { section } = await props.params;
@@ -130,17 +133,26 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
       );
     }
 
-    case "notifications":
+    case "notifications": {
+      const push = pushAvailable();
       return (
         <>
           {head}
-          <SettingSwitch setting="notifyPush" title="Push notifications" desc={plan.realtimeAlerts ? "Protection changes and devices that need attention" : `Push alerts are included with ${planWith((e) => e.realtimeAlerts).name}. Alerts still show in eGuard and by email.`} checked={user.notifyPush && plan.realtimeAlerts} disabled={!plan.realtimeAlerts} />
+          <SettingSwitch setting="notifyPush" title="Push notifications"
+            desc={!plan.realtimeAlerts ? `Push alerts are included with ${planWith((e) => e.realtimeAlerts).name}. Alerts still show in eGuard and by email.`
+              : push ? "Protection changes, devices that need attention and children's requests, on phones signed in to the eGuard app"
+              : "Protection changes and devices that need attention"}
+            checked={user.notifyPush && plan.realtimeAlerts} disabled={!plan.realtimeAlerts} />
           <SettingSwitch setting="notifyEmail" title="Email alerts" desc="Protection changes, devices that stop syncing, anything that needs action, and organization activity" checked={user.notifyEmail} />
-          <SettingSwitch setting="notifyApproval" title="App approval requests" desc="Email me when a child asks for an app or a blocked website (needs Email alerts on)" checked={user.notifyApproval} />
+          <SettingSwitch setting="notifyApproval" title="App approval requests" desc="When a child asks for an app or a blocked website. Sent by email and push, for whichever of those is on." checked={user.notifyApproval} />
           <SettingSwitch setting="weeklySummary" title="Weekly summary" desc="Every Sunday at 6 PM" checked={user.weeklySummary} />
-          <p className="t-meta" style={{ marginTop: 12 }}>Email alerts go to your verified email address. Push notifications and the weekly summary aren&apos;t sent yet; your choices are saved and apply once they are.</p>
+          <p className="t-meta" style={{ marginTop: 12 }}>
+            Email alerts go to your verified email address.{" "}
+            {push ? "The weekly summary isn't sent yet; your choice is saved and applies once it is." : "Push notifications and the weekly summary aren't sent yet; your choices are saved and apply once they are."}
+          </p>
         </>
       );
+    }
 
     case "privacy":
       return (
@@ -156,14 +168,25 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
       );
 
     case "security": {
-      const [sessions, identities] = await Promise.all([
+      const [sessions, identities, twoStep, { recovery }] = await Promise.all([
         db.session.findMany({ where: { userId: u.id, expiresAt: { gt: new Date() } }, orderBy: { lastSeenAt: "desc" } }),
         db.oAuthIdentity.findMany({ where: { userId: u.id }, orderBy: { createdAt: "asc" } }),
+        twoFactorStatus(u.id),
+        props.searchParams,
       ]);
+      // Just signed in with a recovery code (see verifySecondStep)
+      const recoveryLeft = typeof recovery === "string" && /^\d+$/.test(recovery) ? Number(recovery) : null;
       return (
         <>
           {head}
-          <div className="setting-row"><div className="grow"><div className="t-title">Two-step verification</div><div className="t-meta">Not available yet. Sign-in currently uses your password only.</div></div><span className="pill tone-muted">Coming soon</span></div>
+          {recoveryLeft !== null && twoStep.enabled ? (
+            <div className="verify-banner" role="status" style={{ marginBottom: 12 }}><Icon name="key-round" /><p>You signed in with a recovery code, so it no longer works. {recoveryLeft} {recoveryLeft === 1 ? "code is" : "codes are"} left.{recoveryLeft <= 2 ? " Make new ones below, and check your authenticator app is set up on your phone." : ""}</p></div>
+          ) : null}
+          <div className="setting-row">
+            {twoStep.available || twoStep.enabled
+              ? <TwoStepSettings enabled={twoStep.enabled} recoveryCodesLeft={twoStep.recoveryCodesLeft} />
+              : <><div className="grow"><div className="t-title">Two-step verification</div><div className="t-meta">Not available yet. Sign-in currently uses your password only.</div></div><span className="pill tone-muted">Coming soon</span></>}
+          </div>
           <div className="setting-row" style={{ alignItems: "flex-start", flexDirection: "column" }}>
             <div className="t-title">Active sessions</div>
             {sessions.map((s) => (

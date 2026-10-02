@@ -372,7 +372,7 @@ Everything the parent app's screens need. **Full reference for app developers: [
 | Screen | Endpoints |
 |---|---|
 | Launch / About | `GET /app-info` (no auth): API version, minimum app version, which sign-in buttons to show |
-| Create account, sign in | `POST /auth/register` `{ name, email, password, familyName? }` · `POST /auth/login` · `POST /auth/social` `{ provider: "apple"\|"google", idToken, name? }` · `POST /auth/logout[?pushToken=]` · `POST /auth/forgot-password` `{ email }` · `POST /auth/reset-password` `{ token, password }` |
+| Create account, sign in | `POST /auth/register` `{ name, email, password, familyName? }` · `POST /auth/login` · `POST /auth/social` `{ provider: "apple"\|"google", idToken, name? }` · `POST /auth/logout[?pushToken=]` · `POST /auth/forgot-password` `{ email }` · `POST /auth/reset-password` `{ token, password }` · `POST /auth/two-factor` `{ challenge, code }` (after a sign-in answers `twoFactorRequired`) |
 | Add child | `POST /children` `{ name, age, profile? }` · `PUT /children/{id}/photo` (raw JPEG/PNG/WebP/HEIC body, ≤ 2 MB) · `GET`/`DELETE` the photo |
 | Protection profile | `GET /profiles?age=12`: Balanced / Protected / Custom, with the recommended one flagged |
 | Recommended setup | `GET /children/{id}/recommendations?profile=`: all 10 suggested configs, and how each device applies them |
@@ -388,7 +388,7 @@ Everything the parent app's screens need. **Full reference for app developers: [
 | Location | `GET /children/{id}/location`: current place and, with history on, today's and yesterday's visits · `GET /children/{id}/location/visits` (paged) · `GET /locations` (all children) |
 | Alerts | `GET /alerts?filter=ALL\|PROTECTION\|APPS\|SCREEN_TIME\|DEVICES\|LOCATION\|SYSTEM&before=` · `GET /alerts/unread-count` · `POST /alerts/{id}/read` · `POST /alerts/read-all` · `POST /alerts/{id}/dismiss` (info only) |
 | Devices, checks | `GET /devices` · `GET`/`PATCH`/`DELETE /devices/{id}` · `POST /checks` `{ deviceId? }` → poll `GET /checks/{runId}` |
-| Settings | `GET`/`PATCH /me` (email change needs `password`) · `DELETE /me` · `GET /me/identities`, `DELETE /me/identities/{id}` · `POST /me/password` · `GET`/`PATCH /me/notifications` · `POST`/`DELETE /me/push-tokens` · `GET`/`DELETE /me/sessions` · `GET /family` · `POST /family/members`, `DELETE /family/members/{id}` · `GET`/`PATCH /family/privacy` (admin) |
+| Settings | `GET`/`PATCH /me` (email change needs `password`) · `DELETE /me` · `GET /me/identities`, `DELETE /me/identities/{id}` · `POST /me/password` · `GET`/`PATCH /me/notifications` · `POST`/`DELETE /me/push-tokens` · `GET`/`DELETE /me/sessions` · `GET`/`DELETE /me/two-factor`, `POST /me/two-factor/setup`, `/confirm`, `/recovery-codes` · `GET /family` · `POST /family/members`, `DELETE /family/members/{id}` · `GET`/`PATCH /family/privacy` (admin) |
 | Subscription | `GET /subscription`: plan, renewal, features, entitlements, usage vs limits · `GET /subscription/plans` · `POST /subscription/google-play` `{ productId, purchaseToken }` |
 | Help & support | `GET /help?q=&category=` and `GET /help/{slug}` (no auth) · `GET`/`POST /support/tickets` |
 
@@ -572,9 +572,11 @@ docs/                  developer and launch documentation
 ## Not built yet
 
 - **Native Android/iOS apps.** The device and parent APIs are ready for them. Until they exist, the simulator stands in.
-- **Push delivery and the weekly summary.** Email alerts are sent (see [Background jobs](#background-jobs)). The
-  parent app's push tokens are stored, but no FCM/APNs provider is wired up. The Plus plan lists this as "Push alerts
-  (coming soon)".
+- **The weekly summary.** The setting is saved but nothing is sent yet; a design (the weekly family digest) is in
+  review. Push delivery is built ([src/lib/push.ts](src/lib/push.ts),
+  Firebase Cloud Messaging) and switches on with `FCM_SERVICE_ACCOUNT`; pushes go out with the maintenance job, so
+  they're as quick as its schedule. The Plus plan still lists "Push alerts (coming soon)" until the apps register FCM
+  tokens in production.
 - **"Gaming time"** on the app's Recommended Setup screen. eGuard has per-app limits but no app categories yet, so
   there's no per-category limit to recommend.
 - **Setting a password while signed in.** Parents who signed up with Apple/Google set their first password through
@@ -582,7 +584,6 @@ docs/                  developer and launch documentation
   takes typing DELETE instead.
 - **Buying in the apps.** Plans are sold on the web only. Google Play billing is built but turned off, and App Store
   (StoreKit) purchases aren't built. Changing the card for auto-renew isn't built either.
-- **Two-step verification.** Shown as "Coming soon".
 - **Realtime.** The UI polls (bell every 30 s, workflows every ~1 s). WebSockets or SSE would replace this.
 - **Browser policy caching.** `GET /api/browser/v1/policy` has no `If-None-Match` / `304` yet.
 - **Family photography.** The hero has a CSS photo slot (`--hero-photo`, see `globals.css`) for licensed images.

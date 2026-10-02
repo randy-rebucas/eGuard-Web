@@ -9,6 +9,8 @@ import { refreshPendingBatches } from "./organizations";
 import { ORG_EVENT_RETENTION_DAYS, sendCodeExpiryReminders, sendOrgDigests } from "./org-notifications";
 import { appUrl } from "./email-verification";
 import { escapeHtml, sendMail } from "./mail";
+import { familyEntitlements } from "./plan-access";
+import { alertPush, pushAvailable, pushToUsers } from "./push";
 
 /**
  * Background upkeep, run every few minutes by /api/cron/maintenance. Before this existed, offline
@@ -64,6 +66,7 @@ export async function purgeExpiredData(now = new Date()) {
     orgEvents: await db.orgEvent.deleteMany({ where: { createdAt: { lt: new Date(now.getTime() - ORG_EVENT_RETENTION_DAYS * 864e5) } } }).then((r) => r.count),
     auditLog: await db.auditLog.deleteMany({ where: { createdAt: { lt: new Date(now.getTime() - AUDIT_RETENTION_DAYS * 864e5) } } }).then((r) => r.count),
     sessions: await db.session.deleteMany({ where: { expiresAt: { lt: now } } }).then((r) => r.count),
+    signInChallenges: await db.loginChallenge.deleteMany({ where: { expiresAt: { lt: now } } }).then((r) => r.count),
     links: (await db.emailVerification.deleteMany({ where: { expiresAt: { lt: now } } })).count + (await db.passwordReset.deleteMany({ where: { expiresAt: { lt: now } } })).count,
     pairingCodes: await db.pairingCode.deleteMany({ where: { expiresAt: { lt: new Date(now.getTime() - 864e5) } } }).then((r) => r.count),
     rateLimits: await db.rateLimit.deleteMany({ where: { resetAt: { lt: now } } }).then((r) => r.count),
@@ -86,20 +89,23 @@ function alertEmail(a: Alert, name: string) {
 }
 
 /**
- * Emails each new important alert, once, to the family's parents who have email alerts on and a verified
- * address. Alerts that resolved before we got to them aren't sent. (Push needs FCM/APNs, not wired yet.)
+ * Sends each new important alert, once: by email to the family's parents with "Email alerts" on and a verified
+ * address, and by push (when FCM is set up) to those with "Push notifications" on, on plans with real-time alerts.
+ * A child's request also needs "App approval requests". Alerts that resolved before we got to them aren't sent.
  */
-export async function emailNewAlerts() {
+export async function notifyNewAlerts() {
   const alerts = await db.alert.findMany({ where: { notifiedAt: null }, orderBy: { createdAt: "asc" }, take: 500 });
-  let sent = 0;
+  const push = pushAvailable();
+  let sent = 0, pushed = 0;
   for (const a of alerts) {
     // Claim it first so two overlapping runs never send the same alert twice
     const claimed = await db.alert.updateMany({ where: { id: a.id, notifiedAt: null }, data: { notifiedAt: new Date() } });
     if (!claimed.count || a.resolvedAt || !worthEmail(a)) continue;
     const parents = await db.user.findMany({
-      where: { familyId: a.familyId, notifyEmail: true, emailVerifiedAt: { not: null }, ...(isChildRequest(a) ? { notifyApproval: true } : {}) },
+      where: { familyId: a.familyId, ...(isChildRequest(a) ? { notifyApproval: true } : {}) },
+      select: { id: true, email: true, name: true, notifyEmail: true, notifyPush: true, emailVerifiedAt: true },
     });
-    for (const p of parents) {
+    for (const p of parents.filter((p) => p.notifyEmail && p.emailVerifiedAt)) {
       try {
         await sendMail({ to: p.email, ...alertEmail(a, p.name.split(/\s+/)[0]) });
         sent++;
@@ -107,8 +113,16 @@ export async function emailNewAlerts() {
         console.error("[maintenance] alert email failed", a.id, e);
       }
     }
+    const pushTo = parents.filter((p) => p.notifyPush).map((p) => p.id);
+    if (push && pushTo.length && (await familyEntitlements(a.familyId)).realtimeAlerts) {
+      try {
+        pushed += await pushToUsers(pushTo, alertPush(a));
+      } catch (e) {
+        console.error("[maintenance] alert push failed", a.id, e);
+      }
+    }
   }
-  return { alerts: alerts.length, sent };
+  return { alerts: alerts.length, sent, pushed };
 }
 
 /**
@@ -127,7 +141,7 @@ export async function runMaintenance() {
   const codeBatches = await step("code batch refresh", () => refreshPendingBatches());
   const codeReminders = await step("code expiry reminders", () => sendCodeExpiryReminders());
   const orgDigests = await step("organization digests", () => sendOrgDigests());
-  const emails = await step("alert emails", emailNewAlerts);
+  const emails = await step("alert emails and push", notifyNewAlerts);
   const purged = await step("data retention", () => purgeExpiredData());
   return { offlineFamilies, offlineBrowsers, purchases, passReminders, codeBatches, codeReminders, orgDigests, emails, purged, failed };
 }

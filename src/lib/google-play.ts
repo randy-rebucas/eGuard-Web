@@ -12,7 +12,7 @@ import { ServiceError } from "./errors";
  */
 
 type Fetch = typeof fetch;
-type ServiceAccount = { client_email: string; private_key: string; private_key_id?: string; token_uri?: string };
+export type ServiceAccount = { client_email: string; private_key: string; private_key_id?: string; token_uri?: string };
 
 const API = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications";
 const SCOPE = "https://www.googleapis.com/auth/androidpublisher";
@@ -39,14 +39,18 @@ const b64url = (v: string | Buffer) => Buffer.from(v).toString("base64url");
 
 const tokenCache = new Map<string, { token: string; until: number }>();
 
-/** OAuth access token for the service account (JWT bearer grant), cached until shortly before it expires. */
-export async function accessToken(account: ServiceAccount, f: Fetch = fetch, now = Date.now()) {
-  const hit = tokenCache.get(account.client_email);
+/**
+ * OAuth access token for the service account (JWT bearer grant), cached until shortly before it expires.
+ * `scope` defaults to the Play Developer API; push (lib/push) asks for Firebase Cloud Messaging.
+ */
+export async function accessToken(account: ServiceAccount, f: Fetch = fetch, now = Date.now(), scope = SCOPE) {
+  const cacheKey = `${account.client_email} ${scope}`;
+  const hit = tokenCache.get(cacheKey);
   if (hit && hit.until > now) return hit.token;
   const aud = account.token_uri ?? "https://oauth2.googleapis.com/token";
   const iat = Math.floor(now / 1000);
   const head = b64url(JSON.stringify({ alg: "RS256", typ: "JWT", ...(account.private_key_id ? { kid: account.private_key_id } : {}) }));
-  const claims = b64url(JSON.stringify({ iss: account.client_email, scope: SCOPE, aud, iat, exp: iat + 3600 }));
+  const claims = b64url(JSON.stringify({ iss: account.client_email, scope, aud, iat, exp: iat + 3600 }));
   const sig = createSign("RSA-SHA256").update(`${head}.${claims}`).sign(account.private_key).toString("base64url");
   const res = await f(aud, {
     method: "POST",
@@ -55,7 +59,7 @@ export async function accessToken(account: ServiceAccount, f: Fetch = fetch, now
   });
   if (!res.ok) throw new ServiceError(502, "Couldn't reach Google Play. Try again in a moment.", "store_unavailable");
   const body = (await res.json()) as { access_token: string; expires_in: number };
-  tokenCache.set(account.client_email, { token: body.access_token, until: now + (body.expires_in - 60) * 1000 });
+  tokenCache.set(cacheKey, { token: body.access_token, until: now + (body.expires_in - 60) * 1000 });
   return body.access_token;
 }
 

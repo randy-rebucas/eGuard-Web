@@ -65,7 +65,7 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
             </div>
           </div>
           <div className="health">
-            <HealthRing score={c.health.score} total={c.health.total} small label={`${c.name}'s protection health`} />
+            <HealthRing score={c.health.score} total={c.health.total} small empty={!c.devices.length} label={`${c.name}'s protection health`} />
             <div>
               <div className="eyebrow">Protection Health</div>
               <div className="t-title" style={{ fontSize: 16, marginTop: 4 }}>{!c.devices.length ? "No devices to check yet"

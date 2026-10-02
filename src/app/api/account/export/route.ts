@@ -15,7 +15,7 @@ export async function POST() {
     include: {
       users: {
         select: {
-          name: true, email: true, role: true, createdAt: true, emailVerifiedAt: true,
+          name: true, email: true, role: true, createdAt: true, emailVerifiedAt: true, twoFactor: true,
           identities: { select: { provider: true, email: true, createdAt: true } },
         },
       },

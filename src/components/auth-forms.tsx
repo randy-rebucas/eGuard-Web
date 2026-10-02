@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useActionState, useState } from "react";
-import { acceptInvitation, declineInvitation, forgotPassword, login, register, resetPasswordWithToken } from "@/app/actions/auth";
+import { acceptInvitation, declineInvitation, forgotPassword, login, register, resetPasswordWithToken, verifySecondStep } from "@/app/actions/auth";
 import { Icon } from "./icon";
 
 function ErrorBox({ error }: { error?: string }) {
@@ -67,6 +67,37 @@ export function LoginForm({ next = "" }: { next?: string }) {
       {process.env.NODE_ENV !== "production" ? (
         <p className="dev-banner"><Icon name="info" />Demo account: randy@example.com / ChangeMe123!</p>
       ) : null}
+    </form>
+  );
+}
+
+/** /login/two-step: the authenticator code, or a recovery code for a parent without their phone. */
+export function TwoStepForm({ next = "" }: { next?: string }) {
+  const [state, action, pending] = useActionState(verifySecondStep, undefined);
+  const [recovery, setRecovery] = useState(false);
+  if (state?.fields?.expired) {
+    return (
+      <div className="auth-form">
+        <Header title="Sign in again" sub={state.error ?? "This sign-in expired."} />
+        <Link className="btn btn-primary auth-submit" href={next ? `/login?next=${encodeURIComponent(next)}` : "/login"}>Back to sign in</Link>
+      </div>
+    );
+  }
+  return (
+    <form action={action} className="auth-form" noValidate>
+      <Header title="Two-step verification" sub={recovery ? "Enter one of the recovery codes you saved when you turned this on. Each works once." : "Enter the 6-digit code from your authenticator app."} />
+      <ErrorBox error={state?.error} />
+      {next ? <input type="hidden" name="next" value={next} /> : null}
+      {recovery ? (
+        <IconInput key="rc" id="code" label="Recovery code" icon="key-round" autoComplete="off" autoCapitalize="none" spellCheck={false} placeholder="xxxx-xxxx-xxxx" required autoFocus />
+      ) : (
+        <IconInput key="otp" id="code" label="Verification code" icon="shield-check" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9 ]*" maxLength={7} placeholder="123456" required autoFocus />
+      )}
+      <button className="btn btn-primary auth-submit" disabled={pending}>{pending ? "Checking…" : "Verify and sign in"}</button>
+      <p className="auth-foot">
+        <button type="button" className="link-btn" onClick={() => setRecovery((r) => !r)}>{recovery ? "Use the authenticator app instead" : "Can't use your app? Use a recovery code"}</button>
+      </p>
+      <p className="auth-foot">Lost your phone and your recovery codes? Email eGuard support from your account&apos;s address. <Link href="/login">Start over</Link></p>
     </form>
   );
 }

@@ -6,8 +6,8 @@ import { authed, body } from "@/lib/mobile-api";
 const Body = z.object({ token: z.string().trim().min(10).max(4096), platform: z.enum(["IOS", "ANDROID"]) });
 
 /**
- * Registers this phone's APNs/FCM token. A token belongs to one parent at a time, so signing in
- * as someone else on the same phone moves it. Delivery isn't wired up yet (see README).
+ * Registers this phone's FCM registration token (lib/push sends alerts to it). A token belongs to one parent at a
+ * time, so signing in as someone else on the same phone moves it.
  */
 export const POST = authed(async ({ req, user }) => {
   const b = await body(req, Body);

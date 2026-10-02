@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { clientIp, sessionResponse } from "@/lib/mobile-account";
+import { clientIp, signInResponse } from "@/lib/mobile-account";
 import { body, open } from "@/lib/mobile-api";
 import { resetPassword } from "@/lib/password-reset";
 
@@ -12,5 +12,5 @@ const Body = z.object({ token: z.string().min(1).max(200), password: z.string().
 export const POST = open(async ({ req }) => {
   const b = await body(req, Body);
   const user = await resetPassword(b.token, b.password, clientIp(req));
-  return sessionResponse(req, user.id);
+  return signInResponse(req, user.id);
 });

@@ -10,6 +10,8 @@ vi.mock("./organizations", () => ({}));
 vi.mock("./org-notifications", () => ({}));
 vi.mock("./email-verification", () => ({}));
 vi.mock("./mail", () => ({}));
+vi.mock("./plan-access", () => ({}));
+vi.mock("./push", () => ({}));
 
 const { isChildRequest, worthEmail } = await import("./maintenance");
 

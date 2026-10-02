@@ -156,26 +156,29 @@ export function PageHead({ title, text, children, crumbs }: { title: string; tex
   );
 }
 
-/** Segmented 10-check ring: one arc per Configuration Health check. */
-export function HealthRing({ score, total = 10, small, label = "Configuration health" }: { score: number; total?: number; small?: boolean; label?: string }) {
+/**
+ * Segmented 10-check ring: one arc per Configuration Health check. `empty` (no devices yet) draws neutral arcs
+ * and "–": with nothing to check, ten warning arcs and "0 checks passing" would read as everything failing.
+ */
+export function HealthRing({ score, total = 10, small, empty, label = "Configuration health" }: { score: number; total?: number; small?: boolean; empty?: boolean; label?: string }) {
   const r = 62, cx = 74, cy = 74, gap = 4.2, seg = 360 / total;
   const arcs = Array.from({ length: total }, (_, i) => {
     const a0 = ((i * seg + gap / 2) * Math.PI) / 180, a1 = (((i + 1) * seg - gap / 2) * Math.PI) / 180;
     const d = `M${(cx + r * Math.cos(a0)).toFixed(2)} ${(cy + r * Math.sin(a0)).toFixed(2)} A${r} ${r} 0 0 1 ${(cx + r * Math.cos(a1)).toFixed(2)} ${(cy + r * Math.sin(a1)).toFixed(2)}`;
-    return <path key={i} d={d} stroke={i < score ? "var(--accent)" : "var(--warn)"} strokeWidth={10} fill="none" strokeLinecap="round" />;
+    return <path key={i} d={d} stroke={empty ? "var(--line-strong)" : i < score ? "var(--accent)" : "var(--warn)"} strokeWidth={10} fill="none" strokeLinecap="round" />;
   });
   return (
-    <div className={`health-ring ${small ? "sm" : ""}`} role="img" aria-label={`${label}: ${score} of ${total} checks passing`}>
+    <div className={`health-ring ${small ? "sm" : ""}`} role="img" aria-label={empty ? `${label}: no devices to check yet` : `${label}: ${score} of ${total} checks passing`}>
       <svg viewBox="0 0 148 148">{arcs}</svg>
-      <div className="ring-label"><div><b className="num">{score}<small> / {total}</small></b><span>checks passing</span></div></div>
+      <div className="ring-label"><div><b className="num">{empty ? "–" : score}<small> / {total}</small></b><span>{empty ? "no devices yet" : "checks passing"}</span></div></div>
     </div>
   );
 }
 
-export function SegMeter({ score, total = 10 }: { score: number; total?: number }) {
+export function SegMeter({ score, total = 10, empty }: { score: number; total?: number; empty?: boolean }) {
   return (
     <div className="seg-meter" aria-hidden="true">
-      {Array.from({ length: total }, (_, i) => <span key={i} className={i < score ? "on" : "warn"} />)}
+      {Array.from({ length: total }, (_, i) => <span key={i} className={empty ? undefined : i < score ? "on" : "warn"} />)}
     </div>
   );
 }

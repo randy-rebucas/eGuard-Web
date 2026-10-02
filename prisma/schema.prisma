@@ -155,7 +155,12 @@ model User {
   notifyEmail    Boolean @default(true)
   notifyApproval Boolean @default(true)
   weeklySummary  Boolean @default(true)
+  /// Two-step verification is on: signing in needs a code from the authenticator app (or a recovery code)
   twoFactor      Boolean @default(false)
+  /// The authenticator secret, AES-GCM encrypted (lib/two-factor). Set while setting up, before `twoFactor` turns on.
+  totpSecret     String?
+  /// The last 30-second step a code was accepted for, so one code can't be used twice
+  totpLastStep   Int?
   passwordChangedAt DateTime @default(now())
   createdAt    DateTime @default(now())
 
@@ -165,6 +170,8 @@ model User {
   readAlerts AlertRead[]
   identities OAuthIdentity[]
   pushTokens PushToken[]
+  recoveryCodes RecoveryCode[]
+  loginChallenges LoginChallenge[]
   supportTickets SupportTicket[]
   orgRoles   OrgMember[]
   orgApiKeys OrgApiKey[]
@@ -197,6 +204,32 @@ model PasswordReset {
   createdAt DateTime @default(now())
 
   @@index([userId, createdAt])
+}
+
+/// One-time codes for signing in without the authenticator app. Only the SHA-256 is stored.
+model RecoveryCode {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash  String
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+/// The password (or reset link) was right, and the second step is still to come. Short-lived; only the token's
+/// SHA-256 is stored. A session is issued only once a code checks out.
+model LoginChallenge {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  attempts  Int      @default(0)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 /// Fixed-window counters for rate limits, shared by every server instance.

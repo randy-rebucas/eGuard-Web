@@ -143,7 +143,7 @@ export default async function Dashboard() {
         <Link className="card metric interactive" href="/protection">
           <div className="m-top"><span className="m-label">Family Protection</span><span className="ico-tile"><Icon name="shield-check" /></span></div>
           {unpaired ? <div className="m-value num">–<small> / {health.total}</small></div> : <div className="m-value num">{health.score}<small> / {health.total}</small></div>}
-          <SegMeter score={unpaired ? 0 : health.score} total={health.total} />
+          <SegMeter score={health.score} total={health.total} empty={unpaired} />
           <div className="m-foot">
             {unpaired ? <span className="pill tone-muted"><Icon name="circle-dashed" />No devices to check</span>
               : <span className={`pill ${nearlyAll ? "tone-ok" : "tone-accent"}`}><Icon name={nearlyAll ? "circle-check" : "shield"} />{health.verified ? "All verified" : health.score === health.total ? "Last known: all set" : good ? "Good protection" : "Needs review"}</span>}

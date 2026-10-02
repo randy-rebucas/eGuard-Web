@@ -44,7 +44,7 @@ export default async function ProtectionPage() {
 
       <section className="card card-pad" aria-labelledby="ch-title">
         <div className="health" style={{ flexWrap: "wrap" }}>
-          <HealthRing score={h.score} total={h.total} />
+          <HealthRing score={h.score} total={h.total} empty={!devices.length} />
           <div className="grow" style={{ minWidth: 240 }}>
             <div className="eyebrow">Configuration Health</div>
             <h2 id="ch-title" style={{ fontSize: 26, marginTop: 4 }}>{headline}</h2>

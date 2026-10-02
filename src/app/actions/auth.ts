@@ -1,10 +1,11 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { after } from "next/server";
 import { z } from "zod";
 import { authenticate, createSession, destroySession, hashPassword, requireUser } from "@/lib/auth";
+import { CHALLENGE_COOKIE, completeChallenge, needsSecondStep, startChallenge } from "@/lib/two-factor";
 import { LIMITS, clientIpFrom, enforce, hit, ipKey } from "@/lib/rate-limit";
 import { requestPasswordResetQuietly, resetPassword } from "@/lib/password-reset";
 import { type VerifyResult, sendVerificationEmail, sendVerificationEmailLater, verifyEmailToken } from "@/lib/email-verification";
@@ -21,15 +22,53 @@ export async function login(_: FormState, form: FormData): Promise<FormState> {
   const parsed = LoginSchema.safeParse({ email: form.get("email"), password: form.get("password") });
   const email = String(form.get("email") ?? "");
   if (!parsed.success) return { error: parsed.error.issues[0].message, fields: { email } };
-  let userId: string;
+  let user: Awaited<ReturnType<typeof authenticate>>;
   try {
-    userId = (await authenticate(parsed.data.email, parsed.data.password, clientIpFrom(await headers()))).id;
+    user = await authenticate(parsed.data.email, parsed.data.password, clientIpFrom(await headers()));
   } catch (e) {
     if (e instanceof ServiceError) return { error: e.message, fields: { email } };
     throw e;
   }
-  await createSession(userId);
   // Checked again here: the hidden field is whatever the browser sent
+  const next = safeNext(form.get("next"));
+  if (needsSecondStep(user)) await toSecondStep(user.id, next);
+  await createSession(user.id);
+  redirect(next ?? "/dashboard");
+}
+
+/* ---------- Two-step verification ---------- */
+
+/** The password (or reset link) checked out and a code is needed: no session yet, just the challenge. */
+async function toSecondStep(userId: string, next: string | null): Promise<never> {
+  const { challenge, expiresAt } = await startChallenge(userId);
+  (await cookies()).set(CHALLENGE_COOKIE, challenge, {
+    httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", expires: expiresAt,
+  });
+  redirect(`/login/two-step${next ? `?next=${encodeURIComponent(next)}` : ""}`);
+}
+
+/** /login/two-step: the authenticator code or a recovery code, then the session. */
+export async function verifySecondStep(_: FormState, form: FormData): Promise<FormState> {
+  const jar = await cookies();
+  const challenge = jar.get(CHALLENGE_COOKIE)?.value;
+  if (!challenge) redirect("/login");
+  const code = String(form.get("code") ?? "").trim();
+  if (!code) return { error: "Enter the code from your authenticator app." };
+  let done: Awaited<ReturnType<typeof completeChallenge>>;
+  try {
+    done = await completeChallenge(challenge, code);
+  } catch (e) {
+    if (e instanceof ServiceError) {
+      // Expired or out of attempts: the challenge is gone, so the form can't be used again
+      if (e.code === "challenge_expired") jar.delete(CHALLENGE_COOKIE);
+      return { error: e.message, fields: e.code === "challenge_expired" ? { expired: "1" } : undefined };
+    }
+    throw e;
+  }
+  jar.delete(CHALLENGE_COOKIE);
+  await createSession(done.user.id);
+  // A recovery code is gone once used: say so where new ones can be made
+  if (done.usedRecoveryCode) redirect(`/settings/security?recovery=${done.recoveryCodesLeft ?? 0}`);
   redirect(safeNext(form.get("next")) ?? "/dashboard");
 }
 
@@ -71,13 +110,16 @@ export async function forgotPassword(_: FormState, form: FormData): Promise<Form
 
 /** /reset-password: sets the new password, signs out every session, then signs in here. */
 export async function resetPasswordWithToken(_: FormState, form: FormData): Promise<FormState> {
+  let user: Awaited<ReturnType<typeof resetPassword>>;
   try {
-    const user = await resetPassword(String(form.get("token") ?? ""), String(form.get("password") ?? ""), clientIpFrom(await headers()));
-    await createSession(user.id);
+    user = await resetPassword(String(form.get("token") ?? ""), String(form.get("password") ?? ""), clientIpFrom(await headers()));
   } catch (e) {
     if (e instanceof ServiceError) return { error: e.message };
     throw e;
   }
+  // The new password is saved, but an emailed link alone mustn't get past two-step verification
+  if (needsSecondStep(user)) await toSecondStep(user.id, null);
+  await createSession(user.id);
   redirect("/dashboard");
 }
 
