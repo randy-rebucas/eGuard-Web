@@ -260,6 +260,15 @@
 .lp-step p{font-size:14.5px; color:var(--ink-3); margin-top:8px}
 .lp-how-more{margin-top:44px}
 
+/* ---------- Setup video ---------- */
+.lp-video{padding:8px 0 96px}
+.lp-video .lp-wrap{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.5fr); gap:48px 56px; align-items:center}
+.lp-video h2{font-size:clamp(28px, 3vw, 36px); line-height:1.15; margin-top:18px}
+.lp-video-head > p{color:var(--ink-3); font-size:17px; margin-top:14px; max-width:32em}
+.lp-video-head .lp-btn{margin-top:28px}
+.lp-video-frame{position:relative; aspect-ratio:16/9; border-radius:20px; overflow:hidden; background:#0B2348; border:1px solid var(--line); box-shadow:0 30px 60px -28px rgba(16,110,230,.45)}
+.lp-video-frame iframe{position:absolute; inset:0; width:100%; height:100%; border:0}
+
 /* ---------- Browser extension ---------- */
 .lp-browsers{padding:8px 0 88px}
 .lp-browsers .lp-wrap{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.5fr); gap:48px 56px; align-items:center}
@@ -382,6 +391,7 @@
   .lp-purpose::after{display:none}
   .lp-purpose .lp-wrap{margin-top:-80px; justify-content:center}
   .lp-browsers .lp-wrap{grid-template-columns:minmax(0,1fr); gap:32px}
+  .lp-video .lp-wrap{grid-template-columns:minmax(0,1fr); gap:32px}
   .lp-plans{grid-template-columns:minmax(0,1fr); max-width:480px}
   .lp-faq .lp-wrap{grid-template-columns:minmax(0,1fr); gap:24px}
   .lp-faq-head{padding-top:0}
@@ -405,6 +415,9 @@
   .lp-feature{padding:18px 16px}
   .lp-steps{grid-template-columns:minmax(0,1fr); gap:28px}
   .lp-browsers{padding-bottom:64px}
+  .lp-video{padding-bottom:64px}
+  .lp-video-frame{border-radius:14px}
+  .lp-video-head .lp-btn{width:100%}
   .lp-browser-grid{grid-template-columns:minmax(0,1fr); gap:12px}
   .lp-browser{padding:22px 18px 18px}
   .lp-browser-mark{width:56px; height:56px; margin-bottom:12px}

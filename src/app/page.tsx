@@ -118,7 +118,11 @@ const BROWSERS = [
   { name: "Firefox", Mark: FirefoxMark, store: "Firefox Add-ons", cta: "Add to Firefox", href: STORE_LINKS.firefox },
 ] as const;
 
-const BROWSER_PERKS = ["Blocks harmful sites and categories", "Forces SafeSearch", "Lets your child ask before opening a blocked site"];
+const SETUP_VIDEO_ID = "2uPblkkezjg";
+const SETUP_VIDEO_URL = `https://www.youtube.com/watch?v=${SETUP_VIDEO_ID}`;
+const SETUP_VIDEO_POINTS = ["Install eGuard on your child's Android phone", "Connect the phone to your family account", "Switch on the protections you choose"];
+
+const BROWSER_PERKS =["Blocks harmful sites and categories", "Forces SafeSearch", "Lets your child ask before opening a blocked site"];
 
 function PlayDot() {
   return <span className="lp-play"><svg viewBox="0 0 10 12" aria-hidden="true"><path d="M0 0v12l10-6z" fill="currentColor" /></svg></span>;
@@ -309,6 +313,29 @@ export default function Home() {
               ))}
             </ol>
             <Link href="/how-it-works" className="lp-btn lp-btn-outline lp-how-more">See the full walkthrough<ArrowRight /></Link>
+          </div>
+        </section>
+
+        {/* ---------- Setup video ---------- */}
+        <section className="lp-video" id="setup-video">
+          <div className="lp-wrap">
+            <div className="lp-video-head">
+              <span className="lp-eyebrow"><Smartphone />Video guide</span>
+              <h2>Watch: Set Up Your Child&apos;s Phone</h2>
+              <p>See the whole Android setup from start to finish, so you know what to expect before you pick up your child&apos;s phone.</p>
+              <ul className="lp-browser-perks">{SETUP_VIDEO_POINTS.map((point) => <li key={point}><Check />{point}</li>)}</ul>
+              <a className="lp-btn lp-btn-outline" href={SETUP_VIDEO_URL} target="_blank" rel="noopener noreferrer"><PlayDot />Watch on YouTube</a>
+            </div>
+            <div className="lp-video-frame">
+              <iframe
+                src={`https://www.youtube-nocookie.com/embed/${SETUP_VIDEO_ID}?rel=0`}
+                title="eGuard Child Phone Setup: Protect Your Child's Android Phone in Minutes"
+                loading="lazy"
+                allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                referrerPolicy="strict-origin-when-cross-origin"
+                allowFullScreen
+              />
+            </div>
           </div>
         </section>
 
