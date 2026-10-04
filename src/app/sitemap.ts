@@ -4,6 +4,7 @@ import { HELP_ARTICLES } from "@/lib/help";
 import { LEGAL } from "@/lib/legal";
 import { PROTECTIONS } from "@/lib/protections";
 import { AGE_GUIDES } from "@/lib/age-guides";
+import { ARTICLES, TOPICS, newestReview } from "@/lib/learn";
 import { siteUrl } from "@/lib/site";
 
 /** Public pages only. Signed-in pages are noindex and left out. */
@@ -24,6 +25,9 @@ export default function sitemap(): MetadataRoute.Sitemap {
     ...AGE_GUIDES.map((g) => page(`/guides/${g.slug}`, 0.6, "monthly")),
     page("/security", 0.6, "monthly"),
     page("/for-kids", 0.6, "monthly"),
+    page("/learn", 0.8, "weekly", newestReview()),
+    ...TOPICS.map((t) => page(`/learn/topics/${t.id}`, 0.7, "monthly")),
+    ...ARTICLES.map((a) => page(`/learn/${a.slug}`, 0.6, "monthly", a.reviewed)),
     page("/blog", 0.7, "weekly", newestPost),
     ...POSTS.map((p) => page(`/blog/${p.slug}`, 0.7, "monthly", p.date)),
     page("/help", 0.7, "monthly"),

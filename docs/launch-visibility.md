@@ -146,7 +146,7 @@ so re-scrape the URL there whenever you change a share image.
 
 ## 5. Pages people search for
 
-**Built:** the Help Center at `/help` (all 10 articles, each with its own page), and three blog posts at `/blog`.
+**Built:** the [Knowledge Center](knowledge-center.md) at `/learn` (100 guides in 11 topics, for searches such as "parental control Philippines", "cyberbullying Philippines" and "Roblox safety parents"), the Help Center at `/help` (all 10 articles, each with its own page), and three blog posts at `/blog`.
 Blog posts live in [src/lib/blog.ts](../src/lib/blog.ts); help articles in [src/lib/help.ts](../src/lib/help.ts),
 which the apps also read through `GET /help`.
 

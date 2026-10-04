@@ -15,7 +15,7 @@ import { LEGAL } from "@/lib/legal";
 const NAV = [
   ["Who It's For", "/#communities"], ["Features", "/#features"], ["For Parents", "/#habits"],
   ["How It Works", "/how-it-works"], ["Extension", "/#browsers"], ["Pricing", "/pricing"],
-  ["FAQ", "/#faq"], ["Blog", "/blog"],
+  ["FAQ", "/#faq"], ["Learn", "/learn"],
 ] as const;
 
 function Brand({ style }: { style?: CSSProperties }) {
@@ -78,7 +78,7 @@ export function SiteFooter() {
           </div>
           <div>
             <h4>Resources</h4>
-            <ul><li><Link href="/help">Help Center</Link></li><li><Link href="/#faq">FAQ</Link></li><li><Link href="/blog">Blog</Link></li><li><Link href="/guides">Guides by age</Link></li><li><Link href="/for-kids">For kids</Link></li></ul>
+            <ul><li><Link href="/learn">Knowledge Center</Link></li><li><Link href="/help">Help Center</Link></li><li><Link href="/#faq">FAQ</Link></li><li><Link href="/blog">Blog</Link></li><li><Link href="/guides">Guides by age</Link></li><li><Link href="/for-kids">For kids</Link></li></ul>
           </div>
           <div>
             <h4>Company</h4>
