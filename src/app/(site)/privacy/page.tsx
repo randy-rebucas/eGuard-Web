@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { LEGAL, legalDate } from "@/lib/legal";
+import { META_PIXEL_ID } from "@/lib/meta-pixel";
 import { pageMetadata } from "@/lib/site";
 import { supportEmail } from "@/lib/support";
 import { LegalBody, PageHead } from "../page-head";
@@ -39,7 +40,9 @@ export default function PrivacyPage() {
         <ul>
           <li>eGuard collects what it needs to set up and verify protections on your children&apos;s devices, and nothing more.</li>
           <li>We never read messages, photos, browsing content or files on your child&apos;s device.</li>
-          <li>We don&apos;t sell your data, show ads, or use third-party tracking.</li>
+          {META_PIXEL_ID
+            ? <li>We don&apos;t sell your data or show ads. Our public pages use Meta&apos;s pixel to measure our Facebook ads; it never runs once you sign in, so it never sees your family&apos;s data.</li>
+            : <li>We don&apos;t sell your data, show ads, or use third-party tracking.</li>}
           <li>Activity such as screen time and alerts is deleted automatically after 90 days.</li>
           <li>Location is off unless you turn it on. Even then, only the current location is kept unless you choose to keep history.</li>
           <li>You can export or delete your family&apos;s data at any time from Settings.</li>
@@ -109,6 +112,7 @@ export default function PrivacyPage() {
           <ul>
             <li><strong>Service providers</strong> who run parts of eGuard for us: hosting and database, email delivery, and PayMongo for payments. They may use the data only to provide their service to us, under contract.</li>
             <li><strong>Apple or Google</strong>, if you choose to sign in with them. We receive your name and email from them; we don&apos;t send them your family&apos;s data.</li>
+            {META_PIXEL_ID && <li><strong>Meta (Facebook)</strong>, if you visit our public pages: see <a href="#cookies">Cookies</a>. Meta never receives your family&apos;s data.</li>}
             <li><strong>Authorities</strong>, when the law requires it, or to protect someone&apos;s safety.</li>
           </ul>
           <p><strong>Organizations</strong> your family joins never see your family&apos;s data: not your name, your children or which code you redeemed. They see only how many families joined and how many of their codes were used. If you manage an organization in eGuard, its other admins see your name and email address.</p>
@@ -133,12 +137,21 @@ export default function PrivacyPage() {
       id: "cookies", title: "Cookies",
       body: (
         <>
-          <p>eGuard uses two cookies, both our own:</p>
+          <p>eGuard sets two cookies of its own:</p>
           <ul>
             <li><strong>eg_session</strong> keeps you signed in. It is required, and ends when you sign out.</li>
             <li><strong>eg_theme</strong> remembers whether you chose light or dark mode.</li>
           </ul>
-          <p>We don&apos;t use advertising, analytics or tracking cookies. If that changes, we&apos;ll update this policy first.</p>
+          {META_PIXEL_ID ? (
+            <>
+              <h3>Meta Pixel (public pages only)</h3>
+              <p>To measure our Facebook ads, our public pages (the home page, blog, guides, help, pricing and similar pages, but not the page for kids) load the Meta Pixel. It sets the <strong>_fbp</strong> cookie (kept for 90 days) and, if you arrived from one of our ads, <strong>_fbc</strong>. Meta receives the page you visited, your browser&apos;s details and your IP address, and may link them to your Facebook account under <a href="https://www.facebook.com/privacy/policy/" rel="noopener noreferrer" target="_blank">Meta&apos;s Privacy Policy</a>.</p>
+              <p>The pixel never runs on the sign-in pages or inside the parent dashboard, so it never sees your children, devices, locations or anything else in your account. To limit it, block third-party cookies in your browser or change your <a href="https://www.facebook.com/adpreferences" rel="noopener noreferrer" target="_blank">Facebook ad preferences</a>.</p>
+              <p>We don&apos;t use any other advertising, analytics or tracking cookies. If that changes, we&apos;ll update this policy first.</p>
+            </>
+          ) : (
+            <p>We don&apos;t use advertising, analytics or tracking cookies. If that changes, we&apos;ll update this policy first.</p>
+          )}
         </>
       ),
     },

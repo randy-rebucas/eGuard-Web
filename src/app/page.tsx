@@ -10,6 +10,7 @@ import { supportEmail } from "@/lib/support";
 import { PLANS as PLAN_CATALOG, webPrice } from "@/lib/plans";
 import { jsonLd, pageMetadata, siteUrl } from "@/lib/site";
 import { SiteFooter, SiteHeader } from "@/components/site-chrome";
+import { MetaPixel } from "@/components/meta-pixel";
 import { SignedIn, StartLink } from "@/components/signed-in";
 import { PhoneDashboard, PhoneScreenTime } from "@/components/landing-phones";
 import { ChromeMark, EdgeMark, FirefoxMark, STORE_LINKS } from "@/components/brand-marks";
@@ -433,6 +434,7 @@ export default function Home() {
       </main>
 
       <SiteFooter />
+      <MetaPixel />
     </div>
   );
 }

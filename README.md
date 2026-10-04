@@ -155,6 +155,7 @@ development.
 | `TRUSTED_PROXY_HOPS` | | Proxies in front of the app that append to `X-Forwarded-For` (default 1) |
 | `RATE_LIMIT_IP_ALLOWLIST` | tests | Addresses exempt from per-address rate limits, e.g. `::1,127.0.0.1` |
 | `GOOGLE_SITE_VERIFICATION`, `BING_SITE_VERIFICATION` | optional | HTML-tag site verification (not needed with DNS verification) |
+| `NEXT_PUBLIC_META_PIXEL_ID` | optional | Meta Pixel, only if you run Facebook ads. Read at build time: turns on the pixel on public marketing pages (never signed-in pages or `/for-kids`) and the privacy policy's matching Cookies text together. Redeploy after changing it |
 
 ---
 
@@ -520,7 +521,7 @@ Production checklist:
 9. **Sign-in:** set `APPLE_CLIENT_IDS` / `GOOGLE_CLIENT_IDS` if the apps offer social sign-in.
 10. **Make sure** `DEVICE_SIMULATOR` is not `true`.
 11. **Optional:** `GOOGLE_SITE_VERIFICATION` / `BING_SITE_VERIFICATION` for HTML-tag verification (DNS
-    verification needs neither).
+    verification needs neither). `NEXT_PUBLIC_META_PIXEL_ID` only if you run Facebook ads.
 
 For store review, create the demo account with `DATABASE_URL=… npm run seed:demo -- --apply` (see
 [docs/app-listing.md](docs/app-listing.md)).

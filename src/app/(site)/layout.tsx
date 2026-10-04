@@ -1,3 +1,4 @@
+import { MetaPixel } from "@/components/meta-pixel";
 import { SiteFooter, SiteHeader } from "@/components/site-chrome";
 import "../landing.css";
 import "./site.css";
@@ -12,6 +13,7 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
       <SiteHeader />
       <main>{children}</main>
       <SiteFooter />
+      <MetaPixel />
     </div>
   );
 }

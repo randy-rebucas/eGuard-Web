@@ -1,11 +1,16 @@
 import type { NextConfig } from "next";
+import { META_PIXEL_ID, META_PIXEL_PATHS } from "./src/lib/meta-pixel";
+
+const csp = (extraImg = "") =>
+  `frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; img-src 'self' data: blob:${extraImg}`;
 
 /** Sent with every response. The app is never meant to be framed, and pages must never leak tokens in URLs via Referer. */
 const securityHeaders = [
   // No other site may frame eGuard (clickjacking the dashboard or settings)
   // img-src: every image is our own, including map tiles (proxied by api/tiles), so no page can load a
-  // third-party image that would reveal what a parent is looking at
-  { key: "Content-Security-Policy", value: "frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; img-src 'self' data: blob:" },
+  // third-party image that would reveal what a parent is looking at (the one exception is below: the Meta Pixel's
+  // beacon, on public marketing pages, when it's on)
+  { key: "Content-Security-Policy", value: csp() },
   { key: "X-Frame-Options", value: "DENY" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
@@ -31,7 +36,14 @@ const nextConfig: NextConfig = {
     formats: ["image/avif", "image/webp"],
   },
   async headers() {
-    return [{ source: "/:path*", headers: securityHeaders }];
+    // With the Meta Pixel on, the pages it runs on (and only those) also allow its image beacon. A later match
+    // overrides the same header from an earlier one.
+    const pixelCsp = { key: "Content-Security-Policy", value: csp(" https://www.facebook.com") };
+    const pixelPages = META_PIXEL_ID ? ["/", ...META_PIXEL_PATHS.map((p) => `${p}/:path*`)] : [];
+    return [
+      { source: "/:path*", headers: securityHeaders },
+      ...pixelPages.map((source) => ({ source, headers: [pixelCsp] })),
+    ];
   },
   async redirects() {
     return [

@@ -182,8 +182,11 @@ never put ad pixels on signed-in pages, where children's names and locations app
 - **Vercel Web Analytics** on the landing page, blog, help pages and sign-up: cookieless and one line to add. Add
   Speed Insights for real-device load times.
 - **Search Console** for queries, impressions and indexing.
-- Add a Meta Pixel only if you run Facebook ads, only on public pages, and add it to the privacy policy's Cookies
-  section first: the policy currently says eGuard uses no analytics or tracking cookies.
+- **Meta Pixel (code done, off):** only if you run Facebook ads. Set `NEXT_PUBLIC_META_PIXEL_ID` in Vercel and
+  redeploy: the same build turns on the pixel and the privacy policy's Cookies text, so the policy is never behind.
+  It runs on the landing page, blog, learn, guides, help and the other marketing pages, never on sign-in,
+  signed-in pages, `/for-kids` (Meta forbids pages directed at children) or `/delete-account`. Automatic events
+  are off, and it stops sending when a visitor moves into the app. Code: [src/lib/meta-pixel.ts](../src/lib/meta-pixel.ts).
 
 **The funnel to watch**
 
