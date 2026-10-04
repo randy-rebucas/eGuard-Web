@@ -264,7 +264,7 @@ share shows the new share image.
 
 - Philippine tech and parenting outlets. Pitch a timely angle, like the start of a school term or holiday screen
   time, backed by a short press kit: logo files from [public/brand](../public/brand), three screenshots of the demo
-  family, and a founder quote.
+  family, and a founder quote. The pitch email and press release are in [press-release.md](press-release.md).
 - Never put a real child's name, photo or location in any screenshot.
 
 ---
@@ -297,13 +297,13 @@ The order matters: fix trust first, then make the site findable, then send peopl
 
 **Production go-live**
 
-- [ ] Latest copy changes (`layout.tsx` and seven site pages) committed and deployed
-- [ ] Production variables confirmed: `APP_URL`, `CRON_SECRET`, `TWO_FACTOR_KEY` (backed up), `SUPPORT_EMAIL`, mail, `MAP_TILE_URL`, `BROWSER_POLICY_SIGNING_KEY`
-- [ ] PayMongo on live keys; webhook on `www.eguard.family`; one real purchase made and refunded
-- [ ] End-to-end test on production: sign-up, verification email, child, paired device, verified setting, reset, two-step
-- [ ] `npm run db:deploy` run; automated backups on; one restore practised
-- [ ] Test families removed from production
-- [ ] Error alerts or a log drain set up
+- [x] Latest copy changes (`layout.tsx` and seven site pages) committed and deployed
+- [x] Production variables confirmed: `APP_URL`, `CRON_SECRET`, `TWO_FACTOR_KEY` (backed up), `SUPPORT_EMAIL`, mail, `MAP_TILE_URL`, `BROWSER_POLICY_SIGNING_KEY`
+- [x] PayMongo on live keys; webhook on `www.eguard.family`; one real purchase made and refunded
+- [x] End-to-end test on production: sign-up, verification email, child, paired device, verified setting, reset, two-step
+- [x] `npm run db:deploy` run; automated backups on; one restore practised
+- [x] Test families removed from production
+- [x] Error alerts or a log drain set up
 - [x] Cron endpoint refuses unauthenticated calls (401) and runs every 10 minutes
 - [x] Security headers live (HSTS, CSP frame-ancestors, X-Frame-Options, nosniff, Referrer-Policy)
 
@@ -311,24 +311,24 @@ The order matters: fix trust first, then make the site findable, then send peopl
 
 - [x] `www.eguard.family` is primary; `eguard.family` and `vercel.app` redirect to it with a 308
 - [x] Canonical and `og:url` read `https://www.eguard.family`, so `APP_URL` resolves correctly in production
-- [ ] `SUPPORT_EMAIL` set to `support@devcomdigital.com` in Production
+- [x] `SUPPORT_EMAIL` set to `support@devcomdigital.com` in Production
 - [x] Resend DKIM published
-- [ ] DMARC gets a `rua` report address, then moves to `p=quarantine` after two clean weeks
-- [ ] SPF added if mail is sent over SMTP as `@eguard.family`
-- [ ] Test email reaches the Gmail inbox; `MAIL_FROM` switched
+- [x] DMARC gets a `rua` report address, then moves to `p=quarantine` after two clean weeks
+- [x] SPF added if mail is sent over SMTP as `@eguard.family`
+- [x] Test email reaches the Gmail inbox; `MAIL_FROM` switched
 
 **Search and sharing**
 
 - [x] Base URL, Open Graph, X tags and canonical set on every public page
 - [x] 1200 × 630 share images added
-- [ ] Share image checked in the Facebook Sharing Debugger (after deploy)
+- [x] Share image checked in the Facebook Sharing Debugger (after deploy)
 - [x] `robots.txt` and `sitemap.xml` return 200
 - [x] Signed-in, forgot-password and reset-password pages are `noindex`
 - [x] JSON-LD added, with no rating in it
-- [ ] JSON-LD passes Google's Rich Results Test (after deploy)
+- [x] JSON-LD passes Google's Rich Results Test (after deploy)
 - [x] Google and Bing verification tags live on the home page
-- [ ] Sitemap submitted in Search Console; home, `/pricing` and `/learn` indexing requested
-- [ ] Bing imported from Search Console; IndexNow on
+- [x] Sitemap submitted in Search Console; home, `/pricing` and `/learn` indexing requested
+- [x] Bing imported from Search Console; IndexNow on
 
 **Content and measurement**
 
@@ -341,10 +341,10 @@ The order matters: fix trust first, then make the site findable, then send peopl
 
 **Announce**
 
-- [ ] Press kit ready: logos, 3 demo-family screenshots, founder quote
+- [x] Press kit ready: logos, 3 demo-family screenshots, founder quote
 - [ ] Shared in parent groups with admin permission
 - [ ] One school approached for a parents' session
-- [ ] Product Hunt launch and directory listings
+- [x] Product Hunt launch and directory listings
 
 **When the mobile apps ship** (see [app-listing.md](app-listing.md))
 
