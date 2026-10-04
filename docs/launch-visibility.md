@@ -6,9 +6,9 @@ shared, and a 30-day plan for reaching parents in the Philippines. App store sub
 
 eGuard is a product of **DevCom Digital Marketing Services**. The site's address is **`https://www.eguard.family`**.
 
-The audit in section 1 was first made against `https://e-guard-web.vercel.app` on 28 September 2026. Statuses were
-updated the same day as the fixes in sections 2, 4 and 5 landed in the codebase. The live site shows them only after
-the next deploy, so re-run these checks on `www.eguard.family` once it's out.
+The audit in section 1 was first made against `https://e-guard-web.vercel.app` on 28 September 2026, and re-run
+against the live `https://www.eguard.family` on 4 October 2026, after the site was published. What's left before
+announcing it is in [Production go-live](#production-go-live) and the [checklist](#9-checklist).
 
 ## Contents
 
@@ -31,7 +31,12 @@ Status uses eGuard's own words: **Verified** means it works, **Needs attention**
 
 | Check | What the site returns | Status |
 |---|---|---|
-| Domain | `www.eguard.family` is the default in code, and the app redirects `eguard.family` and `e-guard-web.vercel.app` to it; not yet connected in Vercel, and `APP_URL` not yet set (section 3) | Needs attention |
+| Domain | `www.eguard.family` serves the site; `eguard.family` and `e-guard-web.vercel.app` answer 308 to it; canonical and `og:url` use it | Verified |
+| Search engine verification | Google (`google-site-verification`) and Bing (`msvalidate.01`) tags are on the home page | Verified |
+| Security headers | HSTS (2 years, subdomains), CSP `frame-ancestors 'none'`, `X-Frame-Options: DENY`, `nosniff`, `strict-origin-when-cross-origin` | Verified |
+| Background jobs | `/api/cron/maintenance` answers 401 without the secret; Vercel cron calls it every 10 minutes ([vercel.json](../vercel.json)) | Verified |
+| Email records | Resend DKIM (`resend._domainkey`) published; DMARC is `p=none` with no report address; no SPF on the root and no MX (section 3) | Needs attention |
+| Latest copy | New titles, descriptions and keywords in `src/app/layout.tsx` and seven site pages are not deployed yet; the live title is still the old one | Needs attention |
 | Privacy policy and terms | Live at `/privacy` and `/terms`. DevCom Digital Marketing Services is named as the controller, with its Data Protection Officer, address and privacy email | Verified |
 | Ratings and user claims | No rating, "thousands of parents" or "trusted by" claims on the landing page or the sign-in panel | Verified |
 | App store badges | Replaced with "Android and iOS apps coming soon" | Verified |
@@ -39,7 +44,7 @@ Status uses eGuard's own words: **Verified** means it works, **Needs attention**
 | Alerts copy | Plus lists "Push alerts (coming soon)"; the landing page describes instant email alerts | Verified |
 | Newsletter box | Removed: it didn't save addresses | Verified |
 | `robots.txt` | Blocks `/api/`, points to the sitemap | Verified |
-| `sitemap.xml` | 22 public URLs: home, about, blog and posts, help and all 10 articles, sign-up, sign-in, privacy, terms, delete-account | Verified |
+| `sitemap.xml` | 154 public URLs: the site pages, blog posts, help articles and the Knowledge Center guides | Verified |
 | Link previews (Open Graph, X) | Every public page has its own title, description and a 1200 × 630 share image; posts and help articles get one with their title | Verified |
 | Canonical URL | Set on every public page, from `APP_URL` | Verified |
 | Structured data | Organization, WebSite and WebApplication (peso offers, no rating) on the home page; BlogPosting and TechArticle with breadcrumbs on posts and articles | Verified |
@@ -51,7 +56,9 @@ Status uses eGuard's own words: **Verified** means it works, **Needs attention**
 | Image alt text | Photos are described; decorative icons use empty alt | Verified |
 | Phones and tablets | No sideways scrolling at 320–1280px | Verified |
 
-Totals: 0 action required, 1 needs attention (the domain), 18 verified.
+Totals: 0 action required, 2 needs attention (email records, undeployed copy), 21 verified. A check from outside
+can't see Vercel's environment variables, PayMongo's mode, backups or inbox placement; those are in
+[Production go-live](#production-go-live).
 
 ---
 
@@ -76,6 +83,21 @@ Still to do on these pages:
   still expects a named person on file when DevCom registers.
 - **Update the "Last updated" date** in `src/lib/legal.ts` whenever either page changes.
 
+### Production go-live
+
+The site is published, but don't announce it until these are done. Each one stops parents from signing up, paying,
+or getting their emails, or leaves you unaware when something breaks.
+
+| Item | What to do |
+|---|---|
+| Deploy the latest copy | Commit and deploy the title, description and keyword changes in `src/app/layout.tsx` and the seven `(site)` pages. |
+| Production variables | In Vercel › Production, confirm `APP_URL`, `CRON_SECRET`, `TWO_FACTOR_KEY` (store it somewhere safe; it can never change), `SUPPORT_EMAIL`, `SMTP_URL` or `RESEND_API_KEY`, `MAIL_FROM`, `MAP_TILE_URL` (a keyed provider, not plain OpenStreetMap) and `BROWSER_POLICY_SIGNING_KEY`. |
+| Payments | Live PayMongo keys (`sk_live_`/`pk_live_`), not test keys. The webhook points at `https://www.eguard.family/api/billing/paymongo/webhook` with its secret in `PAYMONGO_WEBHOOK_SECRET`. Make one real peso purchase, then refund it. |
+| End-to-end test on production | Register → verification email in the **Gmail inbox** (not spam) → add a child → pair a device → a setting shows as verified → password reset → two-step sign-in. |
+| Database | Run `npm run db:deploy` against production. Turn on automated backups and practise one restore. |
+| Test data | Remove test families from production. Keep the review demo family only if app store review needs it. |
+| Error alerts | Turn on Vercel log alerts or a log drain at minimum. Right now nothing tells you when production throws. |
+
 ---
 
 ## 3. Domain and email
@@ -83,7 +105,7 @@ Still to do on these pages:
 Search engines treat a domain change as a new site, so connect `www.eguard.family` before you build up any search
 ranking or backlinks. Parents are also more wary of a `vercel.app` address, which looks like a demo.
 
-**Connect the domain**
+**Connect the domain** (done: live and redirecting as of 4 October 2026)
 
 - In Vercel › Project › Domains, add **`www.eguard.family`** as the primary domain.
 - Add `eguard.family` and set it to redirect to `www`. Make `e-guard-web.vercel.app` redirect too. Both redirects
@@ -102,6 +124,16 @@ ranking or backlinks. Parents are also more wary of a `vercel.app` address, whic
 - Set `MAIL_FROM="eGuard <no-reply@eguard.family>"` once the domain passes SPF and DKIM. Until then, keep the
   current sender.
 - Set `SUPPORT_EMAIL=support@devcomdigital.com`, the inbox someone reads. The legal pages already use it.
+
+What DNS showed on 4 October 2026:
+
+- **DKIM:** Resend's key is published at `resend._domainkey.eguard.family`.
+- **SPF:** there's no SPF record on the root `eguard.family`. That's fine while all mail goes through Resend, which
+  checks SPF on its `send.` subdomain. If you send over SMTP as `@eguard.family`, add that provider to an SPF record.
+- **DMARC:** `v=DMARC1; p=none;` with no report address. Add `rua=mailto:<an inbox you read>` so reports reach you.
+  After about two clean weeks, move to `p=quarantine`.
+- **MX:** none, so nothing at `@eguard.family` can receive mail. Keep `SUPPORT_EMAIL` on the DevCom inbox, or set
+  up receiving before using an `@eguard.family` reply address.
 
 ---
 
@@ -129,7 +161,8 @@ sitemap. Pages with their own `opengraph-image` pass `ownImage: true`.
 
 - Add a **Domain property** for `eguard.family` and verify it with a DNS TXT record. This covers `www` and
   non-`www`, http and https at once. (For HTML-tag verification instead, set `GOOGLE_SITE_VERIFICATION`.)
-- Submit `https://www.eguard.family/sitemap.xml`, then use URL Inspection › Request indexing on the home page.
+- Submit `https://www.eguard.family/sitemap.xml`, then use URL Inspection › Request indexing on the home page,
+  `/pricing` and `/learn`. (The HTML verification tags for Google and Bing are already live.)
 - Check Page indexing weekly for the first month.
 
 **Bing Webmaster Tools**
@@ -262,12 +295,27 @@ The order matters: fix trust first, then make the site findable, then send peopl
 - [x] Alerts copy describes email and in-app alerts until push ships
 - [x] Newsletter box removed until there's a mailing list
 
+**Production go-live**
+
+- [ ] Latest copy changes (`layout.tsx` and seven site pages) committed and deployed
+- [ ] Production variables confirmed: `APP_URL`, `CRON_SECRET`, `TWO_FACTOR_KEY` (backed up), `SUPPORT_EMAIL`, mail, `MAP_TILE_URL`, `BROWSER_POLICY_SIGNING_KEY`
+- [ ] PayMongo on live keys; webhook on `www.eguard.family`; one real purchase made and refunded
+- [ ] End-to-end test on production: sign-up, verification email, child, paired device, verified setting, reset, two-step
+- [ ] `npm run db:deploy` run; automated backups on; one restore practised
+- [ ] Test families removed from production
+- [ ] Error alerts or a log drain set up
+- [x] Cron endpoint refuses unauthenticated calls (401) and runs every 10 minutes
+- [x] Security headers live (HSTS, CSP frame-ancestors, X-Frame-Options, nosniff, Referrer-Policy)
+
 **Domain and email**
 
-- [ ] `www.eguard.family` is primary; `eguard.family` and `vercel.app` redirect to it with a 308
-- [ ] `APP_URL` set to `https://www.eguard.family` in Production
+- [x] `www.eguard.family` is primary; `eguard.family` and `vercel.app` redirect to it with a 308
+- [x] Canonical and `og:url` read `https://www.eguard.family`, so `APP_URL` resolves correctly in production
 - [ ] `SUPPORT_EMAIL` set to `support@devcomdigital.com` in Production
-- [ ] SPF, DKIM and DMARC pass for `eguard.family`; test email reaches the Gmail inbox; `MAIL_FROM` switched
+- [x] Resend DKIM published
+- [ ] DMARC gets a `rua` report address, then moves to `p=quarantine` after two clean weeks
+- [ ] SPF added if mail is sent over SMTP as `@eguard.family`
+- [ ] Test email reaches the Gmail inbox; `MAIL_FROM` switched
 
 **Search and sharing**
 
@@ -278,14 +326,17 @@ The order matters: fix trust first, then make the site findable, then send peopl
 - [x] Signed-in, forgot-password and reset-password pages are `noindex`
 - [x] JSON-LD added, with no rating in it
 - [ ] JSON-LD passes Google's Rich Results Test (after deploy)
-- [ ] Search Console and Bing verified; sitemap submitted
+- [x] Google and Bing verification tags live on the home page
+- [ ] Sitemap submitted in Search Console; home, `/pricing` and `/learn` indexing requested
+- [ ] Bing imported from Search Console; IndexNow on
 
 **Content and measurement**
 
 - [x] 10 help articles public at `/help/[slug]` and in the sitemap
 - [x] First guides published: three posts at `/blog`
 - [ ] One new post a week for the first month
-- [ ] Cookieless analytics on public pages only
+- [ ] Cookieless analytics on public pages only, with the privacy policy's Cookies section updated first
+- [ ] `npm run funnel` reviewed weekly against production
 - [x] Sign-up → paired device funnel counted from the database (`npm run funnel`)
 
 **Announce**
@@ -294,3 +345,8 @@ The order matters: fix trust first, then make the site findable, then send peopl
 - [ ] Shared in parent groups with admin permission
 - [ ] One school approached for a parents' session
 - [ ] Product Hunt launch and directory listings
+
+**When the mobile apps ship** (see [app-listing.md](app-listing.md))
+
+- [ ] "Coming soon" notes removed from the landing page and setup articles; store badges added
+- [ ] `MOBILE_MIN_APP_VERSION`, `FCM_SERVICE_ACCOUNT`, Google Play billing and RTDN variables, and the Apple/Google sign-in client IDs set
