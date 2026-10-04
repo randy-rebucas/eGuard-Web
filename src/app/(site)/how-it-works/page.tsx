@@ -16,7 +16,7 @@ import { PageHead } from "../page-head";
 import "./how-it-works.css";
 
 export const metadata: Metadata = pageMetadata({
-  title: "How eGuard works",
+  title: "How eGuard parental controls work",
   path: "/how-it-works",
   description: "See how the eGuard parent app, web dashboard, your child's phone and the Chrome, Edge and Firefox extension work together, and how every rule gets verified on the device.",
 });

@@ -9,7 +9,7 @@ import { PageHead } from "../page-head";
 import "./guides.css";
 
 export const metadata: Metadata = pageMetadata({
-  title: "Guides by age",
+  title: "Screen time and phone rules by age, 5 to 17",
   path: "/guides",
   description: "Screen time, bedtime and app rules that fit your child's age, from a first tablet at 5 to an almost-adult at 17, with things to talk about at each stage.",
 });

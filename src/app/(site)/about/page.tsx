@@ -9,7 +9,7 @@ import { PageHead } from "../page-head";
 import digitalHabits from "../../../../public/landing/digital-habits.jpg";
 
 export const metadata: Metadata = pageMetadata({
-  title: "About",
+  title: "About eGuard, the parental control app you can verify",
   path: "/about",
   description: "eGuard helps parents set up screen time, bedtime and app protections on their children's devices, and shows whether each one is really working.",
 });

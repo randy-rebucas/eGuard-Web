@@ -7,7 +7,7 @@ import { supportEmail } from "@/lib/support";
 import { PageHead } from "../page-head";
 
 export const metadata: Metadata = pageMetadata({
-  title: "Help Center",
+  title: "Help Center: parental controls on Android and iPhone",
   path: "/help",
   description: "Set up parental controls on Android and iPhone, fix a device that shows offline, and learn what data eGuard keeps.",
 });

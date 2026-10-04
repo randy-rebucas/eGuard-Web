@@ -10,7 +10,7 @@ import { CapabilityChip, CAPABILITY_COPY } from "./capability";
 import "./protections.css";
 
 export const metadata: Metadata = pageMetadata({
-  title: "Protections",
+  title: "Protections: screen time, app and web limits for kids",
   path: "/protections",
   description: "Screen time, bedtime, app and content ratings, web filtering, location and more: the 10 eGuard protections, and how each works on Android and iPhone.",
 });

@@ -12,7 +12,7 @@ import { PageHead } from "../page-head";
 import "./security.css";
 
 export const metadata: Metadata = pageMetadata({
-  title: "Security & privacy",
+  title: "Security & privacy: how eGuard protects your child's data",
   path: "/security",
   description: "How eGuard protects your family's data: what we collect and never collect, how accounts and devices are secured, and your rights under the Data Privacy Act.",
 });

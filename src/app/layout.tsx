@@ -6,13 +6,21 @@ import "./globals.css";
 const hanken = Hanken_Grotesk({ variable: "--font-hanken", subsets: ["latin"], weight: ["400", "500", "600", "700"] });
 const sora = Sora({ variable: "--font-sora", subsets: ["latin"], weight: ["500", "600", "700"] });
 
-const description = "Digital Safety for Brighter Tomorrows. Configure, manage and verify protections on your children's devices.";
+const description =
+  "eGuard is a parental control app for families in the Philippines. Set screen time, bedtime, app and web rules on your child's phone, tablet and browser, and verify each one on the device.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl()),
-  title: { default: SITE_NAME, template: `%s · ${SITE_NAME}` },
+  title: { default: `${SITE_NAME}: parental control app for families in the Philippines`, template: `%s · ${SITE_NAME}` },
   description,
   applicationName: SITE_NAME,
+  // Google ignores this tag; Bing gives it a little weight. Titles and descriptions carry the real search terms.
+  keywords: [
+    "parental control app", "parental controls Philippines", "screen time limits for kids", "screen time app",
+    "app blocker for kids", "web filter for kids", "family location sharing", "child online safety", "Android parental controls",
+    "iPhone parental controls",
+  ],
+  category: "parenting",
   openGraph: { type: "website", siteName: SITE_NAME, locale: "en_PH", title: SITE_NAME, description },
   twitter: { card: "summary_large_image" },
   // Optional: HTML-tag verification for Search Console and Bing Webmaster Tools (DNS verification needs neither)

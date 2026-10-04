@@ -9,7 +9,7 @@ import { PageHead } from "../page-head";
 import "./pricing.css";
 
 export const metadata: Metadata = pageMetadata({
-  title: "Pricing",
+  title: "Pricing: free parental controls, plans in pesos",
   path: "/pricing",
   description: "eGuard is free for one child. eGuard Plus and Family Pro add more children, devices, location sharing and reports. Pay monthly in pesos with GCash, Maya, QR Ph or card.",
 });
