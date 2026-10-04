@@ -5,7 +5,7 @@ import { db } from "./db";
 import { ServiceError, conflict, forbidden } from "./errors";
 import { audit } from "./audit";
 import type { Actor } from "./config-service";
-import { appUrl } from "./email-verification";
+import { appUrl, requireVerifiedEmail } from "./email-verification";
 import { escapeHtml, sendMail } from "./mail";
 import { shortDate } from "./format";
 import { BASE_PLAN, type Interval, type PaidPlanId, planById, planByName, planByProduct, webPrice, webProduct, webProductFor } from "./plans";
@@ -102,6 +102,8 @@ export const lockPaidTime = (tx: Prisma.TransactionClient, familyId: string) =>
 export async function buyPass(actor: Actor, planId: PaidPlanId, o: WebBillingOpts = {}) {
   requireAdmin(actor);
   const cfg = requireConfig(o);
+  // PayMongo sends the receipt to this address: a mistyped, unverified one would lose it
+  await requireVerifiedEmail(actor.id, "pay for a plan");
   await assertCanBuy(actor.familyId, planId, false);
   const product = webProductFor(planId, false);
   const plan = planById(planId);
@@ -169,6 +171,8 @@ async function firstPayment(cfg: PaymongoConfig, p: StorePurchase, paymentIntent
 export async function startAutoRenew(actor: Actor, planId: PaidPlanId, o: WebBillingOpts = {}): Promise<FirstPayment> {
   requireAdmin(actor);
   const cfg = requireConfig(o);
+  // Renewal receipts and PayMongo's customer record use this address too
+  await requireVerifiedEmail(actor.id, "pay for a plan");
   const now = o.now ?? new Date();
   await assertCanBuy(actor.familyId, planId, true);
   const product = webProductFor(planId, true);

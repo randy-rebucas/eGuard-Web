@@ -7,9 +7,10 @@ services:
       POSTGRES_USER: eguard
       POSTGRES_PASSWORD: eguard_dev_password
       POSTGRES_DB: eguard
-    # 5432 is owned by the native Windows Postgres service on this machine
+    # 5432 is owned by the native Windows Postgres service on this machine. Keep the host port below 49152:
+    # Windows reserves ranges above it for Hyper-V/WSL, which blocked the old 55433
     ports:
-      - "55433:5432"
+      - "15433:5432"
     volumes:
       - eguard-db:/var/lib/postgresql/data
     healthcheck:

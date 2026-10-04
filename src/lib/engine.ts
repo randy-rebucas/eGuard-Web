@@ -4,6 +4,7 @@ import { db } from "./db";
 import { PROTECTION_BY_KEY, configMatches, describeConfig, isConfigured } from "./protections";
 import { evaluate, isPassing } from "./health";
 import { ServiceError } from "./errors";
+import { LIMITS, enforce } from "./rate-limit";
 
 export type ReportedProtection = { key: ProtectionKey; config: Record<string, unknown> };
 
@@ -196,7 +197,7 @@ export async function processReport(deviceId: string, report: DeviceReport) {
     // The last LOCATION entry, like the status above when a report repeats a key
     const sharing = !!report.protections.findLast((p) => p.key === "LOCATION")!.config.sharing;
     // Sharing off: forget where the device was, so no stale position is kept, shown or exported
-    const cleared = sharing ? {} : { lat: null, lng: null, accuracyM: null, placeLabel: null, locatedAt: null };
+    const cleared = sharing ? {} : { lat: null, lng: null, accuracyM: null, placeLabel: null, placeId: null, locatedAt: null };
     await db.deviceLocation.upsert({
       where: { deviceId },
       create: { deviceId, sharing },
@@ -276,11 +277,12 @@ export async function ensureOfflineAlerts(familyId: string) {
   }
 }
 
-/** Starts a configuration check across devices. Devices answer on their next sync. */
-export async function startCheckRun(familyId: string, deviceIds?: string[]) {
+/** Starts a configuration check across devices, for the parent `userId`. Devices answer on their next sync. */
+export async function startCheckRun(familyId: string, userId: string, deviceIds?: string[]) {
   const devices = await db.device.findMany({ where: { familyId, ...(deviceIds ? { id: { in: deviceIds } } : {}) } });
   // An empty run completes at once and would report "0 devices, 10 protections need review"
   if (!devices.length) throw new ServiceError(409, "Pair a child's device before running a check.", "no_devices");
+  await enforce(`check:${userId}`, LIMITS.checkUser, "You've run several checks. Wait a few minutes; devices keep reporting on their own.");
   const now = new Date();
   const run = await db.checkRun.create({
     data: { familyId, results: { create: devices.map((d) => ({ deviceId: d.id })) } },

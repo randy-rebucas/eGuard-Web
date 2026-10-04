@@ -154,6 +154,10 @@ p{margin:0}
 .btn-ghost{color:var(--ink-2)}
 .btn-ghost:hover{background:var(--surface-2)}
 .btn:disabled{opacity:.5; cursor:not-allowed}
+/* A label styled as a button around a hidden file input: show the input's focus on the label, and its disabled state */
+label.btn{cursor:pointer}
+label.btn:has(input:focus-visible){outline:2px solid var(--accent); outline-offset:2px}
+label.btn.disabled{opacity:.5; cursor:not-allowed}
 .btn-sm{min-height:36px; padding:0 12px; font-size:13.5px; border-radius:10px}
 .pill{display:inline-flex; align-items:center; gap:6px; height:26px; padding:0 10px; border-radius:13px; font-size:12.5px; font-weight:600; white-space:nowrap}
 .pill .lucide{width:14px; height:14px}
@@ -168,6 +172,7 @@ p{margin:0}
 .avatar{--h:210; width:40px; height:40px; border-radius:50%; flex:none; display:grid; place-items:center; font-family:var(--display); font-weight:600; font-size:15px; color:hsl(var(--h) 60% 28%); background:hsl(var(--h) 85% 92%); border:2px solid var(--surface)}
 :root[data-theme="dark"] .avatar{color:hsl(var(--h) 85% 88%); background:hsl(var(--h) 45% 26%)}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .avatar{color:hsl(var(--h) 85% 88%); background:hsl(var(--h) 45% 26%)}}
+.avatar img{width:100%; height:100%; border-radius:50%; object-fit:cover; display:block}
 .avatar.lg{width:64px; height:64px; font-size:24px}
 .avatar.xl{width:84px; height:84px; font-size:32px}
 .avatar-group{display:flex}
@@ -191,8 +196,9 @@ p{margin:0}
 .seg{display:inline-flex; padding:3px; background:var(--surface-2); border:1px solid var(--line); border-radius:10px}
 .seg button{min-height:32px; padding:0 12px; border-radius:7px; font-size:13px; font-weight:600; color:var(--ink-3)}
 .seg button[aria-pressed="true"]{background:var(--surface); color:var(--ink); box-shadow:var(--shadow-sm)}
-.select-btn{display:inline-flex; align-items:center; gap:8px; min-height:36px; padding:0 12px; border-radius:10px; border:1px solid var(--line); background:var(--surface); font-size:13.5px; font-weight:500; color:var(--ink-2)}
-.select-btn .lucide{width:16px; height:16px; color:var(--ink-3)}
+/* A card's date range, as text: no border or fill, so it doesn't read as a control */
+.date-chip{display:inline-flex; align-items:center; gap:6px; font-size:13.5px; font-weight:500; color:var(--ink-3); white-space:nowrap}
+.date-chip .lucide{width:16px; height:16px}
 
 .list-row{display:flex; align-items:center; gap:14px; width:100%; min-height:56px; padding:10px 12px; border-radius:12px; text-align:left; transition:background .15s}
 button.list-row:hover{background:var(--surface-2)}
@@ -274,6 +280,10 @@ button.hero-stat:hover{background:rgba(255,255,255,.9)}
 .bar{height:8px; border-radius:6px; background:var(--line); overflow:hidden; margin:8px 0 12px}
 .bar > span{display:block; height:100%; border-radius:6px; background:var(--accent)}
 .bar.warn > span{background:var(--warn)}
+.bar.over > span{background:var(--crit)}
+.limit-note{display:flex; align-items:center; gap:6px; margin:-4px 0 10px; font-size:13px; font-weight:600}
+.limit-note.crit{color:var(--crit-ink)}
+.limit-note.warn{color:var(--warn-ink)}
 .app-rows{display:flex; flex-direction:column; gap:6px; font-size:13.5px}
 .app-rows div{display:flex; justify-content:space-between; gap:8px}
 .app-rows span:first-child{color:var(--ink-2)}
@@ -314,6 +324,7 @@ button.alert-row:hover{background:var(--surface-2)}
 .data-table th,.data-table td{padding:8px 10px; text-align:right; border-bottom:1px solid var(--line); font-variant-numeric:tabular-nums; white-space:nowrap}
 .data-table th:first-child,.data-table td:first-child{text-align:left}
 .data-table th{font-size:12px; color:var(--ink-3); font-weight:600}
+.data-table tbody th{font-size:inherit; color:inherit; font-weight:inherit}
 .table-scroll{overflow-x:auto}
 
 .promo{position:relative; overflow:hidden; border-radius:var(--r-lg); padding:26px 24px; color:#fff; min-height:220px; display:flex; flex-direction:column; justify-content:flex-end; gap:12px; isolation:isolate;
@@ -576,6 +587,8 @@ button.check-item:hover{border-color:var(--line-strong); background:var(--surfac
 .promo{background-image:linear-gradient(180deg, rgba(11,35,72,.1), rgba(11,35,72,.1)), var(--promo-photo, none), radial-gradient(70% 60% at 80% 10%, rgba(255,210,160,.45), transparent 65%), radial-gradient(60% 70% at 10% 30%, rgba(91,184,247,.5), transparent 70%), linear-gradient(180deg, #173766 0%, #0B2348 100%); background-size:cover; background-position:center}
 .form-error{display:flex; gap:8px; align-items:flex-start; padding:12px 14px; border-radius:12px; background:var(--crit-soft); color:var(--crit-ink); font-size:14px}
 .form-ok{display:flex; gap:8px; align-items:flex-start; padding:12px 14px; border-radius:12px; background:var(--ok-soft); color:var(--ok-ink); font-size:14px}
+/* Something waiting on the parent (not a confirmation, so not green) */
+.form-warn{display:flex; gap:8px; align-items:flex-start; padding:12px 14px; border-radius:12px; background:var(--warn-soft); color:var(--warn-ink); font-size:14px}
 .field-hint{font-size:12.5px; color:var(--ink-3)}
 .field-error{font-size:12.5px; color:var(--crit-ink)}
 select.input{appearance:auto}
@@ -587,6 +600,8 @@ select.input{appearance:auto}
 /* Last seen a while ago: faded, with a grey ring instead of the accent "live" one */
 .map-pin.stale .avatar{opacity:.72; box-shadow:0 0 0 3px var(--surface), 0 0 0 5px var(--ink-3), var(--shadow)}
 .map-pin.stale .pin-label small{color:var(--warn-ink)}
+/* A saved place: CSS stroke and fill beat the SVG attributes Leaflet sets, and follow the theme */
+.map-place{stroke:var(--ink-3); fill:var(--ink-3)}
 .verify-banner{display:flex; align-items:center; gap:12px; padding:12px 14px; border-radius:12px; background:var(--warn-soft); color:var(--warn-ink); font-size:14px; flex-wrap:wrap}
 .verify-banner > .lucide{width:20px; height:20px; flex:none}
 .verify-banner p{flex:1 1 240px; margin:0}

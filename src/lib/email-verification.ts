@@ -20,7 +20,9 @@ export const appUrl = () => {
   return (url || "http://localhost:3000").replace(/\/+$/, "");
 };
 
-export const EMAIL_UNVERIFIED = "Verify your email to pair a device. We sent you a link. Check your inbox, or send a new one.";
+/** `what` names the action that's waiting: pairing, creating an organization, paying for a plan or codes. */
+export const unverifiedMessage = (what = "pair a device") => `Verify your email to ${what}. We sent you a link. Check your inbox, or send a new one.`;
+export const EMAIL_UNVERIFIED = unverifiedMessage();
 
 /**
  * Whether the parent has a live link waiting in their inbox. A failed send leaves none, so the banner
@@ -31,9 +33,9 @@ export async function hasPendingVerification(userId: string, email: string) {
 }
 
 /** Throws 403 `email_unverified` unless the parent has verified their email. */
-export async function requireVerifiedEmail(userId: string) {
+export async function requireVerifiedEmail(userId: string, what?: string) {
   const u = await db.user.findUniqueOrThrow({ where: { id: userId }, select: { emailVerifiedAt: true } });
-  if (!u.emailVerifiedAt) throw new ServiceError(403, EMAIL_UNVERIFIED, "email_unverified");
+  if (!u.emailVerifiedAt) throw new ServiceError(403, unverifiedMessage(what), "email_unverified");
 }
 
 /**

@@ -1,11 +1,13 @@
 "use client";
 
 import { useActionState, useState } from "react";
+import { useRouter } from "next/navigation";
 import type { AppApproval } from "@prisma/client";
 import { Icon } from "./icon";
+import { Avatar } from "./ui";
 import { Feedback } from "./feedback";
 import { ConfirmField, confirmHint } from "./confirm-field";
-import { useAction, useFlow } from "./flow";
+import { FAILED, useAction, useFlow } from "./flow";
 import { PROFILES, recommendedProfile, type ProfileId } from "@/lib/profiles";
 import { createChild, deleteChildData, setAppApproval, setAppLimit, updateChild } from "@/app/actions/family";
 
@@ -51,6 +53,68 @@ export function ChildForm({ child }: { child?: { id: string; name: string; birth
       ) : null}
       <div><button className="btn btn-primary" disabled={pending}>{pending ? "Saving…" : child ? "Save changes" : "Add child"}</button></div>
     </form>
+  );
+}
+
+/** Longest side of the photo eGuard keeps: avatars are drawn at 84px at most, so 512 is sharp on any screen. */
+const PHOTO_SIDE = 512;
+
+/**
+ * Shrinks the chosen image to PHOTO_SIDE and re-encodes it as JPEG in the browser, so a 6 MB phone photo uploads as a
+ * small file under the 2 MB limit, and its location metadata (EXIF) is left behind. Null when the browser can't
+ * read the file (HEIC outside Safari, or not an image).
+ */
+async function shrinkPhoto(file: File): Promise<Blob | null> {
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    return null;
+  }
+  const scale = Math.min(1, PHOTO_SIDE / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+  canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+  canvas.getContext("2d")!.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+  return new Promise((done) => canvas.toBlob(done, "image/jpeg", 0.85));
+}
+
+/** Upload, replace or remove a child's photo (Profile card). The photo shows wherever the child's avatar does. */
+export function ChildPhotoField({ childId, name, hue, photo }: { childId: string; name: string; hue: number; photo: string | null }) {
+  const router = useRouter();
+  const [pending, run] = useAction();
+  const send = (method: "PUT" | "DELETE", body?: Blob) => async () => {
+    const r = await fetch(`/api/children/${childId}/photo`, { method, body, headers: body ? { "Content-Type": body.type } : undefined });
+    if (r.ok) return {};
+    const data = await r.json().catch(() => ({}));
+    return { error: typeof data.error === "string" ? data.error : FAILED };
+  };
+  const choose = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // choosing the same file again should still upload
+    if (!file) return;
+    const small = await shrinkPhoto(file);
+    if (!small) { run(async () => ({ error: "eGuard can't read that file. Choose a JPEG, PNG or WebP photo." })); return; }
+    run(send("PUT", small), { ok: `${name}'s photo is updated.`, onOk: () => router.refresh() });
+  };
+  return (
+    <div className="row" style={{ gap: 16, flexWrap: "wrap" }} aria-busy={pending}>
+      <Avatar name={name} hue={hue} size="lg" photo={photo} />
+      <div className="dash-col" style={{ gap: 8 }}>
+        <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+          <label className={`btn btn-secondary btn-sm${pending ? " disabled" : ""}`} aria-disabled={pending}>
+            <Icon name={pending ? "loader-circle" : "camera"} className={pending ? "spin" : undefined} />{photo ? "Change photo" : "Add photo"}
+            <input type="file" accept="image/jpeg,image/png,image/webp,image/heic" className="sr-only" disabled={pending} onChange={choose} />
+          </label>
+          {photo ? (
+            <button type="button" className="btn btn-ghost btn-sm" disabled={pending}
+              onClick={() => run(send("DELETE"), { ok: `${name}'s photo is removed.`, onOk: () => router.refresh() })}>Remove</button>
+          ) : null}
+        </div>
+        <p className="t-meta">Shown to parents in your family only, here and in the eGuard app.</p>
+      </div>
+    </div>
   );
 }
 

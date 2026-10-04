@@ -10,7 +10,7 @@ import { authed, body } from "@/lib/mobile-api";
 export const POST = authed(async ({ req, user }) => {
   const b = await body(req, z.object({ deviceId: z.string().optional() }));
   if (b.deviceId && !(await db.device.findFirst({ where: { id: b.deviceId, familyId: user.familyId } }))) throw notFound("Device");
-  const run = await startCheckRun(user.familyId, b.deviceId ? [b.deviceId] : undefined);
+  const run = await startCheckRun(user.familyId, user.id, b.deviceId ? [b.deviceId] : undefined);
   await audit(user.familyId, user.name, "check.started", b.deviceId ?? "all devices");
   return NextResponse.json({ runId: run.id }, { status: 202 });
 });

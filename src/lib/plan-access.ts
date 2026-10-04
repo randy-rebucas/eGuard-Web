@@ -1,6 +1,7 @@
 import "server-only";
 import { db } from "./db";
 import { planRequired } from "./errors";
+import { requestedApps } from "./family-service";
 import { entitlementsFor, nextPlan, planByName, type Entitlements } from "./plans";
 
 /** What the family's plan includes, from Family.plan (kept current by applyEntitlement). */
@@ -36,6 +37,22 @@ export function visibleApps<A extends { name: string; approval: string }>(apps: 
 }
 
 /**
+ * Whether a "most used today" list may name an app on this plan: only apps the Apps tab shows (visibleApps keeps
+ * apps waiting for approval first), so such a list can't reveal the ones it hides. With nothing hidden, any name.
+ */
+export async function nameableApps(childId: string, limit: number | null, minutes: (app: string) => number) {
+  if (limit == null) return () => true;
+  const [all, requested] = await Promise.all([
+    db.childApp.findMany({ where: { childId }, select: { name: true, approval: true } }),
+    requestedApps(childId),
+  ]);
+  const { apps, hidden } = visibleApps(all, limit, { requested, minutes });
+  if (!hidden) return () => true;
+  const names = new Set(apps.map((a) => a.name));
+  return (app: string) => names.has(app);
+}
+
+/**
  * App usage on a plan with an app limit: only the `limit` most used are named, so usage lists (reports, screen
  * time) can't reveal more apps than the Apps tab shows. `others` sums the rest, including the devices' own
  * "Others" row; `hidden` counts the named apps left out. Rows must be most used first.
@@ -53,6 +70,6 @@ export const APPS_UPGRADE = `See and manage every app with ${planWith((e) => e.a
 export async function clearCurrentLocations(familyId: string) {
   await db.deviceLocation.updateMany({
     where: { device: { familyId } },
-    data: { lat: null, lng: null, accuracyM: null, placeLabel: null, locatedAt: null },
+    data: { lat: null, lng: null, accuracyM: null, placeLabel: null, placeId: null, locatedAt: null },
   });
 }

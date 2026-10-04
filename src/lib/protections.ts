@@ -150,7 +150,8 @@ export function describeConfig(cfg: unknown): string {
     case "APP_RESTRICTIONS": return `Apps rated ${c.maxAgeRating}+ and under`;
     case "APP_APPROVAL": return c.enabled ? "Approval required" : "Off";
     case "CONTENT": return `Rated ${c.maxAgeRating}+ and under`;
-    case "WEB": return c.mode === "OFF" ? "Off" : c.mode === "ALLOWLIST" ? "Allowed sites only" : `Filtered, ${c.blockedSites} sites blocked`;
+    // blockedSites isn't named: the policy's number is a placeholder, and devices report the size of their own list
+    case "WEB": return c.mode === "OFF" ? "Off" : c.mode === "ALLOWLIST" ? "Allowed sites only" : "Adult and unsafe sites filtered";
     case "DOWNLOADS": return c.requireApproval ? "Parent approval" : "Unrestricted";
     case "LOCATION": return c.sharing ? "Sharing" : "Sharing off";
     case "NOTIFICATIONS": return c.quietDuringBedtime ? "Quiet during bedtime" : "Unrestricted";
@@ -173,9 +174,19 @@ export function isConfigured(cfg: unknown): boolean {
   }
 }
 
-/** Stable comparison of requested vs reported configuration. */
+/**
+ * Stable comparison of requested vs reported configuration. Web filtering compares the mode only: a device reports
+ * `blockedSites` as the count of sites it actually loaded (docs/child-app-spec.md), which never equals the policy's.
+ */
 export function configMatches(desired: unknown, reported: unknown): boolean {
-  return stableStringify(desired) === stableStringify(reported);
+  return stableStringify(comparable(desired)) === stableStringify(comparable(reported));
+}
+
+function comparable(v: unknown): unknown {
+  if (!v || typeof v !== "object" || (v as { key?: unknown }).key !== "WEB") return v;
+  const rest = { ...(v as Record<string, unknown>) };
+  delete rest.blockedSites;
+  return rest;
 }
 
 function stableStringify(v: unknown): string {

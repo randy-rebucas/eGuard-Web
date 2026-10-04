@@ -194,17 +194,28 @@ const STATUS: Record<Code["status"], [string, string]> = {
   AVAILABLE: ["Available", "tone-accent"], REDEEMED: ["Redeemed", "tone-ok"], CANCELLED: ["Cancelled", "tone-muted"], EXPIRED: ["Expired", "tone-muted"],
 };
 
+/** Rows shown per batch before "Show all": a batch can hold 200 codes, and an organization any number of batches. */
+const CODES_SHOWN = 20;
+
 export function CodesList({ orgId, codes }: { orgId: string; codes: Code[] }) {
+  const [all, setAll] = useState(false);
   const available = codes.filter((c) => c.status === "AVAILABLE").map((c) => c.code);
+  // Copy and the CSV always cover every code; only the table is shortened
+  const shown = all ? codes : codes.slice(0, CODES_SHOWN);
   return (
     <div className="dash-col" style={{ gap: 10 }}>
       {available.length ? <div><CopyButton text={available.join("\n")} label={`Copy ${available.length} available code${available.length === 1 ? "" : "s"}`} done="Codes copied." /></div> : null}
       <div className="table-scroll">
         <table className="data-table org-codes">
-          <thead><tr><th>Code</th><th>Status</th><th><span className="sr-only">Actions</span></th></tr></thead>
-          <tbody>{codes.map((c) => <CodeRow key={c.id} orgId={orgId} c={c} />)}</tbody>
+          <thead><tr><th scope="col">Code</th><th scope="col">Status</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead>
+          <tbody>{shown.map((c) => <CodeRow key={c.id} orgId={orgId} c={c} />)}</tbody>
         </table>
       </div>
+      {codes.length > CODES_SHOWN ? (
+        <div><button type="button" className="link-btn" aria-expanded={all} onClick={() => setAll(!all)}>
+          {all ? `Show the first ${CODES_SHOWN}` : `Show all ${codes.length} codes`}
+        </button></div>
+      ) : null}
     </div>
   );
 }

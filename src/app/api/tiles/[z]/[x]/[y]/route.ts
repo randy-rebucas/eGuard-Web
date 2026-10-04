@@ -1,15 +1,13 @@
 import { getUser } from "@/lib/auth";
+import { tileReferer, tileUpstream } from "@/lib/map-tiles";
 
 /**
  * Map tiles for the family map, fetched by the server. Tiles at street zoom reveal roughly where a child is;
  * requested straight from the browser they'd go to the tile provider with the parent's IP address. Through
  * here the provider only sees this server, and a provider API key (in MAP_TILE_URL) never reaches the browser.
- *
- * MAP_TILE_URL is the upstream template, e.g. "https://tile.openstreetmap.org/{z}/{x}/{y}.png" (the default,
- * fine for development and light use under OSM's tile policy) or a commercial provider's URL with its key.
+ * The provider is configured in src/lib/map-tiles.ts.
  */
 
-const DEFAULT_UPSTREAM = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
 const MAX_ZOOM = 18;
 const TTL_MS = 24 * 3600_000;
 const MAX_CACHED = 1500;
@@ -21,6 +19,18 @@ function remember(key: string, body: ArrayBuffer, type: string) {
   cache.delete(key);
   cache.set(key, { body, type, until: Date.now() + TTL_MS });
   while (cache.size > MAX_CACHED) cache.delete(cache.keys().next().value!);
+}
+
+/**
+ * A rejected request leaves the map blank, so say why in the server log, at most once a minute (every tile fails
+ * the same way). Never the URL: it holds the provider's key.
+ */
+let reportedAt = 0;
+function reportUpstream(status: number) {
+  if (Date.now() - reportedAt < 60_000) return;
+  reportedAt = Date.now();
+  const hint = status === 401 || status === 403 ? " Check MAP_TILE_URL's key, and that the key allows MAP_TILE_REFERER (or APP_URL)." : "";
+  console.warn(`[tiles] The tile provider answered ${status}.${hint}`);
 }
 
 const tile = (body: ArrayBuffer, type: string) =>
@@ -38,13 +48,16 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/tiles/[z]/[x]/[
   const hit = cache.get(key);
   if (hit && hit.until > Date.now()) return tile(hit.body, hit.type);
 
-  const url = (process.env.MAP_TILE_URL || DEFAULT_UPSTREAM).replace("{z}", String(z)).replace("{x}", String(x)).replace("{y}", String(y));
+  const url = tileUpstream().replace("{z}", String(z)).replace("{x}", String(x)).replace("{y}", String(y));
   const site = process.env.APP_URL || "http://localhost:3000";
   try {
-    // OSM's tile policy asks for a User-Agent that identifies the app
-    const res = await fetch(url, { headers: { "User-Agent": `eGuard/1.0 (+${site})` }, signal: AbortSignal.timeout(10_000) });
+    // OSM's tile policy asks for a User-Agent that identifies the app; a key limited to allowed websites checks the Referer
+    const res = await fetch(url, { headers: { "User-Agent": `eGuard/1.0 (+${site})`, Referer: tileReferer() }, signal: AbortSignal.timeout(10_000) });
     const type = res.headers.get("content-type") ?? "";
-    if (!res.ok || !type.startsWith("image/")) return new Response("Tile unavailable", { status: 502 });
+    if (!res.ok || !type.startsWith("image/")) {
+      reportUpstream(res.status);
+      return new Response("Tile unavailable", { status: 502 });
+    }
     const body = await res.arrayBuffer();
     remember(key, body, type);
     return tile(body, type);

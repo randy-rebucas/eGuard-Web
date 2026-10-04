@@ -29,6 +29,8 @@ export async function POST(req: Request) {
   ]);
   return NextResponse.json({
     deviceId: device.id,
+    // Whose device this is now: a parent can move it to another child, so don't rely on the name from pairing
+    childName: device.child.name,
     policy: sync.policy,
     requests: sync.requests,
     apps,

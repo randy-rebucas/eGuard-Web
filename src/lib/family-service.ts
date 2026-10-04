@@ -15,7 +15,7 @@ import { conflict, forbidden, invalid, isUniqueViolation, notFound, planLimit } 
 import { requireVerifiedEmail } from "./email-verification";
 import { BASE_PLAN, nextPlan, planByName } from "./plans";
 import { LIMITS, enforce } from "./rate-limit";
-import { usedDeviceSlots } from "./device-slots";
+import { ensurePrimary, makePrimary, promoteOldest, usedDeviceSlots, withDeviceLock } from "./device-slots";
 
 /** Family, children, apps and devices: shared by the web server actions and the mobile API. */
 
@@ -189,6 +189,9 @@ export const PairingOptions = z.discriminatedUnion("kind", [
 ]);
 export type PairingOptions = z.infer<typeof PairingOptions>;
 
+/** How long a pairing code works. */
+export const PAIRING_CODE_TTL_S = 15 * 60;
+
 /**
  * A one-time code the child's device (or browser, for BROWSER codes) exchanges for its credentials. Only the
  * newest code of each kind for a child works: getting another replaces it, so at most two guessable codes per child
@@ -211,7 +214,7 @@ export async function createPairingCode(actor: Actor, childId: string, opts: Pai
   await enforce(`paircode:${actor.id}`, LIMITS.pairCodeUser, "You've made several pairing codes. Wait a few minutes before making another.");
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   const code = Array.from({ length: 8 }, () => alphabet[randomInt(alphabet.length)]).join("");
-  const expiresAt = new Date(Date.now() + 15 * 60_000);
+  const expiresAt = new Date(Date.now() + PAIRING_CODE_TTL_S * 1000);
   await db.$transaction([
     // Replaces only the same kind: the Devices page offers a phone code and a browser code side by side
     db.pairingCode.deleteMany({ where: { childId, usedAt: null, kind: opts.kind as PairingKind } }),
@@ -219,7 +222,8 @@ export async function createPairingCode(actor: Actor, childId: string, opts: Pai
       data: { familyId: actor.familyId, childId, code, expiresAt, kind: opts.kind as PairingKind, deviceLabel: opts.kind === "BROWSER" ? opts.deviceLabel : null },
     }),
   ]);
-  return { code, expiresAt, childName: child.name, kind: opts.kind };
+  // expiresInSeconds: screens count down from this, not from expiresAt, so a device clock that's off doesn't matter
+  return { code, expiresAt, expiresInSeconds: PAIRING_CODE_TTL_S, childName: child.name, kind: opts.kind };
 }
 
 /**
@@ -243,28 +247,115 @@ export async function pairingCodeStatus(actor: Actor, code: string) {
   return device ? { status: "paired" as const, device } : { status: "waiting" as const, expiresAt: p.expiresAt };
 }
 
+export const DeviceName = z.string().trim().min(1, "Enter a device name.").max(60, "Use up to 60 characters.");
+
+/** Renames a phone or tablet; in the audit log like removing, so "who renamed it" has an answer. */
+export async function renameDevice(actor: Actor, deviceId: string, name: string) {
+  const d = await db.device.findFirst({ where: { id: deviceId, familyId: actor.familyId }, include: { child: true } });
+  if (!d) throw notFound("Device");
+  if (d.name === name) return d;
+  // updateMany: removed by another parent in the meantime is a 404, not a Prisma error
+  if (!(await db.device.updateMany({ where: { id: d.id, familyId: actor.familyId }, data: { name } })).count) throw notFound("Device");
+  await audit(actor.familyId, actor.name, "device.renamed", `${d.child.name}'s ${d.name} → ${name}`);
+  return { ...d, name };
+}
+
+/** Makes a phone or tablet its child's primary device: listed first, and the one on the child's card. */
+export async function setPrimaryDevice(actor: Actor, deviceId: string) {
+  const d = await db.device.findFirst({ where: { id: deviceId, familyId: actor.familyId }, include: { child: true } });
+  if (!d) throw notFound("Device");
+  if (d.isPrimary) return d;
+  if (!(await makePrimary(actor.familyId, d.childId, d.id))) throw notFound("Device");
+  await audit(actor.familyId, actor.name, "device.primary", `${d.child.name}'s ${d.name}`);
+  return { ...d, isPrimary: true };
+}
+
+/** A configuration request the device hasn't finished: it was for the old child's protections. */
+const OPEN_REQUESTS = ["PENDING", "AWAITING_PARENT", "DELIVERED"] as const;
+
+/**
+ * Moves a phone or tablet to another child in the family, without pairing it again. From its next sync it gets
+ * the new child's protections and apps. Needs the password (or DELETE), like removing: moving a device to a child
+ * with looser rules would otherwise be a quiet way to lift them, so the other parents are told too.
+ *
+ * What it recorded stays with the old child: its screen time, app usage and places are detached from the device
+ * (as when it's removed), so new usage starts fresh rows for the new child. Its reported protections are cleared,
+ * since they were checked against the old child's settings, and a full report is requested; until it arrives the
+ * device reads "Waiting for first check". Its last position is cleared, so the old child's whereabouts aren't
+ * shown as the new child's.
+ */
+export async function moveDevice(actor: Actor, deviceId: string, childId: string, confirm: Confirm) {
+  const [d, to] = await Promise.all([
+    db.device.findFirst({ where: { id: deviceId, familyId: actor.familyId }, include: { child: true } }),
+    db.child.findFirst({ where: { id: childId, familyId: actor.familyId } }),
+  ]);
+  if (!d) throw notFound("Device");
+  if (!to) throw notFound("Child");
+  if (to.id === d.childId) throw invalid(`${d.name} already belongs to ${to.name}.`);
+  await confirmDestructive(actor.id, confirm);
+  const now = new Date();
+  const moved = await withDeviceLock(actor.familyId, async (tx) => {
+    // Removed or moved by another parent since it was read: don't move it from a child it no longer belongs to
+    const cur = await tx.device.findFirst({ where: { id: d.id, familyId: actor.familyId }, select: { childId: true, isPrimary: true } });
+    if (!cur || cur.childId !== d.childId) return false;
+    const mine = { where: { deviceId: d.id } };
+    await tx.screenTimeDaily.updateMany({ ...mine, data: { deviceId: null } });
+    await tx.appUsageDaily.updateMany({ ...mine, data: { deviceId: null } });
+    await tx.locationVisit.updateMany({ ...mine, data: { deviceId: null } });
+    await tx.deviceProtection.deleteMany(mine);
+    await tx.deviceLocation.updateMany({ ...mine, data: { lat: null, lng: null, accuracyM: null, placeLabel: null, placeId: null, locatedAt: null } });
+    await tx.configRequest.updateMany({ where: { deviceId: d.id, status: { in: [...OPEN_REQUESTS] } }, data: { status: "CANCELLED" } });
+    // Its open alerts name the old child and their settings
+    await tx.alert.updateMany({ where: { familyId: actor.familyId, deviceId: d.id, resolvedAt: null }, data: { resolvedAt: now } });
+    const toHasPrimary = await tx.device.count({ where: { childId: to.id, isPrimary: true } });
+    await tx.device.update({ where: { id: d.id }, data: { childId: to.id, isPrimary: !toHasPrimary, checkRequestedAt: now } });
+    if (cur.isPrimary) await promoteOldest(tx, d.childId);
+    return true;
+  });
+  if (!moved) throw notFound("Device");
+  await audit(actor.familyId, actor.name, "device.moved", `${d.name}: ${d.child.name} → ${to.name}`);
+  await db.alert.create({
+    data: {
+      familyId: actor.familyId, childId: to.id, deviceId: d.id, severity: "ATTENTION", category: "DEVICES", icon: "tablet-smartphone",
+      title: "Device moved", subject: `${to.name}'s ${d.name}`,
+      body: `${actor.name} moved ${d.name} from ${d.child.name} to ${to.name}. It gets ${to.name}'s protections on its next sync, and eGuard checks them then. What it recorded stays in ${d.child.name}'s reports and history.`,
+    },
+  });
+  return { ...d, childId: to.id, child: to };
+}
+
 /**
  * Removes a device from the family. Its token stops working and eGuard stops verifying it, which would also
  * silence tamper alerts, so it needs the parent's password and tells the family (the alert is emailed).
+ * The screen time, app usage and location visits it recorded stay with the child (their deviceId becomes null)
+ * unless the parent chose `deleteHistory`.
  */
-export async function removeDevice(actor: Actor, deviceId: string, confirm: Confirm) {
+export async function removeDevice(actor: Actor, deviceId: string, confirm: Confirm, opts: { deleteHistory?: boolean } = {}) {
   const d = await db.device.findFirst({ where: { id: deviceId, familyId: actor.familyId }, include: { child: true } });
   if (!d) throw notFound("Device");
   await confirmDestructive(actor.id, confirm);
-  const [gone] = await db.$transaction([
+  const history = { where: { deviceId: d.id, childId: d.childId } };
+  const results = await db.$transaction([
+    // First, while the rows still carry the device's id: deleting the device sets it to null on them
+    ...(opts.deleteHistory ? [db.screenTimeDaily.deleteMany(history), db.appUsageDaily.deleteMany(history), db.locationVisit.deleteMany(history)] : []),
     // deleteMany: another parent removing it at the same moment is a 404 here, not a Prisma error
     db.device.deleteMany({ where: { id: d.id } }),
     // Alerts only hold the device's id, so its open ones (offline, protection changed) would never resolve
     db.alert.updateMany({ where: { familyId: actor.familyId, deviceId: d.id, resolvedAt: null }, data: { resolvedAt: new Date() } }),
   ]);
+  const gone = results.at(-2)!; // the device delete: last comes the alerts update
   if (!gone.count) throw notFound("Device");
+  if (d.isPrimary) await ensurePrimary(actor.familyId, d.childId);
   const label = `${d.child.name}'s ${d.name}`;
-  await audit(actor.familyId, actor.name, "device.removed", label);
+  await audit(actor.familyId, actor.name, opts.deleteHistory ? "device.removed_with_history" : "device.removed", label);
   await db.alert.create({
     data: {
       familyId: actor.familyId, childId: d.childId, severity: "ATTENTION", category: "DEVICES", icon: "trash",
       title: "Device removed", subject: label,
-      body: `${actor.name} removed ${d.name} from eGuard. Its protections stay on the device, but eGuard no longer verifies them or tells you if they change.`,
+      // Other parents are told what happened to the history too, since it can't be undone
+      body: `${actor.name} removed ${d.name} from eGuard. Its protections stay on the device, but eGuard no longer verifies them or tells you if they change. ${opts.deleteHistory
+        ? `The screen time, app usage and places it recorded were deleted.`
+        : `The screen time, app usage and places it recorded stay in ${d.child.name}'s reports and history.`}`,
     },
   });
   return d;

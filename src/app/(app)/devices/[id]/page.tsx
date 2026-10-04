@@ -9,7 +9,7 @@ import { CAPABILITY_META, PROTECTIONS, PROTECTION_BY_KEY, describeConfig, fmtMin
 import { Icon } from "@/components/icon";
 import { CheckBadge, DeviceIcon, StatusBadge, Timeline, platformName } from "@/components/ui";
 import { CheckButton, FlowButton } from "@/components/flow";
-import { RemoveDeviceButton, RenameDeviceForm } from "@/components/device-forms";
+import { MoveDeviceForm, PrimaryDevice, RemoveDeviceButton, RenameDeviceForm } from "@/components/device-forms";
 
 const REQUESTS_SHOWN = 6;
 
@@ -38,6 +38,7 @@ export default async function DevicePage(props: PageProps<"/devices/[id]">) {
     db.configRequest.findMany({ where: { deviceId: d.id }, orderBy: { createdAt: "desc" }, take: REQUESTS_SHOWN }),
     db.checkRunResult.findFirst({ where: { deviceId: d.id, reportedAt: { not: null } }, orderBy: { reportedAt: "desc" } }),
   ]);
+  const used = childUsage._sum.minutes ?? 0, limit = limitOn(child, todayKey);
   const prot = (key: string) => d.protections.find((p) => p.key === key);
   /** What the device last reported for a protection, or why there's nothing to show */
   const reported = (key: string) => {
@@ -65,7 +66,8 @@ export default async function DevicePage(props: PageProps<"/devices/[id]">) {
             <div className="t-meta" style={{ fontSize: 14.5 }}><Link className="inline-link" href={`/children/${child.id}`}>{child.name}</Link>&apos;s device · {d.osVersion} · {d.model}</div>
             <div className="row" style={{ marginTop: 10, gap: 8, flexWrap: "wrap" }}>
               {state.key === "healthy" ? <StatusBadge status="healthy" /> : state.key === "offline" ? <StatusBadge status="offline" /> : null}
-              {state.issues ? <StatusBadge status="issues" count={state.issues} /> : null}
+              {state.firstCheck ? <span className="pill tone-muted"><Icon name="loader-circle" />Waiting for first check</span>
+                : state.issues ? <StatusBadge status="issues" count={state.issues} /> : null}
               <span className="pill tone-muted">{platformName(d.platform)}</span>
               {d.simulated ? <span className="pill tone-accent" title="Driven by the development device simulator">Simulated</span> : null}
             </div>
@@ -89,11 +91,14 @@ export default async function DevicePage(props: PageProps<"/devices/[id]">) {
         <div><dt>Last sync</dt><dd className="num">{dayTime(d.lastSeenAt, tz)}</dd></div>
         <div>
           <dt>Screen time today</dt>
-          <dd className="num">{fmtMinutesPadded(childUsage._sum.minutes ?? 0)} / {fmtMinutes(limitOn(child, todayKey))}</dd>
+          <dd className="num">{fmtMinutesPadded(used)} / {fmtMinutes(limit)}</dd>
+          {used > limit ? <dd className="t-meta" style={{ color: "var(--warn-ink)" }}>{fmtMinutes(used - limit)} over {child.name}&apos;s limit</dd> : null}
           {child.devices.length > 1 ? <dd className="t-meta">{fmtMinutesPadded(usage?.minutes ?? 0)} on this device</dd> : null}
         </div>
         <div><dt>Bedtime</dt><dd>{reported("BEDTIME")}</dd></div>
-        <div><dt>Location</dt><dd>{!entitlementsFor(family.plan).locationSharing ? <><Icon name="map-pin-off" />Not on your plan</> : loc?.sharing ? <><Icon name="map-pin" />Sharing</> : <><Icon name="map-pin-off" />Off</>}</dd></div>
+        {/* No row until the device reports location: that's "not reported", not sharing turned off */}
+        <div><dt>Location</dt><dd>{!entitlementsFor(family.plan).locationSharing ? <><Icon name="map-pin-off" />Not on your plan</>
+          : !loc ? "Not reported" : loc.sharing ? <><Icon name="map-pin" />Sharing</> : <><Icon name="map-pin-off" />Off</>}</dd></div>
         <div><dt>App approval</dt><dd>{approvalOn ? <><Icon name="badge-check" />Required</> : reported("APP_APPROVAL")}</dd></div>
         <div><dt>Battery</dt><dd className="num">{d.battery != null ? `${d.battery}%` : "Unknown"}</dd></div>
       </dl>
@@ -140,7 +145,12 @@ export default async function DevicePage(props: PageProps<"/devices/[id]">) {
               <div><dt>eGuard app</dt><dd>{d.appVersion ?? "Unknown"}</dd></div>
               <div><dt>Added</dt><dd>{shortDate(d.createdAt, tz)}</dd></div>
             </dl>
-            <RemoveDeviceButton deviceId={d.id} name={d.name} hasPassword={u.hasPassword} />
+            <div className="dash-col" style={{ gap: 12 }}>
+              <PrimaryDevice deviceId={d.id} isPrimary={d.isPrimary} childName={child.name} others={child.devices.length - 1} />
+              <MoveDeviceForm deviceId={d.id} name={d.name} childName={child.name} hasPassword={u.hasPassword}
+                kids={graph.children.filter((c) => c.id !== child.id).map((c) => ({ id: c.id, name: c.name }))} />
+              <RemoveDeviceButton deviceId={d.id} name={d.name} hasPassword={u.hasPassword} />
+            </div>
           </section>
         </div>
       </div>

@@ -18,14 +18,18 @@ export default async function NotificationsPage(props: PageProps<"/notifications
   const filter = FILTERS.find(([k]) => k === String(sp.filter ?? "").toUpperCase())?.[0] ?? "ALL";
   const showResolved = sp.resolved === "1";
   const limit = Math.min(MAX, Math.max(PAGE, Math.ceil(Number(sp.limit) / PAGE) * PAGE || PAGE));
+  // ?child= (from a child's Recent alerts): only that child's, and only if they're in this family; otherwise ignored
+  const asked = typeof sp.child === "string" && sp.child.length <= 64 ? sp.child : null;
+  const child = asked ? await db.child.findFirst({ where: { id: asked, familyId: u.familyId }, select: { id: true, name: true } }) : null;
   const [family, alerts, counts] = await Promise.all([
     getFamily(u.familyId),
-    getAlerts(u.familyId, u.id, { category: filter, includeResolved: showResolved, take: limit }),
-    db.alert.groupBy({ by: ["category"], where: { familyId: u.familyId, ...(showResolved ? {} : { resolvedAt: null }) }, _count: true }),
+    getAlerts(u.familyId, u.id, { category: filter, includeResolved: showResolved, take: limit, childId: child?.id }),
+    db.alert.groupBy({ by: ["category"], where: { familyId: u.familyId, ...(child ? { childId: child.id } : {}), ...(showResolved ? {} : { resolvedAt: null }) }, _count: true }),
   ]);
   const total = counts.reduce((s, c) => s + c._count, 0);
   const inTab = filter === "ALL" ? total : counts.find((c) => c.category === filter)?._count ?? 0;
-  const q = (f: string, r = showResolved, n?: number) => `/notifications?filter=${f.toLowerCase()}${r ? "&resolved=1" : ""}${n ? `&limit=${n}` : ""}`;
+  const q = (f: string, r = showResolved, n?: number, c = child?.id) =>
+    `/notifications?filter=${f.toLowerCase()}${c ? `&child=${encodeURIComponent(c)}` : ""}${r ? "&resolved=1" : ""}${n ? `&limit=${n}` : ""}`;
 
   return (
     <>
@@ -40,10 +44,16 @@ export default async function NotificationsPage(props: PageProps<"/notifications
           </Link>
         ))}
       </nav>
+      {child ? (
+        <div className="row t-meta" style={{ gap: 10, flexWrap: "wrap" }} role="status">
+          <span>Showing {child.name}&apos;s notifications.</span>
+          <Link className="link-btn" href={q(filter, showResolved, undefined, "")}>Show all notifications</Link>
+        </div>
+      ) : null}
       <section className="card" style={{ padding: 8 }}>
         {alerts.length ? alerts.map((a) => <NotificationItem key={a.id} a={toAlertItem(a, family.timezone)} />)
-          : filter === "ALL" ? <EmptyState icon="bell" title="You're all caught up" text={showResolved ? "There are no notifications yet." : "New notifications appear here. Resolved ones are hidden."} />
-          : <EmptyState icon="bell-off" title="Nothing here" text="There are no notifications in this category." />}
+          : filter === "ALL" ? <EmptyState icon="bell" title="You're all caught up" text={showResolved ? `There are no notifications${child ? ` about ${child.name}` : ""} yet.` : "New notifications appear here. Resolved ones are hidden."} />
+          : <EmptyState icon="bell-off" title="Nothing here" text={`There are no notifications${child ? ` about ${child.name}` : ""} in this category.`} />}
         {alerts.length < inTab ? (
           <div className="row t-meta" style={{ justifyContent: "space-between", gap: 10, flexWrap: "wrap", padding: "12px 8px 4px" }}>
             <span>Showing {alerts.length} of {inTab}</span>

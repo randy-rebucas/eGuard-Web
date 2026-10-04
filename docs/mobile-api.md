@@ -279,7 +279,7 @@ Every error has the same shape. `error` is always written for the parent and saf
 |---|---|---|
 | 400 | `invalid`, `invalid_json`, `confirm_required` | `confirm_required`: a deletion by a parent without a password didn't include `confirm: "DELETE"` (see [Confirming deletions](#confirming-deletions)). Otherwise validation failed. For body fields, `error` starts with the field path, e.g. `"email: Enter a valid email address."`, so you can highlight the field |
 | 401 | `unauthorized`, `invalid_credentials`, `invalid_token` | Session gone (sign out locally), wrong password, or a rejected Apple/Google token |
-| 403 | `forbidden`, `wrong_password`, `password_not_set`, `email_unverified` | Family-admin-only action, a password confirmation was wrong, changing the email of an account without a password, or pairing a device before verifying email |
+| 403 | `forbidden`, `wrong_password`, `password_not_set`, `email_unverified` | Family-admin-only action, a password confirmation was wrong, changing the email of an account without a password, or pairing a device, creating an organization or paying (a web plan or sponsor codes) before verifying email |
 | 404 | `not_found` | Doesn't exist **or belongs to another family**. The API never reveals which |
 | 409 | `conflict`, `unsupported`, `not_dismissible` | Duplicate email/app, device limit reached, protection unsupported on the child's devices, alert can't be dismissed |
 | 413 | `too_large` | Photo over 2 MB |
@@ -406,11 +406,15 @@ Used in the children list, the dashboard and the family screen.
   "lastSeenAt": "2026-09-27T05:56:43.267Z",
   "lastSeenLabel": "Today, 1:56 PM",
   "state": "healthy",
-  "issues": 0
+  "issues": 0,
+  "firstCheck": false
 }
 ```
 
-`state` is `healthy`, `issues` (`issues` > 0 protections not passing) or `offline` (no sync for over 24 h). `battery?`
+`state` is `healthy`, `issues` (`issues` > 0 protections not passing, counting ones the device hasn't reported yet:
+a device that was just paired has `issues` equal to the number of protections until its first check) or `offline`
+(no sync for over 24 h). `firstCheck` is `true` until the device's first report: show "Waiting for first check"
+instead of the issue count, as the web does. `battery?`
 and `appVersion?` may be null.
 
 #### Alert
@@ -468,7 +472,7 @@ Returned by `PUT /children/{id}/protections/{KEY}`, `POST /children/{id}/setup` 
       "name": "Web",
       "icon": "globe",
       "status": "AWAITING_PARENT",
-      "to": "Filtered, 50 sites blocked",
+      "to": "Adult and unsafe sites filtered",
       "devices": [
         {
           "requestId": "cmujesvhf00vnncko3bmhqh76",
@@ -479,7 +483,7 @@ Returned by `PUT /children/{id}/protections/{KEY}`, `POST /children/{id}/setup` 
           "status": "AWAITING_PARENT",
           "failureReason": null,
           "offline": false,
-          "from": "Filtered, 42 sites blocked",
+          "from": "Off",
           "guide": [
             "Open Settings, tap Screen Time, then Content & Privacy Restrictions.",
             "Tap App Store, Media, Web & Games, then Web Content.",
@@ -917,7 +921,8 @@ Child Profile › Overview.
 
 - `health.verified` / `health.offline` work as in [`GET /health`](#get-healthchildid): only say "verified" when
   `verified` is true.
-- `today.topApps` names up to 5 apps, most used first, and never more than the plan's `appMonitoringLimit`.
+- `today.topApps` names up to 5 apps, most used first, and never more than the plan's `appMonitoringLimit`. With a
+  limit, it only names apps the child's apps list (`GET /children/{id}/apps`) shows.
   `appsUsed` counts every app used today.
 - `location.state` is the same as in `GET /locations` (`located`, `waiting`, `sharing_off`, `no_devices`), plus
   `plan_required` on plans without location sharing (then `sharing` is false and there's no place). `location.label`
@@ -967,10 +972,11 @@ Configuration history, newest first. `limit` is 1–100.
 device, which calls `POST /api/device/v1/pair` (see [C3 › Pair](#post-pair--201)).
 
 ```json
-{ "code": "FJZM7J7H", "expiresAt": "2026-09-27T06:14:58.928Z", "childName": "Mia" }
+{ "code": "FJZM7J7H", "expiresAt": "2026-09-27T06:14:58.928Z", "expiresInSeconds": 900, "childName": "Mia", "kind": "DEVICE" }
 ```
 
-The code is 8 characters, single-use, and valid for 15 minutes. Only a child's newest code of each kind (device, browser) works: asking for another
+The code is 8 characters, single-use, and valid for 15 minutes. Count down from `expiresInSeconds` (from when the
+response arrived), not from `expiresAt`: the phone's clock may be off. Only a child's newest code of each kind (device, browser) works: asking for another
 replaces the previous one, so show only the latest. `409` means the plan's device limit has been reached. `403 email_unverified` means the parent hasn't verified their email yet (see Email verification).
 `429 rate_limited` means the parent made more than 20 codes in an hour.
 After pairing, `GET /children/{id}` shows the device, and a first full check runs automatically.
@@ -994,7 +1000,7 @@ reports.
       "icon": "moon",
       "policy": { "key": "BEDTIME", "enabled": false, "start": "22:00", "end": "06:00", "days": "EVERY_DAY" },
       "policyLabel": "Off",
-      "status": "NOT_CONFIGURED",
+      "status": "PASS",
       "openBatchId": null,
       "devices": [
         {
@@ -1002,10 +1008,10 @@ reports.
           "deviceName": "iPhone 13",
           "platform": "IOS",
           "capability": "AVAILABLE",
-          "status": "NOT_CONFIGURED",
+          "status": "PASS",
           "reported": { "key": "BEDTIME", "enabled": false, "start": "22:00", "end": "06:00", "days": "EVERY_DAY" },
-          "reportedLabel": "Not configured",
-          "message": "Not configured on Sophie's iPhone 13",
+          "reportedLabel": "Off",
+          "message": null,
           "lastVerifiedAt": "2026-09-27T05:32:40.136Z",
           "guide": null
         }
@@ -1019,8 +1025,11 @@ reports.
 - If `openBatchId` is set, a change is still in progress: resume polling it instead of starting a new one.
 - `capability` says how eGuard can apply this protection on the device (`AVAILABLE`, `GUIDED`, `VERIFY_ONLY` or
   `UNSUPPORTED`).
+- A protection the parent turned off passes once the device confirms it's off (as above): it's the parent's choice,
+  not something to fix. `NOT_CONFIGURED` means the child has no setting for it and the device has it off.
+- `reportedLabel` is `"Not reported"` for a device that hasn't reported this protection yet.
 
-##### `PUT /children/{id}/protections/{KEY}` → `202`
+##### `PUT /children/{id}/protections/{KEY}` → `202` (or `200` with no device)
 
 Change one protection. `KEY` is case-insensitive. The body is that protection's config **without** `key`:
 
@@ -1031,9 +1040,13 @@ PUT /children/{id}/protections/BEDTIME
 
 The response is a `Batch`. Poll `GET /batches/{batchId}`.
 
+A child with no paired device yet has nothing to verify the change, so it's saved as their setting straight away and
+applied when a device pairs: `200` with `{ "batchId": null, "saved": ["BEDTIME"] }`. Say so ("Saved. It applies when
+Mia's device is paired"), not "verified".
+
 - Any open change for the same protection is cancelled and replaced.
 - `400` for an invalid config.
-- `409 unsupported` if none of the child's devices support it (e.g. Notifications on an iOS-only child). Hide or
+- `409 unsupported` if the child has devices but none of them supports it (e.g. Notifications on an iOS-only child). Hide or
   disable that control when every device's `capability` is `UNSUPPORTED`.
 
 ##### `GET /batches/{id}`
@@ -1080,7 +1093,7 @@ Cancels everything in the batch that isn't verified yet. Response: `{ "cancelled
 | `hourly` | 24 values (index 0 = midnight, family time zone) for `today` only. `null` for 7d/30d, **or when the child's devices don't send hourly data**. Hide the hourly chart then |
 | `days` | One entry per day, oldest first (1, 7 or 30 entries). Use for the 7/30-day bar charts |
 | `previousAverageMinutes` | Average for the same length of time just before (for "↓ 12% vs last week") |
-| `apps` | Most used first. `appId` / `approval` are `null` for apps without a rule (e.g. `Others`). With an `appMonitoringLimit`, only that many are named and the rest are summed into `Others` |
+| `apps` | Most used first. `appId` / `approval` are `null` for apps without a rule (e.g. `Others`). With an `appMonitoringLimit`, only that many are named and the rest are summed into `Others`. For `today`, the named apps are also only ones the child's apps list (`GET /children/{id}/apps`) shows, which keeps apps waiting for approval first |
 | `hiddenApps` | How many apps were left unnamed because of the plan's `appMonitoringLimit` (0 otherwise). Show the upgrade note when above 0 |
 
 #### P4.9 Apps
@@ -1146,32 +1159,44 @@ about 5 minutes).
   "childId": "cmujeom2c0006ncgsd9tlg8pp",
   "sharing": true,
   "state": "located",
+  "waitingForReport": null,
   "current": {
     "deviceId": "cmujeom5j000wncgs0ylb00q4", "deviceName": "Galaxy A54",
-    "lat": 14.6507, "lng": 121.0494, "accuracyM": 25, "placeLabel": "Home",
+    "lat": 14.6507, "lng": 121.0494, "accuracyM": 25, "placeLabel": "Home", "placeId": "cmuplace0001",
     "locatedAt": "2026-09-27T05:28:40.136Z", "updatedLabel": "Today, 1:28 PM", "fresh": true, "approximate": false
   },
   "devices": [ { "id": "cmujeom5j000wncgs0ylb00q4", "name": "Galaxy A54", "sharing": true, "hasLocation": true } ],
   "history": {
     "enabled": true,
     "visits": [
-      { "id": "…", "deviceName": "Galaxy A54", "lat": 11.29, "lng": 125.07, "placeLabel": "Babatngon Central School",
-        "arrivedAt": "…", "lastSeenAt": "…", "timeLabel": "Today, 2:32 PM", "day": { "key": "2026-09-27", "label": "Today" } }
-    ]
+      { "id": "…", "deviceName": "Galaxy A54", "lat": 11.29, "lng": 125.07, "placeLabel": "School", "placeId": "cmuplace0002",
+        "arrivedAt": "…", "lastSeenAt": "…", "timeLabel": "Today, 2:32 PM", "day": { "key": "2026-09-27", "label": "Today" },
+        "stayed": true, "durationMinutes": 390, "spanLabel": "7:40 AM – 2:10 PM · 6 h 30 min" }
+    ],
+    "more": false
   }
 }
 ```
 
 - `current` is `null` when sharing is off or no location has arrived yet. `state` is the same as in `GET /locations`.
-- `fresh` is true when the location is under 15 minutes old and the device is still syncing. Otherwise show it as
+- `placeLabel` is the name of the saved place the location falls inside (`placeId`, see
+  [Saved places](#saved-places)), else the device's own label (devices don't send one in v1), else `null`: show
+  "Current location" / "Unnamed place".
+- `fresh` is true when the location is under 20 minutes old and the device is still syncing. Otherwise show it as
   "Last seen {updatedLabel}", never as live. `approximate` is true when `accuracyM` is over 200 m (e.g. a cell-tower
   fix): draw the accuracy circle and say "approximate".
 - When sharing is turned off, eGuard deletes the device's last position, and locations it sends while sharing is off
   aren't stored.
 - The banner at the top of the screen reads "Location sharing Enabled" when `sharing` is true.
-- `history.visits` covers today and yesterday, newest first, and is empty unless `history.enabled`. The admin turns
-  history on with `PATCH /family/privacy { keepLocationHistory: true }`. When it's off, show a prompt instead of the
-  "Today" list.
+- `history.visits` covers today and yesterday, newest first, up to 100 (`more: true` when there were more; "View All"
+  pages them), and is empty unless `history.enabled`. The admin turns history on with
+  `PATCH /family/privacy { keepLocationHistory: true }`. When it's off, show a prompt instead of the "Today" list.
+- A visit with `stayed: false` is a fix taken while passing by (it lasted under about 4 minutes): show it as
+  "Passing by", and leave it out of any list of places the child went. A device and another of the child's devices at
+  the same place make one visit, not two. `spanLabel` reads "11:00 PM – 7:00 AM next day · 8 h" across midnight.
+- `waitingForReport` names the device eGuard is waiting on when `state` is `waiting` only because no device has
+  reported yet whether it shares ("Waiting for *Galaxy A54* to report whether location sharing is on"); otherwise
+  `null`.
 - To turn sharing on or off, change the `LOCATION` protection (`PUT /children/{id}/protections/LOCATION
   { "sharing": true }`). On iOS this is guided setup.
 
@@ -1185,8 +1210,9 @@ and pages use `nextBefore` (the `arrivedAt` of the last item).
   "enabled": true,
   "retentionDays": 90,
   "visits": [
-    { "id": "…", "deviceName": "Galaxy A54", "lat": 11.32, "lng": 125.06, "placeLabel": "Park",
-      "arrivedAt": "…", "lastSeenAt": "…", "timeLabel": "Today, 2:32 PM", "day": { "key": "2026-09-27", "label": "Today" } }
+    { "id": "…", "deviceName": "Galaxy A54", "lat": 11.32, "lng": 125.06, "placeLabel": "Park", "placeId": "…",
+      "arrivedAt": "…", "lastSeenAt": "…", "timeLabel": "Today, 2:32 PM", "day": { "key": "2026-09-27", "label": "Today" },
+      "stayed": true, "durationMinutes": 45, "spanLabel": "2:32 PM – 3:17 PM · 45 min" }
   ],
   "nextBefore": "2026-09-27T06:12:44.031Z"
 }
@@ -1202,15 +1228,33 @@ The family map, one entry per child:
 ```json
 {
   "children": [
-    { "childId": "…", "name": "Mia", "hue": 205, "photoUrl": null, "sharing": true, "state": "located",
+    { "childId": "…", "name": "Mia", "hue": 205, "photoUrl": null, "sharing": true, "state": "located", "waitingForReport": null,
       "location": { "deviceId": "…", "deviceName": "Galaxy A54", "lat": 14.6507, "lng": 121.0494, "accuracyM": 25,
-                    "placeLabel": "Home", "locatedAt": "…", "updatedLabel": "Today, 1:28 PM", "fresh": true, "approximate": false } }
-  ]
+                    "placeLabel": "Home", "placeId": "…", "locatedAt": "…", "updatedLabel": "Today, 1:28 PM", "fresh": true, "approximate": false } }
+  ],
+  "places": [ { "id": "…", "name": "Home", "lat": 14.6507, "lng": 121.0494, "radiusM": 150 } ]
 }
 ```
 
-`state` is `located`, `waiting` (sharing on, no location yet), `sharing_off` (also when the device reported sharing off
-before sending any location) or `no_devices`. `fresh` and `approximate` work as in `GET /children/{id}/location`.
+`state` is `located`, `waiting` (sharing on and no location yet, or no device has reported yet whether it shares and
+the parent's setting is on: `waitingForReport` names it), `sharing_off` (a device reported sharing off, or the
+parent's setting is off) or `no_devices`. `fresh` and `approximate` work as in `GET /children/{id}/location`.
+`places` are the family's saved places: draw each as a circle of `radiusM` metres with its name.
+
+##### Saved places
+
+Places the parents name (Home, School). A location or visit inside one (the nearest, when they overlap) is
+labelled with its name; naming, renaming, resizing or removing a place relabels what's already kept. Any parent can
+manage them; 403 `plan_required` on Free (except `DELETE`).
+
+| Request | Body | Response |
+|---|---|---|
+| `GET /places` | | `{ places: [{ id, name, lat, lng, radiusM }] }`, by name |
+| `POST /places` | `{ name, lat, lng, radiusM? }`: name 1–40 characters, `radiusM` one of 100, 150 (default), 250, 500, 1000 | `201` the place. `400` past 30 places |
+| `PATCH /places/{id}` | `{ name?, radiusM? }` (at least one) | the place |
+| `DELETE /places/{id}` | | `{ ok: true }`; visits there lose its name unless another saved place covers them |
+
+Offer "Name this place" on the child's current location and on a visit with no `placeId`, using its `lat` and `lng`.
 
 #### P4.11 Alerts
 
@@ -1252,15 +1296,16 @@ a batch completes.
 |---|---|---|
 | `GET /devices` | none | `{ devices: [ …Device ], limit: 8 }` |
 | `GET /devices/{id}` | none | `Device` + `protections: [{ key, name, icon, capability, capabilityLabel, status, reportedLabel, message, lastVerifiedAt }]` (all 10) |
-| `PATCH /devices/{id}` | `{ name }` (1–60 chars) | Same as GET |
-| `DELETE /devices/{id}` | `{ password }`, or `{ confirm: "DELETE" }` without one ([Confirming deletions](#confirming-deletions)) | `{ ok }`. The device is unpaired and its token stops working. `403 wrong_password` / `400 confirm_required` without the confirmation. The family gets a "Device removed" alert, emailed to parents, since eGuard stops verifying the device |
-| `GET /browsers` | none | `{ browsers: [{ id, childId, childName, deviceLabel, browser, browserVersion, extensionVersion, platform, lastSeenAt, connected, createdAt }] }`: the eGuard browser extension installs. `connected: false` means eGuard disconnected it for security (its sign-in key was used from two places); remove it and add it again. Browsers don't enforce a policy yet, so never show them as protected |
+| `PATCH /devices/{id}` | `{ name?, isPrimary? }`: `name` 1–60 chars; `isPrimary: true` makes it its child's primary device (listed first, shown on the child's card; the previous primary stops being one). At least one field. Both are in the audit log | Same as GET |
+| `POST /devices/{id}/move` | `{ childId, password }` (or `confirm: "DELETE"` without a password) | Same as GET. Moves the device to another child without pairing again: it gets that child's protections and apps on its next sync. Its reported protections are cleared (`firstCheck: true` until it reports again) and a full report is requested; its last position is cleared; its open configuration requests are cancelled; what it recorded stays with the old child. Becomes the new child's primary only if they have none; the old child's oldest remaining device takes over as primary. The family gets a "Device moved" alert. `400` if it already belongs to that child, `404` for an unknown device or child, `403 wrong_password` |
+| `DELETE /devices/{id}` | `{ password }`, or `{ confirm: "DELETE" }` without one ([Confirming deletions](#confirming-deletions)), and optionally `deleteHistory: true` | `{ ok }`. The device is unpaired and its token stops working. `403 wrong_password` / `400 confirm_required` without the confirmation. The family gets a "Device removed" alert, emailed to parents, since eGuard stops verifying the device. By default the screen time, app usage and location visits recorded from the device are kept with the child (until the family's retention period, or the child is deleted); in location history their `deviceName` is `"Removed device"`. With `deleteHistory: true` they're deleted too. Offer this as an "Also delete what it recorded" option in the confirmation, unticked by default |
+| `GET /browsers` | none | `{ browsers: [{ id, childId, childName, deviceLabel, browser, browserVersion, extensionVersion, platform, lastSeenAt, connected, createdAt, protectionState, offline }] }`: the eGuard browser extension installs. `connected: false` means eGuard disconnected it for security (its sign-in key was used from two places); remove it and add it again. `protectionState` is the extension's own answer from its latest health check: `PROTECTED`, `NEEDS_ATTENTION`, `ACTION_REQUIRED`, `SYNC_PAUSED` or `UNSUPPORTED`, and `null` before its first check (show "Waiting for first health check"). `offline: true` means it hasn't checked in for a day: show "Not seen for a day" instead of its last state, which can't be confirmed |
 | `GET /children/{id}/browser-policy` | none | `{ version, safeBrowsing, safeSearch, blockedCategories[], blockedDomains[], allowedDomains[], unknownSitesPolicy, schedule, updatedBy, updatedAt, categories: [{ key, label, hint }] }`. Created with age-based defaults (`updatedBy: "eGuard defaults"`) the first time it's read. Applies to all of the child's browsers |
 | `PUT /children/{id}/browser-policy` | every field: `{ safeBrowsing, safeSearch, blockedCategories: ["ADULT", …], blockedDomains: ["example.com"], allowedDomains: [], unknownSitesPolicy: "ALLOW" \| "WARN" \| "BLOCK", schedule: { enabled, startTime: "21:00", endTime: "06:00" } \| null }` | Same as GET. Sites are normalised (`https://www.x.com/page` → `www.x.com`), sorted and de-duplicated, up to 500 per list. `400` with a parent-readable `error` for a site that isn't an address, a site in both lists, or equal focus-hour times. Saving identical settings keeps the version; any change adds one, which browsers pick up within 5 minutes. `409 conflict` if another parent saved at the same moment. Optional `baseVersion`: the `version` you showed the parent; if the policy changed since (an approved access request, another parent), the save is refused with `409 stale_version` instead of undoing that change. Reload and let the parent redo their edit. Send it from every editor. `unknownSitesPolicy` is for sites on neither list: `ALLOW`, `WARN` (notice first) or `BLOCK` (allowed list only); focus hours block everything not on the allowed list |
 | `GET /children/{id}/browser-access-requests` | none | `{ pending: [Request], recent: [Request] }` where `Request` is `{ id, domain, reason, status: "PENDING" \| "APPROVED" \| "DENIED", duration, expiresAt, createdAt, decidedAt, decidedBy }`. Sites the child asked to open from the browser's block page; each new one also raises an `ATTENTION` alert "Website access request" (`resolveKey` `WEBREQ:<id>`) |
 | `POST /browser-access-requests/{id}` | `{ decision: "APPROVE", duration: "15M" \| "1H" \| "TODAY" \| "ALWAYS" }` or `{ decision: "DENY" }` | `{ request }`. Approval becomes a new browser policy version the browser picks up within 5 minutes (the child can also tap Check again): `ALWAYS` adds the site to the allowed list, the others allow it until then (`TODAY` = midnight in the family's time zone). Resolves the alert. `409 already_decided` if another parent answered first |
 | `DELETE /browsers/{id}` | `{ password }` or `{ confirm: "DELETE" }` | `{ ok }`. Same rules as removing a device; the extension forgets the connection on its next check and the family gets a "Browser removed" alert |
-| `POST /checks` | `{ deviceId? }` (omit for all devices) | `202 { runId }`. `409 no_devices` if the family has no paired device |
+| `POST /checks` | `{ deviceId? }` (omit for all devices) | `202 { runId }`. `409 no_devices` if the family has no paired device. `429 rate_limited` after 30 checks per parent per hour |
 | `GET /checks/{runId}` | none | See below. Poll until `done` |
 
 ```json
@@ -1558,7 +1603,7 @@ PATCH /apps/{appId} { "approval": "ALLOWED" }  or  { "approval": "BLOCKED" }
 | `APP_RESTRICTIONS` | `maxAgeRating` 4–18 | "Apps rated 9+ and under" |
 | `APP_APPROVAL` | `enabled` bool | "Approval required" |
 | `CONTENT` | `maxAgeRating` 4–18 | "Rated 13+ and under" (the design's "Explicit content") |
-| `WEB` | `mode` `OFF` \| `FILTER` \| `ALLOWLIST`, `blockedSites` int ≥ 0 | "Filtered, 42 sites blocked" |
+| `WEB` | `mode` `OFF` \| `FILTER` \| `ALLOWLIST`, `blockedSites` int ≥ 0 (optional, default 0; not compared, since devices report the size of their own list) | "Adult and unsafe sites filtered" |
 | `DOWNLOADS` | `requireApproval` bool | "Parent approval" (the design's "App downloads · Ask parent") |
 | `LOCATION` | `sharing` bool | "Sharing" |
 | `NOTIFICATIONS` | `quietDuringBedtime` bool | "Quiet during bedtime" |
@@ -1918,22 +1963,25 @@ The device's current position.
 | `lat` | number | −90 to 90 |
 | `lng` | number | −180 to 180 |
 | `accuracyM` | number, optional | 0–100000 metres. Over 200 shows as "approximate" to the parent |
-| `placeLabel` | string, optional | ≤ 80 chars. Blank counts as none. Don't reverse-geocode on the device in v1 |
+| `placeLabel` | string, optional | ≤ 80 chars. Blank counts as none. Don't reverse-geocode on the device in v1. A saved place the fix falls inside overrides it |
 
 ```json
 { "lat": 14.6507, "lng": 121.0494, "accuracyM": 25 }
 ```
 
-Response: `{ "ok": true }`, always, including when the fix is dropped. Send fixes only when all three hold:
+Response: `{ "ok": true }`, including when the fix is dropped. `429` past 240 fixes an hour from one device: wait a
+few minutes and send only the newest. Send fixes only when all three hold:
 - the child's `LOCATION` policy has `sharing: true`
 - the OS permission is granted
 - `/sync` says `features.locationSharing: true`
 
 The server also drops fixes on plans without location, and while the device's last `LOCATION` report said sharing
 was off. Each fix **replaces the previous one whole**: a field you leave out is cleared, not kept. With the family's
-location history on, fixes within 150 m of the last visit extend it, and others start a new visit.
+location history on, a fix within 150 m of this device's last visit, or of a visit another of the child's devices
+is at now, extends it; others start a new visit. A visit with a single fix shows as "Passing by".
 
-At rest, one fix every 15 minutes keeps the parent's map "live" (it shows "Last seen" after 15 minutes).
+At rest, one fix every 15 minutes keeps the parent's map "live" (it shows "Last seen" after 20 minutes, leaving a
+margin for a late fix).
 
 #### `POST /events`
 

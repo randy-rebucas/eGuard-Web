@@ -7,6 +7,7 @@ import { requireUser } from "@/lib/auth";
 import { PROTECTION_BY_KEY, defaultConfig, describeConfig, type ProtectionConfig } from "@/lib/protections";
 import { startCheckRun } from "@/lib/engine";
 import { notFound, toResult, type Result } from "@/lib/errors";
+import { childPhotoSrc } from "@/lib/child-photo";
 import {
   ConfigSchema, cancelBatch as cancelConfigBatch, childFor, confirmGuided as confirmGuidedBatch, requestConfigs,
 } from "@/lib/config-service";
@@ -31,8 +32,8 @@ export type FlowContext = {
 
 export async function getFlowChildren() {
   const u = await requireUser();
-  const kids = await db.child.findMany({ where: { familyId: u.familyId }, orderBy: { createdAt: "asc" }, include: { devices: true } });
-  return kids.map((k) => ({ id: k.id, name: k.name, hue: k.hue, devices: k.devices.map((d) => ({ name: d.name, platform: d.platform })) }));
+  const kids = await db.child.findMany({ where: { familyId: u.familyId }, orderBy: { createdAt: "asc" }, include: { devices: true, photo: { select: { updatedAt: true, contentType: true } } } });
+  return kids.map((k) => ({ id: k.id, name: k.name, hue: k.hue, photo: childPhotoSrc(k.id, k.photo), devices: k.devices.map((d) => ({ name: d.name, platform: d.platform })) }));
 }
 
 export async function getFlowContext(childId: string, key: ProtectionKey): Promise<Result<FlowContext>> {
@@ -64,7 +65,7 @@ async function flowContext(familyId: string, childId: string, key: ProtectionKey
       const cap = def.caps[d.platform];
       return {
         id: d.id, name: d.name, platform: d.platform, platformLabel: platformName(d.platform), capability: cap,
-        currentLabel: p ? (p.status === "NOT_CONFIGURED" ? "Not configured" : describeConfig(p.reported)) : "Unknown",
+        currentLabel: p ? (p.status === "NOT_CONFIGURED" ? "Not configured" : describeConfig(p.reported)) : "Not reported",
         status: p?.status ?? "NOT_CONFIGURED",
         lastVerified: p?.lastVerifiedAt?.toISOString() ?? null,
         guide: cap === "GUIDED" || cap === "VERIFY_ONLY" ? def.guide?.[d.platform] ?? null : null,
@@ -76,14 +77,15 @@ async function flowContext(familyId: string, childId: string, key: ProtectionKey
 /**
  * Step 4: send the new configuration to each supported device.
  * APPLY devices get it on next sync; GUIDED/VERIFY_ONLY wait for the parent.
- * Nothing is marked successful here — only processReport() can verify.
+ * Nothing is marked successful here — only processReport() can verify. A child with no device yet gets the
+ * setting saved as their policy (`batchId: null`), applied when a device pairs.
  */
-export async function submitConfig(childId: string, desiredInput: unknown): Promise<Result<{ batchId: string }>> {
+export async function submitConfig(childId: string, desiredInput: unknown): Promise<Result<{ batchId: string | null }>> {
   const u = await requireUser();
   return toResult(async () => {
     const desired = ConfigSchema.parse(desiredInput);
     const { batchId } = await requestConfigs(u, Id.parse(childId), [desired], "web", { strict: true });
-    return { batchId: batchId! };
+    return { batchId };
   });
 }
 
@@ -106,7 +108,7 @@ export async function startCheck(deviceId?: string): Promise<Result<{ runId: str
       const d = await db.device.findFirst({ where: { id: deviceId, familyId: u.familyId } });
       if (!d) throw notFound("Device");
     }
-    const run = await startCheckRun(u.familyId, deviceId ? [deviceId] : undefined);
+    const run = await startCheckRun(u.familyId, u.id, deviceId ? [deviceId] : undefined);
     await db.auditLog.create({ data: { familyId: u.familyId, actor: u.name, action: "check.started", detail: deviceId ?? "all devices" } });
     return { runId: run.id };
   });

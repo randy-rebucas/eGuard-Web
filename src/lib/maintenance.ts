@@ -1,7 +1,8 @@
 import "server-only";
 import type { Alert } from "@prisma/client";
 import { db } from "./db";
-import { ensureOfflineAlerts, offlineDeviceWhere } from "./engine";
+import { ensureOfflineAlerts, finalizeCheckRun, offlineDeviceWhere } from "./engine";
+import { PROTECTION_BY_KEY, describeConfig } from "./protections";
 import { raiseBrowserOfflineAlerts } from "./browser-health";
 import { familiesWithPurchases, refreshPurchases } from "./billing";
 import { sendPassReminders } from "./web-billing";
@@ -42,6 +43,53 @@ export async function refreshAllPurchases() {
     try { await refreshPurchases(id); } catch (e) { failed++; console.error("[maintenance] purchase refresh failed", id, e); }
   }
   return { families: ids.length, failed };
+}
+
+/** Open changes no device confirmed in this long are given up, so "A change is already waiting" doesn't last forever. */
+export const OPEN_CHANGE_DAYS = 7;
+/** A check run is finished when someone polls it; one whose dialog was closed early is finished here. */
+const STALE_CHECK_MS = 10 * 60_000;
+
+/**
+ * Closes work that would otherwise stay open for good: check runs nobody polled after their 12 s (still RUNNING, so
+ * never purged), and configuration requests no device confirmed within OPEN_CHANGE_DAYS (a guided setup never
+ * finished, a device that never came back). The child's policy is unchanged: it only changes on confirmation, so
+ * the parent gets an Info notice per change saying so, with a button to try again.
+ */
+export async function closeStaleWork(now = new Date()) {
+  const runs = await db.checkRun.findMany({ where: { status: "RUNNING", createdAt: { lt: new Date(now.getTime() - STALE_CHECK_MS) } }, select: { id: true } });
+  for (const r of runs) await finalizeCheckRun(r.id);
+
+  const open = ["PENDING", "DELIVERED", "AWAITING_PARENT"] as const;
+  const stale = await db.configRequest.findMany({
+    where: { status: { in: [...open] }, createdAt: { lt: new Date(now.getTime() - OPEN_CHANGE_DAYS * 864e5) } },
+    select: { id: true, batchId: true, key: true, desired: true, childId: true, child: { select: { name: true, familyId: true } }, device: { select: { name: true } } },
+  });
+  if (!stale.length) return { checks: runs.length, requests: 0, notices: 0 };
+  // Re-checks the status: a device confirming meanwhile keeps its VERIFIED
+  const { count } = await db.configRequest.updateMany({
+    where: { id: { in: stale.map((r) => r.id) }, status: { in: [...open] } },
+    data: { status: "CANCELLED", failureReason: `No device confirmed it within ${OPEN_CHANGE_DAYS} days` },
+  });
+  // One notice per change: a batch sends one protection to each of the child's devices
+  const changes = new Map<string, typeof stale>();
+  for (const r of stale) changes.set(`${r.batchId}:${r.key}`, [...(changes.get(`${r.batchId}:${r.key}`) ?? []), r]);
+  for (const rs of changes.values()) {
+    const { key, batchId, childId, child, desired } = rs[0];
+    const devices = rs.map((r) => r.device.name).join(" and ");
+    await db.alert.create({
+      data: {
+        familyId: child.familyId, childId, severity: "INFO", category: "PROTECTION", icon: "hourglass",
+        title: `${PROTECTION_BY_KEY[key].name} change wasn't confirmed`,
+        body: `${devices} didn't confirm the change within ${OPEN_CHANGE_DAYS} days, so eGuard stopped waiting. ${child.name}'s earlier setting stays in place. Try again once the device is online.`,
+        subject: `${child.name}'s ${devices}`,
+        toValue: describeConfig(desired),
+        // The protection key first gives the alert its "Review setting" button; nothing resolves it, so Info stays dismissible
+        resolveKey: `${key}:expired:${batchId}`,
+      },
+    });
+  }
+  return { checks: runs.length, requests: count, notices: changes.size };
 }
 
 /**
@@ -142,6 +190,7 @@ export async function runMaintenance() {
   const codeReminders = await step("code expiry reminders", () => sendCodeExpiryReminders());
   const orgDigests = await step("organization digests", () => sendOrgDigests());
   const emails = await step("alert emails and push", notifyNewAlerts);
+  const stale = await step("stale checks and changes", () => closeStaleWork());
   const purged = await step("data retention", () => purgeExpiredData());
-  return { offlineFamilies, offlineBrowsers, purchases, passReminders, codeBatches, codeReminders, orgDigests, emails, purged, failed };
+  return { offlineFamilies, offlineBrowsers, purchases, passReminders, codeBatches, codeReminders, orgDigests, emails, stale, purged, failed };
 }

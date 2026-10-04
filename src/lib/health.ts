@@ -104,18 +104,85 @@ export function computeHealth(
   return { checks, score, total: checks.length, offline, verified };
 }
 
-export type DeviceState = { key: "healthy" | "issues" | "offline"; issues: number };
+type Health = ReturnType<typeof computeHealth>;
 
-export function deviceState(d: DeviceLike, now = Date.now()): DeviceState {
-  const issues = d.protections.filter((p) => !isPassing(p.status)).length;
-  if (isOffline(d, now)) return { key: "offline", issues };
-  return issues ? { key: "issues", issues } : { key: "healthy", issues: 0 };
+/**
+ * The Family Protection label, shared by the web dashboard and the mobile API. `devices`: phones and tablets paired.
+ * `offline`: devices counted by their last known state. "Fully protected" needs every one of them online.
+ */
+export function healthLabel(score: number, total: number, offline: number, devices: number) {
+  // Nothing paired: every check is "not configured", which isn't the same as needing action (web shows "–")
+  if (!devices) return "No devices yet";
+  if (score === total) return offline ? "Last known: all set" : "Fully protected";
+  if (score >= total - 2) return "Good protection";
+  if (score >= total / 2) return "Needs attention";
+  return "Action required";
 }
 
-/** Status of one protection on one device, from what it reported vs the child's policy. */
+/** The label with the tone and icon the web pill draws it in. */
+export function healthBadge(h: Pick<Health, "score" | "total" | "offline">, devices: number) {
+  const label = healthLabel(h.score, h.total, h.offline, devices);
+  const [tone, icon] = !devices ? ["muted", "circle-dashed"]
+    : h.score >= h.total - 1 ? ["ok", "circle-check"]
+    : label === "Good protection" ? ["accent", "shield"]
+    : label === "Needs attention" ? ["warn", "triangle-alert"]
+    : ["crit", "octagon-alert"];
+  return { label, tone, icon };
+}
+
+/**
+ * What the dashboard's hero says about the family. `devices`: phones and tablets paired.
+ * Never "looks good" while a device is offline, a child has no device, or a protection is turned off.
+ */
+export function familySummary(health: Health, children: { id: string; name: string; devices: unknown[] }[], devices: number) {
+  // With nothing paired every check is NOT_CONFIGURED: nothing to fix, only something to pair
+  const issues = devices ? health.checks.filter((c) => !isPassing(c.status)).length : 0;
+  const unpaired = children.filter((c) => !c.devices.length).map(({ id, name }) => ({ id, name }));
+  const unpairedText = unpaired.length === 1 ? `${unpaired[0].name} has no paired device yet.` : `${unpaired.length} children have no paired device yet.`;
+  const off = health.offline;
+  let lede: [string, string];
+  if (!devices) lede = ["Your family is almost set.", "Pair a device to start protecting them."];
+  else if (issues) {
+    const critical = health.checks.some((c) => c.status === "ACTION_REQUIRED");
+    const good = !critical && health.score >= health.total - 2 && !off && !unpaired.length;
+    lede = ["Your family's digital safety", critical ? "needs your attention." : good ? "looks good today." : "needs a little attention."];
+  } else if (unpaired.length) lede = [`Every paired device is ${health.verified ? "verified" : "set, as last reported"}.`, unpairedText];
+  else if (health.verified) lede = ["Every protection is verified.", "Your family is set."];
+  else lede = ["Every protection matched when devices last synced.", `${off} ${off === 1 ? "device is" : "devices are"} offline, so we can't verify ${off === 1 ? "it" : "them"} now.`];
+  return { lede, issues, unpaired };
+}
+
+/** Browser states (the extension's own report) that need the parent; null is "waiting for its first health check". */
+const BROWSER_PROBLEMS = new Set(["NEEDS_ATTENTION", "ACTION_REQUIRED", "SYNC_PAUSED", "UNSUPPORTED"]);
+
+/** A browser extension needs the parent when it was disconnected for security, went quiet for a day, or reports a problem. */
+export function browserNeedsAttention(b: { revokedAt: Date | null; lastSeenAt: Date | null; protectionState: string | null }, now = Date.now()) {
+  return !!b.revokedAt || isOffline(b, now) || (!!b.protectionState && BROWSER_PROBLEMS.has(b.protectionState));
+}
+
+/** `firstCheck`: nothing reported yet, so every protection counts as an issue; show "Waiting for first check" instead. */
+export type DeviceState = { key: "healthy" | "issues" | "offline"; issues: number; firstCheck: boolean };
+
+/**
+ * A protection the device hasn't reported counts as not passing, as in computeHealth: otherwise a device that was
+ * just paired (or never sends some keys) reads "Healthy" while its child's score says nothing is verified.
+ */
+export function deviceState(d: DeviceLike, now = Date.now()): DeviceState {
+  const issues = PROTECTIONS.filter((p) => !isPassing(d.protections.find((x) => x.key === p.key)?.status ?? "NOT_CONFIGURED")).length;
+  const firstCheck = !d.protections.length;
+  if (isOffline(d, now)) return { key: "offline", issues, firstCheck };
+  return issues ? { key: "issues", issues, firstCheck } : { key: "healthy", issues: 0, firstCheck };
+}
+
+/**
+ * Status of one protection on one device, from what it reported vs the child's policy. A protection the parent
+ * turned off passes: the device does what was asked, so it mustn't read as something to fix. Only a child with no
+ * policy for it at all is NOT_CONFIGURED (unless the device has it on anyway).
+ */
 export function evaluate(cap: Capability, policy: unknown, reported: unknown): CheckStatus {
   if (cap === "UNSUPPORTED") return "UNSUPPORTED";
-  if (!isConfigured(policy)) return isConfigured(reported) ? "PASS" : "NOT_CONFIGURED";
+  if (policy == null) return isConfigured(reported) ? "PASS" : "NOT_CONFIGURED";
+  if (!isConfigured(policy)) return "PASS";
   if (configMatches(policy, reported)) return "PASS";
   const key = (policy as { key: ProtectionKey }).key;
   if ((key === "UNINSTALL_PROTECTION" || key === "APP_APPROVAL") && !isConfigured(reported)) return "ACTION_REQUIRED";

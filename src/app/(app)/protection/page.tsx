@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
-import { getFamily, getFamilyGraph } from "@/lib/queries";
+import { getFamily, getFamilyGraph, getOpenChanges } from "@/lib/queries";
+import { listBrowsers } from "@/lib/browser-service";
+import { browserStatus } from "@/components/cards";
 import { entitlementsFor } from "@/lib/plans";
 import { LOCATION_UPGRADE } from "@/lib/plan-access";
 import { dayTime } from "@/lib/format";
 import { CAPABILITY_META, CHECK_META, PROTECTIONS, describeConfig, type Capability } from "@/lib/protections";
-import { isPassing } from "@/lib/health";
+import { isOffline, isPassing } from "@/lib/health";
 import { Icon } from "@/components/icon";
 import { CapabilityChip, CheckBadge, HealthRing, PageHead, UpgradeNote } from "@/components/ui";
 import { CheckButton, FlowButton } from "@/components/flow";
@@ -14,9 +16,11 @@ export const metadata = { title: "Protection" };
 
 export default async function ProtectionPage() {
   const u = await requireUser();
-  const [family, { familyHealth: h, children, devices, deviceStates }] = await Promise.all([
+  const [family, { familyHealth: h, children, devices, deviceStates }, changes, browsers] = await Promise.all([
     getFamily(u.familyId),
     getFamilyGraph(u.familyId),
+    getOpenChanges(u.familyId),
+    listBrowsers(u.familyId),
   ]);
   const tz = family.timezone;
   const locationSharing = entitlementsFor(family.plan).locationSharing;
@@ -25,9 +29,12 @@ export default async function ProtectionPage() {
   const offline = devices.filter(isOff);
   // Same rule as computeHealth: a device with no row for a protection counts as NOT_CONFIGURED
   const statusOn = (d: (typeof devices)[number], key: string) => d.protections.find((x) => x.key === key)?.status ?? "NOT_CONFIGURED";
+  // Health only covers paired devices: a child without one has nothing checked, so "every protection" mustn't include them
+  const unpaired = children.filter((c) => !c.devices.length);
+  const unpairedText = unpaired.length > 3 ? `${unpaired.slice(0, 3).map((c) => c.name).join(", ")} and ${unpaired.length - 3} more` : unpaired.map((c) => c.name).join(" and ");
   // Never "verified" while a device is offline (see computeHealth)
   const headline = !devices.length ? "No devices to check yet"
-    : h.verified ? "Every protection is verified"
+    : h.verified ? (unpaired.length ? "Verified on every paired device" : "Every protection is verified")
     : h.score === h.total ? "Every protection is set, as last reported"
     : open.length === 1 ? "One protection needs review" : `${open.length} protections need review`;
   // The latest device report, same source as each card's "Last checked". A check run isn't used: it may have
@@ -52,14 +59,17 @@ export default async function ProtectionPage() {
               <p className="muted" style={{ marginTop: 6 }}>
                 {devices.length} device{devices.length === 1 ? "" : "s"}, {lastVerified ? `last checked ${dayTime(lastVerified, tz)}` : "not checked yet"}.
                 {offline.length ? ` ${offlineText} ${offline.length === 1 ? "is" : "are"} offline and keep${offline.length === 1 ? "s" : ""} the last known state.` : ""}
+                {changes.length ? ` ${changes.length === 1 ? "One change is" : `${changes.length} changes are`} waiting for a device to confirm.` : ""}
+                {unpaired.length ? <>{` ${unpairedText} ${unpaired.length === 1 ? "has" : "have"} no paired device, so nothing is checked for ${unpaired.length === 1 ? "them" : "those children"} yet. `}
+                  <Link className="link-btn" href={unpaired.length === 1 ? `/devices?child=${unpaired[0].id}#pair` : "/devices#pair"}>Pair a device <Icon name="arrow-right" /></Link></> : null}
               </p>
             ) : (
               <p className="muted" style={{ marginTop: 6 }}>
                 Pair a child&apos;s device to start verifying protections. <Link className="link-btn" href="/devices#pair">Add a device <Icon name="arrow-right" /></Link>
               </p>
             )}
-            <div className="row" style={{ flexWrap: "wrap", gap: 8, marginTop: 14 }} aria-label="Status legend">
-              {(Object.keys(CHECK_META) as (keyof typeof CHECK_META)[]).map((k) => <CheckBadge key={k} status={k} code />)}
+            <div className="row" style={{ flexWrap: "wrap", gap: 8, marginTop: 14 }} role="group" aria-label="Status legend">
+              {(Object.keys(CHECK_META) as (keyof typeof CHECK_META)[]).map((k) => <CheckBadge key={k} status={k} />)}
             </div>
           </div>
         </div>
@@ -105,6 +115,36 @@ export default async function ProtectionPage() {
                 </div>
                 <div className="p-value">{values.length === 1 ? values[0] : values.length ? "Varies by child" : "No children yet"}</div>
                 {values.length > 1 ? <div className="t-meta">{children.map((c) => `${c.name}: ${describeConfig(c.policies.find((x) => x.key === p.key)?.config)}`).join(" · ")}</div> : null}
+                {/* The value above changes only once a device confirms: say what's on its way */}
+                {changes.filter((w) => w.key === p.key).map((w) => {
+                  const name = children.find((c) => c.id === w.childId)?.name;
+                  const waitingOn = w.devices.some((d) => d.awaitingParent) ? "waiting for you to finish the setup steps"
+                    : `waiting for ${w.devices.map((d) => d.name).join(" and ")}${w.devices.every((d) => isOffline(d)) ? " to come online" : " to confirm"}`;
+                  return (
+                    <div key={w.childId} className="form-ok" style={{ marginTop: 8 }}>
+                      <Icon name="loader-circle" />
+                      <span className="grow">{children.length > 1 ? `${name}: ` : ""}changing to <b>{describeConfig(w.desired)}</b>, {waitingOn}.</span>
+                      <FlowButton protection={p.key} childId={w.childId} className="link-btn">Check progress</FlowButton>
+                    </div>
+                  );
+                })}
+                {/* Browsers filter websites by their own rules (the child's Browser tab) and report their own health */}
+                {p.key === "WEB" && browsers.length ? (
+                  <div style={{ marginTop: 10 }}>
+                    <div className="t-meta">Browsers follow their own rules and aren&apos;t counted here:</div>
+                    <ul style={{ listStyle: "none", padding: 0, margin: "6px 0 0", display: "grid", gap: 6 }}>
+                      {browsers.map((b) => {
+                        const [tone, label] = browserStatus(b);
+                        return (
+                          <li key={b.id} className="row" style={{ justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                            <Link className="link-btn" href={`/children/${b.childId}?tab=browser`}>{b.browser} on {b.deviceLabel}{children.length > 1 ? ` · ${b.child.name}` : ""}</Link>
+                            <span className={`pill ${tone}`}>{label}</span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                ) : null}
                 {/* The device can share, but the server drops locations on this plan: don't let "Sharing" imply parents see it */}
                 {p.key === "LOCATION" && !locationSharing ? <UpgradeNote compact title="" text={LOCATION_UPGRADE} /> : null}
                 <div className="caps">

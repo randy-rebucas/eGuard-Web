@@ -4,6 +4,7 @@ import { db } from "./db";
 import { computeHealth, deviceState } from "./health";
 import { pageByTime } from "./paging";
 import { dateFormat } from "./format";
+import { childPhotoSrc } from "./child-photo";
 
 /** YYYY-MM-DD for a date in the family's timezone */
 export function dayKey(d: Date, tz: string) {
@@ -57,6 +58,8 @@ export const getFamilyGraph = cache(async (familyId: string) => {
     orderBy: { createdAt: "asc" },
     include: {
       policies: true,
+      // Only the version and type, for the photo's URL: never the image bytes
+      photo: { select: { updatedAt: true, contentType: true } },
       devices: {
         orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
         include: { protections: true, location: true },
@@ -70,6 +73,8 @@ export const getFamilyGraph = cache(async (familyId: string) => {
     const health = computeHealth(devs, { ownerLabel: (d) => `${c.name}'s ${d.name}` });
     return {
       ...c,
+      /** The photo's web URL, or null for initials */
+      photo: childPhotoSrc(c.id, c.photo),
       age: new Date().getFullYear() - c.birthYear,
       devices: devs,
       primary: devs[0] ?? null,
@@ -86,6 +91,26 @@ export const getFamilyGraph = cache(async (familyId: string) => {
 export type FamilyGraph = Awaited<ReturnType<typeof getFamilyGraph>>;
 export type ChildView = FamilyGraph["children"][number];
 export type DeviceView = FamilyGraph["devices"][number];
+
+/**
+ * Changes a parent asked for that no device has confirmed yet, one per child and protection (a newer change cancels
+ * the older one). The child's policy only changes on confirmation, so without this a pending change is invisible.
+ */
+export async function getOpenChanges(familyId: string) {
+  const reqs = await db.configRequest.findMany({
+    where: { child: { familyId }, status: { in: ["PENDING", "DELIVERED", "AWAITING_PARENT"] } },
+    orderBy: { createdAt: "asc" },
+    select: { key: true, childId: true, status: true, desired: true, createdAt: true, device: { select: { name: true, lastSeenAt: true } } },
+  });
+  const byChildKey = new Map<string, { key: (typeof reqs)[number]["key"]; childId: string; desired: unknown; since: Date; devices: { name: string; lastSeenAt: Date | null; awaitingParent: boolean }[] }>();
+  for (const r of reqs) {
+    const id = `${r.childId}:${r.key}`;
+    const c = byChildKey.get(id) ?? { key: r.key, childId: r.childId, desired: r.desired, since: r.createdAt, devices: [] };
+    c.devices.push({ ...r.device, awaitingParent: r.status === "AWAITING_PARENT" });
+    byChildKey.set(id, c);
+  }
+  return [...byChildKey.values()];
+}
 
 /** Daily screen time per child for the last n days (oldest first). */
 export async function getScreenTime(familyId: string, tz: string, n = 14) {
@@ -127,7 +152,8 @@ export async function getAppUsage(familyId: string, from: string, to: string) {
   });
 }
 
-export async function getAlerts(familyId: string, userId: string, opts: { category?: string; take?: number; includeResolved?: boolean; childId?: string } = {}) {
+/** `bySeverity`: most severe first, then newest, so a short list (the dashboard's) never loses a critical alert to newer info. */
+export async function getAlerts(familyId: string, userId: string, opts: { category?: string; take?: number; includeResolved?: boolean; childId?: string; bySeverity?: boolean } = {}) {
   const alerts = await db.alert.findMany({
     where: {
       familyId,
@@ -135,7 +161,8 @@ export async function getAlerts(familyId: string, userId: string, opts: { catego
       ...(opts.category && opts.category !== "ALL" ? { category: opts.category as never } : {}),
       ...(opts.includeResolved ? {} : { resolvedAt: null }),
     },
-    orderBy: { createdAt: "desc" },
+    // Postgres sorts enums in declaration order: INFO, ATTENTION, ACTION_REQUIRED, CRITICAL
+    orderBy: opts.bySeverity ? [{ severity: "desc" }, { createdAt: "desc" }] : { createdAt: "desc" },
     take: opts.take ?? 100,
     include: { reads: { where: { userId } } },
   });

@@ -135,6 +135,7 @@ model Family {
   supportTickets SupportTicket[]
   orgMemberships OrgMembership[]
   vouchers     Voucher[]
+  places       Place[]
 }
 
 model User {
@@ -576,21 +577,45 @@ model DeviceLocation {
   lng        Float?
   accuracyM  Float?
   placeLabel String?
+  /// the saved place this fix fell inside; placeLabel is then that place's name
+  placeId    String?
+  place      Place?   @relation(fields: [placeId], references: [id], onDelete: SetNull)
   /// when the coordinates were last reported (not when sharing state changed)
   locatedAt  DateTime?
   updatedAt  DateTime @updatedAt
 }
 
+/// A place the parents named (Home, School). A fix within `radiusM` of it is labelled with its name.
+model Place {
+  id        String   @id @default(cuid())
+  familyId  String
+  family    Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  name      String
+  lat       Float
+  lng       Float
+  radiusM   Int      @default(150)
+  createdAt DateTime @default(now())
+
+  visits    LocationVisit[]
+  locations DeviceLocation[]
+
+  @@index([familyId])
+}
+
 /// Places a device stayed at. Only written when the family turns on location history.
+/// The device is null once it's removed: the child's history stays until retention or the child is deleted.
 model LocationVisit {
   id         String   @id @default(cuid())
-  deviceId   String
-  device     Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  deviceId   String?
+  device     Device?  @relation(fields: [deviceId], references: [id], onDelete: SetNull)
   childId    String
   child      Child    @relation(fields: [childId], references: [id], onDelete: Cascade)
   lat        Float
   lng        Float
   placeLabel String?
+  /// the saved place it was at; placeLabel is then that place's name
+  placeId    String?
+  place      Place?   @relation(fields: [placeId], references: [id], onDelete: SetNull)
   arrivedAt  DateTime @default(now())
   lastSeenAt DateTime @default(now())
 
@@ -750,12 +775,13 @@ model BrowserPolicyVersion {
 
 // ---------- Activity ----------
 
+/// The device is null once it's removed: the child's screen time stays in reports until retention.
 model ScreenTimeDaily {
   id       String   @id @default(cuid())
   childId  String
   child    Child    @relation(fields: [childId], references: [id], onDelete: Cascade)
-  deviceId String
-  device   Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  deviceId String?
+  device   Device?  @relation(fields: [deviceId], references: [id], onDelete: SetNull)
   date     DateTime @db.Date
   minutes  Int
   /// 24 per-hour totals in the family's timezone, when the device sends them
@@ -766,12 +792,13 @@ model ScreenTimeDaily {
 }
 
 /// Per device, so a child's phone and tablet don't overwrite each other; sum across devices to show a child's total.
+/// The device is null once it's removed, as for ScreenTimeDaily.
 model AppUsageDaily {
   id       String   @id @default(cuid())
   childId  String
   child    Child    @relation(fields: [childId], references: [id], onDelete: Cascade)
-  deviceId String
-  device   Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  deviceId String?
+  device   Device?  @relation(fields: [deviceId], references: [id], onDelete: SetNull)
   date     DateTime @db.Date
   app      String
   minutes  Int

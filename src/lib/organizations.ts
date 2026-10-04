@@ -84,7 +84,7 @@ const requireFamilyAdmin = (actor: Actor, what: string) => {
 
 export async function createOrganization(actor: Actor, input: z.infer<typeof OrgSchema>) {
   const { name, kind } = OrgSchema.parse(input);
-  await requireVerifiedEmail(actor.id);
+  await requireVerifiedEmail(actor.id, "create an organization");
   for (let attempt = 0; ; attempt++) {
     try {
       const org = await db.$transaction(async (tx) => {
@@ -306,6 +306,8 @@ function requireConfig(o: WebBillingOpts): PaymongoConfig {
 export async function buyCodes(actor: Actor, orgId: string, input: { plan: string; months: number | string; quantity: number | string }, o: WebBillingOpts = {}) {
   await requireOrgAdmin(actor.id, orgId);
   const cfg = requireConfig(o);
+  // PayMongo sends the receipt to this address: a mistyped, unverified one would lose it
+  await requireVerifiedEmail(actor.id, "buy sponsor codes");
   const { plan, months, quantity } = BatchSchema.parse(input);
   const org = await db.organization.findUniqueOrThrow({ where: { id: orgId } });
   const user = await db.user.findUniqueOrThrow({ where: { id: actor.id } });

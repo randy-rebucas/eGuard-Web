@@ -4,24 +4,24 @@ import { getUser, requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { appMinutesOn, dateFromKey, dayKey, getAlerts, getFamily, getFamilyGraph, historyPage, limitOn } from "@/lib/queries";
 import { ageLabel, ago, dayTime, shortDate } from "@/lib/format";
-import { isOffline } from "@/lib/health";
 import { toAlertItem, weeklySeries } from "@/lib/views";
 import { CAPABILITY_META, PROTECTION_BY_KEY, describeConfig, fmtMinutes, fmtMinutesPadded, type ProtectionConfig } from "@/lib/protections";
 import { Icon } from "@/components/icon";
 import { Avatar, CheckBadge, DeviceIcon, EmptyState, HealthRing, StatusBadge, Timeline, UpgradeNote, platformName } from "@/components/ui";
-import { DeviceCard } from "@/components/cards";
+import { DeviceCard, browserStatus } from "@/components/cards";
+import { BrowserCard } from "@/components/browser-card";
 import { AlertRow, ViewAll } from "@/components/alerts";
 import { WeeklyChart } from "@/components/charts";
 import { FlowButton } from "@/components/flow";
-import { AppControls, ChildForm, DeleteChildForm } from "@/components/child-forms";
+import { AppControls, ChildForm, ChildPhotoField, DeleteChildForm } from "@/components/child-forms";
 import { requestedApps } from "@/lib/family-service";
 import { CATEGORY_META, WEB_CATEGORIES, activeTemporaryAllows, describeBrowserPolicy, getOrCreateBrowserPolicy } from "@/lib/browser-policy";
 import { categoryCoverage } from "@/lib/category-lists";
 import { DURATION_LABEL, requestsForChild, type Duration } from "@/lib/browser-access";
 import { AccessRequestRow, BrowserPolicyForm } from "@/components/browser-policy";
 import { entitlementsFor } from "@/lib/plans";
-import { childLocation } from "@/lib/location";
-import { APPS_UPGRADE, LOCATION_UPGRADE, visibleApps } from "@/lib/plan-access";
+import { childLocation, locationPolicy } from "@/lib/location";
+import { APPS_UPGRADE, LOCATION_UPGRADE, nameableApps, visibleApps } from "@/lib/plan-access";
 
 const TABS = [["overview", "Overview"], ["screen", "Screen Time"], ["apps", "Apps"], ["protection", "Protection"], ["browser", "Browser"], ["location", "Location"], ["devices", "Devices"], ["history", "History"]] as const;
 type Tab = (typeof TABS)[number][0];
@@ -55,7 +55,7 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
       <div>
         <div className="crumbs"><Link className="link-btn" href="/children" style={{ fontWeight: 500, minHeight: 0 }}>Children</Link><Icon name="chevron-right" size={14} /><span>{c.name}</span></div>
         <section className="card detail-head">
-          <Avatar name={c.name} hue={c.hue} size="xl" />
+          <Avatar name={c.name} hue={c.hue} size="xl" photo={c.photo} />
           <div className="grow">
             <h1>{c.name}</h1>
             <div className="t-meta" style={{ fontSize: 14.5 }}>{ageLabel(c.age)}</div>
@@ -100,9 +100,15 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
     </>
   );
 
-  function DevicesGrid() {
-    return c!.devices.length ? <div className="devices-grid">{c!.devices.map((x) => <DeviceCard key={x.id} d={x} state={graph.deviceStates[x.id]} tz={tz} />)}</div>
-      : (
+  /** Phones and tablets, then browsers, as on the Devices page (browsers take a device slot there too). */
+  async function DevicesGrid() {
+    const browsers = await db.browserInstallation.findMany({ where: { childId: c!.id }, orderBy: { createdAt: "asc" }, include: { child: { select: { name: true } } } });
+    return c!.devices.length || browsers.length ? (
+      <div className="devices-grid">
+        {c!.devices.map((x) => <DeviceCard key={x.id} d={x} state={graph.deviceStates[x.id]} tz={tz} />)}
+        {browsers.map((b) => <BrowserCard key={b.id} b={b} tz={tz} hasPassword={u.hasPassword} />)}
+      </div>
+    ) : (
         <EmptyState icon="smartphone" title="No devices yet" text={`Pair ${c!.name}'s phone or tablet with the eGuard app to start protecting it.`}>
           <Link className="btn btn-primary" href={`/devices?child=${c!.id}#pair`}><Icon name="plus" />Pair a device</Link>
         </EmptyState>
@@ -115,19 +121,24 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
 
   async function Overview() {
     const todayKey = dayKey(new Date(), tz), today = dateFromKey(todayKey);
+    const appLimit = entitlementsFor(family.plan).appMonitoringLimit;
     const [usage, apps, mine] = await Promise.all([
       db.screenTimeDaily.aggregate({ where: { childId: c!.id, date: today }, _sum: { minutes: true } }),
       appMinutesOn([c!.id], today),
-      getAlerts(u.familyId, u.id, { childId: c!.id, take: 4 }),
+      // Most severe first, as on the dashboard: four slots shouldn't go to newer info over a critical alert
+      getAlerts(u.familyId, u.id, { childId: c!.id, take: 4, bySeverity: true }),
     ]);
     const used = usage._sum.minutes ?? 0;
     const limit = limitOn(c!, todayKey);
-    // The most used apps by name, the rest as one total: a short card, and no more names than the plan shows on Apps
-    const shown = Math.min(OVERVIEW_APPS, entitlementsFor(family.plan).appMonitoringLimit ?? OVERVIEW_APPS);
-    const named = apps.filter((a) => a.app !== "Others").slice(0, shown);
+    // The most used apps by name, the rest as one total: a short card, naming only apps the plan shows on Apps
+    const nameable = await nameableApps(c!.id, appLimit, (n) => apps.find((a) => a.app === n)?.minutes ?? 0);
+    const shown = Math.min(OVERVIEW_APPS, appLimit ?? OVERVIEW_APPS);
+    const named = apps.filter((a) => a.app !== "Others" && nameable(a.app)).slice(0, shown);
     const others = apps.reduce((s, a) => s + a.minutes, 0) - named.reduce((s, a) => s + a.minutes, 0);
     const appRows: [string, number][] = [...named.map((a) => [a.app, a.minutes] as [string, number]), ...(others > 0 ? [["Others", others] as [string, number]] : [])];
     const pct = Math.round((used / Math.max(1, limit)) * 100);
+    // As on the dashboard: the bar stops at 100%, so past the limit it turns red and the note says by how much
+    const over = limit > 0 && used > limit, reached = limit > 0 && used === limit;
     const open = c!.health.checks.filter((x) => x.status !== "PASS" && x.status !== "UNSUPPORTED");
     const n = c!.devices.length, where = n === 1 ? "their device" : `all ${n} devices`;
     return (
@@ -152,6 +163,8 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
           </section>
           <section className="card card-pad">
             <div className="card-head"><h2>Profile</h2></div>
+            <ChildPhotoField childId={c!.id} name={c!.name} hue={c!.hue} photo={c!.photo} />
+            <hr className="divider" style={{ margin: "20px 0" }} />
             <ChildForm child={{ id: c!.id, name: c!.name, birthYear: c!.birthYear }} />
             <hr className="divider" style={{ margin: "20px 0" }} />
             {u.role === "FAMILY_ADMIN" ? <DeleteChildForm childId={c!.id} name={c!.name} hasPassword={u.hasPassword} /> : <p className="t-meta">Only the family admin can remove {c!.name} from eGuard.</p>}
@@ -161,12 +174,15 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
           <section className="card card-pad">
             <div className="card-head"><h2 style={{ fontSize: 18 }}>Screen time today</h2></div>
             <div className="usage-big num" style={{ marginTop: 0 }}>{fmtMinutesPadded(used)} <small>/ {fmtMinutes(limit)}</small></div>
-            <div className={`bar ${pct >= 85 ? "warn" : ""}`} role="progressbar" aria-label={`${c!.name}'s screen time today`} aria-valuenow={Math.min(100, pct)} aria-valuemin={0} aria-valuemax={100}><span style={{ width: `${Math.min(100, pct)}%` }} /></div>
+            <div className={`bar ${over ? "over" : pct >= 85 ? "warn" : ""}`} role="progressbar" aria-label={`${c!.name}'s screen time today`} aria-valuenow={Math.min(100, pct)} aria-valuemin={0} aria-valuemax={100}
+              aria-valuetext={over ? `Over the limit by ${fmtMinutes(used - limit)}` : `${Math.min(100, pct)}% of the daily limit`}><span style={{ width: `${Math.min(100, pct)}%` }} /></div>
+            {over ? <div className="limit-note crit"><Icon name="octagon-alert" size={14} />Over by {fmtMinutes(used - limit)}</div>
+              : reached ? <div className="limit-note warn"><Icon name="hourglass" size={14} />Limit reached</div> : null}
             <div className="app-rows">{appRows.length ? appRows.map(([app, m]) => <div key={app}><span>{app}</span><span>{fmtMinutes(m)}</span></div>) : <div><span>No usage reported yet today</span><span /></div>}</div>
             {appRows.length ? <Link className="link-btn" href={`/children/${c!.id}?tab=apps`} style={{ marginTop: 8 }}>Manage apps <Icon name="arrow-right" /></Link> : null}
           </section>
           <section className="card card-pad">
-            <div className="card-head"><h2 style={{ fontSize: 18 }}>Recent alerts</h2><ViewAll href="/notifications" /></div>
+            <div className="card-head"><h2 style={{ fontSize: 18 }}>Recent alerts</h2><ViewAll href={`/notifications?child=${c!.id}`} /></div>
             <div style={{ margin: "0 -12px" }}>{mine.length ? mine.map((a) => <AlertRow key={a.id} a={toAlertItem(a, tz)} />) : <EmptyState icon="bell" title="No recent alerts" />}</div>
           </section>
         </div>
@@ -224,9 +240,15 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
           <section className="card card-pad">
             <div className="card-head"><h2 style={{ fontSize: 18 }}>Browsers</h2><Link className="link-btn" href="/devices#add-browser">Add a browser <Icon name="arrow-right" /></Link></div>
             {browsers.length ? (
-              <div className="app-rows">{browsers.map((b) => (
-                <div key={b.id}><span>{b.browser} on {b.deviceLabel}</span><span className="t-meta">{b.revokedAt ? "Disconnected for security" : !b.lastSeenAt ? "Not connected yet" : isOffline(b) ? `Not seen since ${dayTime(b.lastSeenAt, tz)}` : `Seen ${ago(b.lastSeenAt, tz)}`}</span></div>
-              ))}</div>
+              <div className="app-rows">{browsers.map((b) => {
+                // The same wording as the browser cards on Devices, so a browser reads the same everywhere
+                const [tone, label] = browserStatus(b);
+                return (
+                  <div key={b.id}><span>{b.browser} on {b.deviceLabel}</span><span className="row" style={{ gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                    <span className={`pill ${tone}`}>{label}</span>{b.lastSeenAt ? <span className="t-meta">seen {ago(b.lastSeenAt, tz)}</span> : null}
+                  </span></div>
+                );
+              })}</div>
             ) : <EmptyState icon="globe" title="No browsers yet" text={`Add the eGuard extension to ${c!.name}'s browser to use these settings.`} />}
             <p className="t-meta" style={{ marginTop: 14 }}>
               Browsers apply changes within 5 minutes. Each browser checks that its blocking rules match these settings; its popup says so, or explains what needs attention.
@@ -257,7 +279,8 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
           <section className="card card-pad">
             <div className="card-head"><h2 style={{ fontSize: 18 }}>Limits</h2></div>
             <dl className="kv" style={{ gridTemplateColumns: "minmax(0,1fr)" }}>
-              <div><dt>School days</dt><dd className="num">{fmtMinutes(st.dailyMinutes)} / day</dd></div>
+              {/* Monday to Friday (limitOn); "school nights" is bedtime's Sunday to Thursday, so not "school days" */}
+              <div><dt>Weekdays</dt><dd className="num">{fmtMinutes(st.dailyMinutes)} / day</dd></div>
               <div><dt>Weekends</dt><dd className="num">{fmtMinutes(st.weekendMinutes)} / day</dd></div>
               <div><dt>Bedtime</dt><dd>{describeConfig(c!.policies.find((p) => p.key === "BEDTIME")?.config)}</dd></div>
             </dl>
@@ -284,7 +307,7 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
           <div><h2>Apps</h2><div className="sub">{approval?.enabled ? `New apps need your approval before ${c!.name} can install them.` : "App approval is off."} Changes apply on the device&apos;s next sync.</div></div>
           {approval?.enabled ? <span className="pill tone-ok"><Icon name="badge-check" />App approval on</span> : <FlowButton protection="APP_APPROVAL" childId={c!.id}>Turn on approval</FlowButton>}
         </div>
-        {pending.length ? <div className="form-ok" style={{ marginBottom: 12 }}><Icon name="inbox" />{pending.length} app{pending.length > 1 ? "s" : ""} waiting for your approval</div> : null}
+        {pending.length ? <div className="form-warn" role="status" style={{ marginBottom: 12 }}><Icon name="inbox" />{pending.length} app{pending.length > 1 ? "s" : ""} waiting for your approval</div> : null}
         {apps.map((a) => {
           const m = usage.find((x) => x.app === a.name)?.minutes;
           return (
@@ -340,18 +363,26 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
     if (!entitlementsFor(family.plan).locationSharing) {
       return <section className="card card-pad"><UpgradeNote icon="map-pin-off" title="Location sharing isn't on your plan" text={LOCATION_UPGRADE} /></section>;
     }
-    const l = childLocation(c!.devices);
-    if (l.state === "no_devices") return <section className="card card-pad"><DevicesGrid /></section>;
+    const l = childLocation(c!.devices, undefined, locationPolicy(c!.policies));
+    if (l.state === "no_devices") {
+      return (
+        <section className="card card-pad">
+          <EmptyState icon="map-pin" title="No device to locate" text={`${c!.name}'s location comes from their phone or tablet. Pair one with the eGuard app, then turn on location sharing.`}>
+            <Link className="btn btn-primary" href={`/devices?child=${c!.id}#pair`}><Icon name="plus" />Pair a device</Link>
+          </EmptyState>
+        </section>
+      );
+    }
     return (
       <section className="card card-pad">
         {l.state === "located" ? (
           <div className="row" style={{ flexWrap: "wrap" }}>
-            <Avatar name={c!.name} hue={c!.hue} size="lg" />
+            <Avatar name={c!.name} hue={c!.hue} size="lg" photo={c!.photo} />
             <div className="grow"><div className="t-title" style={{ fontSize: 17 }}>{l.location!.placeLabel ?? "Current location"}{l.approximate ? " (approximate)" : ""}</div><div className="t-meta">From {l.device!.name} · updated {ago(l.locatedAt, tz)}</div></div>
             <Link className="btn btn-secondary" href="/location"><Icon name="map" />Open map</Link>
           </div>
         ) : l.state === "waiting" ? (
-          <EmptyState icon="map-pin" title="Waiting for location" text={`Sharing is on for ${c!.name}. The first location appears after the device syncs.`} />
+          <EmptyState icon="map-pin" title="Waiting for location" text={l.sharing || !l.unreported ? `Sharing is on for ${c!.name}. The first location appears after the device syncs.` : `Waiting for ${c!.name}'s ${l.unreported.name} to report whether location sharing is on.`} />
         ) : (
           <EmptyState icon="map-pin-off" title="Location unavailable" text={l.offDevice ? `Location sharing is turned off on ${c!.name}'s ${l.offDevice.name}.` : `None of ${c!.name}'s devices share location.`}>
             <FlowButton protection="LOCATION" childId={c!.id} className="btn btn-primary"><Icon name="list-checks" />Turn on location sharing</FlowButton>
@@ -373,9 +404,10 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
     const base = `/children/${c!.id}?tab=history`;
     return (
       <section className="card card-pad">
-        <div className="card-head"><div><h2>Configuration history</h2><div className="sub">Verified changes to {c!.name}&apos;s protections, and who made them. Kept for {family.retentionDays} days.</div></div></div>
+        {/* Protection changes are logged once a device confirms them; app and browser changes when they're made */}
+        <div className="card-head"><div><h2>Configuration history</h2><div className="sub">Changes to {c!.name}&apos;s protections, apps and browser settings, and who made them. Kept for {family.retentionDays} days.</div></div></div>
         {items.length ? <Timeline items={items.map((h) => ({ id: h.id, icon: PROTECTION_BY_KEY[h.key]?.icon ?? "history", title: h.title, by: h.actor, time: before ? shortDate(h.createdAt, tz) : dayTime(h.createdAt, tz), from: h.fromValue, to: h.toValue }))} />
-          : <EmptyState icon="history" title={before ? "No older changes" : "No changes yet"} text={before ? "That's everything eGuard has kept." : "Verified changes to protections are recorded here."} />}
+          : <EmptyState icon="history" title={before ? "No older changes" : "No changes yet"} text={before ? "That's everything eGuard has kept." : "Protection changes appear here once a device confirms them, along with changes to apps and browser settings."} />}
         {before || older ? (
           <div className="row" style={{ justifyContent: "space-between", marginTop: 12 }}>
             {before ? <Link className="link-btn" href={base}>Back to newest</Link> : <span />}

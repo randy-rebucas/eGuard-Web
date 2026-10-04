@@ -4,7 +4,8 @@ import { hashPassword, issueSession, newToken, sha256 } from "@/lib/auth";
 import { processReport } from "@/lib/engine";
 import { requestConfigs, type Actor } from "@/lib/config-service";
 import { createChild, createPairingCode, pairingCodeStatus, removeDevice, setAppApproval } from "@/lib/family-service";
-import { childLocation, recordLocation, visitsPage } from "@/lib/location";
+import { childLocation, recentVisits, recordLocation, stayed, visitsPage } from "@/lib/location";
+import { createPlace, deletePlace, updatePlace } from "@/lib/places";
 import { limitOn } from "@/lib/queries";
 import { ServiceError } from "@/lib/errors";
 import { POST as deviceEvent } from "@/app/api/device/v1/events/route";
@@ -191,6 +192,84 @@ describe("location history pages", () => {
       before = p.nextBefore;
     }
     expect(seen).toEqual(["Place 6", "Place 5", "Place 4", "Place 3", "Place 2", "Place 1", "Place 0"]);
+  });
+});
+
+describe("visits and saved places", () => {
+  const min = 60_000;
+  const t0 = Date.now() - 3 * 3600_000;
+  const at = (m: number) => new Date(t0 + m * min);
+  // Far from the other location tests' coordinates; 0.009° of latitude is about 1 km
+  const HOME = { lat: 10.0, lng: 123.0 };
+  const north = (km: number) => ({ lat: HOME.lat + km * 0.009, lng: HOME.lng });
+  let noa = "";
+  let phone: { id: string; childId: string; familyId: string };
+  let tablet: { id: string; childId: string; familyId: string };
+  const visits = () => db.locationVisit.findMany({ where: { childId: noa }, orderBy: { arrivedAt: "asc" } });
+
+  beforeAll(async () => {
+    await db.family.update({ where: { id: admin.familyId }, data: { keepLocationHistory: true } });
+    noa = (await createChild(admin, { name: "Noa", birthYear: new Date().getFullYear() - 9 })).id;
+    const make = async (name: string) => {
+      const d = await db.device.create({ data: { familyId: admin.familyId, childId: noa, name, model: "Test", platform: "ANDROID", osVersion: "Android 15", tokenHash: sha256(newToken()), lastSeenAt: new Date() } });
+      return { id: d.id, childId: noa, familyId: admin.familyId };
+    };
+    [phone, tablet] = [await make("Noa's Phone"), await make("Noa's Tablet")];
+  });
+  afterAll(async () => {
+    await db.family.update({ where: { id: admin.familyId }, data: { keepLocationHistory: false } });
+  });
+
+  it("makes one visit per place across the child's devices, and leaves drive-by fixes out of recent places", async () => {
+    await recordLocation(phone, HOME, at(0));
+    await recordLocation(tablet, { lat: HOME.lat + 0.0003, lng: HOME.lng }, at(1)); // same place, other device
+    await recordLocation(phone, HOME, at(10));
+    expect(await visits()).toHaveLength(1);
+    expect((await visits())[0]).toMatchObject({ deviceId: phone.id, lastSeenAt: at(10) });
+
+    await recordLocation(phone, north(1), at(15)); // driving
+    await recordLocation(phone, north(2), at(20));
+    await recordLocation(phone, north(3), at(25)); // arrives
+    await recordLocation(phone, north(3), at(40));
+    const all = await visits();
+    expect(all.map(stayed)).toEqual([true, false, false, true]);
+
+    const recent = await recentVisits([noa], 3, t0 + 41 * min);
+    expect(recent.map((v) => v.arrivedAt)).toEqual([at(25), at(0)]);
+  });
+
+  it("labels fixes inside a saved place, and relabels what's kept when it's named, renamed or removed", async () => {
+    const home = await createPlace(admin, { name: "Home", ...HOME, radiusM: 150 });
+    const homeVisit = async () => (await visits())[0];
+    expect(await homeVisit()).toMatchObject({ placeId: home.id, placeLabel: "Home" });
+    // The tablet stayed at home: its current location is labelled too
+    expect(await db.deviceLocation.findUniqueOrThrow({ where: { deviceId: tablet.id } })).toMatchObject({ placeId: home.id, placeLabel: "Home" });
+
+    // A new fix there is labelled when it arrives, and the saved name wins over the device's own label
+    await recordLocation(phone, { ...HOME, placeLabel: "Lola's" }, at(60));
+    expect(await db.deviceLocation.findUniqueOrThrow({ where: { deviceId: phone.id } })).toMatchObject({ placeId: home.id, placeLabel: "Home" });
+    expect((await visits()).at(-1)).toMatchObject({ arrivedAt: at(60), placeLabel: "Home" });
+
+    await updatePlace(admin, home.id, { name: "Our house" });
+    expect(await homeVisit()).toMatchObject({ placeLabel: "Our house" });
+
+    // Shrinking it leaves out what's now outside; the 30 m fix stays in
+    await updatePlace(admin, home.id, { radiusM: 100 });
+    expect((await homeVisit()).placeId).toBe(home.id);
+
+    await deletePlace(admin, home.id);
+    expect(await homeVisit()).toMatchObject({ placeId: null, placeLabel: null });
+    await expect(deletePlace(admin, home.id)).rejects.toMatchObject({ status: 404 });
+  });
+
+  it("keeps places to the family that saved them", async () => {
+    const other = { ...admin, familyId: "someone-else" };
+    const p = await createPlace(admin, { name: "School", ...north(3), radiusM: 250 });
+    await expect(updatePlace(other, p.id, { name: "Mine" })).rejects.toMatchObject({ status: 404 });
+    await expect(deletePlace(other, p.id)).rejects.toMatchObject({ status: 404 });
+    await expect(createPlace(admin, { name: " ", ...HOME, radiusM: 150 })).rejects.toThrow();
+    await expect(createPlace(admin, { name: "Odd", ...HOME, radiusM: 123 })).rejects.toThrow();
+    await deletePlace(admin, p.id);
   });
 });
 

@@ -4,9 +4,12 @@ import { childFor } from "@/lib/config-service";
 import { dayTime } from "@/lib/format";
 import { getFamily } from "@/lib/queries";
 import { authed } from "@/lib/mobile-api";
-import { dayGroup } from "@/lib/mobile-views";
-import { childLocation, deviceSharing } from "@/lib/location";
+import { dayGroup, visitJson } from "@/lib/mobile-views";
+import { childLocation, deviceSharing, locationPolicy } from "@/lib/location";
 import { requireLocationSharing } from "@/lib/plan-access";
+
+/** Today's and yesterday's visits are listed up to this many; "View All" (/location/visits) pages the rest. */
+const VISITS_SHOWN = 100;
 
 /**
  * Location: where the child is now, and today's and yesterday's visits when the family keeps
@@ -18,10 +21,13 @@ export const GET = authed<{ id: string }>(async ({ user, params }) => {
   await requireLocationSharing(user.familyId);
   const family = await getFamily(user.familyId);
   const tz = family.timezone;
-  const devices = await db.device.findMany({
-    where: { childId: child.id }, include: { location: true, protections: { where: { key: "LOCATION" } } }, orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
-  });
-  const l = childLocation(devices);
+  const [devices, policies] = await Promise.all([
+    db.device.findMany({
+      where: { childId: child.id }, include: { location: true, protections: { where: { key: "LOCATION" } } }, orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+    }),
+    db.childPolicy.findMany({ where: { childId: child.id, key: "LOCATION" }, select: { key: true, config: true } }),
+  ]);
+  const l = childLocation(devices, Date.now(), locationPolicy(policies));
   const latest = l.device;
 
   // 72 hours always covers "yesterday" in the family's time zone; the day filter below trims the rest
@@ -34,19 +40,18 @@ export const GET = authed<{ id: string }>(async ({ user, params }) => {
     childId: child.id,
     sharing: l.sharing,
     state: l.state,
+    waitingForReport: l.unreported ? { deviceId: l.unreported.id, deviceName: l.unreported.name } : null,
     current: latest ? {
       deviceId: latest.id, deviceName: latest.name,
       lat: latest.location!.lat, lng: latest.location!.lng, accuracyM: latest.location!.accuracyM,
-      placeLabel: latest.location!.placeLabel,
+      placeLabel: latest.location!.placeLabel, placeId: latest.location!.placeId,
       locatedAt: l.locatedAt, updatedLabel: dayTime(l.locatedAt, tz), fresh: l.fresh, approximate: l.approximate,
     } : null,
     devices: devices.map((d) => ({ id: d.id, name: d.name, sharing: deviceSharing(d) === true, hasLocation: d.location?.lat != null })),
     history: {
       enabled: family.keepLocationHistory,
-      visits: shown.map((v) => ({
-        id: v.id, deviceName: v.device.name, lat: v.lat, lng: v.lng, placeLabel: v.placeLabel,
-        arrivedAt: v.arrivedAt, lastSeenAt: v.lastSeenAt, timeLabel: dayTime(v.arrivedAt, tz), day: dayGroup(v.arrivedAt, tz),
-      })),
+      visits: shown.slice(0, VISITS_SHOWN).map((v) => visitJson(v, tz)),
+      more: shown.length > VISITS_SHOWN,
     },
   });
 });

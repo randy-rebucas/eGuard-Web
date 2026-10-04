@@ -1,5 +1,5 @@
 import type { ProtectionKey } from "@prisma/client";
-import { PROTECTIONS, defaultConfig, type ProtectionConfig } from "./protections";
+import { PROTECTIONS, configMatches, defaultConfig, type ProtectionConfig } from "./protections";
 
 /**
  * Protection profiles offered during onboarding. A profile is only a starting point:
@@ -45,3 +45,19 @@ export function profileConfig(profile: ProfileId, key: ProtectionKey, age: numbe
 }
 
 export const profileConfigs = (profile: ProfileId, age: number) => PROTECTIONS.map((p) => profileConfig(profile, p.key, age));
+
+/** What eGuard recommends for an age: the recommended profile's setting. */
+const recommended = (key: ProtectionKey, age: number) => profileConfig(recommendedProfile(age), key, age);
+
+/**
+ * After a child's age changes: protections whose recommendation is different at the new age and where the child's
+ * current setting doesn't already match it. Names, in PROTECTIONS order; empty when there's nothing to review.
+ * Only a suggestion: nothing is changed without the parent going through the setup flow.
+ */
+export function ageReview(oldAge: number, newAge: number, current: { key: ProtectionKey; config: unknown }[]) {
+  return PROTECTIONS.filter((p) => {
+    const next = recommended(p.key, newAge);
+    if (configMatches(recommended(p.key, oldAge), next)) return false;
+    return !configMatches(current.find((c) => c.key === p.key)?.config, next);
+  }).map((p) => p.checkName);
+}

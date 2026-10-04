@@ -83,6 +83,18 @@ describe("organizations and admins", () => {
     expect(await managedOrganizations(owner.id)).toEqual([expect.objectContaining({ id: orgId, role: "OWNER", families: 0 })]);
   });
 
+  it("needs a verified email to buy codes, since PayMongo sends the receipt there", async () => {
+    // An unverified account can still be made an admin, so check the purchase itself
+    await db.orgMember.create({ data: { orgId, userId: unverified.id, role: "ADMIN" } });
+    try {
+      await expect(buyCodes(unverified, orgId, { plan: "PLUS", months: 1, quantity: 1 }, opts))
+        .rejects.toMatchObject({ status: 403, code: "email_unverified", message: expect.stringContaining("buy sponsor codes") });
+      expect(await db.voucherBatch.count({ where: { orgId, createdBy: unverified.id } })).toBe(0);
+    } finally {
+      await db.orgMember.delete({ where: { orgId_userId: { orgId, userId: unverified.id } } });
+    }
+  });
+
   it("hides the organization from anyone who doesn't manage it", async () => {
     await expect(organizationView(outsider, orgId)).rejects.toMatchObject({ status: 404 });
     await expect(buyCodes(outsider, orgId, { plan: "PLUS", months: 1, quantity: 1 }, opts)).rejects.toMatchObject({ status: 404 });
@@ -121,7 +133,7 @@ describe("joining", () => {
 
   it("shows who the code belongs to, then joins; only the family admin can", async () => {
     await expect(previewJoin(ownerParent, code)).rejects.toMatchObject({ status: 403 });
-    expect(await previewJoin(helper, code)).toEqual({ name: "Parish Youth Ministry", kind: "Community group", alreadyJoined: false });
+    expect(await previewJoin(helper, code)).toEqual({ name: "Parish Youth Ministry", kind: "Community group", kindKey: "COMMUNITY", alreadyJoined: false });
     await joinOrganization(helper, code);
     await joinOrganization(helper, code); // again: no error, no duplicate
     expect(await familyOrganizations(helper.familyId)).toEqual([expect.objectContaining({ id: orgId, name: "Parish Youth Ministry" })]);

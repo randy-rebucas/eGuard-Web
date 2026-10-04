@@ -15,7 +15,7 @@ import * as browsers from "@/lib/browser-service";
 import * as browserPolicy from "@/lib/browser-policy";
 import * as browserAccess from "@/lib/browser-access";
 import { LOCATION_UPGRADE, familyEntitlements, planWith } from "@/lib/plan-access";
-import { PROFILE_IDS } from "@/lib/profiles";
+import { PROFILE_IDS, ageReview } from "@/lib/profiles";
 import { isDismissible } from "@/lib/health";
 import type { FormState } from "./auth";
 
@@ -73,13 +73,14 @@ export async function createChild(_: FormState, form: FormData): Promise<FormSta
   } catch (e) {
     return failed(e);
   }
+  revalidatePath("/", "layout");
   // Straight to the next step: the child's page says what to do now (pair a device)
   redirect(`/children/${childId}?added=1`);
 }
 
 export async function updateChild(childId: string, _: FormState, form: FormData): Promise<FormState> {
   const u = await requireUser();
-  const child = await db.child.findFirst({ where: { id: String(childId), familyId: u.familyId } });
+  const child = await db.child.findFirst({ where: { id: String(childId), familyId: u.familyId }, include: { policies: { select: { key: true, config: true } } } });
   if (!child) return { error: "Child not found." };
   // A child who has since grown past the age range keeps their saved year; only a changed year is checked
   const unchanged = Number(form.get("birthYear")) === child.birthYear;
@@ -97,7 +98,13 @@ export async function updateChild(childId: string, _: FormState, form: FormData)
   if (!res.count) return { error: "Child not found." };
   if (child.name !== parsed.data.name || !unchanged) await audit(u.familyId, u.name, "child.updated", child.name === parsed.data.name ? child.name : `${child.name} → ${parsed.data.name}`);
   revalidatePath("/", "layout");
-  return { ok: "Saved." };
+  if (unchanged) return { ok: "Saved." };
+  // A new age can mean different recommendations: say which, and leave the change to the parent (setup flow)
+  const year = new Date().getFullYear(), age = year - Number(form.get("birthYear"));
+  const review = ageReview(year - child.birthYear, age, child.policies);
+  if (!review.length) return { ok: "Saved." };
+  const list = review.length === 1 ? review[0] : `${review.slice(0, -1).join(", ")} and ${review.at(-1)}`;
+  return { ok: `Saved. For a ${age}-year-old, eGuard recommends different ${list} settings than ${parsed.data.name} has now. Review them on the Protection tab.` };
 }
 
 export async function deleteChildData(childId: string, _: FormState, form: FormData): Promise<FormState> {
@@ -107,6 +114,8 @@ export async function deleteChildData(childId: string, _: FormState, form: FormD
   } catch (e) {
     return failed(e);
   }
+  // The shell's device badge and child count came from this child too
+  revalidatePath("/", "layout");
   redirect("/children");
 }
 
@@ -139,14 +148,14 @@ export async function setAppLimit(appId: string, minutes: number | null): Promis
 
 /* ---------- Devices ---------- */
 
-export async function createPairingCode(childId: string, opts: family.PairingOptions = { kind: "DEVICE" }) {
+export async function createPairingCode(childId: string, opts: family.PairingOptions = { kind: "DEVICE" }): Promise<{ code: string; expiresInSeconds: number; childName: string } | { error: string }> {
   const u = await requireUser();
   if (!Id.safeParse(childId).success) return { error: "Choose which child the device belongs to." };
   const parsed = family.PairingOptions.safeParse(opts);
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   try {
     const p = await family.createPairingCode(u, childId, parsed.data);
-    return { code: p.code, expiresAt: p.expiresAt.toISOString(), childName: p.childName };
+    return { code: p.code, expiresInSeconds: p.expiresInSeconds, childName: p.childName };
   } catch (e) {
     if (e instanceof ServiceError) return { error: e.message };
     throw e;
@@ -156,10 +165,14 @@ export async function createPairingCode(childId: string, opts: family.PairingOpt
 export async function renameDevice(deviceId: string, _: FormState, form: FormData): Promise<FormState> {
   const u = await requireUser();
   if (!Id.safeParse(deviceId).success) return { error: "Device not found." };
-  const name = String(form.get("name") ?? "").trim();
-  if (!name || name.length > 60) return { error: "Enter a device name up to 60 characters." };
-  const r = await db.device.updateMany({ where: { id: deviceId, familyId: u.familyId }, data: { name } });
-  if (!r.count) return { error: "Device not found." };
+  const name = family.DeviceName.safeParse(form.get("name") ?? "");
+  if (!name.success) return { error: name.error.issues[0].message };
+  try {
+    await family.renameDevice(u, deviceId, name.data);
+  } catch (e) {
+    if (e instanceof ServiceError && e.status === 404) return { error: "Device not found." };
+    return failed(e);
+  }
   revalidatePath("/", "layout");
   return { ok: "Saved." };
 }
@@ -168,7 +181,7 @@ export async function removeDevice(deviceId: string, _: FormState, form: FormDat
   const u = await requireUser();
   if (!Id.safeParse(deviceId).success) return { error: "This device was already removed.", fields: { gone: "1" } };
   try {
-    await family.removeDevice(u, deviceId, confirmFrom(form));
+    await family.removeDevice(u, deviceId, confirmFrom(form), { deleteHistory: form.get("deleteHistory") === "on" });
   } catch (e) {
     // Already removed (another tab, another parent): nothing left to do here
     if (e instanceof ServiceError && e.status === 404) return { error: "This device was already removed.", fields: { gone: "1" } };
@@ -176,6 +189,35 @@ export async function removeDevice(deviceId: string, _: FormState, form: FormDat
   }
   revalidatePath("/", "layout");
   redirect("/devices");
+}
+
+export async function setPrimaryDevice(deviceId: string): Promise<Result> {
+  const u = await requireUser();
+  return toResult(async () => {
+    await family.setPrimaryDevice(u, Id.parse(deviceId));
+    revalidatePath("/", "layout");
+    return {};
+  });
+}
+
+/** Moves a phone or tablet to another child (`childId` in the form), with the parent's password or DELETE. */
+export async function moveDevice(deviceId: string, _: FormState, form: FormData): Promise<FormState> {
+  const u = await requireUser();
+  if (!Id.safeParse(deviceId).success) return { error: "This device was removed.", fields: { gone: "1" } };
+  const childId = Id.safeParse(form.get("childId"));
+  if (!childId.success) return { error: "Choose who the device belongs to now." };
+  let moved;
+  try {
+    moved = await family.moveDevice(u, deviceId, childId.data, confirmFrom(form));
+  } catch (e) {
+    // The device went (another parent, another tab); a missing child is just a stale list, so say that instead
+    if (e instanceof ServiceError && e.status === 404) {
+      return e.message.startsWith("Child") ? { error: "That child was removed. Reload the page and choose again." } : { error: "This device was removed.", fields: { gone: "1" } };
+    }
+    return failed(e);
+  }
+  revalidatePath("/", "layout");
+  return { ok: `Moved to ${moved.child.name}. ${moved.name} gets ${moved.child.name}'s protections on its next sync.` };
 }
 
 export async function removeBrowser(installationId: string, _: FormState, form: FormData): Promise<FormState> {

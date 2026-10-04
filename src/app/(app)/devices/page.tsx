@@ -1,6 +1,9 @@
+import Link from "next/link";
 import { requireUser } from "@/lib/auth";
+import { Icon } from "@/components/icon";
 import { getFamily, getFamilyGraph } from "@/lib/queries";
 import { listBrowsers } from "@/lib/browser-service";
+import { nextPlan } from "@/lib/plans";
 import { Avatar, EmptyState, PageHead } from "@/components/ui";
 import { DeviceCard } from "@/components/cards";
 import { BrowserCard } from "@/components/browser-card";
@@ -19,16 +22,18 @@ export default async function DevicesPage(props: PageProps<"/devices">) {
   const used = devices.length + browsers.filter((b) => !b.revokedAt).length;
   const kids = children.map((c) => ({ id: c.id, name: c.name }));
   const preselect = kids.find((k) => k.id === child)?.id;
+  // On the top plan there's nothing bigger to move to: only removing frees a slot
+  const upgrade = !!nextPlan(family.plan);
   return (
     <>
       <PageHead title="Devices" text={used > family.deviceLimit
-        ? `${used} devices, more than the ${family.deviceLimit} your plan covers now. They stay protected; remove some or change your plan to add more.`
+        ? `${used} devices, more than the ${family.deviceLimit} your plan covers now. They stay protected; remove some${upgrade ? " or change your plan" : ""} to add more.`
         : `${used} of ${family.deviceLimit} devices on your plan, counting browsers. Each device reports its configuration back to eGuard when it syncs.`} />
       {children.map((c) => {
         const own = browsers.filter((b) => b.childId === c.id);
         return (
           <section key={c.id}>
-            <div className="section-title"><h2 className="row" style={{ gap: 10 }}><Avatar name={c.name} hue={c.hue} />{c.name}&apos;s devices</h2></div>
+            <div className="section-title"><h2 className="row" style={{ gap: 10 }}><Avatar name={c.name} hue={c.hue} photo={c.photo} />{c.name}&apos;s devices</h2></div>
             {c.devices.length || own.length ? (
               <div className="devices-grid">
                 {c.devices.map((d) => <DeviceCard key={d.id} d={d} state={deviceStates[d.id]} tz={family.timezone} />)}
@@ -40,14 +45,26 @@ export default async function DevicesPage(props: PageProps<"/devices">) {
           </section>
         );
       })}
-      <section className="card card-pad" id="pair">
-        <div className="card-head"><div><h2>Pair a device</h2><div className="sub">Install eGuard from Google Play or the App Store on your child&apos;s device, then enter a pairing code.</div></div></div>
-        <PairDevice kids={kids} used={used} limit={family.deviceLimit} initialChildId={preselect} />
-      </section>
-      <section className="card card-pad" id="add-browser">
-        <div className="card-head"><div><h2>Add a browser</h2><div className="sub">For your child&apos;s computer: the eGuard extension for Chrome, Edge or Firefox. Name the computer, then enter the code in the extension.</div></div></div>
-        <PairDevice kids={kids} used={used} limit={family.deviceLimit} kind="BROWSER" initialChildId={preselect} />
-      </section>
+      {/* Both pairing forms would only say "Add a child first": one clear next step instead */}
+      {!children.length ? (
+        <section className="card card-pad" id="pair">
+          <EmptyState icon="users" title="Add a child first" text="Devices and browsers are paired to a child, so eGuard knows whose protections to apply. Add your child, then pair their phone, tablet or computer here.">
+            <Link className="btn btn-primary" href="/children/new"><Icon name="plus" />Add child</Link>
+          </EmptyState>
+        </section>
+      ) : (
+        <>
+          <section className="card card-pad" id="pair">
+            {/* Only Android is out: the landing page and help say the iPhone and iPad app is coming soon */}
+            <div className="card-head"><div><h2>Pair a device</h2><div className="sub">Install eGuard from Google Play on your child&apos;s Android phone or tablet, then enter a pairing code. The iPhone and iPad app is coming soon.</div></div></div>
+            <PairDevice kids={kids} used={used} limit={family.deviceLimit} upgrade={upgrade} initialChildId={preselect} />
+          </section>
+          <section className="card card-pad" id="add-browser">
+            <div className="card-head"><div><h2>Add a browser</h2><div className="sub">For your child&apos;s computer: the eGuard extension for Chrome, Edge or Firefox. Name the computer, then enter the code in the extension.</div></div></div>
+            <PairDevice kids={kids} used={used} limit={family.deviceLimit} upgrade={upgrade} kind="BROWSER" initialChildId={preselect} />
+          </section>
+        </>
+      )}
     </>
   );
 }

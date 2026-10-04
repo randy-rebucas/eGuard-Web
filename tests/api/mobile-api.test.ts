@@ -291,6 +291,28 @@ describe("7–9. Pair a device, setup progress, configuration health", () => {
     expect((await call("PUT", `/children/${miaId}/protections/SCREEN_TIME`, { token, body: { dailyMinutes: 5, weekendMinutes: 60 } })).status).toBe(400);
   });
 
+  it("a protection the parent turns off passes once the device confirms it", async () => {
+    const statusOf = async (key: string) =>
+      (await call("GET", `/children/${miaId}/protections`, { token })).data.protections.find((p: { key: string }) => p.key === key);
+    await call("PUT", `/children/${miaId}/protections/APP_APPROVAL`, { token, body: { enabled: false } });
+    await applyAndReport(android.send);
+    expect(await statusOf("APP_APPROVAL")).toMatchObject({ policyLabel: "Off", status: "PASS", devices: [expect.objectContaining({ status: "PASS", reportedLabel: "Off" })] });
+    // (Content still fails from the test above)
+    expect((await call("GET", `/health?childId=${miaId}`, { token })).data.toFix).not.toContainEqual(expect.objectContaining({ key: "APP_APPROVAL" }));
+    // Back on, as the rest of the suite expects
+    await call("PUT", `/children/${miaId}/protections/APP_APPROVAL`, { token, body: { enabled: true } });
+    await applyAndReport(android.send);
+    expect((await statusOf("APP_APPROVAL")).status).toBe("PASS");
+  });
+
+  it("web filtering verifies whatever number of sites the device loaded", async () => {
+    const r = await call("PUT", `/children/${miaId}/protections/WEB`, { token, body: { mode: "FILTER" } });
+    expect(r.data.items[0]).toMatchObject({ status: "PENDING", to: "Adult and unsafe sites filtered" });
+    await android.send("/sync");
+    await android.send("/report", { protections: [{ key: "WEB", config: { mode: "FILTER", blockedSites: 81_244 } }] });
+    expect((await call("GET", `/batches/${r.data.batchId}`, { token })).data.items[0].status).toBe("VERIFIED");
+  });
+
   it("cancels a batch that hasn't been verified", async () => {
     const r = await call("PUT", `/children/${miaId}/protections/LOCATION`, { token, body: { sharing: true } });
     const c = await call("DELETE", `/batches/${r.data.batchId}`, { token });
@@ -300,8 +322,12 @@ describe("7–9. Pair a device, setup progress, configuration health", () => {
 
   it("iOS guided setup waits for the parent, then verifies", async () => {
     const leo = await call("POST", "/children", { token, body: { name: "Leo", age: 8 } });
+    // No device yet: nothing could verify a change, so it's saved as Leo's setting and sent when one pairs
+    const early = await call("PUT", `/children/${leo.data.id}/protections/BEDTIME`, { token, body: { enabled: true, start: "20:00", end: "07:00", days: "EVERY_DAY" } });
+    expect(early).toMatchObject({ status: 200, data: { batchId: null, saved: ["BEDTIME"] } });
     const ipad = await pairDevice(token, leo.data.id, "IOS", "iPad");
-    await applyAndReport(ipad.send);
+    const first = await applyAndReport(ipad.send);
+    expect(first.policy).toContainEqual(expect.objectContaining({ key: "BEDTIME", config: expect.objectContaining({ start: "20:00", end: "07:00" }) }));
 
     const r = await call("PUT", `/children/${leo.data.id}/protections/WEB`, { token, body: { mode: "FILTER", blockedSites: 50 } });
     expect(r.data.items[0].status).toBe("AWAITING_PARENT");
@@ -429,6 +455,24 @@ describe("14. Location", () => {
 
     const fam = await call("GET", "/locations", { token });
     expect(fam.data.children.find((c: { childId: string }) => c.childId === miaId)).toMatchObject({ state: "located" });
+  });
+
+  it("names places: visits and the map show the name, and renaming or removing it relabels them", async () => {
+    const created = await call("POST", "/places", { token, body: { name: "Lola's house", lat: 11.28, lng: 125.06, radiusM: 150 } });
+    expect(created.status).toBe(201);
+    const placeId = created.data.id;
+    expect((await call("POST", "/places", { token, body: { name: "Odd", lat: 11.28, lng: 125.06, radiusM: 123 } })).status).toBe(400);
+
+    const r = await call("GET", `/children/${miaId}/location`, { token });
+    const home = r.data.history.visits.find((v: { placeId: string | null }) => v.placeId === placeId);
+    expect(home).toMatchObject({ placeLabel: "Lola's house", stayed: false, durationMinutes: 0 });
+    expect(r.data.history.more).toBe(false);
+    expect((await call("GET", "/locations", { token })).data.places).toEqual([expect.objectContaining({ id: placeId, name: "Lola's house", radiusM: 150 })]);
+
+    expect((await call("PATCH", `/places/${placeId}`, { token, body: { name: "Lola's" } })).data.name).toBe("Lola's");
+    expect(await db.locationVisit.count({ where: { placeId, placeLabel: "Lola's" } })).toBe(1);
+    expect((await call("DELETE", `/places/${placeId}`, { token })).data).toEqual({ ok: true });
+    expect((await call("GET", "/places", { token })).data.places).toEqual([]);
   });
 
   it("turning history off deletes the visits", async () => {
@@ -588,7 +632,9 @@ describe("family isolation", () => {
     expect(eve.user.family.name).toBe("Eve's Family");
     const t = eve.token;
     const app = await db.childApp.findFirstOrThrow({ where: { childId: miaId, approval: { not: "BLOCKED" } } });
+    const place = await db.place.create({ data: { familyId: (await db.child.findUniqueOrThrow({ where: { id: miaId } })).familyId, name: "School", lat: 11.29, lng: 125.07 } });
     const checks: [string, string, unknown?][] = [
+      ["PATCH", `/places/${place.id}`, { name: "Mine" }], ["DELETE", `/places/${place.id}`],
       ["GET", `/children/${miaId}`], ["GET", `/children/${miaId}/screen-time`], ["GET", `/children/${miaId}/apps`],
       ["GET", `/children/${miaId}/location`], ["GET", `/children/${miaId}/photo`], ["GET", `/children/${miaId}/protections`],
       ["PUT", `/children/${miaId}/protections/LOCATION`, { sharing: false }], ["POST", `/children/${miaId}/pairing-code`],
@@ -601,6 +647,8 @@ describe("family isolation", () => {
     }
     expect((await call("GET", "/dashboard", { token: t })).data.children).toEqual([]);
     expect((await db.childApp.findUniqueOrThrow({ where: { id: app.id } })).approval).not.toBe("BLOCKED");
+    expect(await db.place.findUniqueOrThrow({ where: { id: place.id } })).toMatchObject({ name: "School" });
+    await db.place.delete({ where: { id: place.id } });
   });
 });
 

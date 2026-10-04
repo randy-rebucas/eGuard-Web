@@ -153,7 +153,9 @@ export function ConfigFlow({ initialKey, initialChild, onClose }: { initialKey?:
     if (!ctx || !draft) return;
     const r = await act(() => submitConfig(ctx.child.id, draft));
     setConfirming(false);
-    if (!r?.batchId) return;
+    if (!r) return;
+    // No device yet: saved as the child's setting, nothing to verify until one pairs
+    if (!r.batchId) { toast(`Saved. It applies once ${ctx.child.name}'s device is paired.`, "ok"); router.refresh(); onClose(); return; }
     setBatchId(r.batchId); startedAt.current = Date.now(); setStep(3);
   };
 
@@ -180,7 +182,9 @@ export function ConfigFlow({ initialKey, initialChild, onClose }: { initialKey?:
       <Dialog labelledBy="cf-title" onClose={() => setConfirming(false)} small role="alertdialog">
         <div className="dialog-head"><span className="ico-tile warn"><Icon name="shield-alert" /></span><div><h2 id="cf-title">Change Protection Settings</h2></div></div>
         <div className="dialog-body">
-          <p>You&apos;re about to modify {ctx.child.name}&apos;s device protection on {supported.map((d) => d.name).join(" and ")}. {ctx.child.name} will see a notice about the change on the device.</p>
+          <p>{supported.length
+            ? <>You&apos;re about to modify {ctx.child.name}&apos;s device protection on {supported.map((d) => d.name).join(" and ")}. Once it&apos;s applied, the change shows in eGuard on {ctx.child.name}&apos;s device.</>
+            : <>{ctx.child.name} has no paired device yet. This is saved as {ctx.child.name}&apos;s setting and applied when a device is paired.</>}</p>
           <div className="compare" style={{ marginTop: 14 }}>
             <div><span className="t-meta">Now</span><b>{ctx.policyLabel}</b></div>
             <Icon name="arrow-right" />
@@ -189,7 +193,7 @@ export function ConfigFlow({ initialKey, initialChild, onClose }: { initialKey?:
         </div>
         <div className="dialog-foot">
           <button className="btn btn-ghost" onClick={() => setConfirming(false)}>Cancel</button>
-          <button className="btn btn-primary" onClick={submit} disabled={busy} data-autofocus>{busy ? <><Icon name="loader-circle" className="spin" />Sending…</> : "Continue"}</button>
+          <button className="btn btn-primary" onClick={submit} disabled={busy} data-autofocus>{busy ? <><Icon name="loader-circle" className="spin" />{supported.length ? "Sending…" : "Saving…"}</> : supported.length ? "Continue" : "Save"}</button>
         </div>
       </Dialog>
     );
@@ -233,17 +237,13 @@ export function ConfigFlow({ initialKey, initialChild, onClose }: { initialKey?:
       <>
         <p className="muted" style={{ marginBottom: 12 }}>Which child is this for?</p>
         {kids.map((c) => (
-          <button key={c.id} className="list-row" onClick={() => setChildId(c.id)} disabled={!c.devices.length}>
-            <Avatar name={c.name} hue={c.hue} />
+          <button key={c.id} className="list-row" onClick={() => setChildId(c.id)}>
+            <Avatar name={c.name} hue={c.hue} photo={c.photo} />
             <span className="grow"><span className="t-title" style={{ display: "block" }}>{c.name}</span>
-              <span className="t-meta">{c.devices.length ? c.devices.map((d) => `${d.name} · ${CAPABILITY_META[PROTECTION_BY_KEY[key].caps[d.platform]].label}`).join(", ") : "No devices yet"}</span></span>
+              <span className="t-meta">{c.devices.length ? c.devices.map((d) => `${d.name} · ${CAPABILITY_META[PROTECTION_BY_KEY[key].caps[d.platform]].label}`).join(", ") : "No device yet · applied once one is paired"}</span></span>
             <span className="chev"><Icon name="chevron-right" /></span>
           </button>
         ))}
-        {/* Every row is disabled without a device: give the way forward instead of a dead end */}
-        {kids.every((c) => !c.devices.length) ? (
-          <div className="form-error" style={{ marginTop: 12 }}><Icon name="smartphone" /><span className="grow">Pair a child&apos;s device to set up protections.</span><Link className="link-btn" href="/devices#pair" onClick={onClose}>Pair a device</Link></div>
-        ) : null}
       </>
     ) : <div className="form-error"><Icon name="user-plus" /><span className="grow">Add a child first, then pair their device.</span><Link className="link-btn" href="/children/new" onClick={onClose}>Add a child</Link></div>;
   } else if (!ctx || !draft) {
@@ -261,12 +261,12 @@ export function ConfigFlow({ initialKey, initialChild, onClose }: { initialKey?:
         </div>
         <p className="t-meta" style={{ marginTop: 12 }}>Your setting for {ctx.child.name}: <b style={{ color: "var(--ink-2)" }}>{ctx.policyLabel}</b></p>
         {!ctx.devices.length ? (
-          <div className="form-error" style={{ marginTop: 12 }}><Icon name="smartphone" /><span className="grow">{ctx.child.name} has no paired device yet. Pair one, then set this up.</span><Link className="link-btn" href="/devices#pair" onClick={onClose}>Pair a device</Link></div>
+          <div className="form-ok" style={{ marginTop: 12 }}><Icon name="smartphone" /><span className="grow">{ctx.child.name} has no paired device yet. You can change the setting now; eGuard applies and verifies it once a device is paired.</span><Link className="link-btn" href={`/devices?child=${ctx.child.id}#pair`} onClick={onClose}>Pair a device</Link></div>
         ) : !supported.length ? <div className="form-error" style={{ marginTop: 12 }}><Icon name="circle-slash" />{def!.name} isn&apos;t supported on {ctx.child.name}&apos;s devices, so it isn&apos;t counted in health.</div> : null}
         {ctx.openBatch ? <div className="form-ok" style={{ marginTop: 12 }}><Icon name="loader-circle" />A change is already waiting for verification. <button className="link-btn" onClick={() => resume(ctx.openBatch!)}>Check progress</button></div> : null}
       </>
     );
-    foot = <><button className="btn btn-ghost" onClick={close}>Cancel</button><button className="btn btn-primary" disabled={!supported.length} onClick={() => setStep(2)}>Continue</button></>;
+    foot = <><button className="btn btn-ghost" onClick={close}>Cancel</button><button className="btn btn-primary" disabled={!!ctx.devices.length && !supported.length} onClick={() => setStep(2)}>Continue</button></>;
   } else if (step === 2) {
     const problem = draftProblem(draft);
     body = (
@@ -276,7 +276,7 @@ export function ConfigFlow({ initialKey, initialChild, onClose }: { initialKey?:
       </>
     );
     const guided = supported.some((d) => d.capability !== "AVAILABLE");
-    foot = <><button className="btn btn-ghost" onClick={() => setStep(1)}>Back</button><button className="btn btn-primary" disabled={!!problem} onClick={() => setConfirming(true)}>{guided ? "Continue to setup" : "Apply to device"}</button></>;
+    foot = <><button className="btn btn-ghost" onClick={() => setStep(1)}>Back</button><button className="btn btn-primary" disabled={!!problem} onClick={() => setConfirming(true)}>{!supported.length ? "Save" : guided ? "Continue to setup" : "Apply to device"}</button></>;
   } else if (step === 3 || step === 4) {
     const guided = batch?.requests.filter((r) => r.status === "AWAITING_PARENT") ?? [];
     body = (

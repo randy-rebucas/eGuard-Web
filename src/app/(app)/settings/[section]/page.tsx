@@ -25,6 +25,8 @@ import { confirmReturn, passMethods, webBillingAvailable } from "@/lib/web-billi
 import { status as twoFactorStatus } from "@/lib/two-factor";
 import { pushAvailable } from "@/lib/push";
 import { TwoStepSettings } from "@/components/two-step";
+import { BROWSER_STATE } from "@/components/browser-card";
+import { isOffline } from "@/lib/health";
 
 export async function generateMetadata(props: PageProps<"/settings/[section]">) {
   const { section } = await props.params;
@@ -49,9 +51,11 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
     }
 
     case "family": {
-      const [members, graph, invites] = await Promise.all([
-        db.user.findMany({ where: { familyId: u.familyId }, orderBy: { createdAt: "asc" } }), getFamilyGraph(u.familyId), pendingInvites(u.familyId),
+      const [members, graph, invites, browsers] = await Promise.all([
+        db.user.findMany({ where: { familyId: u.familyId }, orderBy: { createdAt: "asc" } }), getFamilyGraph(u.familyId), pendingInvites(u.familyId), listBrowsers(u.familyId),
       ]);
+      // Browsers count as devices everywhere else (Devices page, plan limit), so name them here too
+      const browsersOf = (childId: string) => browsers.filter((b) => b.childId === childId && !b.revokedAt).length;
       const inviteNote = (id: string) => {
         const until = invites.get(id);
         return until && until > new Date() ? `Invited, hasn't accepted yet · link expires ${shortDate(until, tz)}` : "Invited · the link expired, resend it";
@@ -73,8 +77,8 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
           ))}
           {graph.children.map((c) => (
             <div className="setting-row" key={c.id}>
-              <Avatar name={c.name} hue={c.hue} />
-              <div className="grow"><div className="t-title">{c.name}</div><div className="t-meta">Child · {ageLabel(c.age)} · {c.devices.length} device{c.devices.length === 1 ? "" : "s"}</div></div>
+              <Avatar name={c.name} hue={c.hue} photo={c.photo} />
+              <div className="grow"><div className="t-title">{c.name}</div><div className="t-meta">Child · {ageLabel(c.age)} · {c.devices.length} device{c.devices.length === 1 ? "" : "s"}{browsersOf(c.id) ? ` · ${browsersOf(c.id)} browser${browsersOf(c.id) === 1 ? "" : "s"}` : ""}</div></div>
               <Link className="link-btn" href={`/children/${c.id}`}>Open</Link>
             </div>
           ))}
@@ -162,7 +166,7 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
             confirmOff="This deletes every child's location history now. It can't be undone. Current locations keep working." />
           <SettingSwitch setting="shareAnalytics" title="Share anonymous product analytics" desc="Helps improve eGuard. Never includes children's data" checked={family.shareAnalytics} disabled={!admin} />
           <div className="setting-row"><div className="grow"><div className="t-title">What children can see</div><div className="t-meta">Children see which protections are on, and can ask you for new apps and for blocked websites</div></div></div>
-          <div className="setting-row"><div className="grow"><div className="t-title">Data retention</div><div className="t-meta">Screen time, app usage, alerts, change history and location visits are deleted after {family.retentionDays} days</div></div><span className="pill tone-accent">{family.retentionDays} days</span></div>
+          <div className="setting-row"><div className="grow"><div className="t-title">Data retention</div><div className="t-meta">{/* What purgeExpiredData deletes; open alerts stay until they're resolved */}Screen time, app usage, location visits, change history, browser block counts and site requests, and resolved alerts are deleted after {family.retentionDays} days</div></div><span className="pill tone-accent">{family.retentionDays} days</span></div>
           {!admin ? <p className="t-meta" style={{ marginTop: 12 }}>Only the family admin can change privacy settings.</p> : null}
         </>
       );
@@ -320,7 +324,9 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
           {browsers.map((b) => (
             <div className="setting-row" key={b.id}>
               <span className="ico-tile"><Icon name="monitor" /></span>
-              <div className="grow"><div className="t-title">{browserLabel(b)}</div><div className="t-meta">{b.child.name} · {b.revokedAt ? "Disconnected for security, doesn't count toward your plan" : `seen ${dayTime(b.lastSeenAt, tz)}`}</div></div>
+              <div className="grow"><div className="t-title">{browserLabel(b)}</div><div className="t-meta">{b.child.name} · {b.revokedAt ? "Disconnected for security, doesn't count toward your plan"
+                : isOffline(b) ? `not seen since ${dayTime(b.lastSeenAt, tz)}`
+                : `${(b.protectionState && BROWSER_STATE[b.protectionState]?.[1]) || "Connected"} · seen ${dayTime(b.lastSeenAt, tz)}`}</div></div>
               <Link className="link-btn" href="/devices#add-browser">Manage</Link>
             </div>
           ))}
@@ -336,7 +342,7 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
         <>
           {head}
           <div className="setting-row"><span className="ico-tile"><Icon name="smartphone" /></span><div className="grow"><div className="t-title">Android device management</div><div className="t-meta">eGuard Android app with device admin permissions</div></div><span className={`pill ${android ? "tone-accent" : "tone-muted"}`}>{android ? `${android} paired` : "No devices"}</span></div>
-          <div className="setting-row"><span className="ico-tile"><Icon name="tablet-smartphone" /></span><div className="grow"><div className="t-title">Apple Screen Time (Family Controls)</div><div className="t-meta">eGuard iOS app authorized through Family Sharing</div></div><span className={`pill ${ios ? "tone-accent" : "tone-muted"}`}>{ios ? `${ios} paired` : "No devices"}</span></div>
+          <div className="setting-row"><span className="ico-tile"><Icon name="tablet-smartphone" /></span><div className="grow"><div className="t-title">Apple Screen Time (Family Controls)</div><div className="t-meta">eGuard iOS app authorized through Family Sharing{ios ? "" : ". The iPhone and iPad app is coming soon"}</div></div><span className={`pill ${ios ? "tone-accent" : "tone-muted"}`}>{ios ? `${ios} paired` : "Coming soon"}</span></div>
           <p className="t-meta" style={{ marginTop: 12 }}>Whether each protection is actually active on a device is checked on the <Link className="link-btn" href="/protection">Protection</Link> page.</p>
         </>
       );
@@ -347,7 +353,10 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
         <>
           {head}
           <div className="setting-row"><div className="grow"><div className="t-title">Export family data</div><div className="t-meta">Settings, children, devices and browsers, configuration history and activity summaries as JSON</div></div><form method="post" action="/api/account/export"><button className="btn btn-secondary btn-sm"><Icon name="download" />Download</button></form></div>
-          <div className="setting-row"><div className="grow"><div className="t-title">Delete a child&apos;s data</div><div className="t-meta">Open the child&apos;s page, then Profile. Needs your password.</div></div><Link className="btn btn-secondary btn-sm" href="/children">Choose child</Link></div>
+          {/* Only the family admin can delete a child (deleteChildData uses requireAdmin) */}
+          <div className="setting-row"><div className="grow"><div className="t-title">Delete a child&apos;s data</div><div className="t-meta">{admin
+            ? `Open the child's page, then Profile. ${user.passwordSet ? "Needs your password." : "You'll type DELETE to confirm."}`
+            : "Only the family admin can delete a child's data."}</div></div>{admin ? <Link className="btn btn-secondary btn-sm" href="/children">Choose child</Link> : null}</div>
           <div className="setting-row" style={{ flexDirection: "column", alignItems: "stretch" }}>
             <div><div className="t-title">Delete your account</div><div className="t-meta">{admin ? "Deletes your family and everything eGuard stores about it." : "Removes you from the family. The family admin keeps the family."}</div></div>
             <DeleteAccountForm isAdmin={admin} hasPassword={user.passwordSet} />
@@ -359,7 +368,7 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
       return (
         <>
           {head}
-          <div className="setting-row"><span className="ico-tile"><Icon name="book-open" /></span><div className="grow"><div className="t-title">Setup guides</div><div className="t-meta">Step-by-step help for Android and iOS is built into each guided setup</div></div></div>
+          <div className="setting-row"><span className="ico-tile"><Icon name="book-open" /></span><div className="grow"><div className="t-title">Setup guides</div><div className="t-meta">Step-by-step help is built into each guided setup, and the help center covers pairing, offline devices, plans and privacy</div></div><Link className="btn btn-secondary btn-sm" href="/help">Help center</Link></div>
           <div className="setting-row"><span className="ico-tile"><Icon name="message-circle" /></span><div className="grow"><div className="t-title">Contact support</div><div className="t-meta"><a className="link-btn" href={`mailto:${supportEmail()}`}>{supportEmail()}</a> · replies within 1 business day</div></div></div>
         </>
       );

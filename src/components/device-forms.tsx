@@ -7,9 +7,10 @@ import { Icon } from "./icon";
 import { Feedback } from "./feedback";
 import { ConfirmField, confirmHint } from "./confirm-field";
 import { useFlow } from "./flow";
-import { createPairingCode, pairingStatus, removeBrowser, removeDevice, renameDevice } from "@/app/actions/family";
+import { createPairingCode, moveDevice, pairingStatus, removeBrowser, removeDevice, renameDevice, setPrimaryDevice } from "@/app/actions/family";
 
-type PairResult = { code?: string; expiresAt?: string; childName?: string; error?: string };
+/** `deadline`: this browser's clock when the code expires, from the server's "valid for n seconds" (clock-skew safe). */
+type PairResult = { code?: string; deadline?: number; childName?: string; error?: string };
 type PairState = { status: "waiting" | "expired" | "replaced" } | { status: "paired"; device: { id: string; name: string; kind?: "BROWSER" } };
 
 const mmss = (ms: number) => { const s = Math.max(0, Math.ceil(ms / 1000)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
@@ -17,8 +18,11 @@ const mmss = (ms: number) => { const s = Math.max(0, Math.ceil(ms / 1000)); retu
 /** How often the parent's screen asks whether the code has been used. */
 const PAIR_POLL_MS = 3000;
 
-/** `kind="BROWSER"` makes a code for the eGuard browser extension, for a computer the parent names. */
-export function PairDevice({ kids: children, used, limit, kind = "DEVICE", initialChildId }: { kids: { id: string; name: string }[]; used: number; limit: number; kind?: "DEVICE" | "BROWSER"; initialChildId?: string }) {
+/**
+ * `kind="BROWSER"` makes a code for the eGuard browser extension, for a computer the parent names.
+ * `upgrade`: a bigger plan exists, so a full family is offered "change your plan" (not on the top plan).
+ */
+export function PairDevice({ kids: children, used, limit, upgrade = true, kind = "DEVICE", initialChildId }: { kids: { id: string; name: string }[]; used: number; limit: number; upgrade?: boolean; kind?: "DEVICE" | "BROWSER"; initialChildId?: string }) {
   const [childId, setChildId] = useState(initialChildId ?? children[0]?.id ?? "");
   const [label, setLabel] = useState("");
   const browser = kind === "BROWSER";
@@ -59,19 +63,22 @@ export function PairDevice({ kids: children, used, limit, kind = "DEVICE", initi
   const getCode = () => start(async () => {
     setPair(null);
     try {
-      setResult(await createPairingCode(childId, browser ? { kind: "BROWSER", deviceLabel: label } : { kind: "DEVICE" }));
+      const r = await createPairingCode(childId, browser ? { kind: "BROWSER", deviceLabel: label } : { kind: "DEVICE" });
+      setResult("code" in r ? { code: r.code, childName: r.childName, deadline: Date.now() + r.expiresInSeconds * 1000 } : r);
     } catch { setResult({ error: "Couldn't create a pairing code. Try again." }); }
     setNow(Date.now());
   });
 
   if (!children.length) return <p className="t-meta"><Link className="inline-link" href="/children/new">Add a child</Link> before pairing a {browser ? "browser" : "device"}.</p>;
-  const left = result?.expiresAt ? new Date(result.expiresAt).getTime() - now : 0;
+  const left = result?.deadline ? result.deadline - now : 0;
   const expired = pair?.status === "expired" || (!!code && !pair && left <= 0);
   return (
     <div className="dash-col" style={{ gap: 14 }}>
       <p className="t-meta">
         <span className="num">{used} of {limit}</span> devices on your plan used.
-        {full ? <> Remove a device or <Link className="inline-link" href="/settings/subscription">change your plan</Link> to add another.</> : null}
+        {full ? upgrade
+          ? <> Remove a device or <Link className="inline-link" href="/settings/subscription">change your plan</Link> to add another.</>
+          : <> Remove a device to add another.</> : null}
       </p>
       <div className="row" style={{ flexWrap: "wrap", alignItems: "flex-end" }}>
         <div className="field grow" style={{ minWidth: 180 }}>
@@ -130,6 +137,54 @@ export function RenameDeviceForm({ deviceId, name }: { deviceId: string; name: s
   );
 }
 
+/** Primary: listed first and shown on the child's card. Only offered when the child has another phone or tablet. */
+export function PrimaryDevice({ deviceId, isPrimary, childName, others }: { deviceId: string; isPrimary: boolean; childName: string; others: number }) {
+  const [pending, start] = useTransition();
+  const { toast } = useFlow();
+  const router = useRouter();
+  if (isPrimary) return <p className="t-meta"><Icon name="star" size={14} style={{ verticalAlign: -2 }} /> {childName}&apos;s primary device: listed first and shown on their card.</p>;
+  if (!others) return null;
+  const make = () => start(async () => {
+    const r = await setPrimaryDevice(deviceId);
+    if (r.error) { toast(r.error); return; }
+    toast(`Now ${childName}'s primary device.`);
+    router.refresh();
+  });
+  return (
+    <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+      <span className="t-meta">Not {childName}&apos;s primary device.</span>
+      <button className="btn btn-secondary btn-sm" disabled={pending} onClick={make}><Icon name="star" />{pending ? "Saving…" : "Make primary"}</button>
+    </div>
+  );
+}
+
+/** Gives the device to another child without pairing it again; only offered when the family has another child. */
+export function MoveDeviceForm({ deviceId, name, childName, kids, hasPassword }: { deviceId: string; name: string; childName: string; kids: { id: string; name: string }[]; hasPassword: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [state, action, pending] = useActionState(moveDevice.bind(null, deviceId), undefined);
+  if (!kids.length) return null;
+  if (state?.ok) return <div className="form-ok" role="status"><Icon name="circle-check" />{state.ok}</div>;
+  if (state?.fields?.gone) return <div className="form-error" role="alert"><Icon name="triangle-alert" />{state.error} <Link className="inline-link" href="/devices">Back to devices</Link></div>;
+  if (!open) return <button className="btn btn-secondary btn-sm" onClick={() => setOpen(true)}><Icon name="arrow-right-left" />Move to another child</button>;
+  return (
+    <form action={action} className="dash-col" style={{ gap: 10 }}>
+      <p className="t-meta" style={{ color: "var(--ink-2)" }}>
+        {name} will get the new child&apos;s protections and apps on its next sync, and eGuard checks them again then. What it recorded stays in {childName}&apos;s reports and history. Other parents in your family are told. {confirmHint(hasPassword)}
+      </p>
+      <div className="field">
+        <label htmlFor="move-dev-child">Belongs to</label>
+        <select id="move-dev-child" name="childId" className="input" defaultValue={kids[0].id}>
+          {kids.map((k) => <option key={k.id} value={k.id}>{k.name}</option>)}
+        </select>
+      </div>
+      <Feedback state={state} />
+      <ConfirmField id="move-dev-confirm" hasPassword={hasPassword} />
+      <div className="row"><button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpen(false)}>Cancel</button>
+        <button className="btn btn-primary btn-sm" disabled={pending}>{pending ? "Moving…" : `Move ${name}`}</button></div>
+    </form>
+  );
+}
+
 export function RemoveBrowserButton({ installationId, name, hasPassword }: { installationId: string; name: string; hasPassword: boolean }) {
   const [open, setOpen] = useState(false);
   const [state, action, pending] = useActionState(removeBrowser.bind(null, installationId), undefined);
@@ -162,6 +217,12 @@ export function RemoveDeviceButton({ deviceId, name, hasPassword }: { deviceId: 
       <p className="t-meta" style={{ color: "var(--ink-2)" }}>
         Removing {name} stops eGuard verifying it, so you won&apos;t hear if its protections change. Protections already on the device stay until someone changes them there. Other parents in your family are told. {confirmHint(hasPassword)}
       </p>
+      {/* Unchecked keeps the history with the child (deviceId becomes null), until the family's retention period */}
+      <label className="check" style={{ maxWidth: 520 }}>
+        <input type="checkbox" name="deleteHistory" />
+        <span><span className="t-title" style={{ fontSize: 14 }}>Also delete what it recorded</span>
+          <span className="t-meta" style={{ display: "block" }}>The screen time, app usage and places from {name}. Left unticked, they stay in your child&apos;s reports and history. Deleting can&apos;t be undone.</span></span>
+      </label>
       <Feedback state={state} />
       <ConfirmField id="rm-dev-confirm" hasPassword={hasPassword} />
       <div className="row"><button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpen(false)}>Cancel</button>

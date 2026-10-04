@@ -96,6 +96,15 @@ describe("passes (pay once)", () => {
     await expect(buyPass(admin, "PRO", { cfg: null })).rejects.toMatchObject({ status: 501, code: "billing_not_configured" });
   });
 
+  it("needs a verified email, since PayMongo sends the receipt there", async () => {
+    const [unverified] = await family("Ocampo");
+    await db.user.update({ where: { id: unverified.id }, data: { emailVerifiedAt: null } });
+    const refused = { status: 403, code: "email_unverified", message: expect.stringContaining("pay for a plan") };
+    await expect(buyPass(unverified, "PRO", opts)).rejects.toMatchObject(refused);
+    await expect(startAutoRenew(unverified, "PRO", opts)).rejects.toMatchObject(refused);
+    expect(await db.storePurchase.count({ where: { familyId: unverified.familyId } })).toBe(0);
+  });
+
   it("opens a checkout and waits for the payment", async () => {
     const r = await buyPass(admin, "PRO", opts);
     expect(r.checkoutUrl).toMatch(/^https:\/\/checkout\.paymongo\.test\/cs_/);

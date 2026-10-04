@@ -7,7 +7,7 @@ import { greeting, longDate, shortDate, dayTime } from "@/lib/format";
 import { todayActivity, toAlertItem, weeklySeries } from "@/lib/views";
 import { Icon } from "@/components/icon";
 import { Avatar, AvatarGroup, EmptyState, Loading, SegMeter, statusLabel } from "@/components/ui";
-import { ChildCard, DeviceCard } from "@/components/cards";
+import { BrowserStatusCard, ChildCard, DeviceCard } from "@/components/cards";
 import { AlertRow, ViewAll } from "@/components/alerts";
 import { ActivityPanel, WeeklyChart } from "@/components/charts";
 import { CheckButton, FlowButton } from "@/components/flow";
@@ -16,6 +16,8 @@ import { SectionBoundary } from "@/components/boundary";
 import { currentPurchase, renewalWord } from "@/lib/entitlement";
 import { entitlementsFor, nextPlan } from "@/lib/plans";
 import { planWith } from "@/lib/plan-access";
+import { listBrowsers } from "@/lib/browser-service";
+import { browserNeedsAttention, familySummary, healthBadge, isOffline } from "@/lib/health";
 
 import heroArt from "../../../../public/web/dashboard-hero.jpg";
 
@@ -28,8 +30,10 @@ const HERO_CHILDREN = 4;
 /** How many device icons the Devices metric draws before "+N". */
 const METRIC_DEVICES = 8;
 
-async function Activity({ graph, tz, locationSharing }: { graph: FamilyGraph; tz: string; locationSharing: boolean }) {
-  return <ActivityPanel kids={await todayActivity(graph, tz, { locationSharing })} dateLabel={`Today, ${longDate(new Date(), tz)}`} />;
+type Browsers = Awaited<ReturnType<typeof listBrowsers>>;
+
+async function Activity({ graph, tz, locationSharing, appLimit, browsers }: { graph: FamilyGraph; tz: string; locationSharing: boolean; appLimit: number | null; browsers: Browsers }) {
+  return <ActivityPanel kids={await todayActivity(graph, tz, { locationSharing, appLimit, browsers })} dateLabel={`Today, ${longDate(new Date(), tz)}`} />;
 }
 
 async function Weekly({ familyId, graph, tz }: { familyId: string; graph: FamilyGraph; tz: string }) {
@@ -38,7 +42,7 @@ async function Weekly({ familyId, graph, tz }: { familyId: string; graph: Family
 }
 
 async function RecentAlerts({ familyId, userId, tz }: { familyId: string; userId: string; tz: string }) {
-  const alerts = await getAlerts(familyId, userId, { take: 4 });
+  const alerts = await getAlerts(familyId, userId, { take: 4, bySeverity: true });
   return alerts.length ? alerts.map((a) => <AlertRow key={a.id} a={toAlertItem(a, tz)} />) : <EmptyState icon="bell" title="You're all caught up" text="New alerts will appear here." />;
 }
 
@@ -61,22 +65,23 @@ function Streamed({ title, height, children }: { title: string; height: number; 
 export default async function Dashboard() {
   const u = await requireUser();
   // Cached per request, so these reuse what the app layout already loaded
-  const [family, graph, purchase] = await Promise.all([getFamily(u.familyId), getFamilyGraph(u.familyId), currentPurchase(u.familyId)]);
+  const [family, graph, purchase, allBrowsers] = await Promise.all([getFamily(u.familyId), getFamilyGraph(u.familyId), currentPurchase(u.familyId), listBrowsers(u.familyId)]);
+  // Browsers take a device slot like on the Devices page, except one eGuard disconnected for security
+  const browsers = allBrowsers.filter((b) => !b.revokedAt);
   const tz = family.timezone;
   const { familyHealth: health, children, devices, deviceStates } = graph;
-  const issues = health.checks.filter((c) => c.status !== "PASS" && c.status !== "UNSUPPORTED").length;
-  const attention = Object.values(deviceStates).filter((s) => s.key !== "healthy").length;
+  // Hero count: phones, tablets and browsers; offline is a day without a sync for either
+  const connected = devices.length + browsers.length, quiet = health.offline + browsers.filter((b) => isOffline(b)).length;
+  // A disconnected browser has no slot but still needs the parent, so it counts here and shows in the grid
+  const attention = Object.values(deviceStates).filter((s) => s.key !== "healthy").length + allBrowsers.filter((b) => browserNeedsAttention(b)).length;
   const protectedKids = children.filter((c) => c.status === "protected").length;
   const firstName = u.name.trim().split(/\s+/)[0] || "there";
-  const lastSync = devices.reduce<Date | null>((m, d) => (d.lastSeenAt && (!m || d.lastSeenAt > m) ? d.lastSeenAt : m), null);
+  const lastSync = [...devices, ...browsers].reduce<Date | null>((m, d) => (d.lastSeenAt && (!m || d.lastSeenAt > m) ? d.lastSeenAt : m), null);
   const ent = entitlementsFor(family.plan), upgrade = nextPlan(family.plan);
-  // Children added but nothing paired: health checks have nothing to verify, so don't report them as failing
+  // Children added but no phone or tablet: health checks have nothing to verify, so don't report them as failing
   const unpaired = !devices.length;
-  // Health covers paired devices only: a child without one isn't protected, however healthy the rest are
-  const unpairedKids = children.filter((c) => !c.devices.length);
-  const unpairedText = unpairedKids.length === 1 ? `${unpairedKids[0].name} has no paired device yet.` : `${unpairedKids.length} children have no paired device yet.`;
-  // Near-complete: at most one or two protections left to review (relative, so it holds if protections are added)
-  const good = health.score >= health.total - 2, nearlyAll = health.score >= health.total - 1;
+  const { lede, issues, unpaired: unpairedKids } = familySummary(health, children, devices.length);
+  const badge = healthBadge(health, devices.length);
 
   if (!children.length) {
     return (
@@ -90,7 +95,7 @@ export default async function Dashboard() {
           </div>
         </section>
         <section className="card card-pad">
-          <EmptyState icon="users" title="No children yet" text="Add a child, then pair their Android or iOS device with the eGuard app. Protections start as soon as the device syncs.">
+          <EmptyState icon="users" title="No children yet" text="Add a child, then pair their Android phone or tablet with the eGuard app (iPhone and iPad coming soon). Protections start as soon as the device syncs.">
             <Link className="btn btn-primary" href="/children/new"><Icon name="plus" />Add child</Link>
           </EmptyState>
         </section>
@@ -105,19 +110,17 @@ export default async function Dashboard() {
         <div className="hero-copy">
           <span className="greet">{greeting(tz)}</span>
           <h1 id="hero-title">{firstName}</h1>
-          <p className="lede">
-            {unpaired ? <>Your family is almost set.<br />Pair a device to start protecting them.</>
-              : issues === 0 && unpairedKids.length ? <>Every paired device is {health.verified ? "verified" : "set, as last reported"}.<br />{unpairedText}</>
-              : issues === 0 && health.verified ? <>Every protection is verified.<br />Your family is set.</>
-              : issues === 0 ? <>Every protection matched when devices last synced.<br />{health.offline} {health.offline === 1 ? "device is" : "devices are"} offline, so we can&apos;t verify {health.offline === 1 ? "it" : "them"} now.</>
-              : <>Your family&apos;s digital safety<br />{good ? "looks good today." : "needs a little attention."}</>}
-          </p>
+          <p className="lede">{lede[0]}<br />{lede[1]}</p>
           <div className="hero-stats">
             <span className="hero-stat"><Icon name="shield-check" /><span className="num">{protectedKids}</span>&nbsp;{protectedKids === 1 ? "child" : "children"} protected</span>
-            <span className="hero-stat"><Icon name="tablet-smartphone" /><span className="num">{devices.length}</span>&nbsp;{devices.length === 1 ? "device" : "devices"} connected{health.offline ? `, ${health.offline} offline` : ""}</span>
-            {unpaired ? <Link className="hero-stat warn" href="/devices#pair"><Icon name="plus" />Pair a device</Link>
-              : issues === 0 && unpairedKids.length ? <Link className="hero-stat warn" href={`/devices?child=${unpairedKids[0].id}#pair`}><Icon name="plus" />Pair {unpairedKids.length === 1 ? `${unpairedKids[0].name}'s` : "a"} device</Link>
-              : issues ?<Link className="hero-stat warn" href="/protection"><Icon name="triangle-alert" /><span className="num">{issues}</span>&nbsp;{issues === 1 ? "setting needs" : "settings need"} attention</Link> : null}
+            <span className="hero-stat"><Icon name="tablet-smartphone" /><span className="num">{connected}</span>&nbsp;{connected === 1 ? "device" : "devices"} connected{quiet ? `, ${quiet} offline` : ""}</span>
+            {unpaired ? <Link className="hero-stat warn" href="/devices#pair"><Icon name="plus" />Pair a device</Link> : (
+              <>
+                {issues ? <Link className="hero-stat warn" href="/protection"><Icon name="triangle-alert" /><span className="num">{issues}</span>&nbsp;{issues === 1 ? "setting needs" : "settings need"} attention</Link> : null}
+                {/* Shown with failing settings too: a child without a device isn't protected, whatever the score says */}
+                {unpairedKids.length ? <Link className="hero-stat warn" href={`/devices?child=${unpairedKids[0].id}#pair`}><Icon name="plus" />Pair {unpairedKids.length === 1 ? `${unpairedKids[0].name}'s` : "a"} device</Link> : null}
+              </>
+            )}
           </div>
         </div>
         <div className="hero-side">
@@ -127,7 +130,7 @@ export default async function Dashboard() {
             </div>
             {children.slice(0, HERO_CHILDREN).map((c) => (
               <Link key={c.id} href={`/children/${c.id}`} className="glass-child">
-                <Avatar name={c.name} hue={c.hue} />
+                <Avatar name={c.name} hue={c.hue} photo={c.photo} />
                 <span><span className="t-title" style={{ display: "block" }}>{c.name}</span><span className="t-meta">{c.primary?.name ?? "No device"}</span></span>
                 <span className={`state ${c.status === "protected" ? "st-ok" : c.status === "attention" ? "st-warn" : "st-off"}`}>
                   <Icon name={c.status === "protected" ? "shield-check" : c.status === "attention" ? "triangle-alert" : "circle-dashed"} />{statusLabel(c.status)}
@@ -145,8 +148,7 @@ export default async function Dashboard() {
           {unpaired ? <div className="m-value num">–<small> / {health.total}</small></div> : <div className="m-value num">{health.score}<small> / {health.total}</small></div>}
           <SegMeter score={health.score} total={health.total} empty={unpaired} />
           <div className="m-foot">
-            {unpaired ? <span className="pill tone-muted"><Icon name="circle-dashed" />No devices to check</span>
-              : <span className={`pill ${nearlyAll ? "tone-ok" : "tone-accent"}`}><Icon name={nearlyAll ? "circle-check" : "shield"} />{health.verified ? "All verified" : health.score === health.total ? "Last known: all set" : good ? "Good protection" : "Needs review"}</span>}
+            <span className={`pill tone-${badge.tone}`}><Icon name={badge.icon} />{badge.label}</span>
             <span className="muted"><Icon name="arrow-right" /></span>
           </div>
         </Link>
@@ -158,10 +160,12 @@ export default async function Dashboard() {
         </Link>
         <Link className="card metric interactive" href={unpaired ? "/devices#pair" : "/devices"}>
           <div className="m-top"><span className="m-label">Devices</span><span className="ico-tile"><Icon name="tablet-smartphone" /></span></div>
-          <div className="m-value num">{devices.length}</div>
+          {/* Phones, tablets and browsers, as the Devices page and the plan's device limit count them */}
+          <div className="m-value num">{devices.length + browsers.length}</div>
           <div className="row" style={{ gap: 6, color: "var(--ink-3)" }} aria-hidden="true">
-            {devices.slice(0, METRIC_DEVICES).map((d) => <Icon key={d.id} name={d.kind === "TABLET" ? "tablet" : "smartphone"} />)}
-            {devices.length > METRIC_DEVICES ? <span className="t-meta num">+{devices.length - METRIC_DEVICES}</span> : null}
+            {[...devices.map((d) => ({ id: d.id, icon: d.kind === "TABLET" ? "tablet" : "smartphone" })), ...browsers.map((b) => ({ id: b.id, icon: "monitor" }))]
+              .slice(0, METRIC_DEVICES).map((x) => <Icon key={x.id} name={x.icon} />)}
+            {devices.length + browsers.length > METRIC_DEVICES ? <span className="t-meta num">+{devices.length + browsers.length - METRIC_DEVICES}</span> : null}
           </div>
           <div className="m-foot">
             {unpaired ? <span className="link-btn">Pair a device <Icon name="arrow-right" /></span>
@@ -181,21 +185,26 @@ export default async function Dashboard() {
         <div className="dash-col">
           <section aria-labelledby="kids-title">
             <div className="section-title"><h2 id="kids-title">Your Children</h2><ViewAll href="/children" /></div>
-            <div className="children-grid">{children.map((c) => <ChildCard key={c.id} c={c} />)}</div>
+            <div className="children-grid">{children.map((c) => <ChildCard key={c.id} c={c} browsers={browsers.filter((b) => b.childId === c.id).length} />)}</div>
           </section>
 
-          <Streamed title="Today's activity" height={340}><Activity graph={graph} tz={tz} locationSharing={ent.locationSharing} /></Streamed>
+          <Streamed title="Today's activity" height={340}><Activity graph={graph} tz={tz} locationSharing={ent.locationSharing} appLimit={ent.appMonitoringLimit} browsers={allBrowsers} /></Streamed>
 
           <section className="card card-pad" aria-labelledby="dev-title">
             <div className="card-head">
-              <div><h2 id="dev-title">Device Protection Status</h2><div className="sub">Configuration state reported by each device</div></div>
+              <div><h2 id="dev-title">Device Protection Status</h2><div className="sub">Configuration state reported by each device and browser</div></div>
               <ViewAll href="/devices" />
             </div>
-            {unpaired ? (
-              <EmptyState icon="smartphone" title="No devices paired yet" text="Install eGuard on your child's Android or iOS device, then enter a pairing code from the Devices page.">
+            {unpaired && !allBrowsers.length ? (
+              <EmptyState icon="smartphone" title="No devices paired yet" text="Install eGuard from Google Play on your child's Android phone or tablet, then enter a pairing code from the Devices page. The iPhone and iPad app is coming soon.">
                 <Link className="btn btn-primary" href="/devices#pair"><Icon name="plus" />Pair a device</Link>
               </EmptyState>
-            ) : <div className="devices-grid">{devices.map((d) => <DeviceCard key={d.id} d={d} state={deviceStates[d.id]} tz={tz} />)}</div>}
+            ) : (
+              <div className="devices-grid">
+                {devices.map((d) => <DeviceCard key={d.id} d={d} state={deviceStates[d.id]} tz={tz} />)}
+                {allBrowsers.map((b) => <BrowserStatusCard key={b.id} b={b} tz={tz} />)}
+              </div>
+            )}
           </section>
 
           <Streamed title="Weekly screen time" height={380}><Weekly familyId={u.familyId} graph={graph} tz={tz} /></Streamed>

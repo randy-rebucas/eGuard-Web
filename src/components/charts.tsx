@@ -7,7 +7,7 @@ import { Avatar } from "./ui";
 import { fmtMinutes, fmtMinutesPadded } from "@/lib/protections";
 
 /** `limits` is the limit on each day of `week` (weekends can differ). */
-export type Series = { id: string; name: string; hue: number; limits: number[]; week: number[]; last: number[] };
+export type Series = { id: string; name: string; hue: number; photo: string | null; limits: number[]; week: number[]; last: number[] };
 export type DayLabel = { dow: string; date: string };
 
 /**
@@ -21,7 +21,7 @@ export function WeeklyChart({ series, days, title = "Weekly Screen Time Trend", 
       <div className="card-head">
         <div><h2 id="wk-title">{title}</h2><div className="sub">{subtitle}</div></div>
         <div className="row" style={{ gap: 8 }}>
-          <span className="select-btn"><Icon name="calendar" />Last 7 days</span>
+          <span className="date-chip"><Icon name="calendar" />Last 7 days</span>
           <button className="btn btn-secondary btn-sm" aria-pressed={table} onClick={() => setTable((t) => !t)}>
             <Icon name={table ? "chart-column" : "table"} />{table ? "Chart" : "Table"}
           </button>
@@ -71,7 +71,7 @@ function Multiple({ s, days, wide }: { s: Series; days: DayLabel[]; wide?: boole
 
   return (
     <figure className="multiple" style={{ margin: 0, position: "relative" }} ref={wrap}>
-      <h4><Avatar name={s.name} hue={s.hue} /><span>{s.name}</span></h4>
+      <h4><Avatar name={s.name} hue={s.hue} photo={s.photo} /><span>{s.name}</span></h4>
       <p className="insight">
         Averaging <b className="num">{fmtMinutesPadded(tw)}</b> a day
         {!lw ? ", no usage last week to compare" : delta === 0 ? ", the same as last week" : <>, <b>{delta < 0 ? `${-delta}% less` : `${delta}% more`}</b> than last week</>}
@@ -112,11 +112,13 @@ function Multiple({ s, days, wide }: { s: Series; days: DayLabel[]; wide?: boole
 }
 
 export type ActivityChild = {
-  id: string; name: string; hue: number; deviceName: string; used: number; limit: number;
+  id: string; name: string; hue: number; photo: string | null; deviceName: string; used: number; limit: number;
   apps: [string, number][];
   /** available: has a fix; waiting: sharing on, no fix yet; off: sharing off; nodevice; plan: not on the family's plan */
   location: { state: "available" | "waiting" | "off" | "nodevice" | "plan"; place: string | null; updated: string | null };
-  devices: { id: string; name: string; state: "healthy" | "issues" | "offline"; issues: number }[];
+  devices: { id: string; name: string; state: "healthy" | "issues" | "offline"; issues: number; firstCheck: boolean }[];
+  /** Connected browser extensions: `tone` and `label` from browserStatus */
+  browsers: { id: string; name: string; tone: string; label: string }[];
 };
 
 const TABS = [["screen", "Screen Time"], ["apps", "App Usage"], ["location", "Location"], ["status", "Device Status"]] as const;
@@ -145,7 +147,7 @@ export function ActivityPanel({ kids, dateLabel }: { kids: ActivityChild[]; date
     <section className="card card-pad" aria-labelledby="act-title">
       <div className="card-head">
         <div><h2 id="act-title">Today&apos;s Activity</h2><div className="sub">Usage so far today, against each child&apos;s daily limit</div></div>
-        <span className="select-btn"><Icon name="calendar" />{dateLabel}</span>
+        <span className="date-chip"><Icon name="calendar" />{dateLabel}</span>
       </div>
       <div className="tabs" role="tablist" aria-label="Activity view" style={{ marginBottom: 16 }}>
         {TABS.map(([k, l], i) => (
@@ -159,16 +161,21 @@ export function ActivityPanel({ kids, dateLabel }: { kids: ActivityChild[]; date
         {kids.map((c) => {
           const head = (
             <div className="row">
-              <Avatar name={c.name} hue={c.hue} size="sm" />
+              <Avatar name={c.name} hue={c.hue} size="sm" photo={c.photo} />
               <div className="grow"><div className="t-title">{c.name}</div><div className="t-meta">{c.deviceName}</div></div>
             </div>
           );
           if (tab === "screen") {
             const pct = Math.min(100, Math.round((c.used / Math.max(1, c.limit)) * 100));
+            // The bar stops at 100%, so past the limit say by how much
+            const over = c.limit > 0 && c.used > c.limit, reached = c.limit > 0 && c.used === c.limit;
             return (
               <div className="act" key={c.id}>{head}
                 <div className="usage-big num">{fmtMinutesPadded(c.used)} <small>/ {fmtMinutes(c.limit)}</small></div>
-                <div className={`bar ${pct >= 85 ? "warn" : ""}`} role="progressbar" aria-label={`${c.name} screen time`} aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}><span style={{ width: `${pct}%` }} /></div>
+                <div className={`bar ${over ? "over" : pct >= 85 ? "warn" : ""}`} role="progressbar" aria-label={`${c.name} screen time`} aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}
+                  aria-valuetext={over ? `Over the limit by ${fmtMinutes(c.used - c.limit)}` : `${pct}% of the daily limit`}><span style={{ width: `${pct}%` }} /></div>
+                {over ? <div className="limit-note crit"><Icon name="octagon-alert" size={14} />Over by {fmtMinutes(c.used - c.limit)}</div>
+                  : reached ? <div className="limit-note warn"><Icon name="hourglass" size={14} />Limit reached</div> : null}
                 <div className="app-rows">{c.apps.length ? c.apps.map(([a, m]) => <div key={a}><span>{a}</span><span>{fmtMinutes(m)}</span></div>) : <div><span>No usage reported yet today</span><span /></div>}</div>
               </div>
             );
@@ -214,13 +221,20 @@ export function ActivityPanel({ kids, dateLabel }: { kids: ActivityChild[]; date
           return (
             <div className="act" key={c.id}>{head}
               <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-                {!c.devices.length ? <p className="t-meta">No devices paired yet.</p> : null}
+                {!c.devices.length && !c.browsers.length ? <p className="t-meta">No devices paired yet.</p> : null}
                 {c.devices.map((d) => (
                   <div className="row" key={d.id} style={{ justifyContent: "space-between" }}>
                     <span className="t-meta" style={{ color: "var(--ink-2)" }}>{d.name}</span>
                     {d.state === "healthy" ? <span className="pill tone-ok"><Icon name="circle-check" />Healthy</span>
                       : d.state === "offline" ? <span className="pill tone-muted"><Icon name="wifi-off" />Offline</span>
+                      : d.firstCheck ? <span className="pill tone-muted"><Icon name="loader-circle" />Waiting for first check</span>
                       : <span className="pill tone-warn"><Icon name="triangle-alert" />{d.issues} {d.issues === 1 ? "issue" : "issues"}</span>}
+                  </div>
+                ))}
+                {c.browsers.map((b) => (
+                  <div className="row" key={b.id} style={{ justifyContent: "space-between" }}>
+                    <span className="t-meta" style={{ color: "var(--ink-2)" }}><Icon name="monitor" size={13} style={{ verticalAlign: -2 }} /> {b.name}</span>
+                    <span className={`pill ${b.tone}`}>{b.label}</span>
                   </div>
                 ))}
               </div>

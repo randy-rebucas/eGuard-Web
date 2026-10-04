@@ -23,7 +23,8 @@ export const ConfigSchema = z.discriminatedUnion("key", [
   z.object({ key: z.literal("APP_RESTRICTIONS"), maxAgeRating: z.number().int().min(4).max(18) }),
   z.object({ key: z.literal("APP_APPROVAL"), enabled: z.boolean() }),
   z.object({ key: z.literal("CONTENT"), maxAgeRating: z.number().int().min(4).max(18) }),
-  z.object({ key: z.literal("WEB"), mode: z.enum(["OFF", "FILTER", "ALLOWLIST"]), blockedSites: z.number().int().min(0) }),
+  // blockedSites isn't compared (configMatches): optional, kept so older clients that send it still work
+  z.object({ key: z.literal("WEB"), mode: z.enum(["OFF", "FILTER", "ALLOWLIST"]), blockedSites: z.number().int().min(0).max(1_000_000).default(0) }),
   z.object({ key: z.literal("DOWNLOADS"), requireApproval: z.boolean() }),
   z.object({ key: z.literal("LOCATION"), sharing: z.boolean() }),
   z.object({ key: z.literal("NOTIFICATIONS"), quietDuringBedtime: z.boolean() }),
@@ -73,9 +74,10 @@ export async function writePolicies(childId: string, configs: ProtectionConfig[]
  * Sends new configuration to each device that supports it, as one batch.
  * APPLY devices get it on next sync; GUIDED/VERIFY_ONLY wait for the parent.
  *
- * `strict` (the single-setting flow): fail if no device supports the protection.
- * Otherwise (onboarding), protections with no device to verify them, including a child with no
- * devices yet, are saved as the child's policy directly and sent to devices when they pair.
+ * A child with no device yet has nothing to verify a change: it's saved as their policy directly and sent to
+ * devices when they pair. `strict` (the single-setting flow): fail when the child has devices but none supports
+ * the protection, rather than save a setting nothing will apply. Otherwise (onboarding) such protections are saved
+ * directly too.
  */
 export async function requestConfigs(actor: Actor, childId: string, configs: ProtectionConfig[], via: string, opts: { strict?: boolean } = {}) {
   const child = await childFor(actor.familyId, childId);
@@ -90,7 +92,7 @@ export async function requestConfigs(actor: Actor, childId: string, configs: Pro
     const def = PROTECTION_BY_KEY[cfg.key];
     const targets = devices.filter((d) => def.caps[d.platform] !== "UNSUPPORTED");
     if (!targets.length) {
-      if (opts.strict) throw new ServiceError(409, `${def.name} isn't supported on ${child.name}'s devices.`, "unsupported");
+      if (opts.strict && devices.length) throw new ServiceError(409, `${def.name} isn't supported on ${child.name}'s devices.`, "unsupported");
       direct.push(cfg);
       continue;
     }
@@ -199,7 +201,7 @@ export async function childProtections(familyId: string, childId: string) {
         deviceId: d.id, deviceName: d.name, platform: d.platform, capability: cap,
         status: p?.status ?? "NOT_CONFIGURED",
         reported: p?.reported ?? null,
-        reportedLabel: p ? (p.status === "NOT_CONFIGURED" ? "Not configured" : describeConfig(p.reported)) : "Unknown",
+        reportedLabel: p ? (p.status === "NOT_CONFIGURED" ? "Not configured" : describeConfig(p.reported)) : "Not reported",
         message: p?.message ?? null,
         lastVerifiedAt: p?.lastVerifiedAt ?? null,
         guide: cap === "GUIDED" || cap === "VERIFY_ONLY" ? def.guide?.[d.platform] ?? null : null,

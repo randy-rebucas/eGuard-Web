@@ -55,22 +55,25 @@ export function SeverityLabel({ severity }: { severity: AlertSeverity }) {
   );
 }
 
-export function Avatar({ name, hue, size }: { name: string; hue: number; size?: "lg" | "xl" | "sm" }) {
+/** A child's or parent's initial on their colour, or their photo (`photo`: a child's URL from childPhotoSrc). */
+export function Avatar({ name, hue, size, photo }: { name: string; hue: number; size?: "lg" | "xl" | "sm"; photo?: string | null }) {
   const sm = size === "sm" ? { width: 32, height: 32, fontSize: 13 } : undefined;
   return (
     <span className={`avatar ${size && size !== "sm" ? size : ""}`} style={{ ["--h" as string]: hue, ...sm }} aria-hidden="true">
-      {name.slice(0, 1).toUpperCase()}
+      {/* A plain img: the photo is private (session cookie) and already small; the image optimizer would fetch it without the cookie */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      {photo ? <img src={photo} alt="" loading="lazy" decoding="async" /> : name.slice(0, 1).toUpperCase()}
     </span>
   );
 }
 
 /** Overlapping avatars; past `max`, the rest collapse into a "+N" chip. */
-export function AvatarGroup({ people, max = 6 }: { people: { id: string; name: string; hue: number }[]; max?: number }) {
+export function AvatarGroup({ people, max = 6 }: { people: { id: string; name: string; hue: number; photo?: string | null }[]; max?: number }) {
   const shown = people.length > max ? people.slice(0, max - 1) : people;
   const more = people.length - shown.length;
   return (
     <div className="avatar-group">
-      {shown.map((p) => <Avatar key={p.id} name={p.name} hue={p.hue} />)}
+      {shown.map((p) => <Avatar key={p.id} name={p.name} hue={p.hue} photo={p.photo} />)}
       {more ? <span className="avatar" style={{ ["--h" as string]: 220 }} aria-hidden="true">+{more}</span> : null}
     </div>
   );
@@ -93,19 +96,22 @@ export function EmptyState({ icon, title, text, children }: { icon: string; titl
   );
 }
 
-/** Where a plan doesn't include something: says what, and links to the plans. `compact` for inline use in a list. */
-export function UpgradeNote({ title, text, icon = "crown", compact }: { title: string; text: string; icon?: string; compact?: boolean }) {
+/**
+ * Where a plan doesn't include something: says what, and links to the plans. `compact` for inline use in a list.
+ * `plans={false}` on the top plan, where there's nothing to upgrade to: the note only explains.
+ */
+export function UpgradeNote({ title, text, icon = "crown", compact, plans = true }: { title: string; text: string; icon?: string; compact?: boolean; plans?: boolean }) {
   if (compact) {
     return (
       <div className="upgrade-note">
         <Icon name={icon} /><span className="grow">{text}</span>
-        <Link className="link-btn" href="/settings/subscription">See plans <Icon name="arrow-right" /></Link>
+        {plans ? <Link className="link-btn" href="/settings/subscription">See plans <Icon name="arrow-right" /></Link> : null}
       </div>
     );
   }
   return (
     <EmptyState icon={icon} title={title} text={text}>
-      <Link className="btn btn-primary" href="/settings/subscription"><Icon name="crown" />See plans</Link>
+      {plans ? <Link className="btn btn-primary" href="/settings/subscription"><Icon name="crown" />See plans</Link> : null}
     </EmptyState>
   );
 }
@@ -183,7 +189,7 @@ export function SegMeter({ score, total = 10, empty }: { score: number; total?: 
   );
 }
 
-export function Timeline({ items }: { items: { id: string; icon: string; title: string; by: string; time: string; from?: string | null; to?: string | null }[] }) {
+export function Timeline({ items }: { items: { id: string; icon: string; title: string; by: string; time: string; from?: string | null; to?: string | null; action?: React.ReactNode }[] }) {
   return (
     <div className="timeline">
       {items.map((h) => (
@@ -198,6 +204,7 @@ export function Timeline({ items }: { items: { id: string; icon: string; title: 
                 {h.to ? <b>{h.to}</b> : null}
               </div>
             ) : null}
+            {h.action}
           </div>
           <time className="t-meta num" style={{ whiteSpace: "nowrap" }}>{h.time}</time>
         </div>

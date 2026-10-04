@@ -35,7 +35,8 @@ export async function exportFamily(user: { familyId: string; name: string }) {
             select: {
               id: true, name: true, model: true, platform: true, osVersion: true, lastSeenAt: true, createdAt: true,
               protections: { select: { key: true, status: true, reported: true, lastVerifiedAt: true } },
-              location: { select: { sharing: true, lat: true, lng: true, placeLabel: true, updatedAt: true } },
+              // locatedAt: when the position was taken (updatedAt also moves when sharing is turned on or off)
+              location: { select: { sharing: true, lat: true, lng: true, accuracyM: true, placeLabel: true, locatedAt: true, updatedAt: true } },
             },
           },
         },
@@ -53,6 +54,7 @@ export async function exportFamily(user: { familyId: string; name: string }) {
         },
       },
       orgMemberships: { select: { joinedAt: true, org: { select: { name: true, kind: true } } } },
+      places: { select: { name: true, lat: true, lng: true, radiusM: true, createdAt: true } },
     },
   });
   await db.auditLog.create({ data: { familyId: user.familyId, actor: user.name, action: "data.exported" } });

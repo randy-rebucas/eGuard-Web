@@ -9,7 +9,8 @@ import { authed, body, clientLabel } from "@/lib/mobile-api";
 /**
  * Change one protection, e.g. PUT /children/{id}/protections/BEDTIME
  * `{ "enabled": true, "start": "21:30", "end": "06:00", "days": "EVERY_DAY" }`.
- * Returns the batch to poll; the setting counts only once each device verifies it.
+ * Returns the batch to poll (202); the setting counts only once each device verifies it. A child with no device yet
+ * has nothing to verify it: the setting is saved as their policy and applied when one pairs (200, `batchId: null`).
  */
 export const PUT = authed<{ id: string; key: string }>(async ({ req, user, params }) => {
   const key = params.key.toUpperCase();
@@ -17,6 +18,7 @@ export const PUT = authed<{ id: string; key: string }>(async ({ req, user, param
   const raw = await body(req, z.record(z.string(), z.unknown()));
   const parsed = ConfigSchema.safeParse({ ...raw, key });
   if (!parsed.success) throw invalid(parsed.error.issues[0].message);
-  const { batchId } = await requestConfigs(user, params.id, [parsed.data as ProtectionConfig], clientLabel(req), { strict: true });
-  return NextResponse.json(await batchStatus(user.familyId, batchId!), { status: 202 });
+  const { batchId, saved } = await requestConfigs(user, params.id, [parsed.data as ProtectionConfig], clientLabel(req), { strict: true });
+  if (!batchId) return NextResponse.json({ batchId: null, saved });
+  return NextResponse.json(await batchStatus(user.familyId, batchId), { status: 202 });
 });

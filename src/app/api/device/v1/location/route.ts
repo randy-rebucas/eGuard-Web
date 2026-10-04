@@ -3,6 +3,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { recordLocation } from "@/lib/location";
 import { authDevice, badRequest, readJson, unauthorized } from "@/lib/device-auth";
+import { LIMITS, hit } from "@/lib/rate-limit";
 
 const Body = z.object({
   lat: z.number().min(-90).max(90),
@@ -19,6 +20,10 @@ const Body = z.object({
 export async function POST(req: Request) {
   const device = await authDevice(req);
   if (!device) return unauthorized();
+  // A looping or misbehaving device must not be able to write without limit
+  if ((await hit(`devicelocation:${device.id}`, LIMITS.deviceLocation)).limited) {
+    return NextResponse.json({ error: "Too many locations. Send the next one in a few minutes." }, { status: 429 });
+  }
   const parsed = Body.safeParse(await readJson(req));
   if (!parsed.success) return badRequest(parsed.error.issues[0].message);
   await recordLocation(device, parsed.data);

@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
-import { requireUser } from "@/lib/auth";
+import { getUser, requireUser } from "@/lib/auth";
+import { db } from "@/lib/db";
 import { ServiceError } from "@/lib/errors";
 import { getFamily } from "@/lib/queries";
 import { peso, shortDate } from "@/lib/format";
@@ -14,7 +15,13 @@ import { Icon } from "@/components/icon";
 import { EmptyState, PageHead } from "@/components/ui";
 import { AddOrgAdminForm, ApiKeys, BuyCodesForm, CodesList, JoinCodeCard, OrgAdminActions } from "@/components/organizations";
 
-export const metadata = { title: "Organization" };
+/** The organization's name for the tab, only for people who manage it (anyone else must not learn it exists). */
+export async function generateMetadata(props: PageProps<"/organizations/[id]">) {
+  const { id } = await props.params;
+  const u = await getUser();
+  const m = u ? await db.orgMember.findUnique({ where: { orgId_userId: { orgId: id, userId: u.id } }, select: { org: { select: { name: true } } } }) : null;
+  return { title: m?.org.name ?? "Organization" };
+}
 
 /** Organization pages 404 for anyone who doesn't manage the organization, so they can't be probed. */
 async function orNotFound<T>(p: Promise<T>) {
@@ -108,14 +115,15 @@ export default async function OrganizationPage(props: PageProps<"/organizations/
           <div className="card-head">
             <div>
               <h3>{b.quantity} × {b.plan}, {b.months} month{b.months === 1 ? "" : "s"}</h3>
-              <div className="sub">Bought {shortDate(b.createdAt, tz)} · {peso(b.amount)}</div>
+              {/* Not bought until PayMongo confirms: a pending batch is only a checkout */}
+              <div className="sub">{b.state === "PENDING" ? "Checkout started" : "Bought"} {shortDate(b.paidAt ?? b.createdAt, tz)} · {peso(b.amount)}</div>
             </div>
             {b.state === "PENDING" ? <span className="pill tone-warn">Waiting for payment</span> : b.state === "VOIDED" ? <span className="pill tone-muted">Refunded</span> : null}
           </div>
           {b.codes.length ? (
             <CodesList orgId={org.id} codes={b.codes.map((c) => ({
               id: c.id, code: c.code, status: c.status,
-              when: c.redeemedAt ? shortDate(c.redeemedAt, tz) : c.status === "AVAILABLE" ? `until ${shortDate(c.expiresAt, tz)}` : null,
+              when: c.redeemedAt ? shortDate(c.redeemedAt, tz) : c.status === "AVAILABLE" ? `until ${shortDate(c.expiresAt, tz)}` : c.status === "EXPIRED" ? shortDate(c.expiresAt, tz) : null,
             }))} />
           ) : <p className="t-meta">Codes appear here once PayMongo confirms the payment.</p>}
         </section>

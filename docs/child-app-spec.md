@@ -229,7 +229,7 @@ protection that was skipped. Treat a non-empty `ignored` as a bug and log it.
 | `APP_RESTRICTIONS` | `{ maxAgeRating }` (4, 9, 12, 13 or 17) | Look up each installed app's rating (**Decide** D3: source of ratings), block over-rating apps | `ManagedSettings` `application.denyAppInstallation`/`appStore.maxRating` (`ageRating` mapping). Read back from the store |
 | `APP_APPROVAL` | `{ enabled }` | When on, a newly installed app is blocked until approved; send `APP_REQUESTED` | When on, set `appStore.requirePasswordForPurchases` / Ask to Buy is the system path; the app enforces with shields on unknown app tokens. **Decide** (D4) |
 | `CONTENT` | `{ maxAgeRating }` | Report the age rating the app applies to media apps it knows about. **Decide** whether Android enforces anything beyond Play parental controls | `ManagedSettings` `media.maxRatingMovies` / `maxRatingTVShows` / books. Read back |
-| `WEB` | `{ mode: "OFF" \| "FILTER" \| "ALLOWLIST", blockedSites }` | Local `VpnService` with DNS filtering on the device. `blockedSites` is the count the parent's policy sets; report the count actually loaded | **Guided.** The parent sets Limit Adult Websites in Settings. Where readable, report `webContent` from `ManagedSettings`; otherwise see G3 |
+| `WEB` | `{ mode: "OFF" \| "FILTER" \| "ALLOWLIST", blockedSites }` | Local `VpnService` with DNS filtering on the device. Report `blockedSites` as the count actually loaded; the server compares `mode` only | **Guided.** The parent sets Limit Adult Websites in Settings. Where readable, report `webContent` from `ManagedSettings`; otherwise see G3 |
 | `DOWNLOADS` | `{ requireApproval }` | Block installs from the Play Store app until approved (same mechanism as App Approval) | **Verify only.** Parent sets it in Settings. Report `denyAppInstallation` if readable; otherwise G3 |
 | `LOCATION` | `{ sharing }` | `true` when location permission (background) is granted **and** the policy has sharing on | **Guided.** `true` when Always/While Using is granted and sharing is on |
 | `NOTIFICATIONS` | `{ quietDuringBedtime }` | Turn on Do Not Disturb during bedtime with `NotificationManager.setInterruptionFilter`. Report whether the app has policy access and the rule is registered | **Unsupported.** Don't report this key |
@@ -282,7 +282,7 @@ All calls: `Authorization: Bearer <device token>`, JSON, HTTPS only. Errors are 
 
 | Call | When | Body |
 |---|---|---|
-| `POST /sync` | Every `nextSyncSeconds` (300 today), at app start, after network returns, after boot | `{ battery, osVersion, appVersion }`. Returns `{ deviceId, policy, requests, apps, fullReportRequested, nextSyncSeconds, timezone, features: { locationSharing }, minAppVersion }` |
+| `POST /sync` | Every `nextSyncSeconds` (300 today), at app start, after network returns, after boot | `{ battery, osVersion, appVersion }`. Returns `{ deviceId, childName, policy, requests, apps, fullReportRequested, nextSyncSeconds, timezone, features: { locationSharing }, minAppVersion }`. `childName` can change: a parent may move the device to another child, so show the latest one, not the name from pairing |
 | `POST /report` | After applying anything from `/sync`, after any on-device change, and in full when `fullReportRequested` | `{ protections: [{ key, config }], full?, battery?, osVersion?, appVersion? }` |
 | `POST /usage` | Every sync cycle for today, and once for yesterday after midnight | `{ date, totalMinutes, apps, hourly }` |
 | `POST /location` | Section 9 | `{ lat, lng, accuracyM, placeLabel? }` |
@@ -358,9 +358,12 @@ the last threshold crossed and no `apps`, and change the listing copy.
   `features.locationSharing: true`. The server drops fixes on the Free plan and while sharing is off, but the device
   shouldn't collect or send them at all.
 - Send a fix every sync cycle while moving, or after moving more than 150 m (the server's same-place radius). At
-  rest, one fix every 15 minutes is enough to count as "live" in the parent app.
+  rest, one fix every 15 minutes is enough to count as "live" in the parent app (it reads "Last seen" after 20).
+- At most 240 fixes an hour: past that the server answers `429`. Keep only the newest unsent fix and send it after a
+  few minutes.
 - Use balanced accuracy (not GPS-always). Send `accuracyM`.
-- `placeLabel` is optional. Don't reverse-geocode on the device in v1.
+- `placeLabel` is optional. Don't reverse-geocode on the device in v1: the server names a fix from the places the
+  parents saved (Home, School), and that name wins over a device label.
 - Each fix replaces the previous one whole: a field you leave out (`placeLabel`, `accuracyM`) is cleared, not kept from the last fix.
 - Nothing is stored on the device beyond the last unsent fix.
 

@@ -2,15 +2,15 @@ import "server-only";
 import type { Alert, AlertCategory, ProtectionKey } from "@prisma/client";
 import { db } from "./db";
 import { dayTime } from "./format";
-import { appMinutesOn, dateFromKey, dayKey, getFamilyGraph, lastNDays, limitOn, type ChildView, type DeviceView, type FamilyGraph } from "./queries";
-import { PROTECTION_BY_KEY, describeConfig, type ProtectionConfig } from "./protections";
+import { appMinutesOn, dateFromKey, dayKey, getFamily, getFamilyGraph, lastNDays, limitOn, type ChildView, type DeviceView, type FamilyGraph } from "./queries";
+import { CAPABILITY_META, PROTECTIONS, PROTECTION_BY_KEY, describeConfig, type ProtectionConfig } from "./protections";
 import { photoUrl } from "./mobile-api";
 import { ensureOfflineAlerts } from "./engine";
 import { touchSimulated } from "./simulator";
 import { notFound } from "./errors";
-import { isDismissible } from "./health";
-import { capAppUsage } from "./plan-access";
-import { childLocation } from "./location";
+import { healthLabel, isDismissible } from "./health";
+import { capAppUsage, nameableApps } from "./plan-access";
+import { childLocation, locationPolicy, stayed, visitSpan } from "./location";
 import type { Entitlements } from "./plans";
 import { requestedApps } from "./family-service";
 
@@ -25,15 +25,8 @@ export async function refreshFamily(familyId: string) {
   await ensureOfflineAlerts(familyId);
 }
 
-/** `offline`: devices counted by their last known state. "Fully protected" needs every one of them online. */
-export function healthLabel(score: number, total: number, offline: number, devices: number) {
-  // Nothing paired: every check is "not configured", which isn't the same as needing action (web shows "–")
-  if (!devices) return "No devices yet";
-  if (score === total) return offline ? "Last known: all set" : "Fully protected";
-  if (score >= total - 2) return "Good protection";
-  if (score >= total / 2) return "Needs attention";
-  return "Action required";
-}
+/** Shared with the web dashboard, so both name the same score the same way */
+export { healthLabel };
 
 export async function photoVersions(childIds: string[]) {
   const rows = await db.childPhoto.findMany({ where: { childId: { in: childIds } }, select: { childId: true, updatedAt: true } });
@@ -56,6 +49,29 @@ export function deviceJson(d: DeviceView, graph: FamilyGraph, tz: string) {
     osVersion: d.osVersion, appVersion: d.appVersion, battery: d.battery, isPrimary: d.isPrimary,
     lastSeenAt: d.lastSeenAt, lastSeenLabel: dayTime(d.lastSeenAt, tz),
     state: state.key, issues: state.issues,
+    // Just paired, nothing reported: `issues` counts every protection, so the app says "Waiting for first check"
+    firstCheck: state.firstCheck,
+  };
+}
+
+/** Device detail: `deviceJson` plus every protection, its platform capability and when it was last verified. */
+export async function deviceDetailJson(familyId: string, deviceId: string) {
+  const [family, graph] = await Promise.all([getFamily(familyId), getFamilyGraph(familyId)]);
+  const d = graph.devices.find((x) => x.id === deviceId);
+  if (!d) throw notFound("Device");
+  return {
+    ...deviceJson(d, graph, family.timezone),
+    protections: PROTECTIONS.map((p) => {
+      const row = d.protections.find((x) => x.key === p.key);
+      const cap = p.caps[d.platform];
+      return {
+        key: p.key, name: p.name, icon: p.icon, capability: cap, capabilityLabel: CAPABILITY_META[cap].label,
+        // Same wording as the web device page
+        status: row?.status ?? "NOT_CONFIGURED",
+        reportedLabel: !row ? "Not reported" : row.status === "UNSUPPORTED" ? "Not supported" : row.status === "NOT_CONFIGURED" ? "Not configured" : describeConfig(row.reported),
+        message: row?.message ?? null, lastVerifiedAt: row?.lastVerifiedAt ?? null,
+      };
+    }),
   };
 }
 
@@ -177,8 +193,12 @@ export async function screenTime(child: ChildView, tz: string, period: Period, a
     if (today.length) hourly = Array.from({ length: 24 }, (_, h) => today.reduce((s, r) => s + r.hourly[h], 0));
   }
   const byName = new Map(rules.map((r) => [r.name, r]));
-  // No more app names than the plan's Apps list shows; the rest are summed as Others
-  const capped = capAppUsage(apps.map((a) => ({ app: a.app, minutes: a._sum.minutes ?? 0 })), appLimit);
+  // No more app names than the plan's Apps list shows; the rest are summed as Others. For today, also only the apps
+  // that list shows (it keeps apps waiting for approval first), as on the web; a longer period has no single such list.
+  const usage = apps.map((a) => ({ app: a.app, minutes: a._sum.minutes ?? 0 }));
+  const nameable = period === "today" ? await nameableApps(child.id, appLimit, (n) => usage.find((a) => a.app === n)?.minutes ?? 0) : () => true;
+  const unnamed = usage.filter((a) => a.app !== "Others" && !nameable(a.app)).length;
+  const capped = capAppUsage(usage.map((a) => (nameable(a.app) ? a : { ...a, app: "Others" })), appLimit);
   const appRows = capped.named.concat(capped.others > 0 ? [{ app: "Others", minutes: capped.others }] : []);
   return {
     period, from: cur[0], to: cur[cur.length - 1],
@@ -192,7 +212,22 @@ export async function screenTime(child: ChildView, tz: string, period: Period, a
       const rule = a.app === "Others" ? undefined : byName.get(a.app);
       return { name: a.app, minutes: a.minutes, appId: rule?.id ?? null, approval: rule?.approval ?? null, dailyLimitMinutes: rule?.dailyLimitMinutes ?? null };
     }),
-    hiddenApps: capped.hidden,
+    hiddenApps: capped.hidden + unnamed,
+  };
+}
+
+/* ---------- Location ---------- */
+
+/**
+ * A kept visit. `stayed` is false for a fix taken while passing by (show it as "Passing by", and leave it out of
+ * lists of places); `durationMinutes` is how long they stayed. `placeId` is the saved place it was at, if any.
+ */
+export function visitJson(v: { id: string; device: { name: string } | null; lat: number; lng: number; placeLabel: string | null; placeId: string | null; arrivedAt: Date; lastSeenAt: Date }, tz: string) {
+  return {
+    // Still a string for a removed device: its visits stay in the child's history
+    id: v.id, deviceName: v.device?.name ?? "Removed device", lat: v.lat, lng: v.lng, placeLabel: v.placeLabel, placeId: v.placeId,
+    arrivedAt: v.arrivedAt, lastSeenAt: v.lastSeenAt, timeLabel: dayTime(v.arrivedAt, tz), day: dayGroup(v.arrivedAt, tz),
+    stayed: stayed(v), durationMinutes: Math.round((v.lastSeenAt.getTime() - v.arrivedAt.getTime()) / 60_000), spanLabel: visitSpan(v, tz),
   };
 }
 
@@ -202,9 +237,9 @@ export async function screenTime(child: ChildView, tz: string, period: Period, a
  * The overview's location card. Same rules as /children/{id}/location and the web overview (the newest fix from a
  * device that shares), and nothing on plans without location sharing.
  */
-export function overviewLocation(devices: Parameters<typeof childLocation>[0], plan: Pick<Entitlements, "locationSharing">, now = Date.now()) {
+export function overviewLocation(devices: Parameters<typeof childLocation>[0], plan: Pick<Entitlements, "locationSharing">, now = Date.now(), policy?: boolean) {
   if (!plan.locationSharing) return { sharing: false, state: "plan_required" as const, placeLabel: null, updatedAt: null, label: "Not on your plan" };
-  const l = childLocation(devices, now);
+  const l = childLocation(devices, now, policy);
   return {
     sharing: l.sharing,
     state: l.state,
@@ -230,8 +265,9 @@ export async function childOverview(graph: FamilyGraph, childId: string, tz: str
   ]);
   const policy = (key: ProtectionKey) => c.policies.find((p) => p.key === key)?.config as ProtectionConfig | undefined;
   const bedtime = policy("BEDTIME") as Extract<ProtectionConfig, { key: "BEDTIME" }> | undefined;
-  // No more app names than the plan's Apps tab shows
-  const named = capAppUsage(appsToday, Math.min(OVERVIEW_APPS, plan.appMonitoringLimit ?? OVERVIEW_APPS)).named;
+  // Only apps the plan's Apps tab shows, and no more of them: same rule as the web overview
+  const nameable = await nameableApps(c.id, plan.appMonitoringLimit, (n) => appsToday.find((a) => a.app === n)?.minutes ?? 0);
+  const named = capAppUsage(appsToday.filter((a) => nameable(a.app)), Math.min(OVERVIEW_APPS, plan.appMonitoringLimit ?? OVERVIEW_APPS)).named;
   const worstDevice = c.devices.map((d) => graph.deviceStates[d.id]).sort((a, b) => b.issues - a.issues)[0];
 
   return {
@@ -247,7 +283,7 @@ export async function childOverview(graph: FamilyGraph, childId: string, tz: str
       topApps: named.map((a) => ({ name: a.app, minutes: a.minutes })),
     },
     bedtime: bedtime ? { enabled: bedtime.enabled, start: bedtime.start, end: bedtime.end, days: bedtime.days, label: describeConfig(bedtime) } : null,
-    location: overviewLocation(c.devices, plan),
+    location: overviewLocation(c.devices, plan, Date.now(), locationPolicy(c.policies)),
     deviceProtection: {
       state: !c.devices.length ? "no_devices" : worstDevice.issues ? "issues" : c.devices.every((d) => graph.deviceStates[d.id].key === "offline") ? "offline" : "healthy",
       label: !c.devices.length ? "No devices yet" : worstDevice.issues ? `${worstDevice.issues} issue${worstDevice.issues > 1 ? "s" : ""}` : "Healthy",
