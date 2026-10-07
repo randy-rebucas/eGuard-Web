@@ -120,6 +120,8 @@ model Family {
   keepLocationHistory Boolean @default(false)
   shareAnalytics      Boolean @default(false)
   retentionDays       Int     @default(90)
+  /// when the last weekly summary went out (claimed once per family, for every parent who wants it)
+  digestSentAt        DateTime?
   createdAt     DateTime @default(now())
 
   users        User[]
@@ -488,6 +490,7 @@ model Child {
   usage      ScreenTimeDaily[]
   appUsage   AppUsageDaily[]
   apps       ChildApp[]
+  categoryLimits ChildCategoryLimit[]
   changes    ConfigChange[]
   requests   ConfigRequest[]
   alerts     Alert[]
@@ -594,6 +597,9 @@ model Place {
   lat       Float
   lng       Float
   radiusM   Int      @default(150)
+  /// Alert the parents when a child arrives here / leaves (location.placeNotices)
+  notifyArrive Boolean @default(false)
+  notifyLeave  Boolean @default(false)
   createdAt DateTime @default(now())
 
   visits    LocationVisit[]
@@ -814,9 +820,34 @@ model ChildApp {
   name       String
   approval   AppApproval @default(ALLOWED)
   dailyLimitMinutes Int?
+  /// The parent's choice; null means eGuard's guess from the name (lib/app-categories.categoryOf)
+  category   AppCategory?
   installedAt DateTime   @default(now())
 
   @@unique([childId, name])
+}
+
+enum AppCategory {
+  GAMES
+  SOCIAL
+  VIDEO
+  MESSAGING
+  EDUCATION
+  CREATIVITY
+  BROWSERS
+  OTHER
+}
+
+/// A daily limit for all of a child's apps in one category together ("Gaming time"), sent to devices on sync
+model ChildCategoryLimit {
+  id                String      @id @default(cuid())
+  childId           String
+  child             Child       @relation(fields: [childId], references: [id], onDelete: Cascade)
+  category          AppCategory
+  dailyLimitMinutes Int
+  updatedAt         DateTime    @updatedAt
+
+  @@unique([childId, category])
 }
 
 // ---------- Configuration workflow ----------

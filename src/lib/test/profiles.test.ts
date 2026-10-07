@@ -77,7 +77,7 @@ describe("plans", () => {
 
   it("gates features by plan, and unknown or retired plans get Free", () => {
     expect(entitlementsFor("Free")).toMatchObject({ childLimit: 1, locationSharing: false, appMonitoringLimit: 5, realtimeAlerts: false, advancedReports: false });
-    expect(entitlementsFor("eGuard Plus")).toMatchObject({ childLimit: 5, locationSharing: true, appMonitoringLimit: null, realtimeAlerts: true, advancedReports: false, apiAccess: false });
+    expect(entitlementsFor("eGuard Plus")).toMatchObject({ childLimit: 5, locationSharing: true, appMonitoringLimit: null, realtimeAlerts: true, advancedReports: false, apiAccess: false, categoryLimits: true });
     expect(entitlementsFor("Family Pro")).toMatchObject({ childLimit: 10, advancedReports: true, apiAccess: true });
     expect(entitlementsFor("eGuard Family").childLimit).toBe(1);
   });

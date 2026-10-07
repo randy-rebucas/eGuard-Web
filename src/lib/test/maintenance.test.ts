@@ -12,6 +12,7 @@ vi.mock("../email-verification", () => ({}));
 vi.mock("../mail", () => ({}));
 vi.mock("../plan-access", () => ({}));
 vi.mock("../push", () => ({}));
+vi.mock("../weekly-digest", () => ({}));
 
 type Fn = ReturnType<typeof vi.fn>;
 const { isChildRequest, worthEmail, closeStaleWork, OPEN_CHANGE_DAYS } = await import("../maintenance");
@@ -31,6 +32,11 @@ describe("alert emails", () => {
 
   it("treats a website access request as a child's request too", () => {
     expect(isChildRequest(alert({ severity: "ATTENTION", category: "PROTECTION", resolveKey: "WEBREQ:req1" }))).toBe(true);
+  });
+
+  it("emails a place notice the parents turned on, though it's only INFO", () => {
+    expect(worthEmail(alert({ category: "LOCATION", resolveKey: "PLACE:place1:ARRIVE" }))).toBe(true);
+    expect(worthEmail(alert({ category: "LOCATION" }))).toBe(false);
   });
 
   it("still skips other app notices", () => {

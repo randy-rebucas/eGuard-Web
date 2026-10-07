@@ -20,8 +20,10 @@ export const metadata = { title: "Location" };
 /** Places listed per child under "Recent places" */
 const RECENT_PLACES = 3;
 
-export default async function LocationPage() {
+/** `?child=` centres the map on that child (the child page's "Open map"). */
+export default async function LocationPage(props: PageProps<"/location">) {
   const u = await requireUser();
+  const sp = await props.searchParams;
   const [family, { children }] = await Promise.all([getFamily(u.familyId), getFamilyGraph(u.familyId)]);
   if (!entitlementsFor(family.plan).locationSharing) {
     return (
@@ -63,7 +65,7 @@ export default async function LocationPage() {
       <LocationRefresh />
       <PageHead title="Family Location" text="Where your children are, or were last seen, when they share their location. Updates every 30 seconds while this page is open." />
       <div className="detail-grid">
-        <div className="map"><LazyMap people={people} missing={rows.filter(({ l }) => !l.location).map(({ c }) => c.name)} places={places} attribution={tileAttribution()} /></div>
+        <div className="map"><LazyMap people={people} missing={rows.filter(({ l }) => !l.location).map(({ c }) => c.name)} places={places} focus={typeof sp.child === "string" ? sp.child : undefined} attribution={tileAttribution()} /></div>
         <div className="dash-col">
           <section className="card card-pad">
             <div className="card-head"><h2 style={{ fontSize: 18 }}>Children</h2></div>

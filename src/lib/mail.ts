@@ -43,10 +43,18 @@ export async function sendMail(mail: Mail) {
       console.error("[mail] SMTP failed, trying Resend", e);
     }
   }
+  if (resendKey && isReservedDomain(mail.to)) {
+    console.info(`[mail] Not sent: ${mail.to} is on a reserved test domain, which Resend refuses. ${mail.subject}`);
+    return;
+  }
   if (resendKey) return sendWithResend(mail, resendKey);
   if (process.env.NODE_ENV === "production") throw new Error("Neither SMTP_URL nor RESEND_API_KEY is set, so eGuard can't send email.");
   console.info(`[mail] No SMTP_URL or RESEND_API_KEY. To ${mail.to}: ${mail.subject}\n${mail.text}`);
 }
+
+/** RFC 2606 / 6761 names used by demo data and tests (example.com, *.test, …). Nobody can receive mail there. */
+const isReservedDomain = (to: string) =>
+  /@(?:[^@]*\.)?(?:example\.(?:com|net|org)|example|test|invalid|localhost)$/i.test(to.trim());
 
 export const escapeHtml = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);

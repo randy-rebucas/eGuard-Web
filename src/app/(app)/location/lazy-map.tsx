@@ -3,15 +3,15 @@
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-import type { MapPerson, MapPlace } from "@/components/family-map";
+import type { ComponentProps } from "react";
 
 const FamilyMap = dynamic(() => import("@/components/family-map"), {
   ssr: false,
   loading: () => <div className="skeleton" style={{ position: "absolute", inset: 0, borderRadius: 0 }} />,
 });
 
-export function LazyMap({ people, missing, places, attribution }: { people: MapPerson[]; missing: string[]; places: MapPlace[]; attribution: string }) {
-  return <FamilyMap people={people} missing={missing} places={places} attribution={attribution} />;
+export function LazyMap(props: ComponentProps<typeof FamilyMap>) {
+  return <FamilyMap {...props} />;
 }
 
 /** How often an open Location page fetches newer positions (only while the tab is visible). */

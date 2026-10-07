@@ -8,6 +8,7 @@ import { conflict, isUniqueViolation } from "@/lib/errors";
 import { appMinutesOn, dateFromKey, dayKey, getFamily } from "@/lib/queries";
 import { authed, body, clientLabel, query } from "@/lib/mobile-api";
 import { APPS_UPGRADE, familyEntitlements, visibleApps } from "@/lib/plan-access";
+import { CATEGORY_BY_KEY, categoryOf } from "@/lib/app-categories";
 
 const APPROVALS = ["ALLOWED", "ALWAYS_ALLOWED", "FILTERED", "BLOCKED", "PENDING"] as const;
 const Query = z.object({ filter: z.enum(["all", "installed", "blocked", "pending"]).default("all") });
@@ -44,6 +45,7 @@ export const GET = authed<{ id: string }>(async ({ req, user, params }) => {
       allowed: a.approval !== "BLOCKED" && a.approval !== "PENDING",
       dailyLimitMinutes: a.dailyLimitMinutes, todayMinutes: usage.find((u) => u.app === a.name)?.minutes ?? 0,
       installedAt: a.installedAt,
+      ...categoryJson(a),
     })),
     limited: hidden ? { hidden, message: APPS_UPGRADE } : null,
   });
@@ -74,5 +76,11 @@ export const POST = authed<{ id: string }>(async ({ req, user, params }) => {
     },
   });
   await audit(user.familyId, user.name, "app.added", `${app.name} for ${child.name}`);
-  return NextResponse.json({ id: app.id, name: app.name, approval: app.approval, approvalLabel: APPROVAL_LABEL[app.approval], dailyLimitMinutes: app.dailyLimitMinutes }, { status: 201 });
+  return NextResponse.json({ id: app.id, name: app.name, approval: app.approval, approvalLabel: APPROVAL_LABEL[app.approval], dailyLimitMinutes: app.dailyLimitMinutes, ...categoryJson(app) }, { status: 201 });
 });
+
+/** The app's category: `categoryAuto` is true while it's eGuard's guess from the name, not the parent's choice. */
+function categoryJson(a: Parameters<typeof categoryOf>[0]) {
+  const c = categoryOf(a);
+  return { category: c.category, categoryLabel: CATEGORY_BY_KEY[c.category].label, categoryAuto: c.auto };
+}

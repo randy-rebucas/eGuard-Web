@@ -2,14 +2,15 @@
 
 import { useActionState, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { AppApproval } from "@prisma/client";
+import type { AppApproval, AppCategory } from "@prisma/client";
+import { APP_CATEGORIES, CATEGORY_BY_KEY } from "@/lib/app-categories";
 import { Icon } from "./icon";
 import { Avatar } from "./ui";
 import { Feedback } from "./feedback";
 import { ConfirmField, confirmHint } from "./confirm-field";
 import { FAILED, useAction, useFlow } from "./flow";
 import { PROFILES, recommendedProfile, type ProfileId } from "@/lib/profiles";
-import { createChild, deleteChildData, setAppApproval, setAppLimit, updateChild } from "@/app/actions/family";
+import { createChild, deleteChildData, setAppApproval, setAppCategory, setAppLimit, setCategoryLimit, updateChild } from "@/app/actions/family";
 
 export function ChildForm({ child }: { child?: { id: string; name: string; birthYear: number } }) {
   const [state, action, pending] = useActionState(child ? updateChild.bind(null, child.id) : createChild, undefined);
@@ -134,7 +135,10 @@ export function DeleteChildForm({ childId, name, hasPassword }: { childId: strin
 
 const APPROVALS: [AppApproval, string][] = [["ALLOWED", "Allowed"], ["ALWAYS_ALLOWED", "Always allowed"], ["FILTERED", "Filtered"], ["BLOCKED", "Blocked"], ["PENDING", "Pending"]];
 
-export function AppControls({ app }: { app: { id: string; name: string; approval: AppApproval; dailyLimitMinutes: number | null; requested?: boolean } }) {
+/**
+ * `category`: the parent's choice, or null while it's eGuard's guess (`guess`).
+ */
+export function AppControls({ app }: { app: { id: string; name: string; approval: AppApproval; dailyLimitMinutes: number | null; requested?: boolean; category: AppCategory | null; guess: AppCategory } }) {
   const [pending, run] = useAction();
   const { toast } = useFlow();
   const saved = app.dailyLimitMinutes ? String(app.dailyLimitMinutes) : "";
@@ -144,6 +148,15 @@ export function AppControls({ app }: { app: { id: string; name: string; approval
   const approve = (to: AppApproval, ok: string) => {
     setApproval(to);
     run(() => setAppApproval(app.id, to), { ok, onError: () => setApproval(null), onOk: () => setApproval(null) });
+  };
+  const [category, setCategory] = useState<string | null>(null);
+  const categorize = (to: string) => {
+    setCategory(to);
+    const next = to ? (to as AppCategory) : null;
+    run(() => setAppCategory(app.id, next), {
+      ok: `${app.name} counts as ${CATEGORY_BY_KEY[next ?? app.guess].label}.`,
+      onError: () => setCategory(null), onOk: () => setCategory(null),
+    });
   };
   const saveLimit = () => {
     if (limit === saved) return;
@@ -175,6 +188,12 @@ export function AppControls({ app }: { app: { id: string; name: string; approval
             onChange={(e) => approve(e.target.value as AppApproval, `${app.name} updated. It applies on the device's next sync.`)}>
             {APPROVALS.filter(([k]) => k !== "PENDING").map(([k, l]) => <option key={k} value={k}>{l}</option>)}
           </select>
+          <label className="sr-only" htmlFor={`cat-${app.id}`}>Category for {app.name}</label>
+          <select id={`cat-${app.id}`} className="input" style={{ height: 36 }} value={category ?? app.category ?? ""} disabled={pending}
+            onChange={(e) => categorize(e.target.value)}>
+            <option value="">{CATEGORY_BY_KEY[app.guess].label} (automatic)</option>
+            {APP_CATEGORIES.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+          </select>
           <label className="sr-only" htmlFor={`lim-${app.id}`}>Daily limit for {app.name} in minutes</label>
           <input id={`lim-${app.id}`} className="input" style={{ height: 36, width: 110 }} type="number" min={0} max={1440} step={15} placeholder="No limit" value={limit}
             onChange={(e) => setLimit(e.target.value)}
@@ -183,5 +202,34 @@ export function AppControls({ app }: { app: { id: string; name: string; approval
         </>
       )}
     </div>
+  );
+}
+
+/** One category's daily limit ("Gaming time"), in minutes; empty for no limit. Saved when the field loses focus. */
+export function CategoryLimitControl({ childId, category, minutes }: { childId: string; category: AppCategory; minutes: number | null }) {
+  const [pending, run] = useAction();
+  const { toast } = useFlow();
+  const saved = minutes ? String(minutes) : "";
+  const [limit, setLimit] = useState(saved);
+  const name = CATEGORY_BY_KEY[category].limitLabel;
+  const save = () => {
+    if (limit === saved) return;
+    const m = limit ? Number(limit) : null;
+    if (m != null && (!Number.isFinite(m) || m < 0 || m > 1440)) { setLimit(saved); toast("Enter a daily limit up to 1440 minutes, or leave it empty for no limit.", "error"); return; }
+    const stored = Math.round(m ?? 0) || null;
+    run(() => setCategoryLimit(childId, category, m), {
+      ok: stored ? `${name} limited to ${stored} minutes a day.` : `${name} limit removed.`,
+      onOk: () => setLimit(stored ? String(stored) : ""),
+      onError: () => setLimit(saved),
+    });
+  };
+  return (
+    <span aria-busy={pending}>
+      <label className="sr-only" htmlFor={`catlim-${category}`}>{name}: daily limit in minutes</label>
+      <input id={`catlim-${category}`} className="input" style={{ height: 36, width: 110 }} type="number" min={0} max={1440} step={15} placeholder="No limit" value={limit}
+        onChange={(e) => setLimit(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+        onBlur={save} />
+    </span>
   );
 }

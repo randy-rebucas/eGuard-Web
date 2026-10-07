@@ -17,6 +17,8 @@ export type Entitlements = {
   realtimeAlerts: boolean;
   /** 30-day and custom report ranges, and CSV export */
   advancedReports: boolean;
+  /** Daily limits per app category ("Gaming time"); per-app limits are on every plan */
+  categoryLimits: boolean;
   /** Organization API keys (/api/org/v1, docs/organization-api.md) for organizations this family's parents manage */
   apiAccess: boolean;
 };
@@ -41,7 +43,7 @@ export const FREE_APP_LIMIT = 5;
 export const PLANS: Plan[] = [
   {
     id: "FREE", name: "Free", blurb: "Get started with essential protection tools.", monthlyPesos: 0, googlePlayProductId: null,
-    entitlements: { childLimit: 1, deviceLimit: 2, locationSharing: false, appMonitoringLimit: FREE_APP_LIMIT, realtimeAlerts: false, advancedReports: false, apiAccess: false },
+    entitlements: { childLimit: 1, deviceLimit: 2, locationSharing: false, appMonitoringLimit: FREE_APP_LIMIT, realtimeAlerts: false, advancedReports: false, apiAccess: false, categoryLimits: false },
     features: [
       { key: "children", label: "Up to 1 child", included: true },
       { key: "protection", label: "Basic protection setup", included: true },
@@ -52,19 +54,20 @@ export const PLANS: Plan[] = [
   },
   {
     id: "PLUS", name: "eGuard Plus", blurb: "Complete protection for growing families.", monthlyPesos: 149, googlePlayProductId: "eguard_plus",
-    entitlements: { childLimit: 5, deviceLimit: 10, locationSharing: true, appMonitoringLimit: null, realtimeAlerts: true, advancedReports: false, apiAccess: false },
+    entitlements: { childLimit: 5, deviceLimit: 10, locationSharing: true, appMonitoringLimit: null, realtimeAlerts: true, advancedReports: false, apiAccess: false, categoryLimits: true },
     features: [
       { key: "children", label: "Up to 5 children", included: true },
       { key: "protection", label: "Full protection features", included: true },
       { key: "verification", label: "Configuration verification", included: true },
       { key: "alerts", label: "Push alerts (coming soon)", included: true },
       { key: "location", label: "Location sharing", included: true },
+      { key: "category_limits", label: "Category limits, like gaming time", included: true },
       { key: "support", label: "Priority support", included: true },
     ],
   },
   {
     id: "PRO", name: "Family Pro", blurb: "Advanced features for larger families.", monthlyPesos: 249, googlePlayProductId: "eguard_pro",
-    entitlements: { childLimit: 10, deviceLimit: 20, locationSharing: true, appMonitoringLimit: null, realtimeAlerts: true, advancedReports: true, apiAccess: true },
+    entitlements: { childLimit: 10, deviceLimit: 20, locationSharing: true, appMonitoringLimit: null, realtimeAlerts: true, advancedReports: true, apiAccess: true, categoryLimits: true },
     features: [
       { key: "children", label: "Up to 10 children", included: true },
       { key: "plus", label: "All Plus features", included: true },
@@ -140,4 +143,11 @@ export function planByProduct(productId: string) {
 
 export function planFeatures(planName: string): PlanFeature[] {
   return planByName(planName).features;
+}
+
+/** The cheapest plan whose entitlements pass `has`, for "Upgrade to …". */
+export function planWith(has: (e: Entitlements) => boolean) {
+  let p = planByName("Free");
+  for (let next = nextPlan(p.name); next && !has(p.entitlements); next = nextPlan(p.name)) p = next;
+  return p;
 }

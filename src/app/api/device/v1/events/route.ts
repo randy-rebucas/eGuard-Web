@@ -6,6 +6,7 @@ import { createAlertUnless } from "@/lib/engine";
 import { authDevice, badRequest, readJson, unauthorized } from "@/lib/device-auth";
 import { LIMITS, clearLimit, hit } from "@/lib/rate-limit";
 import { isUniqueViolation } from "@/lib/errors";
+import { CATEGORY_BY_KEY, CATEGORY_KEYS } from "@/lib/app-categories";
 
 /** Trimmed, so " YouTube" and "YouTube" are one app, and a blank name is refused */
 const appName = z.string().trim().min(1, "app is required").max(80);
@@ -14,7 +15,8 @@ const Body = z.discriminatedUnion("type", [
   // Same bounds as a reported age rating (ReportedConfigSchema)
   z.object({ type: z.literal("APP_INSTALLED"), app: appName, ageRating: z.number().int().min(0).max(21).optional() }),
   z.object({ type: z.literal("APP_REQUESTED"), app: appName }),
-  z.object({ type: z.literal("LIMIT_REACHED"), minutes: z.number().int().min(0).max(1440) }),
+  // `category`: a category limit (sync's categoryLimits) was used up, rather than the whole day's screen time
+  z.object({ type: z.literal("LIMIT_REACHED"), minutes: z.number().int().min(0).max(1440), category: z.enum(CATEGORY_KEYS).optional() }),
   z.object({ type: z.literal("APP_BLOCKED"), app: appName }),
 ]);
 
@@ -99,6 +101,12 @@ async function handle(device: NonNullable<Awaited<ReturnType<typeof authDevice>>
       { ...base, title: "App blocked", subject: `${e.app} · ${who}`, createdAt: { gt: new Date(Date.now() - BLOCKED_ALERT_WINDOW_MS) } },
       { ...base, severity: "INFO", category: "APPS", icon: "ban", title: "App blocked",
         body: `${device.child.name} tried to open ${e.app}, which is blocked.`, subject: `${e.app} · ${who}` });
+  } else if (e.category) {
+    const name = CATEGORY_BY_KEY[e.category].limitLabel;
+    await createAlertUnless(`LIMIT:${device.id}:${e.category}`,
+      { ...base, title: `${name} used up`, createdAt: { gt: new Date(Date.now() - LIMIT_ALERT_WINDOW_MS) } },
+      { ...base, severity: "INFO", category: "SCREEN_TIME", icon: "hourglass", title: `${name} used up`,
+        body: `${device.child.name} reached the ${fmtMinutes(e.minutes)} daily limit for ${CATEGORY_BY_KEY[e.category].label.toLowerCase()}. Those apps were paused as scheduled.`, subject: who });
   } else {
     await createAlertUnless(`LIMIT:${device.id}`,
       { ...base, title: "Screen time limit reached", createdAt: { gt: new Date(Date.now() - LIMIT_ALERT_WINDOW_MS) } },

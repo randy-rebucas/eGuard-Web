@@ -19,7 +19,8 @@ export async function exportFamily(user: { familyId: string; name: string }) {
       children: {
         include: {
           policies: { select: { key: true, config: true, updatedAt: true } },
-          apps: { select: { name: true, approval: true, dailyLimitMinutes: true, installedAt: true } },
+          apps: { select: { name: true, approval: true, dailyLimitMinutes: true, category: true, installedAt: true } },
+          categoryLimits: { select: { category: true, dailyLimitMinutes: true, updatedAt: true } },
           usage: { select: { date: true, minutes: true, deviceId: true } },
           appUsage: { select: { date: true, app: true, minutes: true, deviceId: true } },
           visits: { select: { deviceId: true, lat: true, lng: true, placeLabel: true, arrivedAt: true, lastSeenAt: true } },
@@ -54,7 +55,7 @@ export async function exportFamily(user: { familyId: string; name: string }) {
         },
       },
       orgMemberships: { select: { joinedAt: true, org: { select: { name: true, kind: true } } } },
-      places: { select: { name: true, lat: true, lng: true, radiusM: true, createdAt: true } },
+      places: { select: { name: true, lat: true, lng: true, radiusM: true, notifyArrive: true, notifyLeave: true, createdAt: true } },
     },
   });
   await db.auditLog.create({ data: { familyId: user.familyId, actor: user.name, action: "data.exported" } });

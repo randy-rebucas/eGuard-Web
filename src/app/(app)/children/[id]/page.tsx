@@ -13,8 +13,9 @@ import { BrowserCard } from "@/components/browser-card";
 import { AlertRow, ViewAll } from "@/components/alerts";
 import { WeeklyChart } from "@/components/charts";
 import { FlowButton } from "@/components/flow";
-import { AppControls, ChildForm, ChildPhotoField, DeleteChildForm } from "@/components/child-forms";
-import { requestedApps } from "@/lib/family-service";
+import { AppControls, CategoryLimitControl, ChildForm, ChildPhotoField, DeleteChildForm } from "@/components/child-forms";
+import { categoryLimits, categoryUsage, requestedApps } from "@/lib/family-service";
+import { APP_CATEGORIES, CATEGORY_BY_KEY, CATEGORY_UPGRADE, categoryOf, guessCategory } from "@/lib/app-categories";
 import { CATEGORY_META, WEB_CATEGORIES, activeTemporaryAllows, describeBrowserPolicy, getOrCreateBrowserPolicy } from "@/lib/browser-policy";
 import { categoryCoverage } from "@/lib/category-lists";
 import { DURATION_LABEL, requestsForChild, type Duration } from "@/lib/browser-access";
@@ -292,16 +293,42 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
   }
 
   async function Apps() {
-    const [all, usage, requested] = await Promise.all([
+    const [all, usage, requested, limits] = await Promise.all([
       db.childApp.findMany({ where: { childId: c!.id }, orderBy: [{ approval: "desc" }, { name: "asc" }] }),
       appMinutesOn([c!.id], dateFromKey(dayKey(new Date(), tz))),
       requestedApps(c!.id),
+      categoryLimits(c!.id),
     ]);
+    const today = await categoryUsage(c!.id, usage);
+    const canLimit = entitlementsFor(family.plan).categoryLimits;
+    // Games always (it's what parents ask for), then any category the child has apps in or a limit for
+    const shownCategories = APP_CATEGORIES.filter((k) => k.key === "GAMES" || limits.some((l) => l.category === k.key) || all.some((a) => categoryOf(a).category === k.key));
     const approval = c!.policies.find((p) => p.key === "APP_APPROVAL")?.config as { enabled?: boolean } | undefined;
     const label = { ALLOWED: "Allowed", ALWAYS_ALLOWED: "Always allowed", FILTERED: "Filtered", BLOCKED: "Blocked", PENDING: "Waiting for your approval" };
     const pending = all.filter((a) => a.approval === "PENDING" || requested.has(a.name));
     const { apps, hidden } = visibleApps(all, entitlementsFor(family.plan).appMonitoringLimit, { requested, minutes: (n) => usage.find((x) => x.app === n)?.minutes ?? 0 });
     return (
+      <div className="dash-col">
+      <section className="card card-pad">
+        <div className="card-head">
+          <div><h2>Category limits</h2><div className="sub">One daily limit for every app of a kind together, like gaming time. Each app counts toward its category; change it on the app below. Applies on the device&apos;s next sync.</div></div>
+        </div>
+        {canLimit ? null : <div style={{ marginBottom: 12 }}><UpgradeNote compact icon="hourglass" title="Category limits" text={CATEGORY_UPGRADE} /></div>}
+        {shownCategories.map((k) => {
+          const count = all.filter((a) => categoryOf(a).category === k.key).length;
+          const limit = limits.find((l) => l.category === k.key)?.dailyLimitMinutes ?? null;
+          return (
+            <div className="setting-row" key={k.key} style={{ flexWrap: "wrap" }}>
+              <span className="ico-tile"><Icon name={k.icon} /></span>
+              <div className="grow" style={{ minWidth: 160 }}>
+                <div className="t-title">{k.limitLabel}</div>
+                <div className="t-meta">{fmtMinutes(today.get(k.key) ?? 0)} today · {count} app{count === 1 ? "" : "s"}{limit && !canLimit ? ` · ${fmtMinutes(limit)} limit paused on ${family.plan}` : ""}</div>
+              </div>
+              {canLimit ? <CategoryLimitControl childId={c!.id} category={k.key} minutes={limit} /> : null}
+            </div>
+          );
+        })}
+      </section>
       <section className="card card-pad">
         <div className="card-head">
           <div><h2>Apps</h2><div className="sub">{approval?.enabled ? `New apps need your approval before ${c!.name} can install them.` : "App approval is off."} Changes apply on the device&apos;s next sync.</div></div>
@@ -313,14 +340,15 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
           return (
             <div className="setting-row" key={a.id} style={{ flexWrap: "wrap" }}>
               <span className="ico-tile"><Icon name="app-window" /></span>
-              <div className="grow" style={{ minWidth: 160 }}><div className="t-title">{a.name}</div><div className="t-meta">{label[a.approval]}{a.approval === "BLOCKED" && requested.has(a.name) ? " · Asked again" : ""}{m != null ? ` · ${fmtMinutes(m)} today` : ""}{a.dailyLimitMinutes ? ` · limit ${fmtMinutes(a.dailyLimitMinutes)}` : ""}</div></div>
-              <AppControls app={{ id: a.id, name: a.name, approval: a.approval, dailyLimitMinutes: a.dailyLimitMinutes, requested: requested.has(a.name) }} />
+              <div className="grow" style={{ minWidth: 160 }}><div className="t-title">{a.name}</div><div className="t-meta">{CATEGORY_BY_KEY[categoryOf(a).category].label} · {label[a.approval]}{a.approval === "BLOCKED" && requested.has(a.name) ? " · Asked again" : ""}{m != null ? ` · ${fmtMinutes(m)} today` : ""}{a.dailyLimitMinutes ? ` · limit ${fmtMinutes(a.dailyLimitMinutes)}` : ""}</div></div>
+              <AppControls app={{ id: a.id, name: a.name, approval: a.approval, dailyLimitMinutes: a.dailyLimitMinutes, requested: requested.has(a.name), category: a.category, guess: guessCategory(a.name) }} />
             </div>
           );
         })}
         {hidden ? <div style={{ marginTop: 12 }}><UpgradeNote compact icon="app-window" title="More apps" text={`${hidden} more app${hidden > 1 ? "s" : ""} not shown. ${family.plan} shows apps waiting for approval and the most used. ${APPS_UPGRADE}`} /></div> : null}
         {!apps.length ? <EmptyState icon="app-window" title="No apps reported yet" text="Apps appear here once a device syncs." /> : null}
       </section>
+      </div>
     );
   }
 
@@ -379,7 +407,7 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
           <div className="row" style={{ flexWrap: "wrap" }}>
             <Avatar name={c!.name} hue={c!.hue} size="lg" photo={c!.photo} />
             <div className="grow"><div className="t-title" style={{ fontSize: 17 }}>{l.location!.placeLabel ?? "Current location"}{l.approximate ? " (approximate)" : ""}</div><div className="t-meta">From {l.device!.name} · updated {ago(l.locatedAt, tz)}</div></div>
-            <Link className="btn btn-secondary" href="/location"><Icon name="map" />Open map</Link>
+            <Link className="btn btn-secondary" href={`/location?child=${c!.id}`}><Icon name="map" />Open map</Link>
           </div>
         ) : l.state === "waiting" ? (
           <EmptyState icon="map-pin" title="Waiting for location" text={l.sharing || !l.unreported ? `Sharing is on for ${c!.name}. The first location appears after the device syncs.` : `Waiting for ${c!.name}'s ${l.unreported.name} to report whether location sharing is on.`} />

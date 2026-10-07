@@ -19,6 +19,9 @@ export type MapPerson = {
 /** A place the parents named, drawn as a dashed circle so they can see what counts as "Home" */
 export type MapPlace = { id: string; name: string; lat: number; lng: number; radiusM: number };
 
+/** One stop on a child's route for a day, in order. Stays get a numbered pin; passing by, a small dot. */
+export type MapStop = { id: string; n: number; lat: number; lng: number; label: string; time: string; stayed: boolean };
+
 const OSM_CREDIT = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
 /** With nobody to show, a neutral world view (not any one family's city). */
@@ -33,13 +36,19 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
 /**
  * `attribution`: the tile provider's credit (HTML, from the server's map-tiles config, never user input).
  */
-export default function FamilyMap({ people, missing = [], places = [], attribution = OSM_CREDIT }: { people: MapPerson[]; missing?: string[]; places?: MapPlace[]; attribution?: string }) {
+/**
+ * `trail`: a day's route, drawn as a line through its stops. `focus`: the id of a child or a stop to centre on
+ * (for "Show on map"); otherwise the map frames everyone, or the whole route.
+ */
+export default function FamilyMap({ people, missing = [], places = [], trail = [], focus, attribution = OSM_CREDIT, label = "Family map" }: {
+  people: MapPerson[]; missing?: string[]; places?: MapPlace[]; trail?: MapStop[]; focus?: string; attribution?: string; label?: string;
+}) {
   const host = useRef<HTMLDivElement>(null);
   // Server config, fixed for the page's life: read once when the map is created, so it isn't rebuilt
   const credit = useRef(attribution);
   const map = useRef<{ L: typeof import("leaflet"); map: LeafletMap; pins: LayerGroup; framed: string } | null>(null);
   // Redraw only when what's shown changes, not on every re-render with an equal array
-  const data = JSON.stringify({ people, places });
+  const data = JSON.stringify({ people, places, trail, focus });
 
   useEffect(() => {
     let cancelled = false;
@@ -59,11 +68,26 @@ export default function FamilyMap({ people, missing = [], places = [], attributi
     const draw = () => {
       const s = map.current;
       if (!s) return;
-      const { people: list, places: saved } = JSON.parse(data) as { people: MapPerson[]; places: MapPlace[] };
+      const { people: list, places: saved, trail: stops, focus: target } = JSON.parse(data) as { people: MapPerson[]; places: MapPlace[]; trail: MapStop[]; focus?: string };
       s.pins.clearLayers();
       for (const p of saved) {
         s.L.circle([p.lat, p.lng], { radius: p.radiusM, className: "map-place", weight: 1.5, dashArray: "4 4", fillOpacity: 0.06 })
           .bindTooltip(esc(p.name), { direction: "top" }).addTo(s.pins);
+      }
+      if (stops.length > 1) {
+        s.L.polyline(stops.map((t) => [t.lat, t.lng] as [number, number]), { className: "map-trail", weight: 3, opacity: 0.8, interactive: false }).addTo(s.pins);
+      }
+      for (const t of stops) {
+        const title = `${t.stayed ? `${t.n}. ` : ""}${t.label}, ${t.time}`;
+        if (t.stayed) {
+          s.L.marker([t.lat, t.lng], {
+            title, alt: title,
+            icon: s.L.divIcon({ className: "", iconSize: [0, 0], html: `<span class="map-stop${t.id === target ? " focused" : ""}">${t.n}</span>` }),
+          }).bindTooltip(esc(title), { direction: "top", offset: [0, -14] }).addTo(s.pins);
+        } else {
+          s.L.circleMarker([t.lat, t.lng], { radius: 4, className: "map-pass", weight: 1.5, fillOpacity: 0.9 })
+            .bindTooltip(esc(title), { direction: "top" }).addTo(s.pins);
+        }
       }
       for (const p of list) {
         if (p.accuracyM && p.accuracyM > 0) {
@@ -79,11 +103,16 @@ export default function FamilyMap({ people, missing = [], places = [], attributi
           }),
         }).addTo(s.pins);
       }
-      // Frame the children when the set of children changes; afterwards leave the parent's zoom alone
-      const who = list.map((p) => p.id).sort().join(",");
+      // Frame the children (or the route) when what's shown changes; afterwards leave the parent's zoom alone
+      const who = [...list.map((p) => p.id).sort(), ...stops.map((t) => t.id)].join(",") + `|${target ?? ""}`;
       if (who === s.framed) return;
       s.framed = who;
-      if (list.length === 1) s.map.setView([list[0].lat, list[0].lng], 15);
+      const focused = list.find((p) => p.id === target) ?? stops.find((t) => t.id === target);
+      if (focused) s.map.setView([focused.lat, focused.lng], 16);
+      else if (stops.length && !list.length) {
+        if (stops.length === 1) s.map.setView([stops[0].lat, stops[0].lng], 15);
+        else s.map.fitBounds(s.L.latLngBounds(stops.map((t) => [t.lat, t.lng] as [number, number])).pad(0.2));
+      } else if (list.length === 1) s.map.setView([list[0].lat, list[0].lng], 15);
       else if (list.length) s.map.fitBounds(s.L.latLngBounds(list.map((p) => [p.lat, p.lng] as [number, number])).pad(0.6));
       else s.map.setView(WORLD, 2);
     };
@@ -96,7 +125,8 @@ export default function FamilyMap({ people, missing = [], places = [], attributi
   const described = [
     ...people.map((p) => `${p.name} at ${p.label}, ${p.age}`),
     ...missing.map((n) => `${n}: no location`),
+    ...trail.filter((t) => t.stayed).map((t) => `${t.n}. ${t.label}, ${t.time}`),
   ].join(". ");
   // Inline, because leaflet.css is unlayered and so beats anything in globals.css (all of it is in @layer components)
-  return <div ref={host} className="leaflet-host" style={{ fontFamily: "var(--font)", background: "var(--surface-2)" }} role="region" aria-label={`Family map. ${described || "No children to show"}.`} />;
+  return <div ref={host} className="leaflet-host" style={{ fontFamily: "var(--font)", background: "var(--surface-2)" }} role="region" aria-label={`${label}. ${described || (label === "Family map" ? "No children to show" : "Nothing to show")}.`} />;
 }

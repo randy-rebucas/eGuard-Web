@@ -12,7 +12,8 @@ import { DEFAULT_RADIUS_M, MAX_PLACES, PLACE_RADII } from "./place-radii";
  * Saved places: spots the parents name (Home, School). Devices don't name places, so without these every visit
  * is "Unnamed place". A fix inside one is labelled with its name (recordLocation); visits and current locations
  * point at the place, so renaming, resizing or removing it relabels what's already kept. Any parent can manage
- * them; they need a plan with location sharing.
+ * them; they need a plan with location sharing. `notifyArrive` / `notifyLeave`: alert the parents when a child
+ * arrives there / leaves (location.placeNotices).
  */
 
 export const PlaceName = z.string({ error: "Name the place." }).trim().min(1, "Name the place.").max(40, "Keep the name under 40 characters.");
@@ -23,12 +24,18 @@ export const PlaceInput = z.object({
   lat: z.number({ error: "Choose where the place is." }).min(-90).max(90),
   lng: z.number({ error: "Choose where the place is." }).min(-180).max(180),
   radiusM: Radius.default(DEFAULT_RADIUS_M),
+  notifyArrive: z.boolean().default(false),
+  notifyLeave: z.boolean().default(false),
 });
-export const PlaceUpdate = z.object({ name: PlaceName.optional(), radiusM: Radius.optional() })
-  .refine((x) => x.name !== undefined || x.radiusM !== undefined, "Send a name or a radius.");
+export const PlaceUpdate = z.object({ name: PlaceName.optional(), radiusM: Radius.optional(), notifyArrive: z.boolean().optional(), notifyLeave: z.boolean().optional() })
+  .refine((x) => Object.values(x).some((v) => v !== undefined), "Send a name, a radius or a notice setting.");
 
-const select = { id: true, name: true, lat: true, lng: true, radiusM: true } as const;
-export type SavedPlace = { id: string; name: string; lat: number; lng: number; radiusM: number };
+const select = { id: true, name: true, lat: true, lng: true, radiusM: true, notifyArrive: true, notifyLeave: true } as const;
+export type SavedPlace = { id: string; name: string; lat: number; lng: number; radiusM: number; notifyArrive: boolean; notifyLeave: boolean };
+
+/** "arrive and leave", "arrive", "leave" or "off", for the audit log */
+const notices = (p: { notifyArrive: boolean; notifyLeave: boolean }) =>
+  p.notifyArrive && p.notifyLeave ? "arrive and leave" : p.notifyArrive ? "arrive" : p.notifyLeave ? "leave" : "off";
 
 export const listPlaces = (familyId: string): Promise<SavedPlace[]> =>
   db.place.findMany({ where: { familyId }, orderBy: { name: "asc" }, select });
@@ -80,7 +87,7 @@ export async function createPlace(actor: Actor, input: z.input<typeof PlaceInput
   if ((await db.place.count({ where: { familyId: actor.familyId } })) >= MAX_PLACES) throw invalid(`You can save up to ${MAX_PLACES} places. Remove one first.`);
   const p = await db.place.create({ data: { familyId: actor.familyId, ...b }, select });
   await relabelAround(actor.familyId, p, p.radiusM);
-  await audit(actor.familyId, actor.name, "place.created", `${p.name} (${p.radiusM} m)`);
+  await audit(actor.familyId, actor.name, "place.created", `${p.name} (${p.radiusM} m, notices ${notices(p)})`);
   return p;
 }
 
@@ -97,7 +104,7 @@ export async function updatePlace(actor: Actor, id: string, input: z.input<typeo
     await db.locationVisit.updateMany({ where: { placeId: id }, data: { placeLabel: p.name } });
     await db.deviceLocation.updateMany({ where: { placeId: id }, data: { placeLabel: p.name } });
   }
-  await audit(actor.familyId, actor.name, "place.updated", before.name === p.name ? `${p.name} (${p.radiusM} m)` : `${before.name} → ${p.name}`);
+  await audit(actor.familyId, actor.name, "place.updated", before.name === p.name ? `${p.name} (${p.radiusM} m, notices ${notices(p)})` : `${before.name} → ${p.name}`);
   return p;
 }
 

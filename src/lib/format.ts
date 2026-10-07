@@ -11,6 +11,26 @@ export function dateFormat(locale: string, tz: string, o: Intl.DateTimeFormatOpt
   return f;
 }
 
+/** Milliseconds `tz` is ahead of UTC at instant `d`. */
+function tzOffset(d: Date, tz: string) {
+  const p = Object.fromEntries(
+    dateFormat("en-US", tz, { hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric" })
+      .formatToParts(d).map((x) => [x.type, Number(x.value)]),
+  );
+  return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - Math.floor(d.getTime() / 1000) * 1000;
+}
+
+/** The instant a day (YYYY-MM-DD) starts in the family's timezone. */
+export const dayStart = (k: string, tz: string) => localTime(k, 0, tz);
+
+/** The instant it's `hour`:00 on a day (YYYY-MM-DD) in the family's timezone. */
+export function localTime(k: string, hour: number, tz: string) {
+  const utc = new Date(`${k}T00:00:00.000Z`).getTime() + hour * 3600_000;
+  const guess = utc - tzOffset(new Date(utc), tz);
+  // Second pass settles days where a DST change sits between UTC and local time
+  return new Date(utc - tzOffset(new Date(guess), tz));
+}
+
 const fmt = (tz: string, o: Intl.DateTimeFormatOptions) => dateFormat("en-US", tz, o);
 
 function dayIndex(d: Date, tz: string) {
