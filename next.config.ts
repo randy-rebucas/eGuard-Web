@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 import { META_PIXEL_ID, META_PIXEL_PATHS } from "./src/lib/meta-pixel";
+import { CONSOLE_HOST } from "./src/lib/console-host";
 
 const csp = (extraImg = "") =>
   `frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; img-src 'self' data: blob:${extraImg}`;
@@ -29,6 +30,8 @@ const OLD_HOSTS = ["eguard.family", "e-guard-web.vercel.app"];
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // The staff console in development: http://console.localhost:3000 (docs/console.md)
+  allowedDevOrigins: ["console.localhost"],
   // Pages prerender to a static shell; request-time parts (session, cookies) stream in behind <Suspense>
   cacheComponents: true,
   images: {
@@ -42,7 +45,9 @@ const nextConfig: NextConfig = {
     const pixelPages = META_PIXEL_ID ? ["/", ...META_PIXEL_PATHS.map((p) => `${p}/:path*`)] : [];
     return [
       { source: "/:path*", headers: securityHeaders },
-      ...pixelPages.map((source) => ({ source, headers: [pixelCsp] })),
+      ...pixelPages.map((source) => ({ source, missing: [{ type: "host" as const, value: CONSOLE_HOST }], headers: [pixelCsp] })),
+      // Nothing on the staff console belongs in search results, even if a link to it leaks
+      { source: "/:path*", has: [{ type: "host" as const, value: CONSOLE_HOST }], headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }] },
     ];
   },
   async redirects() {
