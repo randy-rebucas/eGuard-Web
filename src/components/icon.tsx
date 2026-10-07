@@ -1,16 +1,16 @@
 import {
-  AppWindow, ArrowRight, ArrowRightLeft, BadgeCheck, Briefcase, Building2, Bell, BellOff, BellRing, BookOpen, Calendar, Camera, ChartColumn, Check, CheckCheck,
+  AppWindow, ArrowLeft, ArrowRight, ArrowRightLeft, BadgeCheck, Briefcase, Building2, Bell, BellOff, BellRing, BookOpen, Calendar, Camera, ChartColumn, Check, CheckCheck,
   ChevronDown, ChevronRight, CircleCheck, CreditCard, CircleDashed, CircleSlash, Copy, Crown, Database, Download, Eye, EyeOff,
   Film, Globe, History, Hourglass, House, Inbox, Info, KeyRound, LayoutGrid, LifeBuoy, ListChecks, LoaderCircle, Lock,
   LogOut, Mail, Map, MapPin, MapPinOff, Menu, MessageCircle, Monitor, Moon, OctagonAlert, Pencil, Plug, Plus, Receipt,
   RefreshCw, Route, ScanSearch, School, Search, SearchX, Settings, Shield, ShieldAlert, ShieldCheck, Siren, SlidersHorizontal,
-  Smartphone, Star, Sun, Table, Tablet, TabletSmartphone, Ticket, Trash2, TriangleAlert, User, UserPlus, Users, Wallet, WifiOff, X,
+  Printer, Smartphone, Star, Sun, Table, Tablet, TabletSmartphone, Ticket, Trash2, TriangleAlert, User, UserPlus, Users, Wallet, WifiOff, X,
   type LucideIcon,
 } from "lucide-react";
 
 const ICONS: Record<string, LucideIcon> = {
-  "app-window": AppWindow, "arrow-right": ArrowRight, "arrow-right-left": ArrowRightLeft, "badge-check": BadgeCheck, bell: Bell, "bell-off": BellOff,
-  briefcase: Briefcase, building: Building2, school: School, ticket: Ticket,
+  "app-window": AppWindow, "arrow-left": ArrowLeft, "arrow-right": ArrowRight, "arrow-right-left": ArrowRightLeft, "badge-check": BadgeCheck, bell: Bell, "bell-off": BellOff,
+  briefcase: Briefcase, building: Building2, printer: Printer, school: School, ticket: Ticket,
   "bell-ring": BellRing, "book-open": BookOpen, calendar: Calendar, camera: Camera, "chart-column": ChartColumn, check: Check,
   "check-check": CheckCheck, "chevron-down": ChevronDown, "chevron-right": ChevronRight, "circle-check": CircleCheck, "credit-card": CreditCard,
   "circle-dashed": CircleDashed, "circle-slash": CircleSlash, copy: Copy, crown: Crown, database: Database,

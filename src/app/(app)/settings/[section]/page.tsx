@@ -218,7 +218,7 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
     }
 
     case "subscription": {
-      const { ref } = await props.searchParams;
+      const { ref, code } = await props.searchParams;
       // Back from PayMongo: check the payment now instead of waiting for the webhook
       const returned = admin && typeof ref === "string" ? await confirmReturn(u.familyId, ref) : null;
       await refreshPurchases(u.familyId);
@@ -278,7 +278,8 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
           {admin ? (
             <div className="setting-row" style={{ flexDirection: "column", alignItems: "stretch", gap: 10, marginTop: 8 }}>
               <div><div className="t-title">Have a sponsor code?</div><div className="t-meta">Schools, community groups and employers can give families eGuard codes. Enter yours to get the plan it covers.</div></div>
-              <RedeemCodeForm />
+              {/* A printed coupon's QR code opens this page with its code filled in; the parent still presses Redeem */}
+              <RedeemCodeForm defaultCode={typeof code === "string" ? code.toUpperCase().replace(/[^A-Z0-9-]/g, "").slice(0, 18) : undefined} />
             </div>
           ) : null}
           <hr className="divider" style={{ margin: "20px 0" }} />

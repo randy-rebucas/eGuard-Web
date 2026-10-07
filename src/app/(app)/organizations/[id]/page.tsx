@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getUser, requireUser } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -90,7 +91,12 @@ export default async function OrganizationPage(props: PageProps<"/organizations/
 
       <section className="card card-pad">
         <div className="card-head"><div><h2>Sponsor codes</h2><div className="sub">Each code gives one family a paid plan. Hand codes out however you like; you&apos;ll see when each one is redeemed, but not by whom.</div></div>
-          {org.totals.bought ? <a className="btn btn-secondary btn-sm" href={`/organizations/${org.id}/codes.csv`}><Icon name="download" />Download CSV</a> : null}
+          {org.totals.bought ? (
+            <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+              {org.totals.available ? <Link className="btn btn-secondary btn-sm" href={`/organizations/${org.id}/print`}><Icon name="printer" />Print coupons</Link> : null}
+              <a className="btn btn-secondary btn-sm" href={`/organizations/${org.id}/codes.csv`}><Icon name="download" />Download CSV</a>
+            </div>
+          ) : null}
         </div>
         {webBillingAvailable() ? (
           <BuyCodesForm orgId={org.id} monthly={{ PLUS: webPrice("PLUS"), PRO: webPrice("PRO") }} maxQuantity={MAX_CODES_PER_BATCH} methods={methodsLabel()} />
@@ -118,7 +124,8 @@ export default async function OrganizationPage(props: PageProps<"/organizations/
               {/* Not bought until PayMongo confirms: a pending batch is only a checkout */}
               <div className="sub">{b.state === "PENDING" ? "Checkout started" : "Bought"} {shortDate(b.paidAt ?? b.createdAt, tz)} · {peso(b.amount)}</div>
             </div>
-            {b.state === "PENDING" ? <span className="pill tone-warn">Waiting for payment</span> : b.state === "VOIDED" ? <span className="pill tone-muted">Refunded</span> : null}
+            {b.state === "PENDING" ? <span className="pill tone-warn">Waiting for payment</span> : b.state === "VOIDED" ? <span className="pill tone-muted">Refunded</span>
+              : b.codes.some((c) => c.status === "AVAILABLE") ? <Link className="btn btn-ghost btn-sm" href={`/organizations/${org.id}/print?batch=${b.id}`}><Icon name="printer" />Print these</Link> : null}
           </div>
           {b.codes.length ? (
             <CodesList orgId={org.id} codes={b.codes.map((c) => ({

@@ -344,7 +344,11 @@ export async function syncBatch(b: VoucherBatch, o: WebBillingOpts = {}) {
   const now = o.now ?? new Date();
   const cs = (await getCheckoutSession(cfg, b.purchaseToken, o.fetch)).attributes;
   const pay = paidPayment(cs);
-  if (pay) {
+  // Codes only for the full price: a payment for less (never expected from our own checkout) makes none
+  if (pay && pay.attributes.amount < b.amount) {
+    console.error(`Batch ${b.id}: PayMongo payment ${pay.id} is ${pay.attributes.amount} centavos, the batch costs ${b.amount}. No codes created.`);
+    await db.voucherBatch.update({ where: { id: b.id }, data: { checkedAt: now } });
+  } else if (pay) {
     const expiresAt = addMonths(now, REDEEM_WITHIN_MONTHS);
     // Conditional, so the webhook and the admin's return from checkout can't both create codes
     const won = await db.$transaction(async (tx) => {

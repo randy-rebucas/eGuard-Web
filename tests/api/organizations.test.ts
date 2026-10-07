@@ -202,6 +202,21 @@ describe("sponsor codes", () => {
     expect(pm.sessions.get(b.purchaseToken)!.amount).toBe(b.amount);
   });
 
+  it("creates no codes for a payment that doesn't cover the batch", async () => {
+    const { batchId } = await buyCodes(owner, orgId, { plan: "PLUS", months: 1, quantity: 2 }, opts);
+    const b = await db.voucherBatch.findUniqueOrThrow({ where: { id: batchId } });
+    pm.sessions.get(b.purchaseToken)!.amount = b.amount - 100;
+    pm.pay(b.purchaseToken);
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    await handlePaymongoEvent(event("checkout_session.payment.paid", { id: b.purchaseToken, type: "checkout_session" }), opts);
+    expect(await confirmBatchReturn(owner, orgId, batchId, opts)).toEqual({ status: "pending", quantity: 2 });
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
+    expect(await db.voucher.count({ where: { batchId } })).toBe(0);
+    // Not left to count as bought, or to shift the batch lists the other tests read
+    await db.voucherBatch.update({ where: { id: batchId }, data: { state: "EXPIRED" } });
+  });
+
   it("expires a checkout nobody paid", async () => {
     const { batchId } = await buyCodes(owner, orgId, { plan: "PRO", months: 1, quantity: 1 }, opts);
     await db.voucherBatch.update({ where: { id: batchId }, data: { createdAt: new Date(Date.now() - 2 * DAY) } });

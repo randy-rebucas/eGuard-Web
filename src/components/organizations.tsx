@@ -68,15 +68,15 @@ export function LeaveOrgButton({ orgId, name }: { orgId: string; name: string })
   ) : <button className="btn btn-ghost btn-sm" onClick={() => setConfirm(true)}>Leave</button>;
 }
 
-/** Settings › Subscription: redeem a sponsor code. */
-export function RedeemCodeForm() {
+/** Settings › Subscription: redeem a sponsor code. `defaultCode` comes from a printed coupon's QR code. */
+export function RedeemCodeForm({ defaultCode }: { defaultCode?: string }) {
   const [state, action, pending] = useActionState(redeemCode, undefined);
   return (
     <form action={action} className="dash-col" style={{ gap: 10 }}>
       <Feedback state={state} />
       <div className="row org-code-form">
         <label className="sr-only" htmlFor="sponsor-code">Sponsor code</label>
-        <input id="sponsor-code" name="code" className="input org-code-input" placeholder="XXXX-XXXX-XXXX" autoComplete="off" autoCapitalize="characters" spellCheck={false} maxLength={18} />
+        <input id="sponsor-code" name="code" className="input org-code-input" placeholder="XXXX-XXXX-XXXX" autoComplete="off" autoCapitalize="characters" spellCheck={false} maxLength={18} defaultValue={defaultCode} />
         <button className="btn btn-secondary" disabled={pending}>{pending ? <><Icon name="loader-circle" className="spin" />Redeeming…</> : <><Icon name="ticket" />Redeem</>}</button>
       </div>
     </form>
@@ -113,6 +113,11 @@ function CopyButton({ text, label = "Copy", done = "Copied." }: { text: string; 
       <Icon name="copy" />{label}
     </button>
   );
+}
+
+/** The coupon sheet's Print button: the browser's own dialog, where the admin picks the printer and paper. */
+export function PrintButton() {
+  return <button type="button" className="btn btn-primary" onClick={() => window.print()}><Icon name="printer" />Print</button>;
 }
 
 export function JoinCodeCard({ orgId, code }: { orgId: string; code: string }) {
@@ -242,7 +247,12 @@ function CodeRow({ orgId, c }: { orgId: string; c: Code }) {
               {pending ? "Cancelling…" : "Cancel code"}
             </button>
           </span>
-        ) : <button className="link-btn" onClick={() => setConfirm(true)}>Cancel</button>}
+        ) : (
+          <span className="row" style={{ gap: 14, justifyContent: "flex-end" }}>
+            <a className="link-btn" href={`/organizations/${orgId}/print?code=${c.id}`} aria-label={`Print ${c.code} as a coupon`}>Print</a>
+            <button className="link-btn" onClick={() => setConfirm(true)}>Cancel</button>
+          </span>
+        )}
       </td>
     </tr>
   );
