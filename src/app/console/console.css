@@ -1,0 +1,59 @@
+/* Staff console (console.eguard.family). Built on the global tokens, so it follows light and dark mode. */
+@layer components {
+
+.cn{min-height:100dvh; background:var(--bg)}
+.cn-h1{font-size:24px; font-weight:600}
+.cn-eyebrow{font-size:12.5px; font-weight:600; color:var(--ink-3); text-transform:uppercase; letter-spacing:.06em; margin-bottom:4px}
+.cn-muted{color:var(--ink-3); font-size:14px}
+.cn-mono{font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:12.5px}
+.cn-empty{padding:28px 24px; color:var(--ink-3); font-size:14px}
+
+/* Sign-in and 404 */
+.cn-center{min-height:100dvh; display:grid; place-items:center; padding:32px 16px}
+.cn-narrow{width:100%; max-width:420px; display:flex; flex-direction:column; gap:20px}
+.cn-form{display:flex; flex-direction:column; gap:14px}
+
+/* Shell */
+.cn-bar{position:sticky; top:0; z-index:10; background:var(--surface); border-bottom:1px solid var(--line)}
+.cn-bar-row{display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 16px 0; max-width:1200px; margin:0 auto}
+.cn-brand{font-family:var(--display); font-size:16px; color:var(--ink)}
+.cn-brand b{color:var(--accent-ink); font-weight:600}
+.cn-who{display:flex; align-items:center; gap:4px; min-width:0}
+.cn-who > span{overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.cn-nav{display:flex; gap:4px; padding:6px 12px 0; max-width:1200px; margin:0 auto; overflow-x:auto; scrollbar-width:none}
+.cn-nav-link{padding:10px 10px 12px; font-size:14px; font-weight:600; color:var(--ink-3); border-bottom:2px solid transparent; white-space:nowrap}
+.cn-nav-link:hover{color:var(--ink)}
+.cn-nav-link[aria-current="page"]{color:var(--accent-ink); border-bottom-color:var(--accent)}
+.cn-main{max-width:1200px; margin:0 auto; padding:24px 16px 48px; display:flex; flex-direction:column; gap:20px}
+
+/* Overview */
+.cn-stats{display:grid; grid-template-columns:repeat(auto-fill, minmax(160px, 1fr)); gap:12px}
+.cn-stat{display:flex; flex-direction:column; gap:2px; padding:16px 18px}
+.cn-stat-value{font-family:var(--display); font-size:26px; font-weight:600}
+.cn-stat-label{font-size:13px; color:var(--ink-3)}
+.cn-stat-link{transition:border-color .15s}
+.cn-stat-link:hover{border-color:var(--accent)}
+
+/* Lists */
+.cn-search{display:flex; gap:8px}
+.cn-search .input{flex:1; min-width:0}
+.cn-tabs{display:flex; gap:6px; flex-wrap:wrap}
+.cn-tab{padding:6px 12px; border-radius:16px; font-size:13.5px; font-weight:600; color:var(--ink-2); background:var(--surface); border:1px solid var(--line)}
+.cn-tab[aria-current="page"]{background:var(--accent-soft); color:var(--accent-ink); border-color:var(--accent-soft-2)}
+.cn-table th,.cn-table td{text-align:left; padding:10px 14px}
+.cn-table td{white-space:normal; min-width:90px}
+.cn-pager{display:flex; justify-content:space-between; gap:8px}
+.cn-head-flush{margin-bottom:0; padding-bottom:12px}
+
+/* Detail */
+.cn-dl{display:grid; grid-template-columns:minmax(120px, 200px) 1fr; gap:8px 16px; margin:0; font-size:14px}
+.cn-dl dt{color:var(--ink-3)}
+.cn-dl dd{margin:0; overflow-wrap:anywhere}
+.cn-message{white-space:pre-wrap; margin:18px 0 12px; padding:14px 16px; border-radius:var(--r-sm); background:var(--surface-2); overflow-wrap:anywhere}
+
+@media (max-width: 560px){
+  .cn-dl{grid-template-columns:1fr; gap:2px}
+  .cn-dl dd{margin-bottom:8px}
+}
+
+}

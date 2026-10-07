@@ -928,3 +928,58 @@ model AlertRead {
   @@id([alertId, userId])
   @@index([userId])
 }
+
+// ---------- Staff console (console.eguard.family, docs/console.md) ----------
+
+/**
+ * An eGuard staff member who signs in to the console. Not a family member: staff have no family, children or
+ * devices, and a parent's account never opens the console. Created and reset with scripts/create-staff.ts only.
+ */
+model StaffUser {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String
+  passwordHash String
+  /// The authenticator secret, AES-GCM encrypted (lib/totp sealSecret). Always set: the code is required
+  totpSecret   String
+  /// The last 30-second step a code was accepted for, so one code can't be used twice
+  totpLastStep Int?
+  /// false: can't sign in (their sessions are ended too)
+  active       Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+
+  sessions  StaffSession[]
+  auditLogs StaffAuditLog[]
+}
+
+/// A signed-in console browser. Only the SHA-256 of the cookie's token is stored.
+model StaffSession {
+  id         String    @id @default(cuid())
+  staffId    String
+  staff      StaffUser @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique
+  userAgent  String?
+  ip         String?
+  createdAt  DateTime  @default(now())
+  lastSeenAt DateTime  @default(now())
+  expiresAt  DateTime
+
+  @@index([staffId])
+}
+
+/// What staff did and looked at in the console: every change, and every account they opened.
+model StaffAuditLog {
+  id        String    @id @default(cuid())
+  staffId   String
+  staff     StaffUser @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  /// e.g. family.view, ticket.status, staff.login
+  action    String
+  /// What it was about, as "kind:id" (family:clx…, ticket:clx…)
+  target    String?
+  detail    String?
+  createdAt DateTime  @default(now())
+
+  @@index([createdAt])
+  @@index([staffId, createdAt])
+}

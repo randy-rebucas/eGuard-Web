@@ -42,6 +42,9 @@ export const LIMITS = {
   orgApiKey: { max: 600, windowMs: 10 * 60_000 },
   /** organization API requests with a wrong key, from one address */
   orgApiBadKeyIp: { max: 20, windowMs: 15 * 60_000 },
+  /** failed staff console sign-ins for one email, and from one address (docs/console.md): tighter than parents' */
+  staffLoginAccount: { max: 5, windowMs: 15 * 60_000 },
+  staffLoginIp: { max: 20, windowMs: 15 * 60_000 },
 } satisfies Record<string, Limit>;
 
 /**
