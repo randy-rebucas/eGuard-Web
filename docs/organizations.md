@@ -172,7 +172,28 @@ Org admin: plan + months + quantity ─► VoucherBatch (PENDING) + PayMongo che
                                              PAID: create `quantity` codes (once)
 ```
 
-- The checkout has one line item: *"eGuard Plus, 3 months"*, quantity *N*, at months × monthly price each.
+- The checkout has one line item: *"eGuard Plus, 3 months"*, quantity *N*, at months × monthly price each, less
+  the batch's volume discount (below). The description names the discount when there is one.
+
+### Volume discounts
+
+Larger batches cost less per code. The discount is set by the number of codes in the batch and applies to every
+code in it ([src/lib/batch-discount.ts](../src/lib/batch-discount.ts)):
+
+| Codes in the batch | Discount |
+|---|---|
+| 1–9 | none |
+| 10–49 | 10% |
+| 50–99 | 15% |
+| 100–200 | 20% |
+
+- The discounted price of one code is rounded to whole centavos, so the checkout total is exactly that × quantity.
+  `VoucherBatch.amount` records the discounted total, so refunds and emails need no changes.
+- The buy form shows the discount, the saving, and how many codes reach the next tier. It uses the same function as
+  the checkout, so the price shown is the price charged.
+- Discounts stop at 20% on purpose. Codes can be handed to anyone, so a deeper discount would make it worth buying
+  codes in bulk to resell to families below the family price.
+- Months don't change the discount: a 12-month code costs 12 × the discounted monthly price.
 - Payment is re-read from PayMongo (on return, from the `checkout_session.payment.paid` webhook, and by the
   maintenance job) before codes are created. The `PENDING → PAID` update is conditional, so codes are created once.
 - A checkout not paid within 24 hours becomes `EXPIRED`.
@@ -283,7 +304,7 @@ can't). When an owner's account is deleted, the longest-serving admin becomes ow
 | Months per code | 1, 3, 6 or 12 |
 | Codes per batch | 1 to 200 |
 | Redeem by | 12 months after the batch was paid |
-| Price | months × plan's monthly web price × quantity (the same `webPrice()` as passes) |
+| Price | months × plan's monthly web price (the same `webPrice()` as passes) × quantity, less the volume discount: 10% from 10 codes, 15% from 50, 20% from 100 |
 | Who creates an organization | A signed-in user with a verified email |
 | Who joins, leaves, redeems | The family admin |
 
@@ -304,7 +325,7 @@ Service tests in `tests/api/organizations.test.ts`, against the real database an
 
 - create an organization; add and remove admins; the last owner can't be removed; non-members get 404
 - join with a code, join twice (idempotent), leave; replaced join codes stop working
-- buy a batch: checkout amount = quantity × months × price; codes created once on payment (return and webhook both
+- buy a batch: checkout amount = quantity × months × price, and a batch of 50 gets 15% off; codes created once on payment (return and webhook both
   arriving); abandoned checkout expires
 - redeem: plan changes and ends at the right time; stacking on the same plan; refused over Google Play,
   auto-renew, or a different plan; a code can't be redeemed twice or after it's cancelled or expired
@@ -331,4 +352,5 @@ Service tests in `tests/api/organizations.test.ts`, against the real database an
 1. **GCash limits on large batches.** E-wallets cap single payments. Large batches may need card or QR Ph; the
    checkout shows only the methods PayMongo allows for the amount.
 2. **Official receipts (BIR)** for organizations that need them: currently through support.
-3. **Discounts for large batches:** none in Phase 1. Price is the same as families pay.
+3. ~~**Discounts for large batches.**~~ Done: 10% from 10 codes, 15% from 50, 20% from 100 (see
+   [Volume discounts](#volume-discounts)).

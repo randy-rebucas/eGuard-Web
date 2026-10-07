@@ -49,7 +49,7 @@ const FAQS: [string, string][] = [
   ["What's the difference between a pass and auto-renew?", "A pass is one month, paid once with GCash, Maya, QR Ph or a card. It never renews; we remind you 3 days before it ends, and buying another adds a month. Auto-renew charges a card or Maya every month until you turn it off."],
   ["What happens if I move to a smaller plan?", "Nothing is removed. Children and devices over the new limit stay protected; you just can't add more until you're under it. If location sharing ends, current locations are cleared and any history is hidden until you upgrade again."],
   ["Can I pay in the app?", "Plans are bought on the web, in Settings › Subscription. Only the family admin can buy or cancel. The app shows your plan as soon as it's paid."],
-  ["Do you have plans for schools or organizations?", "Yes. Any parent can create an organization for a school, community group or business, share a join code with families, and buy sponsor codes that pay for families' plans. Family Pro adds API keys, so your own systems can read your codes and counts. Organizations only ever see counts, never a family's data."],
+  ["Do you have plans for schools or organizations?", "Yes. Any parent can create an organization for a school, community group or business, share a join code with families, and buy sponsor codes that pay for families' plans, with 10% off 10 or more codes, 15% off 50 or more, and 20% off 100 or more. Family Pro adds API keys, so your own systems can read your codes and counts. Organizations only ever see counts, never a family's data."],
 ];
 
 function Mark({ value }: { value: Cell }) {

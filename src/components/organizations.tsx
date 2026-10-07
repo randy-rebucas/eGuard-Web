@@ -7,6 +7,7 @@ import { Feedback } from "./feedback";
 import { useAction, useFlow } from "./flow";
 import { peso } from "@/lib/format";
 import { planById } from "@/lib/plans";
+import { BATCH_DISCOUNTS, batchDiscount, discountedCodePrice } from "@/lib/batch-discount";
 import {
   addOrgAdmin, buyCodes, cancelCode, createApiKey, createOrganization, joinOrganization, leaveOrganization, makeOrgOwner, previewJoin,
   redeemCode, removeOrgAdmin, replaceJoinCode, revokeApiKey,
@@ -154,7 +155,10 @@ export function BuyCodesForm({ orgId, monthly, maxQuantity, methods }: {
   // Kept as typed, so clearing the field leaves it empty instead of turning it into 0
   const [quantity, setQuantity] = useState("10");
   const q = Math.min(maxQuantity, Math.max(0, Math.floor(Number(quantity)) || 0));
-  const each = monthly[plan] * months;
+  const full = monthly[plan] * months;
+  const each = discountedCodePrice(full, q);
+  const discount = batchDiscount(q);
+  const next = [...BATCH_DISCOUNTS].reverse().find((t) => q < t.minQuantity);
   return (
     <form action={action} className="dash-col" style={{ gap: 14 }}>
       <Feedback state={state} />
@@ -181,6 +185,8 @@ export function BuyCodesForm({ orgId, monthly, maxQuantity, methods }: {
         <div>
           <div className="t-meta">{q} × {PLAN_NAMES[plan]}, {months} month{months === 1 ? "" : "s"} at {peso(each)} each</div>
           <div className="org-total-amount num">{peso(each * q)}</div>
+          {discount ? <div className="org-saving">{discount}% volume discount: you save {peso((full - each) * q)}</div> : null}
+          {next ? <div className="t-meta">Buy {next.minQuantity} or more codes for {next.percent}% off.</div> : null}
         </div>
         <button className="btn btn-primary" disabled={pending || q < 1}>{pending ? <><Icon name="loader-circle" className="spin" />Opening checkout…</> : <>Continue to payment<Icon name="arrow-right" /></>}</button>
       </div>

@@ -11,6 +11,7 @@ import { appUrl, requireVerifiedEmail } from "./email-verification";
 import { LIMITS, enforce } from "./rate-limit";
 import { shortDate } from "./format";
 import { type PaidPlanId, planById, planByProduct, webPrice, webProductFor } from "./plans";
+import { batchDiscount, discountedCodePrice } from "./batch-discount";
 import { applyEntitlement, currentPurchase, isEntitled } from "./entitlement";
 import { lockPaidTime, passMethods, type WebBillingOpts } from "./web-billing";
 import { type PaymongoConfig, createCheckoutSession, getCheckoutSession, paidPayment, paymongoConfig } from "./paymongo";
@@ -59,8 +60,11 @@ export const BatchSchema = z.object({
   quantity: z.coerce.number().int("Enter a whole number of codes.").min(1, "Buy at least 1 code.").max(MAX_CODES_PER_BATCH, `Buy up to ${MAX_CODES_PER_BATCH} codes at a time.`),
 });
 
-/** Price of one code, in centavos: the plan's monthly web price for each month. */
-export const codePrice = (plan: PaidPlanId, months: number) => webPrice(plan) * months;
+/**
+ * Price of one code, in centavos: the plan's monthly web price for each month, less the volume discount for
+ * a batch of `quantity` codes.
+ */
+export const codePrice = (plan: PaidPlanId, months: number, quantity = 1) => discountedCodePrice(webPrice(plan) * months, quantity);
 
 export type CodeStatus = "AVAILABLE" | "REDEEMED" | "CANCELLED" | "EXPIRED";
 export const codeStatus = (v: { redeemedAt: Date | null; revokedAt: Date | null; expiresAt: Date }, now = Date.now()): CodeStatus =>
@@ -312,12 +316,13 @@ export async function buyCodes(actor: Actor, orgId: string, input: { plan: strin
   const org = await db.organization.findUniqueOrThrow({ where: { id: orgId } });
   const user = await db.user.findUniqueOrThrow({ where: { id: actor.id } });
   const p = planById(plan);
-  const each = codePrice(plan, months);
+  const each = codePrice(plan, months, quantity);
+  const discount = batchDiscount(quantity);
   const id = randomUUID();
   const length = `${months} month${months === 1 ? "" : "s"}`;
   const cs = await createCheckoutSession(cfg, {
     name: `${p.name} sponsor code: ${length}`,
-    description: `${quantity} code${quantity === 1 ? "" : "s"} for ${org.name}. Each gives one family ${p.name} for ${length}.`,
+    description: `${quantity} code${quantity === 1 ? "" : "s"} for ${org.name}. Each gives one family ${p.name} for ${length}.${discount ? ` Includes a ${discount}% volume discount.` : ""}`,
     amount: each, quantity,
     methods: passMethods(),
     email: user.email,

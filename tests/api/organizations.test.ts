@@ -191,6 +191,17 @@ describe("sponsor codes", () => {
     expect(view.batches[0].codes[0].code).toMatch(/^[A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4}$/);
   });
 
+  it("takes the volume discount off larger batches", async () => {
+    // A separate organization, so this unpaid batch doesn't shift the other tests' batch lists
+    const bulk = (await createOrganization(owner, { name: "Bulk Buyers", kind: "SCHOOL" })).id;
+    const { batchId } = await buyCodes(owner, bulk, { plan: "PLUS", months: 12, quantity: 50 }, opts);
+    const b = await db.voucherBatch.findUniqueOrThrow({ where: { id: batchId } });
+    const each = Math.round(webPrice("PLUS") * 12 * 0.85);
+    expect(b.amount).toBe(each * 50);
+    // What PayMongo charges matches what the batch records
+    expect(pm.sessions.get(b.purchaseToken)!.amount).toBe(b.amount);
+  });
+
   it("expires a checkout nobody paid", async () => {
     const { batchId } = await buyCodes(owner, orgId, { plan: "PRO", months: 1, quantity: 1 }, opts);
     await db.voucherBatch.update({ where: { id: batchId }, data: { createdAt: new Date(Date.now() - 2 * DAY) } });

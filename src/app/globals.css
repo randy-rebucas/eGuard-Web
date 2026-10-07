@@ -637,6 +637,7 @@ select.input{appearance:auto}
 .org-buy-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
 .org-total{display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; padding:16px 18px; border-radius:var(--r); background:var(--surface-2); border:1px solid var(--line)}
 .org-total-amount{font-family:var(--display); font-size:26px; font-weight:600; color:var(--ink)}
+.org-saving{font-size:13px; font-weight:600; color:var(--ok-ink)}
 .org-code{font-family:ui-monospace, "SF Mono", Consolas, monospace; font-weight:600; letter-spacing:.04em; color:var(--ink)}
 .org-codes td:nth-child(2){text-align:left}
 .org-codes th:nth-child(2){text-align:left}
