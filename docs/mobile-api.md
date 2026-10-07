@@ -454,6 +454,7 @@ and `appVersion?` may be null.
 | `VIEW_SCREEN_TIME` | `childId` | Screen Time |
 | `VIEW_HISTORY` | `childId` | Child profile › History |
 | `MANAGE_SUBSCRIPTION` | none | Subscription |
+| `VIEW_LOCATION` | `childId` | The child's places (location history), for "Mia arrived at School" |
 
 #### Batch (configuration progress)
 
@@ -852,6 +853,10 @@ The Recommended Setup screen. `profile` defaults to the recommended one for the 
 `settings` always has all 10 protections (see [§P6](#p6-enums-and-config-reference)). The design shows 6; pick the ones
 you want and keep the rest as they are. `devices` is empty until a device is paired.
 
+The response also has `categoryLimits`: `[{ "category": "GAMES", "label": "Gaming time", "dailyLimitMinutes": 60,
+"available": true, "upgrade": null }]` (60 minutes on Protected and Custom, 90 on Balanced). That's the design's
+"Gaming time". When `available` is false, show it locked with `upgrade`.
+
 ##### `POST /children/{id}/setup` → `201`
 
 "Review & Configure". Sends a whole profile in one batch.
@@ -864,7 +869,9 @@ you want and keep the rest as they are. `devices` is empty until a device is pai
 ```
 
 `overrides` holds full config objects (see [§P6](#p6-enums-and-config-reference)) that replace the profile's values,
-at most one per key.
+at most one per key. `categoryLimits` (optional) sets category limits too, e.g.
+`[{ "category": "GAMES", "dailyLimitMinutes": 60 }]`. On a plan without them, a limit there is `403 plan_required`,
+checked before anything else is changed.
 
 ```json
 {
@@ -1109,7 +1116,8 @@ Cancels everything in the batch that isn't verified yet. Response: `{ "cancelled
   "counts": { "all": 4, "blocked": 0, "pending": 0, "installed": 4 },
   "apps": [
     { "id": "cmujeom2c0008ncgsgn8kylmz", "name": "Roblox", "approval": "ALLOWED", "approvalLabel": "Allowed",
-      "requested": false, "allowed": true, "dailyLimitMinutes": null, "todayMinutes": 42, "installedAt": "2026-09-27T00:56:40.499Z" }
+      "requested": false, "allowed": true, "dailyLimitMinutes": null, "todayMinutes": 42, "installedAt": "2026-09-27T00:56:40.499Z",
+      "category": "GAMES", "categoryLabel": "Games", "categoryAuto": true }
   ],
   "limited": null
 }
@@ -1126,6 +1134,9 @@ Cancels everything in the batch that isn't verified yet. Response: `{ "cancelled
   - `dailyLimitMinutes` → "1 hour/day"
   - `PENDING` → "Ask parent"
   - `BLOCKED` → "Blocked"
+- `category` is what the app counts toward for category limits: the parent's choice, or eGuard's guess from the
+  app's name while `categoryAuto` is true. Values: `GAMES`, `SOCIAL`, `VIDEO`, `MESSAGING`, `EDUCATION`,
+  `CREATIVITY`, `BROWSERS`, `OTHER`.
 
 ##### `PATCH /apps/{id}`
 
@@ -1133,9 +1144,10 @@ Cancels everything in the batch that isn't verified yet. Response: `{ "cancelled
 |---|---|---|
 | `approval` | `ALLOWED` \| `ALWAYS_ALLOWED` \| `FILTERED` \| `BLOCKED`, optional | Switch on → `ALLOWED`, off → `BLOCKED`. Approving or declining a request also resolves its alert |
 | `dailyLimitMinutes` | int 1–1440, or `null` to remove, optional | |
+| `category` | a category, or `null` to go back to eGuard's guess, optional | Any plan; it only matters once a category limit is set |
 
 Send at least one field. Response:
-`{ id, name, approval, approvalLabel, dailyLimitMinutes }`. The device picks up the change on its next sync (within
+`{ id, name, approval, approvalLabel, dailyLimitMinutes, category, categoryLabel, categoryAuto }`. The device picks up the change on its next sync (within
 about 5 minutes).
 
 ##### `POST /children/{id}/apps` → `201`
@@ -1147,8 +1159,26 @@ about 5 minutes).
 ```
 
 `name` is 1–80 characters; `approval` is any app `approval` value and defaults to `ALLOWED`; `dailyLimitMinutes` is
-1–1440 or `null`. Response: `201 { id, name, approval, approvalLabel, dailyLimitMinutes }`, the same shape as
-`PATCH /apps/{id}`. Returns `409` if an app with that name is already on the child's list.
+1–1440 or `null`. Response: `201 { id, name, approval, approvalLabel, dailyLimitMinutes, category, categoryLabel, categoryAuto }`,
+the same shape as `PATCH /apps/{id}`. Returns `409` if an app with that name is already on the child's list.
+
+##### `GET /children/{id}/category-limits` and `PUT`
+
+One daily limit for all of a child's apps of a kind together ("Gaming time"). Every category is listed, with its limit
+(`null` for none) and the minutes the child's apps in it were used today:
+
+```json
+{
+  "available": true,
+  "upgrade": null,
+  "categories": [ { "category": "GAMES", "label": "Games", "limitLabel": "Gaming time", "dailyLimitMinutes": 60, "todayMinutes": 42 } ]
+}
+```
+
+`PUT` with `{ "category": "GAMES", "dailyLimitMinutes": 60 }` (1–1440, or `null` to remove) returns
+`{ category, dailyLimitMinutes }`. Category limits are on eGuard Plus and above: on Free, `available` is false,
+`upgrade` is the message to show, and setting one is `403 plan_required` (removing one always works). A limit set
+before a downgrade is kept but not sent to devices until the family upgrades again.
 
 #### P4.10 Location
 
@@ -1200,7 +1230,7 @@ about 5 minutes).
 - To turn sharing on or off, change the `LOCATION` protection (`PUT /children/{id}/protections/LOCATION
   { "sharing": true }`). On iOS this is guided setup.
 
-##### `GET /children/{id}/location/visits?limit=50&before=`
+##### `GET /children/{id}/location/visits?limit=50&before=` or `?day=2026-10-05`
 
 "View All" under Today's visits: every visit kept, up to the family's retention period, newest first. `limit` is 1–100,
 and pages use `nextBefore` (the `arrivedAt` of the last item).
@@ -1220,6 +1250,11 @@ and pages use `nextBefore` (the `arrivedAt` of the last item).
 
 With history off, the response is `{ "enabled": false, "visits": [], "nextBefore": null }`. Group sections by
 `day.key`, like alerts.
+
+**A day's route:** with `day` (YYYY-MM-DD in the family's time zone), the response holds that day's visits **oldest
+first**, all of them (`limit` and `before` are ignored, `nextBefore` is `null`). Draw them in order as a line;
+number the ones with `stayed: true`, and show the rest as small dots. A visit that spans midnight is in both days.
+A `day` that isn't a real date is a `400`.
 
 ##### `GET /locations`
 
@@ -1249,12 +1284,18 @@ manage them; 403 `plan_required` on Free (except `DELETE`).
 
 | Request | Body | Response |
 |---|---|---|
-| `GET /places` | | `{ places: [{ id, name, lat, lng, radiusM }] }`, by name |
-| `POST /places` | `{ name, lat, lng, radiusM? }`: name 1–40 characters, `radiusM` one of 100, 150 (default), 250, 500, 1000 | `201` the place. `400` past 30 places |
-| `PATCH /places/{id}` | `{ name?, radiusM? }` (at least one) | the place |
+| `GET /places` | | `{ places: [{ id, name, lat, lng, radiusM, notifyArrive, notifyLeave }] }`, by name |
+| `POST /places` | `{ name, lat, lng, radiusM?, notifyArrive?, notifyLeave? }`: name 1–40 characters, `radiusM` one of 100, 150 (default), 250, 500, 1000; notices default to `false` | `201` the place. `400` past 30 places |
+| `PATCH /places/{id}` | `{ name?, radiusM?, notifyArrive?, notifyLeave? }` (at least one) | the place |
 | `DELETE /places/{id}` | | `{ ok: true }`; visits there lose its name unless another saved place covers them |
 
 Offer "Name this place" on the child's current location and on a visit with no `placeId`, using its `lat` and `lng`.
+
+**Arrive and leave alerts.** With `notifyArrive` / `notifyLeave` on, a child's device reaching or leaving the place
+raises an `INFO` alert in the `LOCATION` category ("Mia arrived at School", "Mia left Home", action `VIEW_LOCATION`),
+emailed and pushed like other alerts. It works with location history off. A device's first fix is never an arrival,
+a fix within 50 m (or its accuracy, if rougher) past the edge of the place it was at doesn't count as leaving, and
+each child, place and direction raises at most one alert per 30 minutes, whichever device gets there first.
 
 #### P4.11 Alerts
 
@@ -1653,7 +1694,6 @@ These parts of the design aren't backed by the API yet. Plan the UI accordingly.
 
 | Design element | Status | Suggested UI for now |
 |---|---|---|
-| "Gaming time 1 hour/day" (Recommended Setup) | No app categories exist, so there's no per-category limit | Leave it out, or use per-app limits (`PATCH /apps/{id}`) for game apps |
 | Push notifications | Sent through Firebase Cloud Messaging once the server has `FCM_SERVICE_ACCOUNT`; alerts go out with the maintenance job (every few minutes), not instantly | Register FCM tokens; still refresh with `/alerts/unread-count` on foreground. A push's `data` has `type: "alert"`, `alertId`, `category` and `childId?`: open the alert |
 | Upgrade / Manage Subscription in the apps | Plans are sold on the web only (PayMongo) for now; Google Play billing is turned off and App Store purchases aren't supported, so `billingAvailable` is `false` | Show the plan and usage without a buy button or a link to the website |
 | Password for Apple/Google accounts | Social accounts have no password until they set one, so they can't change one or change their email | Hide "Change password" while `hasPassword` is false and offer "Forgot password?" to set one. Deletions use "Type DELETE" instead ([Confirming deletions](#confirming-deletions)) |

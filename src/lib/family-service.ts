@@ -1,7 +1,7 @@
 import "server-only";
 import { randomInt } from "node:crypto";
 import { z } from "zod";
-import type { AppApproval, PairingKind, Prisma } from "@prisma/client";
+import type { AppApproval, AppCategory, PairingKind, Prisma } from "@prisma/client";
 import { db } from "./db";
 import { PASSWORD_TOO_LONG, confirmDestructive, confirmPassword, hashPassword, isPendingInvite, passwordTooLong } from "./auth";
 import { refreshPurchases } from "./billing";
@@ -11,9 +11,10 @@ import { audit } from "./audit";
 import { profileConfigs, type ProfileId } from "./profiles";
 import { fmtMinutes, type ProtectionConfig } from "./protections";
 import type { Actor } from "./config-service";
-import { conflict, forbidden, invalid, isUniqueViolation, notFound, planLimit } from "./errors";
+import { conflict, forbidden, invalid, isUniqueViolation, notFound, planLimit, planRequired } from "./errors";
 import { requireVerifiedEmail } from "./email-verification";
-import { BASE_PLAN, nextPlan, planByName } from "./plans";
+import { BASE_PLAN, entitlementsFor, nextPlan, planByName } from "./plans";
+import { CATEGORY_BY_KEY, CATEGORY_KEYS, CATEGORY_UPGRADE, categoryOf, guessCategory } from "./app-categories";
 import { LIMITS, enforce } from "./rate-limit";
 import { ensurePrimary, makePrimary, promoteOldest, usedDeviceSlots, withDeviceLock } from "./device-slots";
 
@@ -179,6 +180,73 @@ export async function setAppLimit(actor: Actor, appId: string, minutes: number |
     },
   });
   return updated;
+}
+
+/**
+ * Sets which category an app counts toward, or (null) goes back to eGuard's guess from its name. Any plan: the
+ * category only matters once a category limit is set.
+ */
+export async function setAppCategory(actor: Actor, appId: string, category: AppCategory | null, via: string) {
+  const app = await appFor(actor.familyId, appId);
+  if (app.category === category) return app;
+  const before = categoryOf(app), after = categoryOf({ name: app.name, category });
+  const updated = await db.childApp.update({ where: { id: appId }, data: { category } });
+  if (before.category !== after.category) {
+    await db.configChange.create({
+      data: {
+        familyId: actor.familyId, childId: app.childId, key: "APP_RESTRICTIONS", title: `${app.name} counted as ${CATEGORY_BY_KEY[after.category].label}`,
+        actor: `${actor.name} on ${via} · applies on next sync`, fromValue: CATEGORY_BY_KEY[before.category].label, toValue: CATEGORY_BY_KEY[after.category].label,
+      },
+    });
+  }
+  return updated;
+}
+
+/**
+ * Minutes per category from a day's app usage (queries.appMinutesOn): each app counts toward its category, and an app
+ * that isn't on the child's list yet toward eGuard's guess. "Others" (apps the device didn't name) counts nowhere.
+ */
+export async function categoryUsage(childId: string, usage: { app: string; minutes: number }[]) {
+  const apps = await db.childApp.findMany({ where: { childId }, select: { name: true, category: true } });
+  const byName = new Map(apps.map((a) => [a.name, categoryOf(a).category]));
+  const total = new Map<AppCategory, number>();
+  for (const u of usage) {
+    if (u.app === "Others") continue;
+    const c = byName.get(u.app) ?? guessCategory(u.app);
+    total.set(c, (total.get(c) ?? 0) + u.minutes);
+  }
+  return total;
+}
+
+/** A child's category limits, in APP_CATEGORIES order. */
+export const categoryLimits = (childId: string) =>
+  db.childCategoryLimit.findMany({ where: { childId }, select: { category: true, dailyLimitMinutes: true } })
+    .then((rows) => rows.sort((a, b) => CATEGORY_KEYS.indexOf(a.category) - CATEGORY_KEYS.indexOf(b.category)));
+
+/**
+ * A daily limit for all of a child's apps in a category together ("Gaming time"), or null to remove it. Needs a
+ * plan with category limits; removing one works on any plan. Devices get it on their next sync.
+ */
+export async function setCategoryLimit(actor: Actor, childId: string, category: AppCategory, minutes: number | null, via: string) {
+  const child = await db.child.findFirst({ where: { id: childId, familyId: actor.familyId }, select: { id: true, family: { select: { plan: true } } } });
+  if (!child) throw notFound("Child");
+  const rounded = Math.min(1440, Math.round(minutes ?? 0));
+  const m = rounded > 0 ? rounded : null;
+  if (m != null && !entitlementsFor(child.family.plan).categoryLimits) throw planRequired(CATEGORY_UPGRADE);
+  const where = { childId_category: { childId, category } };
+  const current = await db.childCategoryLimit.findUnique({ where });
+  if ((current?.dailyLimitMinutes ?? null) === m) return { category, dailyLimitMinutes: m };
+  if (m == null) await db.childCategoryLimit.delete({ where });
+  else await db.childCategoryLimit.upsert({ where, create: { childId, category, dailyLimitMinutes: m }, update: { dailyLimitMinutes: m } });
+  const label = (v: number | null) => (v ? `${fmtMinutes(v)} a day` : "No limit");
+  const name = CATEGORY_BY_KEY[category].limitLabel;
+  await db.configChange.create({
+    data: {
+      familyId: actor.familyId, childId, key: "APP_RESTRICTIONS", title: m ? `${name} limited to ${fmtMinutes(m)} a day` : `${name} limit removed`,
+      actor: `${actor.name} on ${via} · applies on next sync`, fromValue: label(current?.dailyLimitMinutes ?? null), toValue: label(m),
+    },
+  });
+  return { category, dailyLimitMinutes: m };
 }
 
 /* ---------- Devices ---------- */

@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { z } from "zod";
-import type { AppApproval } from "@prisma/client";
+import type { AppApproval, AppCategory } from "@prisma/client";
+import { CATEGORY_KEYS } from "@/lib/app-categories";
 import { db } from "@/lib/db";
 import { clearSessionCookie, requireAdmin, requireUser } from "@/lib/auth";
 import { sendVerificationEmailLater } from "@/lib/email-verification";
@@ -142,6 +143,29 @@ export async function setAppLimit(appId: string, minutes: number | null): Promis
   return toResult(async () => {
     const app = await family.setAppLimit(u, Id.parse(appId), AppLimit.parse(minutes), "web");
     revalidatePath(`/children/${app.childId}`);
+    return {};
+  });
+}
+
+const Category = z.enum(CATEGORY_KEYS, { error: "Choose a category." });
+
+/** null goes back to eGuard's guess from the app's name. */
+export async function setAppCategory(appId: string, category: AppCategory | null): Promise<Result> {
+  const u = await requireUser();
+  return toResult(async () => {
+    const app = await family.setAppCategory(u, Id.parse(appId), Category.nullable().parse(category), "web");
+    revalidatePath(`/children/${app.childId}`);
+    return {};
+  });
+}
+
+/** null removes the limit. */
+export async function setCategoryLimit(childId: string, category: AppCategory, minutes: number | null): Promise<Result> {
+  const u = await requireUser();
+  return toResult(async () => {
+    const id = Id.parse(childId);
+    await family.setCategoryLimit(u, id, Category.parse(category), AppLimit.parse(minutes), "web");
+    revalidatePath(`/children/${id}`);
     return {};
   });
 }

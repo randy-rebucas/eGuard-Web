@@ -36,6 +36,8 @@ const ROWS: [string, string | null, (p: Plan) => Cell][] = [
   ["Alerts in the app and by email", null, () => true],
   ["Website and app requests", null, () => true],
   ["Apps you can see and manage", null, (p) => p.entitlements.appMonitoringLimit === null ? "All apps" : `${p.entitlements.appMonitoringLimit} per child`],
+  ["Daily limits per app", null, () => true],
+  ["Limits for a kind of app", "Like gaming time or social media", (p) => p.entitlements.categoryLimits],
   ["Location sharing and history", null, (p) => p.entitlements.locationSharing],
   ["Reports", null, (p) => p.entitlements.advancedReports ? "Today to 30 days, custom ranges, CSV export" : "Today and 7 days"],
   ["Push alerts", "Coming soon", (p) => p.entitlements.realtimeAlerts],

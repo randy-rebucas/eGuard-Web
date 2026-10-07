@@ -110,7 +110,8 @@ type AlertAction =
   | { type: "REVIEW_APPS"; label: string; childId: string }
   | { type: "VIEW_SCREEN_TIME"; label: string; childId: string }
   | { type: "VIEW_HISTORY"; label: string; childId: string }
-  | { type: "MANAGE_SUBSCRIPTION"; label: string };
+  | { type: "MANAGE_SUBSCRIPTION"; label: string }
+  | { type: "VIEW_LOCATION"; label: string; childId: string };
 
 /** What the alert's button does in the app. Mirrors alertAction() on the web. */
 export function mobileAlertAction(a: Pick<Alert, "resolveKey" | "category" | "childId" | "deviceId" | "resolvedAt">): AlertAction | null {
@@ -121,6 +122,7 @@ export function mobileAlertAction(a: Pick<Alert, "resolveKey" | "category" | "ch
   }
   if (k === "OFFLINE" && a.deviceId) return { type: "VIEW_DEVICE", label: "View device", deviceId: a.deviceId };
   if (k === "APPREQ" && a.childId) return { type: "REVIEW_APPS", label: "Review request", childId: a.childId };
+  if (k === "PLACE" && a.childId) return { type: "VIEW_LOCATION", label: "View places", childId: a.childId };
   switch (a.category) {
     case "APPS": return a.childId ? { type: "REVIEW_APPS", label: "Review app", childId: a.childId } : null;
     case "SCREEN_TIME": return a.childId ? { type: "VIEW_SCREEN_TIME", label: "View activity", childId: a.childId } : null;

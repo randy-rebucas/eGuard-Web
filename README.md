@@ -242,13 +242,13 @@ browser pairing and tokens, browser policy, browser access requests, and browser
 | Area | What parents can do |
 |---|---|
 | **Dashboard** | Hero summary, Family Protection score, children, devices, today's activity (screen time, apps, location, device status), device protection status, weekly screen-time trend, recent alerts, quick actions |
-| **Children** | List, add, edit, delete (password-confirmed). Each child has 9 tabs: Overview, Activity, Apps (approve/decline requests, per-app limits), Screen Time, Protection, **Browser**, Location, Devices, History |
+| **Children** | List, add, edit, delete (password-confirmed). Each child has 9 tabs: Overview, Activity, Apps (approve/decline requests, per-app limits, each app's category, and category limits such as gaming time on Plus and above), Screen Time, Protection, **Browser**, Location, Devices, History |
 | **Browser tab** | Set the child's browser policy (Safe Browsing, SafeSearch, blocked categories, blocked/allowed sites, unknown-site rule, focus hours), answer website access requests, and see connected browsers |
 | **Devices** | Grouped by child. Pairing codes for new phones and browsers. A detail page shows every protection, its platform capability and verification time. Rename, remove, or run a configuration check on one device |
 | **Protection** | The Configuration Health ring (10 checks), a breakdown by status, all protections with their Android/iOS capability, and a guide to what each capability means |
 | **Notifications** | Filter by category, severity labels, unread state, mark all read, dismiss info items, show resolved. Each alert has an action (fix the setting, view the device, review the app…) |
 | **Reports** | Today, 7 days, 30 days or a custom range: health, average screen time vs the previous period, protection changes, device health, top apps, a change timeline, and CSV export |
-| **Location** | A Leaflet/OpenStreetMap map of current locations. Children who don't share location get a "Turn on" link into the guided flow |
+| **Location** | A Leaflet/OpenStreetMap map of current locations. Children who don't share location get a "Turn on" link into the guided flow. Saved places (Home, School) with optional arrive and leave alerts. With location history on, each child's places page shows a day's route on the map (numbered stays, earlier days by date) and every visit kept |
 | **Settings** | Account and family time zone, family members (admin adds/removes parents), notification preferences, privacy controls, security (sessions, password), subscription (including redeeming a sponsor code), organizations (join with a code, or create one), connected devices, platform integrations, data export (JSON), support |
 | **Organizations** | For schools, community groups and businesses (`/organizations/{id}`): a join code families enter, sponsor codes bought in batches through PayMongo that each give one family a paid plan, and admins. The organization sees counts only, never a family's data. See [docs/organizations.md](docs/organizations.md) |
 | **Search** | Press `/` to search children, devices, protection policies, alerts and settings |
@@ -491,6 +491,10 @@ Each run:
 - emails parents (verified address, email alerts on) about protection changes, offline devices and anything that
   needs action
 - re-checks subscriptions and passes, and emails a reminder 3 days before a pass ends
+- sends the **weekly summary** on Sunday from 6 PM in the family's time zone, once per family, to parents with
+  "Weekly summary" on and a verified address: Configuration Health, average screen time against the week before,
+  each child's week, the most used apps, settings changed, and what's waiting for them ([src/lib/weekly-digest.ts](src/lib/weekly-digest.ts)).
+  A week missed by more than a day (the job was down) is skipped, not sent late
 - deletes activity older than each family's retention period (screen time, app usage, location visits, history,
   closed alerts), audit entries older than a year, and expired sessions, links and pairing codes
 
@@ -585,13 +589,10 @@ docs/                  developer and launch documentation
 ## Not built yet
 
 - **Native Android/iOS apps.** The device and parent APIs are ready for them. Until they exist, the simulator stands in.
-- **The weekly summary.** The setting is saved but nothing is sent yet; a design (the weekly family digest) is in
-  review. Push delivery is built ([src/lib/push.ts](src/lib/push.ts),
+- **Push alerts in production.** Push delivery is built ([src/lib/push.ts](src/lib/push.ts),
   Firebase Cloud Messaging) and switches on with `FCM_SERVICE_ACCOUNT`; pushes go out with the maintenance job, so
   they're as quick as its schedule. The Plus plan still lists "Push alerts (coming soon)" until the apps register FCM
   tokens in production.
-- **"Gaming time"** on the app's Recommended Setup screen. eGuard has per-app limits but no app categories yet, so
-  there's no per-category limit to recommend.
 - **Setting a password while signed in.** Parents who signed up with Apple/Google set their first password through
   "Forgot password?". Until then, deleting a child or changing the email asks them to do that. Deleting the account
   takes typing DELETE instead.
@@ -603,8 +604,6 @@ docs/                  developer and launch documentation
 - **Newsletter, social accounts and store badges.** Removed from the landing page until they exist. Add social links
   and a sign-up back to [src/components/site-chrome.tsx](src/components/site-chrome.tsx), and the store badges to
   `Stores()` in [src/app/page.tsx](src/app/page.tsx).
-- **Location history on the web.** Visits are recorded when the privacy toggle is on and shown in the mobile API.
-  The web Location page still shows current locations only.
 - **Choosing the retention period.** It's 90 days for every family; there's no setting to change it yet.
 
 ---

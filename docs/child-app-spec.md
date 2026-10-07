@@ -254,7 +254,7 @@ Additional rules:
 
 ## 7. Apps: approval, blocking and per-app limits
 
-`/sync` returns `apps: [{ name, approval, dailyLimitMinutes }]` for the child. `name` is the display name and is
+`/sync` returns `apps: [{ name, approval, dailyLimitMinutes, category }]` for the child. `name` is the display name and is
 the only key: there's no package name or bundle ID (**Server gap G4**).
 
 | `approval` | What the device does |
@@ -265,6 +265,13 @@ the only key: there's no package name or bundle ID (**Server gap G4**).
 | `BLOCKED` | Always shows the block screen. Opening it sends `APP_BLOCKED` |
 | `PENDING` | Blocked, with the "Waiting for your parent" screen |
 | Not in the list | New app. If App Approval is on, block it and send `APP_REQUESTED`; else allow it and send `APP_INSTALLED` |
+
+**Category limits.** Each app has a `category` (`GAMES`, `SOCIAL`, `VIDEO`, `MESSAGING`, `EDUCATION`, `CREATIVITY`,
+`BROWSERS`, `OTHER`): the parent's choice or the server's guess from the name. `categoryLimits:
+[{ category, dailyLimitMinutes }]` caps the day's total for all apps in a category, in the family's time zone. Once
+it's used up, pause those apps (except `ALWAYS_ALLOWED`) like a per-app limit and send `LIMIT_REACHED` with the
+`category`. An app not in `apps` yet counts as `OTHER` until the next sync. The list is empty on plans without
+category limits (`features.categoryLimits: false`).
 
 **Asking for an app.** From a block screen or Home › Ask for an app, send `POST /events`
 `{ "type": "APP_REQUESTED", "app": "Roblox" }`. The response includes `approval` when the app is already decided.
@@ -282,7 +289,7 @@ All calls: `Authorization: Bearer <device token>`, JSON, HTTPS only. Errors are 
 
 | Call | When | Body |
 |---|---|---|
-| `POST /sync` | Every `nextSyncSeconds` (300 today), at app start, after network returns, after boot | `{ battery, osVersion, appVersion }`. Returns `{ deviceId, childName, policy, requests, apps, fullReportRequested, nextSyncSeconds, timezone, features: { locationSharing }, minAppVersion }`. `childName` can change: a parent may move the device to another child, so show the latest one, not the name from pairing |
+| `POST /sync` | Every `nextSyncSeconds` (300 today), at app start, after network returns, after boot | `{ battery, osVersion, appVersion }`. Returns `{ deviceId, childName, policy, requests, apps, categoryLimits, fullReportRequested, nextSyncSeconds, timezone, features: { locationSharing, categoryLimits }, minAppVersion }`. `childName` can change: a parent may move the device to another child, so show the latest one, not the name from pairing |
 | `POST /report` | After applying anything from `/sync`, after any on-device change, and in full when `fullReportRequested` | `{ protections: [{ key, config }], full?, battery?, osVersion?, appVersion? }` |
 | `POST /usage` | Every sync cycle for today, and once for yesterday after midnight | `{ date, totalMinutes, apps, hourly }` |
 | `POST /location` | Section 9 | `{ lat, lng, accuracyM, placeLabel? }` |
@@ -375,6 +382,7 @@ the last threshold crossed and no `apps`, and change the listing copy.
 | `APP_REQUESTED` `{ app }` | The child taps Ask, or a new app is installed with App Approval on | One open request per app; asking again for a blocked app alerts once a day |
 | `APP_BLOCKED` `{ app }` | The child opens a `BLOCKED` app | One alert per app per hour |
 | `LIMIT_REACHED` `{ minutes }` | The daily screen-time limit is hit (`minutes` is the limit) | One alert per 12 hours |
+| `LIMIT_REACHED` `{ minutes, category }` | A category limit is used up (`category` from `categoryLimits`, `minutes` its limit) | One alert per category per 12 hours ("Gaming time used up") |
 
 Give each event an `eventId` (8–64 characters; a UUID made once per event) and send the same one on every retry.
 The server answers a repeat from the same device within 7 days with `{ "ok": true, "duplicate": true }` and does

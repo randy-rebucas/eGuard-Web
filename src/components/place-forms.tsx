@@ -54,17 +54,23 @@ export function NamePlaceButton({ lat, lng, label = "Name this place" }: { lat: 
   );
 }
 
-/** One saved place in the list: rename, change its radius, or remove it. */
-export function PlaceRow({ place }: { place: { id: string; name: string; radiusM: number } }) {
+/** "Alerts when someone arrives and leaves" / "… arrives" / "… leaves", or nothing with notices off */
+const noticeText = (p: { notifyArrive: boolean; notifyLeave: boolean }) =>
+  p.notifyArrive || p.notifyLeave ? `Alerts when someone ${[p.notifyArrive ? "arrives" : null, p.notifyLeave ? "leaves" : null].filter(Boolean).join(" and ")}` : null;
+
+/** One saved place in the list: rename, change its radius or its arrive / leave alerts, or remove it. */
+export function PlaceRow({ place }: { place: { id: string; name: string; radiusM: number; notifyArrive: boolean; notifyLeave: boolean } }) {
   const [mode, setMode] = useState<"view" | "edit" | "remove">("view");
   const [name, setName] = useState(place.name);
   const [radius, setRadius] = useState(place.radiusM);
+  const [arrive, setArrive] = useState(place.notifyArrive);
+  const [leave, setLeave] = useState(place.notifyLeave);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const { toast } = useFlow();
   const router = useRouter();
   const idp = useId();
-  const close = () => { setMode("view"); setError(null); setName(place.name); setRadius(place.radiusM); };
+  const close = () => { setMode("view"); setError(null); setName(place.name); setRadius(place.radiusM); setArrive(place.notifyArrive); setLeave(place.notifyLeave); };
   const run = (fn: () => Promise<{ error?: string }>, done: string) => start(async () => {
     const r = await fn();
     if (r.error) { setError(r.error); return; }
@@ -78,7 +84,7 @@ export function PlaceRow({ place }: { place: { id: string; name: string; radiusM
       <span className="ico-tile"><Icon name={/home/i.test(place.name) ? "house" : /school/i.test(place.name) ? "school" : "map-pin"} /></span>
       <div className="grow">
         <div className="t-title">{place.name}</div>
-        <div className="t-meta">Within {place.radiusM < 1000 ? `${place.radiusM} m` : "1 km"}</div>
+        <div className="t-meta">Within {place.radiusM < 1000 ? `${place.radiusM} m` : "1 km"}{noticeText(place) ? ` · ${noticeText(place)}` : ""}</div>
       </div>
       {mode === "view" ? (
         <div className="row" style={{ gap: 4 }}>
@@ -87,8 +93,19 @@ export function PlaceRow({ place }: { place: { id: string; name: string; radiusM
         </div>
       ) : null}
       {mode === "edit" ? (
-        <form className="dash-col" style={{ gap: 8, flexBasis: "100%" }} onSubmit={(e) => { e.preventDefault(); run(() => updatePlace(place.id, { name, radiusM: radius }), `Saved ${name.trim()}.`); }}>
+        <form className="dash-col" style={{ gap: 8, flexBasis: "100%" }} onSubmit={(e) => { e.preventDefault(); run(() => updatePlace(place.id, { name, radiusM: radius, notifyArrive: arrive, notifyLeave: leave }), `Saved ${name.trim()}.`); }}>
           <PlaceFields idp={idp} name={name} radius={radius} onName={setName} onRadius={setRadius} />
+          <fieldset className="check-list" style={{ border: 0, padding: 0, margin: 0 }}>
+            <legend className="t-meta" style={{ marginBottom: 4 }}>Alert me (email and push, as set in Notifications)</legend>
+            <label className="check">
+              <input type="checkbox" checked={arrive} onChange={(e) => setArrive(e.target.checked)} />
+              <span className="t-title" style={{ fontSize: 14 }}>When a child arrives at {name.trim() || "this place"}</span>
+            </label>
+            <label className="check">
+              <input type="checkbox" checked={leave} onChange={(e) => setLeave(e.target.checked)} />
+              <span className="t-title" style={{ fontSize: 14 }}>When a child leaves {name.trim() || "this place"}</span>
+            </label>
+          </fieldset>
           {error ? <div className="form-error" role="alert"><Icon name="triangle-alert" />{error}</div> : null}
           <div className="row">
             <button type="button" className="btn btn-ghost btn-sm" onClick={close}>Cancel</button>

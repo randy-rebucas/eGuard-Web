@@ -8,7 +8,8 @@ export type Period = "today" | "7d" | "30d" | "custom";
 export const MAX_RANGE_DAYS = 366;
 
 const DAY = 864e5;
-const addDays = (k: string, n: number) => new Date(dateFromKey(k).getTime() + n * DAY).toISOString().slice(0, 10);
+/** A day key `n` days after `k` (negative for before) */
+export const addDays = (k: string, n: number) => new Date(dateFromKey(k).getTime() + n * DAY).toISOString().slice(0, 10);
 
 export function resolveRange(period: Period, tz: string, from?: string, to?: string) {
   const today = dayKey(new Date(), tz);
@@ -54,5 +55,5 @@ export async function reportData(familyId: string, tz: string, from: string, to:
   const prevTotal = prevScreen._sum.minutes ?? 0;
   const avg = complete > 0 ? Math.round((total - (to === today ? todayTotal : 0)) / complete) : total;
   const prevAvg = complete > 0 ? Math.round(prevTotal / complete) : null;
-  return { n, complete, screen, total, avg, prevAvg, apps, changes, children };
+  return { n, complete, screen, total, avg, prevAvg, prevTotal, apps, changes, children };
 }

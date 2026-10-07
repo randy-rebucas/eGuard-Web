@@ -3,7 +3,7 @@ import { isOffline } from "./health";
 import { isConfigured } from "./protections";
 import { entitlementsFor } from "./plans";
 import { pageByTime } from "./paging";
-import { clockTime, dateFormat } from "./format";
+import { clockTime, dateFormat, dayStart } from "./format";
 
 /** YYYY-MM-DD in the family's time zone (as queries.dayKey, which can't be imported outside the server) */
 const dayKey = (d: Date, tz: string) => dateFormat("en-CA", tz, { year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
@@ -109,6 +109,24 @@ export function placeFor<P extends { lat: number; lng: number; radiusM: number }
   return best;
 }
 
+/** GPS wobbles: a device at a place's edge isn't counted as leaving until a fix is clearly outside it. */
+export const LEAVE_MARGIN_M = 50;
+/** One arrive or leave notice per child, place and direction in this window (a phone and a tablet arriving together). */
+export const PLACE_ALERT_WINDOW_MS = 30 * 60_000;
+
+/**
+ * Where a fix puts a device, given the saved place its last fix was at. Inside a place: that place (the nearest).
+ * Just outside the place it was at (within LEAVE_MARGIN_M, or the fix's accuracy if rougher): still there, so
+ * wobble at the edge isn't read as leaving and arriving again. `arrived` / `left` say what changed.
+ */
+export function placeMove<P extends { id: string; lat: number; lng: number; radiusM: number }>(places: P[], prevId: string | null | undefined, fix: { lat: number; lng: number; accuracyM?: number }) {
+  const inside = placeFor(places, fix);
+  const prev = prevId ? places.find((p) => p.id === prevId) ?? null : null;
+  const near = prev && !inside && distanceM(prev, fix) <= prev.radiusM + Math.max(LEAVE_MARGIN_M, fix.accuracyM ?? 0) ? prev : null;
+  const place = inside ?? near;
+  return { place, arrived: place && place.id !== prev?.id ? place : null, left: prev && place?.id !== prev.id ? prev : null };
+}
+
 /** Whether a visit lasted (the child stayed there), as opposed to a fix taken while passing by. */
 export const stayed = (v: { arrivedAt: Date; lastSeenAt: Date }) => v.lastSeenAt.getTime() - v.arrivedAt.getTime() >= STAY_MS;
 
@@ -145,6 +163,27 @@ export async function visitsPage(childId: string, { before, limit }: { before?: 
   return { visits: rows, nextBefore };
 }
 
+/** A real calendar day, YYYY-MM-DD ("2026-02-30" matches the pattern but isn't one) */
+export const isDayKey = (s: unknown): s is string =>
+  typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(Date.parse(`${s}T00:00:00Z`)) && new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) === s;
+
+/** The day key `n` days after `k` (negative for before) */
+export const shiftDay = (k: string, n: number) => new Date(Date.parse(`${k}T00:00:00Z`) + n * 864e5).toISOString().slice(0, 10);
+
+/** Most visits one day view shows; a phone reporting every few minutes while moving stays well under it */
+export const DAY_VISITS_MAX = 300;
+
+/**
+ * One child's visits on a day (YYYY-MM-DD in the family's time zone), oldest first: the day's route.
+ * A visit that spans midnight belongs to both days.
+ */
+export function visitsForDay(childId: string, day: string, tz: string) {
+  return db.locationVisit.findMany({
+    where: { childId, arrivedAt: { lt: dayStart(shiftDay(day, 1), tz) }, lastSeenAt: { gte: dayStart(day, tz) } },
+    orderBy: [{ arrivedAt: "asc" }, { id: "asc" }], take: DAY_VISITS_MAX, include: { device: { select: { name: true } } },
+  });
+}
+
 /**
  * Each child's last few places they stayed at in the past day, newest first (the Location page's "Recent places").
  * Fixes taken while passing by are left out. Fetched per child: one shared cap let a child who moves around a lot
@@ -160,25 +199,58 @@ export async function recentVisits(childIds: string[], perChild: number, now = D
 }
 
 type Fix = { lat: number; lng: number; accuracyM?: number; placeLabel?: string };
+type NoticePlace = { id: string; name: string; notifyArrive: boolean; notifyLeave: boolean };
+
+/**
+ * "Mia arrived at School" / "Mia left Home", for places the parents turned notices on for. INFO, so it never
+ * counts as something waiting for them, but emailed and pushed like other alerts (`PLACE:` in maintenance.worthEmail).
+ * One per child, place and direction in PLACE_ALERT_WINDOW_MS, whichever of the child's devices gets there first.
+ */
+async function placeNotices(device: { id: string; childId: string; familyId: string }, move: { arrived: NoticePlace | null; left: NoticePlace | null }, tz: string, now: Date) {
+  const notices = [
+    move.left?.notifyLeave ? { place: move.left, kind: "LEAVE" as const } : null,
+    move.arrived?.notifyArrive ? { place: move.arrived, kind: "ARRIVE" as const } : null,
+  ].filter((n) => n !== null);
+  if (!notices.length) return;
+  // Loaded only when there's a notice to raise: the engine is server-only, and this module isn't
+  const { createAlertUnless } = await import("./engine");
+  const d = await db.device.findUniqueOrThrow({ where: { id: device.id }, select: { name: true, child: { select: { name: true } } } });
+  for (const { place, kind } of notices) {
+    const resolveKey = `PLACE:${place.id}:${kind}`;
+    const did = kind === "ARRIVE" ? "arrived at" : "left";
+    await createAlertUnless(`PLACE:${device.childId}:${place.id}:${kind}`,
+      { familyId: device.familyId, childId: device.childId, resolveKey, createdAt: { gt: new Date(now.getTime() - PLACE_ALERT_WINDOW_MS) } },
+      {
+        familyId: device.familyId, childId: device.childId, deviceId: device.id, severity: "INFO", category: "LOCATION",
+        icon: kind === "ARRIVE" ? "map-pin" : "route", title: `${d.child.name} ${did} ${place.name}`,
+        body: `${d.child.name} ${did} ${place.name} at ${clockTime(now, tz)}.`, subject: `${place.name} · ${d.child.name}'s ${d.name}`,
+        resolveKey, createdAt: now,
+      });
+  }
+}
 type VisitRow = { id: string; deviceId: string | null; lat: number; lng: number; placeLabel: string | null; placeId: string | null; lastSeenAt: Date };
 
 /**
  * Stores the device's current location. When the family has turned on location history,
  * also records visits (arrive / still here) and prunes visits past the retention period.
  * A fix inside one of the family's saved places is labelled with its name (it wins over a label from the device).
+ * Arriving at or leaving a place the parents asked to hear about raises a notice (placeMove).
  */
 export async function recordLocation(device: { id: string; childId: string; familyId: string }, fix: Fix, now = new Date()) {
   // Whether sharing is on comes from the device's LOCATION protection report (engine.processReport), never
   // from a fix arriving. A fix sent while sharing is off isn't stored at all: the parent was told it's off.
   const [current, family, places] = await Promise.all([
-    db.deviceLocation.findUnique({ where: { deviceId: device.id }, select: { sharing: true } }),
-    db.family.findUniqueOrThrow({ where: { id: device.familyId }, select: { plan: true, keepLocationHistory: true, retentionDays: true } }),
-    db.place.findMany({ where: { familyId: device.familyId }, select: { id: true, name: true, lat: true, lng: true, radiusM: true } }),
+    db.deviceLocation.findUnique({ where: { deviceId: device.id }, select: { sharing: true, placeId: true, locatedAt: true } }),
+    db.family.findUniqueOrThrow({ where: { id: device.familyId }, select: { plan: true, keepLocationHistory: true, retentionDays: true, timezone: true } }),
+    db.place.findMany({ where: { familyId: device.familyId }, select: { id: true, name: true, lat: true, lng: true, radiusM: true, notifyArrive: true, notifyLeave: true } }),
   ]);
   if (current && !current.sharing) return;
   // Location sharing is a paid feature: on Free, fixes aren't kept at all
   if (!entitlementsFor(family.plan).locationSharing) return;
-  const place = placeFor(places, fix);
+  const move = placeMove(places, current?.placeId, fix);
+  const place = move.place;
+  // The device's first fix isn't a move: there's no "before" to have arrived from
+  if (current?.locatedAt) await placeNotices(device, move, family.timezone, now);
   const label = place?.name ?? fix.placeLabel ?? null;
   // Each fix replaces the last one whole: a fix without a label or accuracy must not keep the previous place's
   // ("At school" shown for wherever the child is now)

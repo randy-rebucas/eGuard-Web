@@ -2,10 +2,52 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../db", () => ({ db: {} }));
 
-import { FRESH_MS, childLocation, durationLabel, locationPolicy, placeFor, stayed, visitSpan, waitingText } from "../location";
+import { FRESH_MS, LEAVE_MARGIN_M, childLocation, durationLabel, isDayKey, locationPolicy, placeFor, placeMove, shiftDay, stayed, visitSpan, waitingText } from "../location";
 
 const now = Date.parse("2026-10-04T10:00:00Z");
 const min = 60_000;
+
+describe("placeMove", () => {
+  const home = { id: "home", lat: 14.6, lng: 121.0, radiusM: 150 };
+  const school = { id: "school", lat: 14.61, lng: 121.0, radiusM: 150 }; // ~1.1 km north
+  const m = (metres: number) => 14.6 + metres / 111_195; // metres north of home
+
+  it("arrives at a place from nowhere, and leaves it for nowhere", () => {
+    expect(placeMove([home], null, { lat: m(20), lng: 121.0 })).toMatchObject({ place: home, arrived: home, left: null });
+    expect(placeMove([home], "home", { lat: m(500), lng: 121.0 })).toMatchObject({ place: null, arrived: null, left: home });
+  });
+  it("staying put is neither", () => {
+    expect(placeMove([home], "home", { lat: m(30), lng: 121.0 })).toMatchObject({ place: home, arrived: null, left: null });
+  });
+  it("wobbling just past the edge is still there; clearly past it is leaving", () => {
+    expect(placeMove([home], "home", { lat: m(150 + LEAVE_MARGIN_M - 5), lng: 121.0 })).toMatchObject({ place: home, left: null });
+    expect(placeMove([home], "home", { lat: m(150 + LEAVE_MARGIN_M + 20), lng: 121.0 }).left).toBe(home);
+    // A rough fix gets its accuracy as the margin
+    expect(placeMove([home], "home", { lat: m(260), lng: 121.0, accuracyM: 150 }).left).toBeNull();
+  });
+  it("the margin only holds a device at the place it was at, never pulls it into one", () => {
+    expect(placeMove([home], null, { lat: m(170), lng: 121.0 })).toMatchObject({ place: null, arrived: null });
+  });
+  it("going from one place straight to another is a leave and an arrive", () => {
+    expect(placeMove([home, school], "home", { lat: 14.61, lng: 121.0 })).toMatchObject({ place: school, arrived: school, left: home });
+  });
+  it("a removed place isn't left", () => {
+    expect(placeMove([school], "home", { lat: m(500), lng: 121.0 })).toMatchObject({ left: null, arrived: null });
+  });
+});
+
+describe("day keys", () => {
+  it("accepts only real dates", () => {
+    expect(isDayKey("2026-10-05")).toBe(true);
+    expect(isDayKey("2026-02-30")).toBe(false);
+    expect(isDayKey("2026-1-5")).toBe(false);
+    expect(isDayKey(undefined)).toBe(false);
+  });
+  it("shifts across months and years", () => {
+    expect(shiftDay("2026-10-01", -1)).toBe("2026-09-30");
+    expect(shiftDay("2026-12-31", 1)).toBe("2027-01-01");
+  });
+});
 
 describe("placeFor", () => {
   const home = { id: "home", lat: 14.6, lng: 121.0, radiusM: 150 };

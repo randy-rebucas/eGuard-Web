@@ -12,6 +12,7 @@ import { appUrl } from "./email-verification";
 import { escapeHtml, sendMail } from "./mail";
 import { familyEntitlements } from "./plan-access";
 import { alertPush, pushAvailable, pushToUsers } from "./push";
+import { sendWeeklyDigests } from "./weekly-digest";
 
 /**
  * Background upkeep, run every few minutes by /api/cron/maintenance. Before this existed, offline
@@ -24,9 +25,15 @@ const AUDIT_RETENTION_DAYS = 365;
 /** A child asking for something (an app, a blocked website): emailed only to parents with "App approval requests" on. */
 export const isChildRequest = (a: Pick<Alert, "resolveKey">) => !!a.resolveKey && /^(APPREQ|WEBREQ):/.test(a.resolveKey);
 
-/** Alerts worth an email: anything needing action, protection changes / devices going quiet (tampering), and children's requests. */
+/** An arrive / leave notice for a saved place: the parents turned it on for that place, so they want to hear it. */
+export const isPlaceNotice = (a: Pick<Alert, "resolveKey">) => !!a.resolveKey?.startsWith("PLACE:");
+
+/**
+ * Alerts worth an email: anything needing action, protection changes / devices going quiet (tampering), children's
+ * requests, and place notices the parents asked for.
+ */
 export const worthEmail = (a: Pick<Alert, "severity" | "category" | "resolveKey">) =>
-  a.severity === "ACTION_REQUIRED" || a.severity === "CRITICAL" || isChildRequest(a)
+  a.severity === "ACTION_REQUIRED" || a.severity === "CRITICAL" || isChildRequest(a) || isPlaceNotice(a)
   || (a.severity === "ATTENTION" && (a.category === "PROTECTION" || a.category === "DEVICES" || a.category === "LOCATION"));
 
 /** Only families with a quiet device can need an alert, so the rest aren't visited. */
@@ -125,7 +132,9 @@ export async function purgeExpiredData(now = new Date()) {
 function alertEmail(a: Alert, name: string) {
   const link = `${appUrl()}/notifications`;
   const lines = [a.body, a.fromValue && a.toValue ? `Was: ${a.fromValue}\nNow: ${a.toValue}` : null].filter(Boolean).join("\n\n");
-  const why = isChildRequest(a) ? `"Email alerts" and "App approval requests" are on` : `"Email alerts" is on`;
+  const why = isChildRequest(a) ? `"Email alerts" and "App approval requests" are on`
+    : isPlaceNotice(a) ? `you turned on notices for this place in Location › Saved places, and "Email alerts" is on`
+    : `"Email alerts" is on`;
   return {
     subject: `eGuard: ${a.title} (${a.subject})`,
     text: `Hi ${name},\n\n${a.title}: ${a.subject}\n\n${lines}\n\nOpen eGuard: ${link}\n\nYou get these emails because ${why} in Settings › Notifications.\n\n— eGuard`,
@@ -190,7 +199,8 @@ export async function runMaintenance() {
   const codeReminders = await step("code expiry reminders", () => sendCodeExpiryReminders());
   const orgDigests = await step("organization digests", () => sendOrgDigests());
   const emails = await step("alert emails and push", notifyNewAlerts);
+  const weeklyDigests = await step("weekly summaries", () => sendWeeklyDigests());
   const stale = await step("stale checks and changes", () => closeStaleWork());
   const purged = await step("data retention", () => purgeExpiredData());
-  return { offlineFamilies, offlineBrowsers, purchases, passReminders, codeBatches, codeReminders, orgDigests, emails, stale, purged, failed };
+  return { offlineFamilies, offlineBrowsers, purchases, passReminders, codeBatches, codeReminders, orgDigests, emails, weeklyDigests, stale, purged, failed };
 }

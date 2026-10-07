@@ -602,6 +602,11 @@ select.input{appearance:auto}
 .map-pin.stale .pin-label small{color:var(--warn-ink)}
 /* A saved place: CSS stroke and fill beat the SVG attributes Leaflet sets, and follow the theme */
 .map-place{stroke:var(--ink-3); fill:var(--ink-3)}
+/* A day's route on a child's places page: numbered stays, small dots for passing by */
+.map-trail{stroke:var(--accent); stroke-dasharray:6 6}
+.map-pass{stroke:var(--accent); fill:var(--surface)}
+.map-stop{display:grid; place-items:center; width:28px; height:28px; transform:translate(-50%,-50%); border-radius:50%; background:var(--accent-btn); color:#fff; font:700 13px/1 var(--font); box-shadow:0 0 0 3px var(--surface), var(--shadow)}
+.map-stop.focused{width:36px; height:36px; font-size:15px; box-shadow:0 0 0 3px var(--surface), 0 0 0 6px var(--accent), var(--shadow)}
 .verify-banner{display:flex; align-items:center; gap:12px; padding:12px 14px; border-radius:12px; background:var(--warn-soft); color:var(--warn-ink); font-size:14px; flex-wrap:wrap}
 .verify-banner > .lucide{width:20px; height:20px; flex:none}
 .verify-banner p{flex:1 1 240px; margin:0}

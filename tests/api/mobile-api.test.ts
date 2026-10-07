@@ -215,11 +215,16 @@ describe("4–6. Add child, protection profile, recommended setup", () => {
     expect(bed.label).toBe("9:30 PM – 6:00 AM");
     const balanced = await call("GET", `/children/${miaId}/recommendations?profile=BALANCED`, { token });
     expect(balanced.data.settings.find((s: { key: string }) => s.key === "SCREEN_TIME").config.dailyMinutes).toBe(240);
+    // Gaming time, now that apps have categories
+    expect(r.data.categoryLimits).toEqual([{ category: "GAMES", label: "Gaming time", dailyLimitMinutes: 60, available: true, upgrade: null }]);
+    expect(balanced.data.categoryLimits[0].dailyLimitMinutes).toBe(90);
   });
 
   it("with no device yet, setup saves the policy directly (nothing to verify)", async () => {
-    const r = await call("POST", `/children/${miaId}/setup`, { token, body: { profile: "BALANCED" } });
+    const r = await call("POST", `/children/${miaId}/setup`, { token, body: { profile: "BALANCED", categoryLimits: [{ category: "GAMES", dailyLimitMinutes: 90 }] } });
     expect(r.status).toBe(201);
+    const limits = await call("GET", `/children/${miaId}/category-limits`, { token });
+    expect(limits.data.categories.find((c: { category: string }) => c.category === "GAMES")).toMatchObject({ limitLabel: "Gaming time", dailyLimitMinutes: 90, todayMinutes: 0 });
     expect(r.data.batchId).toBeNull();
     expect(r.data.saved).toHaveLength(10);
     const p = await call("GET", `/children/${miaId}/protections`, { token });
@@ -430,8 +435,41 @@ describe("13. App management", () => {
     const lim = await call("PATCH", `/apps/${r.data.id}`, { token, body: { dailyLimitMinutes: 60 } });
     expect(lim.data.dailyLimitMinutes).toBe(60);
     const sync = await android.send("/sync");
-    expect(sync.data.apps).toEqual(expect.arrayContaining([{ name: "Khan Academy", approval: "ALWAYS_ALLOWED", dailyLimitMinutes: 60 }]));
+    expect(sync.data.apps).toEqual(expect.arrayContaining([{ name: "Khan Academy", approval: "ALWAYS_ALLOWED", dailyLimitMinutes: 60, category: "EDUCATION" }]));
     expect((await call("PATCH", `/apps/${r.data.id}`, { token, body: {} })).status).toBe(400);
+  });
+
+  it("apps have a category (guessed, or the parent's), and a category limit reaches the device", async () => {
+    const add = await call("POST", `/children/${miaId}/apps`, { token, body: { name: "Roblox" } });
+    expect(add.data).toMatchObject({ category: "GAMES", categoryLabel: "Games", categoryAuto: true });
+    const moved = await call("PATCH", `/apps/${add.data.id}`, { token, body: { category: "EDUCATION" } });
+    expect(moved.data).toMatchObject({ category: "EDUCATION", categoryAuto: false });
+    expect((await call("PATCH", `/apps/${add.data.id}`, { token, body: { category: null } })).data).toMatchObject({ category: "GAMES", categoryAuto: true });
+    expect((await call("PATCH", `/apps/${add.data.id}`, { token, body: { category: "CASINO" } })).status).toBe(400);
+
+    const put = await call("PUT", `/children/${miaId}/category-limits`, { token, body: { category: "GAMES", dailyLimitMinutes: 45 } });
+    expect(put.data).toEqual({ category: "GAMES", dailyLimitMinutes: 45 });
+    const sync = await android.send("/sync");
+    expect(sync.data.categoryLimits).toEqual([{ category: "GAMES", dailyLimitMinutes: 45 }]);
+    expect(sync.data.features.categoryLimits).toBe(true);
+    expect(sync.data.apps).toEqual(expect.arrayContaining([expect.objectContaining({ name: "Roblox", category: "GAMES" })]));
+
+    // The device says gaming time is used up
+    await android.send("/events", { type: "LIMIT_REACHED", minutes: 45, category: "GAMES" });
+    const alerts = await call("GET", "/alerts?filter=SCREEN_TIME", { token });
+    expect(alerts.data.alerts.find((a: { title: string }) => a.title === "Gaming time used up")?.body).toBe("Mia reached the 45m daily limit for games. Those apps were paused as scheduled.");
+
+    // On Free, a limit can't be set, and the one kept isn't sent
+    const famId = (await call("GET", "/family", { token })).data.id;
+    await db.family.update({ where: { id: famId }, data: { plan: "Free" } });
+    const refused = await call("PUT", `/children/${miaId}/category-limits`, { token, body: { category: "VIDEO", dailyLimitMinutes: 60 } });
+    expect(refused.data.code).toBe("plan_required");
+    expect((await android.send("/sync")).data.categoryLimits).toEqual([]);
+    expect((await call("GET", `/children/${miaId}/category-limits`, { token })).data).toMatchObject({ available: false, upgrade: expect.stringContaining("eGuard Plus") });
+    await db.family.update({ where: { id: famId }, data: { plan: "eGuard Plus" } });
+
+    expect((await call("PUT", `/children/${miaId}/category-limits`, { token, body: { category: "GAMES", dailyLimitMinutes: null } })).data.dailyLimitMinutes).toBeNull();
+    expect((await android.send("/sync")).data.categoryLimits).toEqual([]);
   });
 });
 
@@ -478,6 +516,32 @@ describe("14. Location", () => {
   it("turning history off deletes the visits", async () => {
     await call("PATCH", "/family/privacy", { token, body: { keepLocationHistory: false } });
     expect(await db.locationVisit.count({ where: { childId: miaId } })).toBe(0);
+  });
+
+  it("alerts when a child arrives at or leaves a place with notices on, once", async () => {
+    const placeAlerts = async () => (await call("GET", "/alerts?filter=LOCATION", { token })).data.alerts
+      .filter((a: { title: string }) => a.title.includes("Plaza"));
+    const created = await call("POST", "/places", { token, body: { name: "Plaza", lat: 11.3, lng: 125.1, radiusM: 150 } });
+    expect(created.data).toMatchObject({ notifyArrive: false, notifyLeave: false });
+    const placeId = created.data.id;
+    await android.send("/location", { lat: 11.35, lng: 125.1 }); // ~5.5 km away
+    await android.send("/location", { lat: 11.3, lng: 125.1 });
+    expect(await placeAlerts()).toEqual([]); // notices off
+
+    const on = await call("PATCH", `/places/${placeId}`, { token, body: { notifyArrive: true, notifyLeave: true } });
+    expect(on.data).toMatchObject({ notifyArrive: true, notifyLeave: true });
+    await android.send("/location", { lat: 11.35, lng: 125.1 }); // leaves (it was there, with notices off)
+    await android.send("/location", { lat: 11.3005, lng: 125.1 }); // arrives
+    await android.send("/location", { lat: 11.3001, lng: 125.1 }); // still there
+    const alerts = await placeAlerts(); // newest first
+    expect(alerts.map((a: { title: string }) => a.title)).toEqual(["Mia arrived at Plaza", "Mia left Plaza"]);
+    expect(alerts[0]).toMatchObject({ severity: "INFO", category: "LOCATION", subject: "Plaza · Mia's Galaxy A54", action: { type: "VIEW_LOCATION", childId: miaId } });
+
+    // Back out and in again within half an hour: no repeats
+    await android.send("/location", { lat: 11.35, lng: 125.1 });
+    await android.send("/location", { lat: 11.3, lng: 125.1 });
+    expect(await placeAlerts()).toHaveLength(2);
+    await call("DELETE", `/places/${placeId}`, { token });
   });
 });
 
@@ -679,6 +743,15 @@ describe("Android design additions (public/android.png)", () => {
     expect(p1.data.retentionDays).toBe(90);
     const p2 = await call("GET", `/children/${miaId}/location/visits?limit=2&before=${encodeURIComponent(p1.data.nextBefore)}`, { token });
     expect(p2.data).toMatchObject({ visits: [expect.objectContaining({ placeLabel: "Home" })], nextBefore: null });
+
+    // A day's route: all of it, oldest first
+    const today = p1.data.visits[0].day.key as string;
+    const day = await call("GET", `/children/${miaId}/location/visits?day=${today}&limit=1`, { token });
+    expect(day.data.visits.map((v: { placeLabel: string }) => v.placeLabel)).toEqual(["Home", "School", "Park"]);
+    expect(day.data.nextBefore).toBeNull();
+    const empty = await call("GET", `/children/${miaId}/location/visits?day=2020-01-01`, { token });
+    expect(empty.data.visits).toEqual([]);
+    expect((await call("GET", `/children/${miaId}/location/visits?day=2026-02-30`, { token })).status).toBe(400);
     await call("PATCH", "/family/privacy", { token, body: { keepLocationHistory: false } });
   });
 

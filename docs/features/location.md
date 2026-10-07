@@ -141,6 +141,18 @@ family is a 404; the tab title uses the child's name only for a parent of that f
 | Passing by | a visit of a single fix (under `STAY_MS`, 4 minutes): route icon, "Passing by" (or "Passed by *School*"), one time |
 | Paging | 50 at a time, newest first; **Show older places** (`?before=` the last row's `arrivedAt`), **Back to newest**; past the end "No older places: that's everything eGuard has kept" |
 
+Two views, as tabs: **By day** (the default) and **All places** (`?view=all`, the list above).
+
+| By day | Shows |
+|---|---|
+| Day | `?day=YYYY-MM-DD` in the family's time zone, today by default; a day before the retention period or in the future falls back to today. Previous and next buttons (disabled past either end) and a date picker (`min`/`max` the same bounds) |
+| Map | the day's route: a dashed line through its visits in order, each stay as a numbered pin, passing-by fixes as small dots, saved places as dashed circles. Framed on the whole route |
+| Visits | oldest first, stays numbered as on the map ("1. School"). A visit spanning midnight is on both days. At most 300 a day (`DAY_VISITS_MAX`) |
+| Show on map | on every row (also in All places, where it opens that visit's day): `?day=…&focus=<visitId>` centres the map on it and enlarges its pin |
+| No visits | "No places this day" |
+
+In All places, each day heading links to **Map of the day**.
+
 ## 6. How location is recorded and kept
 
 **Sharing on or off** is the `LOCATION` protection, never a fix arriving:
@@ -236,10 +248,11 @@ place covering the same spot names those visits instead. Creating and editing ne
 | Children list | Done | Waits for a device's first report instead of calling sharing off |
 | Auto refresh | Done | 30 s while visible, and on return to the tab |
 | Recent places | Done | Named, only places stayed at, one per place across devices |
-| A child's places page | Done | Day groups, durations, passing by, midnight spans, paging, removed devices, empty states |
+| A child's places page | Done | Day groups, durations, passing by, midnight spans, paging, removed devices, empty states; a day's route on a map with numbered stays, Show on map |
+| Arrive and leave alerts | Done | Per saved place, off by default; edge margin, one per child, place and direction per 30 min; emailed and pushed; web and mobile |
 | Visit recording | Done | Stays vs passing by; one visit per place across the child's devices |
 | Place names | Done | Saved places, named from the list, a child's location or a visit; relabels what's kept |
-| Saved places management | Done | Rename, resize, remove; drawn on the map; web and mobile |
+| Saved places management | Done | Rename, resize, alerts, remove; drawn on the map; web and mobile |
 | Live vs last seen | Done | 20-minute window over 15-minute fixes |
 | Sharing on/off | Done | Through the `LOCATION` protection; off clears the position; tamper alert |
 | Privacy controls | Done | History off deletes, retention purge, export (now with `locatedAt`, accuracy, places), device move and removal |
@@ -251,7 +264,7 @@ place covering the same spot names those visits instead. Creating and editing ne
 | Accessibility | Done | Map region describes every child; pills have text, not just colour; place buttons are labelled |
 | Tests | Partial | Recording, places, stays and states covered; downgrade clearing, the tile proxy and page render aren't |
 
-**Overall: ~97%** (18 done, 1 partial, of 19; **Saved places management** was added with the fixes). Was ~72% at
+**Overall: ~97%** (19 done, 1 partial, of 20; **Saved places management** was added with the fixes, **Arrive and leave alerts** on 2026-10-07). Was ~72% at
 the first review on 2026-10-04.
 
 ## 10. Issues found
@@ -279,12 +292,11 @@ Along the way: clearing a position (sharing off, device moved, plan downgrade) a
 
 **Usefulness**
 
-1. Arrive and leave notices for saved places ("Mia arrived at School, 7:42 AM"), now that places exist.
+1. ~~Arrive and leave notices for saved places~~ Done 2026-10-07: **Notify when a child arrives / leaves** on each saved place (`Place.notifyArrive` / `notifyLeave`, migration `20261007140000_place_alerts`). `placeMove` in `src/lib/location.ts` decides; a fix within 50 m (or its accuracy) past the edge of the place the device was at keeps it there, so wobble isn't a leave. The device's first fix is never an arrival. INFO alerts with `resolveKey` `PLACE:<placeId>:ARRIVE|LEAVE`, emailed (`isPlaceNotice` in `worthEmail`) and pushed, action **View places** (mobile `VIEW_LOCATION`).
 2. **Locate now**: ask a device for a fresh fix on its next sync (like a configuration check), for when the last
    one is old.
-3. Focus one child on the map (`/location?child=…`), used by the child tab's **Open map**, which today opens the
-   whole family.
-4. "Show on map" for a visit, and a day's visits drawn as a trail on the child's places page.
+3. ~~Focus one child on the map~~ Done 2026-10-07: `/location?child=…`, used by the child tab's **Open map**.
+4. ~~"Show on map" for a visit, and a day's trail~~ Done 2026-10-07: the **By day** view (§5); mobile `GET /children/{id}/location/visits?day=`.
 5. The device's battery on the pin or in the list, so "Last seen 3 hours ago" can be explained.
 6. Name a place by clicking the map, not only from where a child is or was.
 

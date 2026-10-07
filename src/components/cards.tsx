@@ -108,6 +108,7 @@ export function alertAction(a: Pick<Alert, "resolveKey" | "category" | "childId"
   if (k === "OFFLINE" && a.deviceId) return { label: "View device", href: `/devices/${a.deviceId}` };
   if (k === "APPREQ" && a.childId) return { label: "Review request", href: `/children/${a.childId}?tab=apps` };
   if (k === "WEBREQ" && a.childId) return { label: "Review request", href: `/children/${a.childId}?tab=browser#access-requests` };
+  if (k === "PLACE" && a.childId) return { label: "View places", href: `/location/${a.childId}` };
   if (k === "BROWSER_REVOKED") return { label: "View browsers", href: "/devices#add-browser" };
   // Browser health: drift, private windows, Safe Browsing, silence
   if (k?.startsWith("BROWSER_") && a.childId) return { label: "View browser", href: `/children/${a.childId}?tab=browser` };

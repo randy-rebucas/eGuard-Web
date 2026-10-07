@@ -17,7 +17,7 @@ vi.mock("@/lib/auth", () => ({
   PASSWORD_TOO_LONG: "", passwordTooLong: () => false,
 }));
 const svc = vi.hoisted(() => ({
-  createChild: vi.fn(), assertNameFree: vi.fn(), deleteChild: vi.fn(), setAppApproval: vi.fn(), setAppLimit: vi.fn(), audit: vi.fn(),
+  createChild: vi.fn(), assertNameFree: vi.fn(), deleteChild: vi.fn(), setAppApproval: vi.fn(), setAppLimit: vi.fn(), setAppCategory: vi.fn(), setCategoryLimit: vi.fn(), audit: vi.fn(),
   createPairingCode: vi.fn(), pairingCodeStatus: vi.fn(), renameDevice: vi.fn(), removeDevice: vi.fn(), setPrimaryDevice: vi.fn(), moveDevice: vi.fn(),
 }));
 // The real ChildSchema and rules; the database work is stubbed
@@ -128,6 +128,19 @@ describe("app actions", () => {
     expect(await actions.setAppLimit("a1", 2000)).toEqual({ error: "A daily limit can be up to 24 hours." });
     svc.setAppLimit.mockResolvedValue({ childId: "c1" });
     expect(await actions.setAppLimit("a1", null)).toEqual({});
+  });
+  it("takes a real category, or null for eGuard's guess", async () => {
+    expect(await actions.setAppCategory("a1", "CASINO" as never)).toEqual({ error: "Choose a category." });
+    svc.setAppCategory.mockResolvedValue({ childId: "c1" });
+    expect(await actions.setAppCategory("a1", null)).toEqual({});
+    expect(svc.setAppCategory).toHaveBeenCalledWith(user, "a1", null, "web");
+  });
+  it("checks a category limit like an app limit, and refreshes the child's page", async () => {
+    expect(await actions.setCategoryLimit("c1", "GAMES", 2000)).toEqual({ error: "A daily limit can be up to 24 hours." });
+    svc.setCategoryLimit.mockResolvedValue({ category: "GAMES", dailyLimitMinutes: 60 });
+    expect(await actions.setCategoryLimit("c1", "GAMES", 60)).toEqual({});
+    expect(svc.setCategoryLimit).toHaveBeenCalledWith(user, "c1", "GAMES", 60, "web");
+    expect(nav.revalidatePath).toHaveBeenCalledWith("/children/c1");
   });
 });
 

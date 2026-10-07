@@ -2,7 +2,7 @@ import "server-only";
 import { db } from "./db";
 import { planRequired } from "./errors";
 import { requestedApps } from "./family-service";
-import { entitlementsFor, nextPlan, planByName, type Entitlements } from "./plans";
+import { entitlementsFor, planWith, type Entitlements } from "./plans";
 
 /** What the family's plan includes, from Family.plan (kept current by applyEntitlement). */
 export async function familyEntitlements(familyId: string): Promise<Entitlements & { plan: string }> {
@@ -10,12 +10,7 @@ export async function familyEntitlements(familyId: string): Promise<Entitlements
   return { plan: f.plan, ...entitlementsFor(f.plan) };
 }
 
-/** The cheapest plan whose entitlements pass `has`, for "Upgrade to …". */
-export function planWith(has: (e: Entitlements) => boolean) {
-  let p = planByName("Free");
-  for (let next = nextPlan(p.name); next && !has(p.entitlements); next = nextPlan(p.name)) p = next;
-  return p;
-}
+export { planWith };
 
 export const LOCATION_UPGRADE = `Location sharing is included with ${planWith((e) => e.locationSharing).name} and above.`;
 export const REPORTS_UPGRADE = `30-day and custom reports and CSV export are included with ${planWith((e) => e.advancedReports).name}.`;

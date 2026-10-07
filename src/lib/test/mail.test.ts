@@ -4,7 +4,7 @@ vi.mock("server-only", () => ({}));
 const smtpSend = vi.fn();
 vi.mock("nodemailer", () => ({ default: { createTransport: () => ({ sendMail: smtpSend }) } }));
 
-const mail = { to: "parent@example.com", subject: "Hi", text: "Hello", html: "<p>Hello</p>" };
+const mail = { to: "parent@eguard.family", subject: "Hi", text: "Hello", html: "<p>Hello</p>" };
 const fetchMock = vi.fn();
 
 async function load(env: Record<string, string>) {
@@ -43,7 +43,20 @@ describe("sendMail", () => {
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe("https://api.resend.com/emails");
     expect(init.headers.Authorization).toBe("Bearer re_key");
-    expect(JSON.parse(init.body)).toMatchObject({ from: "eGuard <hi@verified.dev>", to: ["parent@example.com"], subject: "Hi" });
+    expect(JSON.parse(init.body)).toMatchObject({ from: "eGuard <hi@verified.dev>", to: ["parent@eguard.family"], subject: "Hi" });
+  });
+
+  it("doesn't hand Resend reserved test domains, which it refuses", async () => {
+    const { sendMail } = await load({ SMTP_URL: "", RESEND_API_KEY: "re_key" });
+    for (const to of ["reyes@example.com", "a@mail.example.org", "b@kid.test"]) await sendMail({ ...mail, to });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("still sends reserved domains over SMTP (Mailpit in tests)", async () => {
+    const { sendMail } = await load({ SMTP_URL: "smtp://x", RESEND_API_KEY: "re_key" });
+    smtpSend.mockResolvedValue({});
+    await sendMail({ ...mail, to: "parent@example.com" });
+    expect(smtpSend).toHaveBeenCalledOnce();
   });
 
   it("rethrows the SMTP error when there's no Resend key", async () => {

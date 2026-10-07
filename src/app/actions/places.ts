@@ -20,7 +20,7 @@ export async function createPlace(input: { name: string; lat: number; lng: numbe
   });
 }
 
-export async function updatePlace(placeId: string, input: { name?: string; radiusM?: number }): Promise<Result<{ name: string }>> {
+export async function updatePlace(placeId: string, input: { name?: string; radiusM?: number; notifyArrive?: boolean; notifyLeave?: boolean }): Promise<Result<{ name: string }>> {
   const u = await requireUser();
   return toResult(async () => {
     const p = await places.updatePlace(u, Id.parse(placeId), input);
