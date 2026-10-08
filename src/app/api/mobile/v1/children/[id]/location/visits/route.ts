@@ -17,6 +17,7 @@ const Query = z.object({
  * Location › "View All": every visit kept (up to the family's retention period), newest first.
  * With `day` (YYYY-MM-DD in the family's time zone): that day's route instead, oldest first, all at once
  * (`limit` and `before` are ignored and `nextBefore` is null). A visit spanning midnight is in both days.
+ * On a very busy day some passing-by fixes are left out (`thinned`); every stay is kept.
  * Empty with `enabled: false` unless the family keeps location history. 403 `plan_required` on Free.
  */
 export const GET = authed<{ id: string }>(async ({ req, user, params }) => {
@@ -24,13 +25,14 @@ export const GET = authed<{ id: string }>(async ({ req, user, params }) => {
   const child = await childFor(user.familyId, params.id);
   await requireLocationSharing(user.familyId);
   const family = await getFamily(user.familyId);
-  const { visits, nextBefore } = !family.keepLocationHistory ? { visits: [], nextBefore: null }
-    : q.day ? { visits: await visitsForDay(child.id, q.day, family.timezone), nextBefore: null }
-    : await visitsPage(child.id, { before: q.before ? new Date(q.before) : undefined, limit: q.limit });
+  const { visits, nextBefore, thinned } = !family.keepLocationHistory ? { visits: [], nextBefore: null, thinned: false }
+    : q.day ? { ...(await visitsForDay(child.id, q.day, family.timezone)), nextBefore: null }
+    : { ...(await visitsPage(child.id, { before: q.before ? new Date(q.before) : undefined, limit: q.limit })), thinned: false };
   return NextResponse.json({
     enabled: family.keepLocationHistory,
     retentionDays: family.retentionDays,
     visits: visits.map((v) => visitJson(v, family.timezone)),
     nextBefore,
+    thinned,
   });
 });

@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { logStaff, requireStaff } from "@/lib/staff-auth";
 import { familyDetail } from "@/lib/console-queries";
+import { currentPurchase, renewalWord } from "@/lib/entitlement";
+import { usedDeviceSlots } from "@/lib/device-slots";
 import { day, stamp } from "../../../format";
 import { Empty, TicketPill } from "../../../ui";
 
@@ -17,6 +19,8 @@ export default async function FamilyPage(props: PageProps<"/console/families/[id
   if (!f) notFound();
   // Opening an account is recorded, like every change
   await logStaff(staff.id, "family.view", `family:${f.id}`);
+  // As the parent sees them in Settings: "Ends" for a pass or a cancelled subscription, and browsers take device slots
+  const [purchase, slots] = await Promise.all([currentPurchase(f.id), usedDeviceSlots(f.id)]);
   const kinds = new Map<string, number>();
   for (const d of f.devices) kinds.set(`${d.platform} ${d.kind}`.toLowerCase(), (kinds.get(`${d.platform} ${d.kind}`.toLowerCase()) ?? 0) + 1);
   const deviceKinds = [...kinds].map(([k, n]) => `${n} ${k}`).join(", ");
@@ -32,8 +36,8 @@ export default async function FamilyPage(props: PageProps<"/console/families/[id
       <section className="card card-pad">
         <div className="card-head"><h2>Account</h2></div>
         <dl className="cn-dl">
-          <dt>Plan</dt><dd>{f.plan}{f.renewsAt ? ` · renews ${day(f.renewsAt)}` : ""}</dd>
-          <dt>Device limit</dt><dd>{f.deviceLimit}</dd>
+          <dt>Plan</dt><dd>{f.plan}{f.renewsAt ? ` · ${renewalWord(purchase).toLowerCase()} ${day(f.renewsAt)}` : ""}</dd>
+          <dt>Device slots</dt><dd>{slots} of {f.deviceLimit} used (devices and browsers)</dd>
           <dt>Children</dt><dd>{f._count.children}</dd>
           <dt>Devices</dt><dd>{f._count.devices}{deviceKinds ? ` (${deviceKinds})` : ""}</dd>
           <dt>Browsers</dt><dd>{f._count.browsers}</dd>

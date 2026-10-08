@@ -21,17 +21,18 @@ const orgPath = (orgId: string) => `/organizations/${orgId}`;
 
 // Server actions take whatever the client sends: ids and codes are checked before they reach Prisma
 const Id = z.string().min(1, "Not found.").max(64, "Not found.");
-const Code = z.string({ error: "Enter the code you were given." }).max(64, "That code is too long.");
+// The join code as the mobile API checks it
+const JoinCode = orgs.JoinCodeInput.shape.code;
 
 /* ---------- Families ---------- */
 
 export async function previewJoin(code: string): Promise<Result<{ name: string; kind: string; alreadyJoined: boolean }>> {
-  return toResult(async () => orgs.previewJoin(await requireUser(), Code.parse(code)));
+  return toResult(async () => orgs.previewJoin(await requireUser(), JoinCode.parse(code)));
 }
 
 export async function joinOrganization(code: string): Promise<Result<{ name: string }>> {
   return toResult(async () => {
-    const r = await orgs.joinOrganization(await requireUser(), Code.parse(code));
+    const r = await orgs.joinOrganization(await requireUser(), JoinCode.parse(code));
     revalidatePath("/settings/organizations");
     return r;
   });
@@ -99,14 +100,41 @@ export async function cancelCode(orgId: string, voucherId: string): Promise<Resu
   });
 }
 
-export async function addOrgAdmin(orgId: string, _: FormState, form: FormData): Promise<FormState> {
+export async function inviteOrgAdmin(orgId: string, _: FormState, form: FormData): Promise<FormState> {
   try {
-    const r = await orgs.addOrgAdmin(await requireUser(), Id.parse(orgId), String(form.get("email") ?? ""));
+    const r = await orgs.inviteOrgAdmin(await requireUser(), Id.parse(orgId), String(form.get("email") ?? ""));
     revalidatePath(orgPath(orgId));
-    return { ok: `${r.name} can now manage this organization.` };
+    // The same answer whether or not the address has an account
+    return { ok: `Invitation saved. If ${r.email} has an eGuard account, they'll get an email and become an admin once they accept.` };
   } catch (e) {
     return failed(e);
   }
+}
+
+export async function cancelOrgInvite(orgId: string, inviteId: string): Promise<Result> {
+  return toResult(async () => {
+    await orgs.cancelOrgInvite(await requireUser(), Id.parse(orgId), Id.parse(inviteId));
+    revalidatePath(orgPath(orgId));
+    return {};
+  });
+}
+
+/** Settings › Organizations: the invited person's answer. */
+export async function acceptOrgInvite(inviteId: string): Promise<Result<{ orgId: string; name: string }>> {
+  return toResult(async () => {
+    const r = await orgs.acceptOrgInvite(await requireUser(), Id.parse(inviteId));
+    revalidatePath("/settings/organizations");
+    revalidatePath(orgPath(r.orgId));
+    return r;
+  });
+}
+
+export async function declineOrgInvite(inviteId: string): Promise<Result<{ name: string }>> {
+  return toResult(async () => {
+    const r = await orgs.declineOrgInvite(await requireUser(), Id.parse(inviteId));
+    revalidatePath("/settings/organizations");
+    return r;
+  });
 }
 
 export async function removeOrgAdmin(orgId: string, userId: string): Promise<Result> {

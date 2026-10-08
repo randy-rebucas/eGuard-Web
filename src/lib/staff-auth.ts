@@ -7,7 +7,7 @@ import { hashPassword, newToken, sha256, verifyPassword } from "./auth";
 import { ServiceError } from "./errors";
 import { LIMITS, clearLimit, clientIpFrom, hit, ipKey, isLimited } from "./rate-limit";
 import { matchStep, normalizeCode, openSecret, secretKey } from "./totp";
-import { STAFF_COOKIE } from "./console-host";
+import { STAFF_COOKIE, STAFF_IDLE_MS } from "./console-host";
 
 /**
  * Staff sign-in for the console (console.eguard.family, docs/console.md). Separate from parents' sessions on
@@ -17,7 +17,6 @@ import { STAFF_COOKIE } from "./console-host";
 
 /** A session ends 12 hours after signing in, or after 30 minutes without a request, whichever comes first. */
 const SESSION_HOURS = 12;
-const IDLE_MINUTES = 30;
 
 export const STAFF_BAD_LOGIN = "Those details don't match a staff account.";
 
@@ -93,7 +92,7 @@ export const getStaff = cache(async (): Promise<Staff | null> => {
   });
   if (!s) return null;
   const now = Date.now();
-  if (s.expiresAt.getTime() < now || now - s.lastSeenAt.getTime() > IDLE_MINUTES * 60_000 || !s.staff.active) {
+  if (s.expiresAt.getTime() < now || now - s.lastSeenAt.getTime() > STAFF_IDLE_MS || !s.staff.active) {
     await db.staffSession.deleteMany({ where: { id: s.id } });
     return null;
   }

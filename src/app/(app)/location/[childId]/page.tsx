@@ -60,7 +60,8 @@ export default async function LocationHistoryPage(props: PageProps<"/location/[c
   const nameIt = (v: Visit) => stayed(v) && !v.placeId && placeCount < MAX_PLACES ? <NamePlaceButton lat={v.lat} lng={v.lng} /> : null;
   const row = (v: Visit, n?: number) => {
     const stay = stayed(v);
-    const showOnMap = `${base}?day=${dayKey(v.arrivedAt, tz)}&focus=${v.id}`;
+    // On a day's map, stay on that day: a visit from before midnight is on it too, and its own day may be past retention
+    const showOnMap = `${base}?day=${view === "day" ? day : dayKey(v.arrivedAt, tz)}&focus=${v.id}`;
     return {
       id: v.id, icon: stay ? "map-pin" : "route",
       title: `${n ? `${n}. ` : ""}${stay ? v.placeLabel ?? "Unnamed place" : v.placeLabel ? `Passed by ${v.placeLabel}` : "Passing by"}`,
@@ -115,7 +116,7 @@ type RowFn = (v: Visit, n?: number) => React.ComponentProps<typeof Timeline>["it
 async function DayView({ childId, childName, familyId, day, today, earliest, focus, tz, base, row }: {
   childId: string; childName: string; familyId: string; day: string; today: string; earliest: string; focus?: string; tz: string; base: string; row: RowFn;
 }) {
-  const [visits, places] = await Promise.all([visitsForDay(childId, day, tz), listPlaces(familyId)]);
+  const [{ visits, thinned }, places] = await Promise.all([visitsForDay(childId, day, tz), listPlaces(familyId)]);
   let n = 0;
   const numbered = visits.map((v) => ({ v, n: stayed(v) ? ++n : undefined }));
   const trail: MapStop[] = numbered.map(({ v, n }) => ({
@@ -145,6 +146,7 @@ async function DayView({ childId, childName, familyId, day, today, earliest, foc
           <div className="map" style={{ marginBottom: 16 }}>
             <LazyMap people={[]} places={places} trail={trail} focus={focus} attribution={tileAttribution()} label={`${childName}'s route, ${label}`} />
           </div>
+          {thinned ? <p className="t-meta" role="note" style={{ marginBottom: 8 }}>A busy day: some spots {childName} passed on the way are left out so the route stays readable. Every place {childName} stayed is shown.</p> : null}
           <Timeline items={numbered.map(({ v, n }) => row(v, n))} />
         </>
       ) : (

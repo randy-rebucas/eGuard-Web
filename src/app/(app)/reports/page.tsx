@@ -1,32 +1,25 @@
 import Link from "next/link";
 import { requireUser } from "@/lib/auth";
-import { appMinutesOn, dateFromKey, getFamily, getFamilyGraph } from "@/lib/queries";
+import { dayKey, getFamily, getFamilyGraph } from "@/lib/queries";
 import { dayTime, dayLabel } from "@/lib/format";
-import { MAX_RANGE_DAYS, reportData, resolveRange, type Period } from "@/lib/reports";
+import { BASIC_RANGE_DAYS, MAX_RANGE_DAYS, reportData, resolveRange, type Period } from "@/lib/reports";
 import { dayRange, weeklySeries } from "@/lib/views";
 import { PROTECTION_BY_KEY, fmtMinutes, fmtMinutesPadded } from "@/lib/protections";
 import { Icon } from "@/components/icon";
 import { EmptyState, PageHead, Timeline, UpgradeNote } from "@/components/ui";
 import { entitlementsFor } from "@/lib/plans";
-import { APPS_UPGRADE, REPORTS_UPGRADE, capAppUsage, nameableApps } from "@/lib/plan-access";
+import { APPS_UPGRADE, REPORTS_UPGRADE, capAppUsage, familyNameableApps } from "@/lib/plan-access";
 import { WeeklyChart } from "@/components/charts";
 import { listBrowsers } from "@/lib/browser-service";
-import { isOffline } from "@/lib/health";
+import { browserNeedsAttention, isOffline } from "@/lib/health";
 
 export const metadata = { title: "Reports" };
 
 const PERIODS: [Period, string][] = [["today", "Today"], ["7d", "7 Days"], ["30d", "30 Days"], ["custom", "Custom"]];
-/** Longer and custom ranges are advanced reports */
-const ADVANCED: Period[] = ["30d", "custom"];
+/** 30 days is an advanced report; custom ranges are too once longer than BASIC_RANGE_DAYS */
+const ADVANCED: Period[] = ["30d"];
 const MAX_CHANGES = 500;
-
-/** An app may be named if any child's Apps tab shows it today. */
-async function todayNameable(childIds: string[], limit: number, day: string) {
-  const usage = await appMinutesOn(childIds, dateFromKey(day));
-  const checks = await Promise.all(childIds.map((id) =>
-    nameableApps(id, limit, (n) => usage.find((a) => a.childId === id && a.app === n)?.minutes ?? 0)));
-  return (app: string) => checks.some((may) => may(app));
-}
+const TOP_APPS = 8;
 
 export default async function ReportsPage(props: PageProps<"/reports">) {
   const u = await requireUser();
@@ -38,10 +31,14 @@ export default async function ReportsPage(props: PageProps<"/reports">) {
   const period = locked ? "7d" : asked;
   const tz = family.timezone;
   const str = (v: string | string[] | undefined) => (typeof v === "string" ? v : undefined);
-  const range = resolveRange(period, tz, str(sp.from), str(sp.to));
+  const maxDays = advanced ? MAX_RANGE_DAYS : BASIC_RANGE_DAYS;
+  const range = resolveRange(period, tz, str(sp.from), str(sp.to), maxDays);
   // resolveRange clamps or replaces dates it can't use; say so instead of quietly showing something else
   const adjusted = period === "custom" && (str(sp.from) || str(sp.to)) && (range.from !== str(sp.from) || range.to !== str(sp.to));
-  const [data, weekly] = await Promise.all([reportData(u.familyId, tz, range.from, range.to, { maxChanges: MAX_CHANGES }), weeklySeries(u.familyId, tz, graph)]);
+  // One more than shown, so "500+" only appears when there really are more
+  const [data, weekly] = await Promise.all([reportData(u.familyId, tz, range.from, range.to, { maxChanges: MAX_CHANGES + 1 }), weeklySeries(u.familyId, tz, graph)]);
+  const moreChanges = data.changes.length > MAX_CHANGES;
+  const changes = data.changes.slice(0, MAX_CHANGES);
   const { avg, prevAvg } = data;
   const delta = prevAvg ? Math.round(((avg - prevAvg) / prevAvg) * 100) : null;
   const h = graph.familyHealth;
@@ -49,21 +46,22 @@ export default async function ReportsPage(props: PageProps<"/reports">) {
   const browsers = allBrowsers.filter((b) => !b.revokedAt);
   const deviceCount = graph.devices.length + browsers.length;
   const healthy = Object.values(graph.deviceStates).filter((s) => s.key === "healthy").length
-    + browsers.filter((b) => !isOffline(b) && b.protectionState === "PROTECTED").length;
+    + browsers.filter((b) => !browserNeedsAttention(b)).length;
   const offline = Object.values(graph.deviceStates).filter((s) => s.key === "offline").length + browsers.filter((b) => isOffline(b)).length;
   // Health covers paired phones and tablets only: name children it says nothing about
   const unpairedKids = graph.children.filter((c) => !c.devices.length);
-  // No more app names than the plan's Apps list shows (Free: the most used few). For today, also only apps some
-  // child's Apps tab shows, as the dashboard and child pages do; a longer range has no single such list.
+  // No more app names than the plan's Apps list shows (Free: the most used few), and only apps some child's Apps tab
+  // shows today, as the dashboard and child pages do, whatever the range
   const appLimit = entitlementsFor(family.plan).appMonitoringLimit;
   const usage = data.apps.map((a) => ({ app: a.app, minutes: a._sum.minutes ?? 0 }));
-  const nameable = period === "today" && appLimit != null ? await todayNameable(graph.children.map((c) => c.id), appLimit, range.to) : () => true;
+  const nameable = await familyNameableApps(graph.children.map((c) => c.id), appLimit, tz);
   const unnamed = usage.filter((a) => !nameable(a.app)).length;
   const capped = capAppUsage(usage.filter((a) => nameable(a.app)), appLimit);
-  const topApps = { ...capped, hidden: capped.hidden + unnamed };
+  const topApps = { named: capped.named.slice(0, TOP_APPS), hidden: capped.hidden + unnamed };
   const maxApp = topApps.named[0]?.minutes || 1;
   const rangeLabel = range.from === range.to ? dayLabel(range.from).date : dayRange(range.from, range.to);
   const unpaired = !graph.devices.length;
+  const today = dayKey(new Date(), tz);
   const exportHref = `/api/reports/export?period=${period}&from=${range.from}&to=${range.to}`;
 
   return (
@@ -71,7 +69,7 @@ export default async function ReportsPage(props: PageProps<"/reports">) {
       <PageHead title="Reports" text="Family Digital Safety Summary: how protections held up and how screen time is trending.">
         <nav className="seg" aria-label="Period">
           {PERIODS.map(([k, l]) => (
-            <Link key={k} href={`/reports?period=${k}`} aria-current={period === k && !locked ? "page" : undefined}>
+            <Link key={k} href={`/reports?period=${k}`} aria-current={period === k ? "page" : undefined}>
               {!advanced && ADVANCED.includes(k) ? <><Icon name="lock" size={13} /> </> : null}{l}
             </Link>
           ))}
@@ -84,15 +82,15 @@ export default async function ReportsPage(props: PageProps<"/reports">) {
       {period === "custom" ? (
         <form className="card card-pad form-grid" style={{ maxWidth: 620, alignItems: "end" }} action="/reports">
           <input type="hidden" name="period" value="custom" />
-          <div className="field"><label htmlFor="from">From</label><input className="input" id="from" name="from" type="date" defaultValue={range.from} /></div>
-          <div className="field"><label htmlFor="to">To</label><input className="input" id="to" name="to" type="date" defaultValue={range.to} /></div>
+          <div className="field"><label htmlFor="from">From</label><input className="input" id="from" name="from" type="date" max={today} defaultValue={range.from} /></div>
+          <div className="field"><label htmlFor="to">To</label><input className="input" id="to" name="to" type="date" max={today} defaultValue={range.to} /></div>
           <div><button className="btn btn-primary">Apply</button></div>
         </form>
       ) : null}
 
       <p className="t-meta">
         Showing {rangeLabel}{period === "today" ? " (so far)" : ""}
-        {adjusted ? `. Adjusted from the dates you chose: ranges can't end after today or run longer than ${MAX_RANGE_DAYS} days, and the start must come before the end.` : ""}
+        {adjusted ? `. Adjusted from the dates you chose: ranges can't end after today or run longer than ${maxDays} days${advanced ? "" : " on your plan"}, and the start must come before the end.` : ""}
       </p>
 
       <section className="report-metrics">
@@ -115,7 +113,7 @@ export default async function ReportsPage(props: PageProps<"/reports">) {
         </div>
         <div className="card metric" style={{ minHeight: 0 }}>
           <div className="m-top"><span className="m-label">Protection changes</span><span className="ico-tile"><Icon name="history" /></span></div>
-          <div className="m-value num">{data.changes.length >= MAX_CHANGES ? `${MAX_CHANGES}+` : data.changes.length}</div>
+          <div className="m-value num">{moreChanges ? `${MAX_CHANGES}+` : changes.length}</div>
           {/* Protection changes are logged once a device confirms them; app and browser changes when they're made */}
           <div className="t-meta">Protections, apps and browser settings</div>
         </div>
@@ -127,7 +125,13 @@ export default async function ReportsPage(props: PageProps<"/reports">) {
       </section>
 
       <div className="detail-grid">
-        <WeeklyChart series={weekly.series} days={weekly.days} subtitle={`Daily totals, ${weekly.range}. Today is still in progress.`} />
+        {weekly.series.length ? <WeeklyChart series={weekly.series} days={weekly.days} subtitle={`Daily totals, ${weekly.range}. Today is still in progress.`} /> : (
+          <section className="card card-pad">
+            <EmptyState icon="users" title="No children yet" text="Add a child and pair their device to see screen time here.">
+              <Link className="btn btn-primary" href="/children/new"><Icon name="plus" />Add child</Link>
+            </EmptyState>
+          </section>
+        )}
         <section className="card card-pad">
           <div className="card-head"><div><h2 style={{ fontSize: 18 }}>Top apps</h2><div className="sub">Family total, {rangeLabel}</div></div></div>
           {topApps.named.length ? topApps.named.map((a) => (
@@ -139,8 +143,8 @@ export default async function ReportsPage(props: PageProps<"/reports">) {
 
       <section className="card card-pad">
         <div className="card-head"><div><h2>Protection changes</h2><div className="sub">Configuration history for the whole family, {rangeLabel}</div></div></div>
-        {data.changes.length >= MAX_CHANGES ? <p className="t-meta" style={{ marginBottom: 12 }}>Showing the latest {MAX_CHANGES}. Export CSV for the full list.</p> : null}
-        {data.changes.length ? <Timeline items={data.changes.map((h) => ({ id: h.id, icon: PROTECTION_BY_KEY[h.key]?.icon ?? "history", title: `${h.child.name}: ${h.title}`, by: h.actor, time: dayTime(h.createdAt, tz), from: h.fromValue, to: h.toValue }))} />
+        {moreChanges ? <p className="t-meta" style={{ marginBottom: 12 }}>Showing the latest {MAX_CHANGES}. Export CSV for the full list.</p> : null}
+        {changes.length ? <Timeline items={changes.map((h) => ({ id: h.id, icon: PROTECTION_BY_KEY[h.key]?.icon ?? "history", title: `${h.child.name}: ${h.title}`, by: h.actor, time: dayTime(h.createdAt, tz), from: h.fromValue, to: h.toValue }))} />
           : <EmptyState icon="history" title="No changes in this period" />}
       </section>
     </>

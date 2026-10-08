@@ -91,7 +91,7 @@ or getting their emails, or leaves you unaware when something breaks.
 | Item | What to do |
 |---|---|
 | Deploy the latest copy | Commit and deploy the title, description and keyword changes in `src/app/layout.tsx` and the seven `(site)` pages. |
-| Production variables | In Vercel › Production, confirm `APP_URL`, `CRON_SECRET`, `TWO_FACTOR_KEY` (store it somewhere safe; it can never change), `SUPPORT_EMAIL`, `SMTP_URL` or `RESEND_API_KEY`, `MAIL_FROM`, `MAP_TILE_URL` (a keyed provider, not plain OpenStreetMap) and `BROWSER_POLICY_SIGNING_KEY`. |
+| Production variables | In Vercel › Production, confirm `APP_URL`, `CRON_SECRET`, `TWO_FACTOR_KEY` (store it somewhere safe; it can never change), `SUPPORT_EMAIL`, `RESEND_API_KEY`, `MAIL_FROM` (or `RESEND_FROM`) on a domain verified in Resend, `MAP_TILE_URL` (a keyed provider, not plain OpenStreetMap) and `BROWSER_POLICY_SIGNING_KEY`. |
 | Payments | Live PayMongo keys (`sk_live_`/`pk_live_`), not test keys. The webhook points at `https://www.eguard.family/api/billing/paymongo/webhook` with its secret in `PAYMONGO_WEBHOOK_SECRET`. Make one real peso purchase, then refund it. |
 | End-to-end test on production | Register → verification email in the **Gmail inbox** (not spam) → add a child → pair a device → a setting shows as verified → password reset → two-step sign-in. |
 | Database | Run `npm run db:deploy` against production. Turn on automated backups and practise one restore. |

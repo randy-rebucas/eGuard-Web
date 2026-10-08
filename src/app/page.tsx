@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import { LEGAL } from "@/lib/legal";
 import { supportEmail } from "@/lib/support";
-import { PLANS as PLAN_CATALOG, webPrice } from "@/lib/plans";
+import { FREE_CHILDREN, PLANS as PLAN_CATALOG, webPrice } from "@/lib/plans";
 import { jsonLd, pageMetadata, siteUrl } from "@/lib/site";
 import { SiteFooter, SiteHeader } from "@/components/site-chrome";
 import { MetaPixel } from "@/components/meta-pixel";
@@ -30,10 +30,10 @@ export const metadata: Metadata = pageMetadata({
   title: "eGuard · Parental controls you can verify, for families in the Philippines",
   absoluteTitle: true,
   path: "/",
-  description: `Set screen time, bedtime, app and web rules on your child's Android phone or tablet, and see each one confirmed on the device. Free for 1 child; plans from ₱${webPrice("PLUS") / 100} a month.`,
+  description: `Set screen time, bedtime, app and web rules on your child's Android phone or tablet, and see each one confirmed on the device. Free for ${FREE_CHILDREN}; plans from ₱${webPrice("PLUS") / 100} a month.`,
   share: {
     title: "eGuard: parental controls you can verify",
-    description: "Set screen time, bedtime and app rules on your child's phone, and see each one confirmed on the device. Free for 1 child.",
+    description: `Set screen time, bedtime and app rules on your child's phone, and see each one confirmed on the device. Free for ${FREE_CHILDREN}.`,
   },
 });
 
@@ -106,7 +106,7 @@ const FAQS = [
   ["Is eGuard available for both Android and iOS?",
     "The Android app is available now on Google Play, and the iOS app is coming soon to the App Store. Where a platform lets eGuard apply a setting directly it does; where it doesn't, you get a step-by-step guide and eGuard verifies the result."],
   ["Do you have a free plan?",
-    "Yes. The Free plan covers one child with basic protection setup, screen time management and limited app monitoring. You can upgrade whenever your family needs more."],
+    `Yes. The Free plan covers ${FREE_CHILDREN} with basic protection setup, screen time management and limited app monitoring. You can upgrade whenever your family needs more.`],
   ["How is my family's data protected?",
     "eGuard only collects what it needs to verify your protections, and it does not sell your children's data. You can export or delete your account data at any time from Settings."],
   ["Can schools or organizations use eGuard?",
@@ -233,7 +233,7 @@ export default function Home() {
               <div className="lp-float lp-hc lp-hc-trust">
                 <Avatars />
                 <div>
-                  <div className="lp-hc-title">Free for 1 child</div>
+                  <div className="lp-hc-title">Free for {FREE_CHILDREN}</div>
                   <div className="lp-hc-sub">No card needed. Upgrade any time.</div>
                 </div>
               </div>
@@ -422,7 +422,7 @@ export default function Home() {
             <div className="lp-cta-box">
               <div className="lp-cta-img"><Image src={ctaFamily} alt="" fill sizes="(max-width:1024px) 100vw, 56vw" placeholder="blur" /></div>
               <h2>Ready to Create a Safer Digital World for Your Family?</h2>
-              <p>Free for one child. No card needed.</p>
+              <p>Free for {FREE_CHILDREN}. No card needed.</p>
               <div className="lp-hero-actions">
                 <StartLink className="lp-btn lp-btn-white" />
                 <a href="#how-it-works" className="lp-btn lp-btn-ghost-light"><PlayDot />See How It Works</a>

@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { Brand } from "@/components/logo";
 import { Icon } from "@/components/icon";
+import { FREE_CHILDREN } from "@/lib/plans";
 import "./auth.css";
 
 import panelBackground from "../../../public/landing/hero-background.jpg";
@@ -39,7 +40,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         </div>
         <div className="auth-trust">
           <div>
-            <div className="auth-trust-title">Free for 1 child</div>
+            <div className="auth-trust-title">Free for {FREE_CHILDREN}</div>
             <div className="auth-trust-sub">No card needed. Upgrade any time.</div>
           </div>
           <div className="auth-trust-avatars">

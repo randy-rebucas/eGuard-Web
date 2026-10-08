@@ -17,7 +17,7 @@ vi.mock("@/lib/auth", () => ({
   PASSWORD_TOO_LONG: "", passwordTooLong: () => false,
 }));
 const svc = vi.hoisted(() => ({
-  createChild: vi.fn(), assertNameFree: vi.fn(), deleteChild: vi.fn(), setAppApproval: vi.fn(), setAppLimit: vi.fn(), setAppCategory: vi.fn(), setCategoryLimit: vi.fn(), audit: vi.fn(),
+  createChild: vi.fn(), updateChild: vi.fn(), assertNameFree: vi.fn(), deleteChild: vi.fn(), setAppApproval: vi.fn(), setAppLimit: vi.fn(), setAppCategory: vi.fn(), setCategoryLimit: vi.fn(), audit: vi.fn(),
   createPairingCode: vi.fn(), pairingCodeStatus: vi.fn(), renameDevice: vi.fn(), removeDevice: vi.fn(), setPrimaryDevice: vi.fn(), moveDevice: vi.fn(),
 }));
 // The real ChildSchema and rules; the database work is stubbed
@@ -71,31 +71,44 @@ describe("createChild", () => {
 });
 
 describe("updateChild", () => {
-  it("only edits children in the parent's own family", async () => {
-    db.child.findFirst.mockResolvedValue(null);
-    expect(await actions.updateChild("other", undefined, form({ name: "Mia", birthYear: year - 9 }))).toEqual({ error: "Child not found." });
-    expect(db.child.findFirst.mock.calls[0][0].where).toMatchObject({ id: "other", familyId: "fam1" });
+  /** The Profile form: what it showed (base) and what the parent left in it */
+  const profile = (name: string, birthYear: number, base = mia(9)) => form({ name, birthYear, baseName: base.name, baseBirthYear: base.birthYear });
+  const saved = (before: ReturnType<typeof mia>, after: { name: string; birthYear: number }) => svc.updateChild.mockResolvedValue({ before, after });
+
+  it("refuses an id that can't be one", async () => {
+    expect(await actions.updateChild("x".repeat(65), undefined, profile("Mia", year - 9))).toEqual({ error: "Child not found." });
+    expect(svc.updateChild).not.toHaveBeenCalled();
   });
-  it("checks a new name against the other children", async () => {
-    db.child.findFirst.mockResolvedValue(mia(9));
-    svc.assertNameFree.mockRejectedValue(new ServiceError(409, "You already have a child named Leo.", "conflict"));
-    expect(await actions.updateChild("c1", undefined, form({ name: "Leo", birthYear: year - 9 }))).toEqual({ error: "You already have a child named Leo." });
-    expect(db.child.updateMany).not.toHaveBeenCalled();
+  it("sends only what the parent changed, so another parent's rename since isn't undone", async () => {
+    saved(mia(9), { name: "Mimi", birthYear: year - 10 });
+    await actions.updateChild("c1", undefined, profile("Mia", year - 10));
+    expect(svc.updateChild).toHaveBeenCalledWith(user, "c1", { birthYear: year - 10 });
   });
-  it("renames a child who has grown past 17, keeping their saved year", async () => {
-    db.child.findFirst.mockResolvedValue(mia(19));
-    expect(await actions.updateChild("c1", undefined, form({ name: "Mia R.", birthYear: year - 19 }))).toEqual({ ok: "Saved." });
+  it("saves nothing when nothing changed", async () => {
+    expect(await actions.updateChild("c1", undefined, profile("Mia ", year - 9))).toEqual({ ok: "Saved." });
+    expect(svc.updateChild).not.toHaveBeenCalled();
   });
-  it("says just Saved when the new age has the same recommendations", async () => {
-    db.child.findFirst.mockResolvedValue(mia(9));
-    expect(await actions.updateChild("c1", undefined, form({ name: "Mia", birthYear: year - 10 }))).toEqual({ ok: "Saved." });
+  it("shows the service's refusals", async () => {
+    svc.updateChild.mockRejectedValue(new ServiceError(409, "You already have a child named Leo.", "conflict"));
+    expect(await actions.updateChild("c1", undefined, profile("Leo", year - 9))).toEqual({ error: "You already have a child named Leo." });
+    svc.updateChild.mockRejectedValue(new ServiceError(404, "Child not found.", "not_found"));
+    expect(await actions.updateChild("c1", undefined, profile("Leo", year - 9))).toEqual({ error: "Child not found." });
+  });
+  it("shows a bad birth year as the form's message", async () => {
+    const real = await vi.importActual<typeof import("@/lib/family-service")>("@/lib/family-service");
+    svc.updateChild.mockImplementation(async () => { real.ChildSchema.parse({ name: "Mia", birthYear: year - 19 }); });
+    expect(await actions.updateChild("c1", undefined, profile("Mia", year - 19))).toEqual({ error: "eGuard is for children under 18." });
+  });
+  it("says just Saved for a rename, or a new age with the same recommendations", async () => {
+    saved(mia(19), { name: "Mia R.", birthYear: year - 19 });
+    expect(await actions.updateChild("c1", undefined, profile("Mia R.", year - 19, mia(19)))).toEqual({ ok: "Saved." });
+    saved(mia(9), { name: "Mia", birthYear: year - 10 });
+    expect(await actions.updateChild("c1", undefined, profile("Mia", year - 10))).toEqual({ ok: "Saved." });
   });
   it("names what to review when the new age changes eGuard's recommendations", async () => {
-    db.child.findFirst.mockResolvedValue(mia(12));
-    const r = await actions.updateChild("c1", undefined, form({ name: "Mia", birthYear: year - 13 }));
+    saved(mia(12), { name: "Mia", birthYear: year - 13 });
+    const r = await actions.updateChild("c1", undefined, profile("Mia", year - 13, mia(12)));
     expect(r?.ok).toBe("Saved. For a 13-year-old, eGuard recommends different Screen Time, Bedtime, App Restrictions and Content Restrictions settings than Mia has now. Review them on the Protection tab.");
-    // A suggestion only: the protections themselves aren't touched
-    expect(db.child.updateMany.mock.calls[0][0].data).toEqual({ name: "Mia", birthYear: year - 13 });
   });
 });
 

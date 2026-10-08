@@ -14,7 +14,7 @@ import { appUrl } from "@/lib/email-verification";
 import { supportEmail } from "@/lib/support";
 import { Icon } from "@/components/icon";
 import { EmptyState, PageHead } from "@/components/ui";
-import { AddOrgAdminForm, ApiKeys, BuyCodesForm, CodesList, JoinCodeCard, OrgAdminActions } from "@/components/organizations";
+import { ApiKeys, BuyCodesForm, CodesList, InviteOrgAdminForm, JoinCodeCard, OrgAdminActions, OrgInviteRow } from "@/components/organizations";
 
 /** The organization's name for the tab, only for people who manage it (anyone else must not learn it exists). */
 export async function generateMetadata(props: PageProps<"/organizations/[id]">) {
@@ -77,7 +77,7 @@ export default async function OrganizationPage(props: PageProps<"/organizations/
         </section>
 
         <section className="card card-pad">
-          <div className="card-head"><div><h2>Admins</h2><div className="sub">People who can manage {org.name}. Owners can add and remove admins.</div></div></div>
+          <div className="card-head"><div><h2>Admins</h2><div className="sub">People who can manage {org.name}. Owners invite and remove admins; someone invited becomes an admin when they accept.</div></div></div>
           {org.admins.map((a) => (
             <div className="setting-row" key={a.id}>
               <span className="ico-tile"><Icon name="user" /></span>
@@ -85,13 +85,14 @@ export default async function OrganizationPage(props: PageProps<"/organizations/
               <OrgAdminActions orgId={org.id} userId={a.id} name={a.name.split(" ")[0]} you={a.you} isOwner={a.role === "OWNER"} canManage={owner} />
             </div>
           ))}
-          {owner ? <div style={{ marginTop: 14 }}><AddOrgAdminForm orgId={org.id} /></div> : null}
+          {org.invites.map((i) => <OrgInviteRow key={i.id} orgId={org.id} id={i.id} email={i.email} expires={shortDate(i.expiresAt, tz)} canManage={owner} />)}
+          {owner ? <div style={{ marginTop: 14 }}><InviteOrgAdminForm orgId={org.id} /></div> : null}
         </section>
       </div>
 
       <section className="card card-pad">
         <div className="card-head"><div><h2>Sponsor codes</h2><div className="sub">Each code gives one family a paid plan. Hand codes out however you like; you&apos;ll see when each one is redeemed, but not by whom.</div></div>
-          {org.totals.bought ? (
+          {org.batches.some((b) => b.codes.length) ? (
             <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
               {org.totals.available ? <Link className="btn btn-secondary btn-sm" href={`/organizations/${org.id}/print`}><Icon name="printer" />Print coupons</Link> : null}
               <a className="btn btn-secondary btn-sm" href={`/organizations/${org.id}/codes.csv`}><Icon name="download" />Download CSV</a>
@@ -132,7 +133,7 @@ export default async function OrganizationPage(props: PageProps<"/organizations/
               id: c.id, code: c.code, status: c.status,
               when: c.redeemedAt ? shortDate(c.redeemedAt, tz) : c.status === "AVAILABLE" ? `until ${shortDate(c.expiresAt, tz)}` : c.status === "EXPIRED" ? shortDate(c.expiresAt, tz) : null,
             }))} />
-          ) : <p className="t-meta">Codes appear here once PayMongo confirms the payment.</p>}
+          ) : <p className="t-meta">Codes appear here once PayMongo confirms the payment. If you closed the checkout without paying, start a new one above; this one is dropped after a day.</p>}
         </section>
       )) : (
         <div className="card"><EmptyState icon="ticket" title="No sponsor codes yet" text="Buy codes above to pay for families' plans. Each code is redeemed once, in Settings › Subscription." /></div>

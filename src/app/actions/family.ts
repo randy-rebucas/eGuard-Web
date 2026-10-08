@@ -81,31 +81,31 @@ export async function createChild(_: FormState, form: FormData): Promise<FormSta
 
 export async function updateChild(childId: string, _: FormState, form: FormData): Promise<FormState> {
   const u = await requireUser();
-  const child = await db.child.findFirst({ where: { id: String(childId), familyId: u.familyId }, include: { policies: { select: { key: true, config: true } } } });
-  if (!child) return { error: "Child not found." };
-  // A child who has since grown past the age range keeps their saved year; only a changed year is checked
-  const unchanged = Number(form.get("birthYear")) === child.birthYear;
-  const parsed = (unchanged ? ChildSchema.pick({ name: true }) : ChildSchema).safeParse({ name: form.get("name"), birthYear: form.get("birthYear") });
-  if (!parsed.success) return { error: parsed.error.issues[0].message };
-  // Only a new name is checked, so families who already have two of one name can still edit them
-  if (parsed.data.name !== child.name) {
-    try {
-      await family.assertNameFree(u.familyId, parsed.data.name, child.id);
-    } catch (e) {
-      return failed(e);
-    }
+  if (!Id.safeParse(childId).success) return { error: "Child not found." };
+  // Only what the parent changed in this form is sent (the hidden base values are what it showed), so a stale
+  // form can't undo a rename or new birth year another parent saved since it loaded
+  const name = String(form.get("name") ?? ""), year = String(form.get("birthYear") ?? "");
+  const input = {
+    ...(name.trim() !== String(form.get("baseName") ?? "").trim() ? { name } : {}),
+    ...(year !== String(form.get("baseBirthYear") ?? "") ? { birthYear: Number(year) } : {}),
+  };
+  if (!Object.keys(input).length) return { ok: "Saved." };
+  let r;
+  try {
+    r = await family.updateChild(u, childId, input);
+  } catch (e) {
+    if (e instanceof z.ZodError) return { error: e.issues[0].message };
+    if (e instanceof ServiceError && e.status === 404) return { error: "Child not found." };
+    return failed(e);
   }
-  const res = await db.child.updateMany({ where: { id: child.id, familyId: u.familyId }, data: parsed.data });
-  if (!res.count) return { error: "Child not found." };
-  if (child.name !== parsed.data.name || !unchanged) await audit(u.familyId, u.name, "child.updated", child.name === parsed.data.name ? child.name : `${child.name} → ${parsed.data.name}`);
   revalidatePath("/", "layout");
-  if (unchanged) return { ok: "Saved." };
+  if (r.after.birthYear === r.before.birthYear) return { ok: "Saved." };
   // A new age can mean different recommendations: say which, and leave the change to the parent (setup flow)
-  const year = new Date().getFullYear(), age = year - Number(form.get("birthYear"));
-  const review = ageReview(year - child.birthYear, age, child.policies);
+  const now = new Date().getFullYear(), age = now - r.after.birthYear;
+  const review = ageReview(now - r.before.birthYear, age, r.before.policies);
   if (!review.length) return { ok: "Saved." };
   const list = review.length === 1 ? review[0] : `${review.slice(0, -1).join(", ")} and ${review.at(-1)}`;
-  return { ok: `Saved. For a ${age}-year-old, eGuard recommends different ${list} settings than ${parsed.data.name} has now. Review them on the Protection tab.` };
+  return { ok: `Saved. For a ${age}-year-old, eGuard recommends different ${list} settings than ${r.after.name} has now. Review them on the Protection tab.` };
 }
 
 export async function deleteChildData(childId: string, _: FormState, form: FormData): Promise<FormState> {
@@ -295,8 +295,10 @@ export async function updateAccount(_: FormState, form: FormData): Promise<FormS
   const parsed = z.object({
     name: z.string().trim().min(2, "Enter your name.").max(family.NAME_MAX, family.NAME_TOO_LONG),
     email: z.string().trim().toLowerCase().email("Enter a valid email address."),
-    timezone: z.string().refine((tz) => { try { new Intl.DateTimeFormat("en", { timeZone: tz }); return true; } catch { return false; } }, "Choose a valid time zone."),
-  }).safeParse({ name: form.get("name"), email: form.get("email"), timezone: form.get("timezone") });
+    timezone: family.TimeZoneSchema,
+    // Only the admin's form has it (other parents see it read-only)
+    familyName: family.FamilyNameSchema.optional(),
+  }).safeParse({ name: form.get("name"), email: form.get("email"), timezone: form.get("timezone"), familyName: form.get("familyName") ?? undefined });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   let emailChanged = false;
   try {
@@ -307,7 +309,10 @@ export async function updateAccount(_: FormState, form: FormData): Promise<FormS
   }
   await db.user.update({ where: { id: u.id }, data: { name: parsed.data.name } });
   if (emailChanged) await sendVerificationEmailLater(u.id);
-  if (u.role === "FAMILY_ADMIN") await db.family.update({ where: { id: u.familyId }, data: { timezone: parsed.data.timezone } });
+  if (u.role === "FAMILY_ADMIN") {
+    await db.family.update({ where: { id: u.familyId }, data: { timezone: parsed.data.timezone } });
+    if (parsed.data.familyName) await family.renameFamily(u, parsed.data.familyName);
+  }
   revalidatePath("/", "layout");
   return { ok: emailChanged ? "Saved. Open the link we sent to your new email to verify it." : "Account details saved." };
 }

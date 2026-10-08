@@ -151,7 +151,7 @@ export function ConfigFlow({ initialKey, initialChild, onClose }: { initialKey?:
 
   const submit = async () => {
     if (!ctx || !draft) return;
-    const r = await act(() => submitConfig(ctx.child.id, draft));
+    const r = await act(() => submitConfig(ctx.child.id, draft, ctx.version));
     setConfirming(false);
     if (!r) return;
     // No device yet: saved as the child's setting, nothing to verify until one pairs

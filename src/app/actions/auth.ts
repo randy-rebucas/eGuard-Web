@@ -92,8 +92,9 @@ export async function register(_: FormState, form: FormData): Promise<FormState>
 }
 
 /** The button on /verify-email. A POST, so mail scanners that open links don't use up the token. */
-export async function verifyEmail(_: VerifyResult | undefined, form: FormData): Promise<VerifyResult> {
-  if ((await hit(ipKey("token", clientIpFrom(await headers())), LIMITS.tokenIp)).limited) return "invalid";
+export async function verifyEmail(_: VerifyResult | "limited" | undefined, form: FormData): Promise<VerifyResult | "limited"> {
+  // Not "invalid": that page says the link may already be used, which would wrongly tell the parent they're done
+  if ((await hit(ipKey("token", clientIpFrom(await headers())), LIMITS.tokenIp)).limited) return "limited";
   return verifyEmailToken(String(form.get("token") ?? ""));
 }
 

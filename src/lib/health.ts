@@ -10,6 +10,18 @@ export const OFFLINE_AFTER_MS = 24 * 3600_000;
 export const isDismissible = (a: { severity: string; resolveKey: string | null; resolvedAt: Date | null }) =>
   !a.resolvedAt && (a.severity === "INFO" || !a.resolveKey);
 
+/**
+ * Which account page a SYSTEM alert is about (its button on web and in the app). They carry no resolveKey, so this
+ * goes by what their creators set: subject "Subscription" (plan changes, passes, sponsor codes), "Organizations",
+ * and the "Parent joined" notice. Anything else gets no button rather than a wrong one.
+ */
+export function systemAction(a: { subject: string; title: string }): "subscription" | "organizations" | "family" | null {
+  if (a.subject === "Subscription") return "subscription";
+  if (a.subject === "Organizations") return "organizations";
+  if (a.title === "Parent joined") return "family";
+  return null;
+}
+
 type DeviceLike = {
   id: string;
   name: string;

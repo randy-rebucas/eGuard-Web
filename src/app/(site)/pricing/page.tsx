@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Check, ChevronDown, CreditCard, Minus, RefreshCw, Ticket } from "lucide-react";
 import { SignedIn, StartLink } from "@/components/signed-in";
-import { PLANS, webPrice, type Plan } from "@/lib/plans";
+import { FREE_CHILDREN, PLANS, webPrice, type Plan } from "@/lib/plans";
+import { discountSummary } from "@/lib/batch-discount";
 import { pageMetadata } from "@/lib/site";
 import { supportEmail } from "@/lib/support";
 import { PageHead } from "../page-head";
@@ -11,7 +12,7 @@ import "./pricing.css";
 export const metadata: Metadata = pageMetadata({
   title: "Pricing: free parental controls, plans in pesos",
   path: "/pricing",
-  description: "eGuard is free for one child. eGuard Plus and Family Pro add more children, devices, location sharing and reports. Pay monthly in pesos with GCash, Maya, QR Ph or card.",
+  description: `eGuard is free for ${FREE_CHILDREN}. eGuard Plus and Family Pro add more children, devices, location sharing and reports. Pay monthly in pesos with GCash, Maya, QR Ph or card.`,
 });
 
 const LOOK = {
@@ -39,8 +40,8 @@ const ROWS: [string, string | null, (p: Plan) => Cell][] = [
   ["Daily limits per app", null, () => true],
   ["Limits for a kind of app", "Like gaming time or social media", (p) => p.entitlements.categoryLimits],
   ["Location sharing and history", null, (p) => p.entitlements.locationSharing],
-  ["Reports", null, (p) => p.entitlements.advancedReports ? "Today to 30 days, custom ranges, CSV export" : "Today and 7 days"],
-  ["Push alerts", "Coming soon", (p) => p.entitlements.realtimeAlerts],
+  ["Reports", null, (p) => p.entitlements.advancedReports ? "Today to 30 days, custom ranges up to a year, CSV export" : "Today, 7 days, custom ranges up to a week"],
+  ["Push alerts", "On your phone, with the eGuard parent app", (p) => p.entitlements.realtimeAlerts],
   ["API access for schools and organizations", "API keys for your organization", (p) => p.entitlements.apiAccess],
   ["Support", null, (p) => p.id === "FREE" ? "Email" : p.id === "PLUS" ? "Priority" : "Dedicated"],
 ];
@@ -51,7 +52,7 @@ const FAQS: [string, string][] = [
   ["What's the difference between a pass and auto-renew?", "A pass is one month, paid once with GCash, Maya, QR Ph or a card. It never renews; we remind you 3 days before it ends, and buying another adds a month. Auto-renew charges a card or Maya every month until you turn it off."],
   ["What happens if I move to a smaller plan?", "Nothing is removed. Children and devices over the new limit stay protected; you just can't add more until you're under it. If location sharing ends, current locations are cleared and any history is hidden until you upgrade again."],
   ["Can I pay in the app?", "Plans are bought on the web, in Settings › Subscription. Only the family admin can buy or cancel. The app shows your plan as soon as it's paid."],
-  ["Do you have plans for schools or organizations?", "Yes. Any parent can create an organization for a school, community group or business, share a join code with families, and buy sponsor codes that pay for families' plans, with 10% off 10 or more codes, 15% off 50 or more, and 20% off 100 or more. Family Pro adds API keys, so your own systems can read your codes and counts. Organizations only ever see counts, never a family's data."],
+  ["Do you have plans for schools or organizations?", `Yes. Any parent can create an organization for a school, community group or business, share a join code with families, and buy sponsor codes that pay for families' plans, with ${discountSummary()}. Family Pro adds API keys, so your own systems can read your codes and counts. Organizations only ever see counts, never a family's data.`],
 ];
 
 function Mark({ value }: { value: Cell }) {
@@ -72,7 +73,7 @@ export default function PricingPage() {
       <PageHead
         eyebrow="Pricing"
         title="Simple plans, priced in pesos"
-        lede="Start free with one child. Upgrade when your family needs more children, devices, location or reports. Every plan verifies every protection."
+        lede={`Start free with ${FREE_CHILDREN}. Upgrade when your family needs more children, devices, location or reports. Every plan verifies every protection.`}
       />
 
       <div className="pc">
@@ -152,7 +153,7 @@ export default function PricingPage() {
         <div className="st-cta">
           <div>
             <h2>Start free, upgrade when you&apos;re ready</h2>
-            <p>One child, every setting verified. No card needed.</p>
+            <p>Free for {FREE_CHILDREN}, every setting verified. No card needed.</p>
           </div>
           <StartLink className="lp-btn lp-btn-white" />
         </div>

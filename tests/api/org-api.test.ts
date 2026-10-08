@@ -8,7 +8,7 @@ vi.mock("@/lib/mail", async (orig) => ({
   sendMail: async (m: { to: string; subject: string; text: string }) => { mail.sent.push(m); },
 }));
 
-import { addOrgAdmin, createOrganization, joinOrganization, removeOrgAdmin } from "@/lib/organizations";
+import { acceptOrgInvite, createOrganization, invitationsFor, inviteOrgAdmin, joinOrganization, removeOrgAdmin } from "@/lib/organizations";
 import { createApiKey, listApiKeys, revokeApiKey } from "@/lib/org-api";
 import type { Actor } from "@/lib/config-service";
 import * as organizationRoute from "@/app/api/org/v1/organization/route";
@@ -74,7 +74,8 @@ beforeAll(async () => {
   orgId = org.id;
   joinCode = org.joinCode;
   otherOrgId = (await createOrganization(owner, { name: "Other School", kind: "SCHOOL" })).id;
-  await addOrgAdmin(owner, orgId, `admin.ramos.${DOMAIN}`);
+  await inviteOrgAdmin(owner, orgId, `admin.ramos.${DOMAIN}`);
+  await acceptOrgInvite(helper, (await invitationsFor(helper.id))[0].id);
   codes.push(...await paidBatch(orgId, 3));
 });
 beforeEach(() => { mail.sent.length = 0; });
@@ -82,6 +83,7 @@ afterAll(async () => {
   const users = await db.user.findMany({ where: { email: { endsWith: DOMAIN } }, select: { id: true } });
   await db.organization.deleteMany({ where: { members: { some: { userId: { in: users.map((u) => u.id) } } } } });
   await db.family.deleteMany({ where: { users: { some: { email: { endsWith: DOMAIN } } } } });
+  await db.rateLimit.deleteMany({ where: { key: { in: users.map((u) => `orgadmin:${u.id}`) } } });
   await db.$disconnect();
 });
 

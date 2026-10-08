@@ -1,5 +1,5 @@
 import "server-only";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { Prisma, ProtectionKey, RequestStatus, Role } from "@prisma/client";
 import { db } from "./db";
@@ -59,14 +59,32 @@ export async function childFor(familyId: string, childId: string) {
   return child;
 }
 
-export async function writePolicies(childId: string, configs: ProtectionConfig[]) {
+/**
+ * A short fingerprint of one protection's setting for a child: the saved policy and the change waiting for devices.
+ * Clients send it back as `baseVersion` when they save, so a save made from an older view is refused (requestConfigs).
+ */
+export async function configVersion(childId: string, key: ProtectionKey, client: Client = db) {
+  const [policy, open] = await Promise.all([
+    client.childPolicy.findUnique({ where: { childId_key: { childId, key } }, select: { config: true } }),
+    client.configRequest.findFirst({ where: { childId, key, status: { in: OPEN } }, orderBy: { createdAt: "desc" }, select: { batchId: true } }),
+  ]);
+  return versionOf(policy?.config ?? null, open?.batchId ?? null);
+}
+
+/** configVersion from what the caller already loaded */
+export const versionOf = (policy: unknown, openBatchId: string | null) =>
+  createHash("sha256").update(JSON.stringify([policy ?? null, openBatchId])).digest("base64url").slice(0, 16);
+
+type Client = Prisma.TransactionClient | typeof db;
+
+export async function writePolicies(childId: string, configs: ProtectionConfig[], client: Client = db) {
   for (const cfg of configs) {
-    await db.childPolicy.upsert({
+    await client.childPolicy.upsert({
       where: { childId_key: { childId, key: cfg.key } },
       create: { childId, key: cfg.key, config: cfg as Prisma.InputJsonValue },
       update: { config: cfg as Prisma.InputJsonValue },
     });
-    await syncChildLimits(childId, cfg);
+    await syncChildLimits(childId, cfg, client);
   }
 }
 
@@ -79,7 +97,7 @@ export async function writePolicies(childId: string, configs: ProtectionConfig[]
  * the protection, rather than save a setting nothing will apply. Otherwise (onboarding) such protections are saved
  * directly too.
  */
-export async function requestConfigs(actor: Actor, childId: string, configs: ProtectionConfig[], via: string, opts: { strict?: boolean } = {}) {
+export async function requestConfigs(actor: Actor, childId: string, configs: ProtectionConfig[], via: string, opts: { strict?: boolean; baseVersion?: string } = {}) {
   const child = await childFor(actor.familyId, childId);
   const keys = [...new Set(configs.map((c) => c.key))];
   if (keys.length !== configs.length) throw new ServiceError(400, "Each protection can only appear once.", "invalid");
@@ -110,9 +128,19 @@ export async function requestConfigs(actor: Actor, childId: string, configs: Pro
     }
   }
 
-  await db.configRequest.updateMany({ where: { childId: child.id, key: { in: keys }, status: { in: OPEN } }, data: { status: "CANCELLED" } });
-  if (rows.length) await db.configRequest.createMany({ data: rows });
-  if (direct.length) await writePolicies(child.id, direct);
+  // One change at a time per child and protection (two parents, web and app): the version check, cancelling the
+  // change waiting and queueing or saving this one happen together, so two saves from the same view can't both pass.
+  // Locks taken in key order, so two multi-protection saves can't deadlock.
+  await db.$transaction(async (tx) => {
+    for (const k of [...keys].sort()) await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`config:${child.id}:${k}`}))`;
+    // The change dialog saves the whole setting: refuse one made from what another parent has since changed or queued
+    if (opts.baseVersion !== undefined && configs.length === 1 && opts.baseVersion !== await configVersion(child.id, configs[0].key, tx)) {
+      throw new ServiceError(409, `${PROTECTION_BY_KEY[configs[0].key].name} for ${child.name} was changed by someone else since you opened this. Close it and open it again to see the change.`, "stale");
+    }
+    await tx.configRequest.updateMany({ where: { childId: child.id, key: { in: keys }, status: { in: OPEN } }, data: { status: "CANCELLED" } });
+    if (rows.length) await tx.configRequest.createMany({ data: rows });
+    if (direct.length) await writePolicies(child.id, direct, tx);
+  });
   const detail = configs.length === 1
     ? `${PROTECTION_BY_KEY[configs[0].key].name} for ${child.name}: ${describeConfig(configs[0])}`
     : `${configs.length} protections for ${child.name}`;
@@ -207,11 +235,14 @@ export async function childProtections(familyId: string, childId: string) {
         guide: cap === "GUIDED" || cap === "VERIFY_ONLY" ? def.guide?.[d.platform] ?? null : null,
       };
     });
+    const openBatchId = open.find((r) => r.key === def.key)?.batchId ?? null;
     return {
       key: def.key, name: def.name, checkName: def.checkName, icon: def.icon,
       policy, policyLabel: describeConfig(policy),
       status: devs.length ? worst(devs.map((d) => d.status)) : "NOT_CONFIGURED",
-      openBatchId: open.find((r) => r.key === def.key)?.batchId ?? null,
+      openBatchId,
+      /** Send back as `baseVersion` when changing it, so a change made since is never silently undone */
+      version: versionOf(policies.find((p) => p.key === def.key)?.config ?? null, openBatchId),
       devices: devs,
     };
   });

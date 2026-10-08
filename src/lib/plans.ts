@@ -13,9 +13,9 @@ export type Entitlements = {
   locationSharing: boolean;
   /** How many of a child's apps can be seen and managed; null for all */
   appMonitoringLimit: number | null;
-  /** Push notifications for alerts (delivery not wired up yet); without it alerts still show in the app and by email */
+  /** Push notifications for alerts (lib/push, sent by the maintenance job); without it alerts still show in the app and by email */
   realtimeAlerts: boolean;
-  /** 30-day and custom report ranges, and CSV export */
+  /** 30-day reports, custom ranges longer than a week (lib/reports BASIC_RANGE_DAYS), and CSV export */
   advancedReports: boolean;
   /** Daily limits per app category ("Gaming time"); per-app limits are on every plan */
   categoryLimits: boolean;
@@ -59,7 +59,7 @@ export const PLANS: Plan[] = [
       { key: "children", label: "Up to 5 children", included: true },
       { key: "protection", label: "Full protection features", included: true },
       { key: "verification", label: "Configuration verification", included: true },
-      { key: "alerts", label: "Push alerts (coming soon)", included: true },
+      { key: "alerts", label: "Push alerts", included: true },
       { key: "location", label: "Location sharing", included: true },
       { key: "category_limits", label: "Category limits, like gaming time", included: true },
       { key: "support", label: "Priority support", included: true },
@@ -86,6 +86,12 @@ export const planById = byId;
 /** Unknown names (including plans retired before these) fall back to Free. */
 export const planByName = (name: string) => PLANS.find((p) => p.name === name) ?? byId("FREE");
 export const entitlementsFor = (planName: string) => planByName(planName).entitlements;
+
+const NUMBER_WORDS = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
+/** "one child", "five children"; `digits`: "1 child". For copy that states a plan's child limit. */
+export const childCount = (n: number, { digits = false } = {}) => `${digits ? n : NUMBER_WORDS[n] ?? n} ${n === 1 ? "child" : "children"}`;
+/** What Free covers ("Free for one child"), from the plan itself, so the site's copy follows a change to it. */
+export const FREE_CHILDREN = childCount(byId("FREE").entitlements.childLimit);
 
 /** The next plan up from this one, if any: what "Upgrade" offers. */
 export function nextPlan(planName: string) {

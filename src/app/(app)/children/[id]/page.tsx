@@ -324,7 +324,8 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
                 <div className="t-title">{k.limitLabel}</div>
                 <div className="t-meta">{fmtMinutes(today.get(k.key) ?? 0)} today · {count} app{count === 1 ? "" : "s"}{limit && !canLimit ? ` · ${fmtMinutes(limit)} limit paused on ${family.plan}` : ""}</div>
               </div>
-              {canLimit ? <CategoryLimitControl childId={c!.id} category={k.key} minutes={limit} /> : null}
+              {canLimit ? <CategoryLimitControl childId={c!.id} category={k.key} minutes={limit} />
+                : limit ? <CategoryLimitControl childId={c!.id} category={k.key} minutes={limit} paused /> : null}
             </div>
           );
         })}

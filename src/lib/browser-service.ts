@@ -50,21 +50,29 @@ export async function pairBrowser(input: PairInput) {
   const claimed = await db.pairingCode.updateMany({ where: { id: code.id, usedAt: null, expiresAt: { gt: new Date() } }, data: { usedAt: new Date() } });
   if (!claimed.count) throw invalidCode();
 
-  await refreshPurchases(code.familyId);
-  const family = await db.family.findUniqueOrThrow({ where: { id: code.familyId } });
+  // Give the code back: after removing a device (limit reached), or after a failure here, the parent can use it again
+  const release = () => db.pairingCode.update({ where: { id: code.id }, data: { usedAt: null } });
+  // A store that can't be reached right now mustn't stop pairing (as for phones): the plan as last known decides
+  await refreshPurchases(code.familyId).catch((e) => console.error("[browser pair] refreshing purchases failed", code.familyId, e));
   const { grant, hashes } = newGrant();
-  // Same slot lock as device pairing: a phone and a browser can't both take the last slot
-  const inst = await withDeviceSlot(code.familyId, family.deviceLimit, (tx) => tx.browserInstallation.create({
-    data: {
-      familyId: code.familyId, childId: code.childId, deviceLabel: code.deviceLabel ?? "Computer",
-      browser: input.browser, browserVersion: input.browserVersion, extensionVersion: input.extensionVersion, platform: input.platform,
-      ...hashes, lastSeenAt: new Date(),
-    },
-    include: { child: true },
-  }));
+  let inst, family;
+  try {
+    family = await db.family.findUniqueOrThrow({ where: { id: code.familyId } });
+    // Same slot lock as device pairing: a phone and a browser can't both take the last slot
+    inst = await withDeviceSlot(code.familyId, family.deviceLimit, (tx) => tx.browserInstallation.create({
+      data: {
+        familyId: code.familyId, childId: code.childId, deviceLabel: code.deviceLabel ?? "Computer",
+        browser: input.browser, browserVersion: input.browserVersion, extensionVersion: input.extensionVersion, platform: input.platform,
+        ...hashes, lastSeenAt: new Date(),
+      },
+      include: { child: true },
+    }));
+  } catch (e) {
+    await release().catch(() => {});
+    throw e;
+  }
   if (!inst) {
-    // Give the code back so the parent can use it after removing a device
-    await db.pairingCode.update({ where: { id: code.id }, data: { usedAt: null } });
+    await release();
     throw new ServiceError(409, "Device limit reached for this plan", "device_limit");
   }
   const label = `${inst.child.name}'s ${browserLabel(inst)}`;

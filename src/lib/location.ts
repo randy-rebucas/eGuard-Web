@@ -170,18 +170,38 @@ export const isDayKey = (s: unknown): s is string =>
 /** The day key `n` days after `k` (negative for before) */
 export const shiftDay = (k: string, n: number) => new Date(Date.parse(`${k}T00:00:00Z`) + n * 864e5).toISOString().slice(0, 10);
 
-/** Most visits one day view shows; a phone reporting every few minutes while moving stays well under it */
+/**
+ * Most visits one day view shows. A moving device sends a fix every 150 m (up to 240 an hour), so a long drive
+ * makes far more: the passing-by ones are thinned to fit (thinRoute).
+ */
 export const DAY_VISITS_MAX = 300;
+/** Most visits read for one day before thinning: one device at its rate limit all day is 5,760 */
+const DAY_VISITS_READ = 6000;
+
+/**
+ * At most `max` of a day's visits, in order: every stay, and passing-by fixes evenly spread between them, always
+ * including the last one (where the route ends). Cutting the list off instead dropped the end of the day.
+ */
+export function thinRoute<V extends { arrivedAt: Date; lastSeenAt: Date }>(visits: V[], max: number) {
+  if (visits.length <= max) return visits;
+  const passing = visits.filter((v) => !stayed(v));
+  const room = max - (visits.length - passing.length);
+  const keep = new Set<V>();
+  for (let i = 1; i <= room; i++) keep.add(passing[Math.ceil((i * passing.length) / room) - 1]);
+  return visits.filter((v) => stayed(v) || keep.has(v));
+}
 
 /**
  * One child's visits on a day (YYYY-MM-DD in the family's time zone), oldest first: the day's route.
- * A visit that spans midnight belongs to both days.
+ * A visit that spans midnight belongs to both days. `thinned`: some passing-by fixes were left out (thinRoute).
  */
-export function visitsForDay(childId: string, day: string, tz: string) {
-  return db.locationVisit.findMany({
+export async function visitsForDay(childId: string, day: string, tz: string) {
+  const rows = await db.locationVisit.findMany({
     where: { childId, arrivedAt: { lt: dayStart(shiftDay(day, 1), tz) }, lastSeenAt: { gte: dayStart(day, tz) } },
-    orderBy: [{ arrivedAt: "asc" }, { id: "asc" }], take: DAY_VISITS_MAX, include: { device: { select: { name: true } } },
+    orderBy: [{ arrivedAt: "asc" }, { id: "asc" }], take: DAY_VISITS_READ, include: { device: { select: { name: true } } },
   });
+  const visits = thinRoute(rows, DAY_VISITS_MAX);
+  return { visits, thinned: visits.length < rows.length };
 }
 
 /**

@@ -61,6 +61,7 @@ describe("weekly summary", () => {
     expect(sent[0].subject).toBe("Your eGuard week: Sep 27 – Oct 3");
     expect(sent[0].text).toContain("Hi Ana,");
     expect(sent[0].text).toContain("Mia: 3h 30m this week");
+    // A Free family: every plan can open a week-long custom range
     expect(sent[0].text).toContain("/reports?period=custom&from=2026-09-27&to=2026-10-03");
 
     await sendWeeklyDigests(new Date(SUNDAY_EVENING.getTime() + 20 * 60_000));

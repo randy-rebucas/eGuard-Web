@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { FREE_CHILDREN } from "@/lib/plans";
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight, BadgeCheck, CircleCheck, HeartHandshake, LockKeyhole, Send, Smartphone, SlidersHorizontal } from "lucide-react";
@@ -24,7 +25,7 @@ const FLOW = [
 const VALUES = [
   [BadgeCheck, "Tell parents the truth", "A setting isn't done until the device confirms it. When we can't check, we say so instead of guessing."],
   [LockKeyhole, "Collect as little as we can", "Settings, screen-time totals and app names. Never messages, photos or browsing content. Nothing is sold, and there are no ads."],
-  [HeartHandshake, "Keep it a family decision", "eGuard is visible on your child's device, never hidden. On Android, children 13 and older are asked to agree to supervision."],
+  [HeartHandshake, "Keep it a family decision", "eGuard is visible on your child's device, never hidden. On Android it shows a notification whenever it's active."],
 ] as const;
 
 export default function AboutPage() {
@@ -76,7 +77,7 @@ export default function AboutPage() {
           <div className="st-facts">
             <div><b>10</b><span>protections, each checked on the device</span></div>
             <div><b>Android &amp; browsers</b><span>phones, tablets, Chrome, Edge and Firefox, managed from one dashboard. iPhone and iPad coming soon</span></div>
-            <div><b>₱0</b><span>for one child, with no card needed to start</span></div>
+            <div><b>₱0</b><span>for {FREE_CHILDREN}, with no card needed to start</span></div>
           </div>
         </div>
 
@@ -89,7 +90,7 @@ export default function AboutPage() {
         <div className="st-cta">
           <div>
             <h2>Set up your family in a few minutes</h2>
-            <p>Free for one child. Upgrade whenever you need more.</p>
+            <p>Free for {FREE_CHILDREN}. Upgrade whenever you need more.</p>
           </div>
           <Link href="/register" className="lp-btn lp-btn-white">Get Started Free<ArrowRight /></Link>
         </div>

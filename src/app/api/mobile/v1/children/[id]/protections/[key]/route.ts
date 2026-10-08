@@ -15,10 +15,12 @@ import { authed, body, clientLabel } from "@/lib/mobile-api";
 export const PUT = authed<{ id: string; key: string }>(async ({ req, user, params }) => {
   const key = params.key.toUpperCase();
   if (!(key in PROTECTION_BY_KEY)) throw invalid("Unknown protection.");
-  const raw = await body(req, z.record(z.string(), z.unknown()));
+  const { baseVersion, ...raw } = await body(req, z.record(z.string(), z.unknown()));
+  if (baseVersion !== undefined && (typeof baseVersion !== "string" || baseVersion.length > 64)) throw invalid("baseVersion must be the version from GET /children/{id}/protections.");
   const parsed = ConfigSchema.safeParse({ ...raw, key });
   if (!parsed.success) throw invalid(parsed.error.issues[0].message);
-  const { batchId, saved } = await requestConfigs(user, params.id, [parsed.data as ProtectionConfig], clientLabel(req), { strict: true });
+  // baseVersion (optional): 409 `stale` when the setting changed since the app loaded it
+  const { batchId, saved } = await requestConfigs(user, params.id, [parsed.data as ProtectionConfig], clientLabel(req), { strict: true, baseVersion });
   if (!batchId) return NextResponse.json({ batchId: null, saved });
   return NextResponse.json(await batchStatus(user.familyId, batchId), { status: 202 });
 });

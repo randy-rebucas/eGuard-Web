@@ -6,12 +6,15 @@ export type Period = "today" | "7d" | "30d" | "custom";
 
 /** Longest custom range, in days */
 export const MAX_RANGE_DAYS = 366;
+/** Longest custom range without advanced reports: a week, so every plan can open the weekly summary's week */
+export const BASIC_RANGE_DAYS = 7;
 
 const DAY = 864e5;
 /** A day key `n` days after `k` (negative for before) */
 export const addDays = (k: string, n: number) => new Date(dateFromKey(k).getTime() + n * DAY).toISOString().slice(0, 10);
 
-export function resolveRange(period: Period, tz: string, from?: string, to?: string) {
+/** `maxDays`: the longest custom range the plan allows (a longer one keeps its last `maxDays` days). */
+export function resolveRange(period: Period, tz: string, from?: string, to?: string, maxDays = MAX_RANGE_DAYS) {
   const today = dayKey(new Date(), tz);
   // A real calendar date: "2026-02-30" and "2026-13-45" match the pattern but aren't dates
   const valid = (s?: string) => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(Date.parse(`${s}T00:00:00Z`)) && new Date(`${s}T00:00:00Z`).toISOString().slice(0, 10) === s;
@@ -19,7 +22,7 @@ export function resolveRange(period: Period, tz: string, from?: string, to?: str
     // Clamp to today before comparing, so a range that starts in the future is rejected, not inverted
     const end = to! > today ? today : to!;
     if (from! <= end) {
-      const earliest = addDays(end, -(MAX_RANGE_DAYS - 1));
+      const earliest = addDays(end, -(maxDays - 1));
       return { from: from! < earliest ? earliest : from!, to: end };
     }
   }
@@ -35,6 +38,8 @@ export const daysBetween = (from: string, to: string) => Math.round((dateFromKey
  * would make every range that ends today look like usage went down. `prevAvg` is null when there's no
  * complete day to compare (the Today view).
  * `maxChanges` caps the change list; leave it out to get every change (the CSV export).
+ * `apps` is every app used in the range, most used first: callers show the top few, but a plan's
+ * "N more apps not named" count needs them all.
  */
 export async function reportData(familyId: string, tz: string, from: string, to: string, opts: { maxChanges?: number } = {}) {
   const f = dateFromKey(from), t = dateFromKey(to);
@@ -45,7 +50,7 @@ export async function reportData(familyId: string, tz: string, from: string, to:
   const [screen, prevScreen, apps, changes, children] = await Promise.all([
     db.screenTimeDaily.groupBy({ by: ["childId", "date"], where: { child: { familyId }, date: { gte: f, lte: t } }, _sum: { minutes: true }, orderBy: { date: "asc" } }),
     db.screenTimeDaily.aggregate({ where: { child: { familyId }, date: { gte: pf, lte: pt } }, _sum: { minutes: true } }),
-    db.appUsageDaily.groupBy({ by: ["app"], where: { child: { familyId }, date: { gte: f, lte: t }, app: { not: "Others" } }, _sum: { minutes: true }, orderBy: { _sum: { minutes: "desc" } }, take: 8 }),
+    db.appUsageDaily.groupBy({ by: ["app"], where: { child: { familyId }, date: { gte: f, lte: t }, app: { not: "Others" } }, _sum: { minutes: true }, orderBy: { _sum: { minutes: "desc" } } }),
     // Changes are timestamps, so the range runs from local midnight to local midnight, not UTC
     db.configChange.findMany({ where: { familyId, createdAt: { gte: dayStart(from, tz), lt: dayStart(addDays(to, 1), tz) } }, orderBy: { createdAt: "desc" }, include: { child: true }, take: opts.maxChanges }),
     db.child.findMany({ where: { familyId }, select: { id: true, name: true } }),

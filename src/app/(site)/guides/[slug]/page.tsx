@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { FREE_CHILDREN } from "@/lib/plans";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ArrowRight, Check, MessageCircle, Sprout } from "lucide-react";
@@ -112,7 +113,7 @@ export default async function AgeGuidePage({ params }: PageProps<"/guides/[slug]
         <div className="st-cta">
           <div>
             <h2>Set up eGuard for your {g.sampleAge < 13 ? "child" : "teen"}</h2>
-            <p>eGuard suggests these settings for you. Free for one child.</p>
+            <p>eGuard suggests these settings for you. Free for {FREE_CHILDREN}.</p>
           </div>
           <Link href="/register" className="lp-btn lp-btn-white">Get Started Free<ArrowRight /></Link>
         </div>

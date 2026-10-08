@@ -84,8 +84,12 @@ async function owned(actor: Actor, id: string) {
 export async function createPlace(actor: Actor, input: z.input<typeof PlaceInput>) {
   await requireLocationSharing(actor.familyId);
   const b = PlaceInput.parse(input);
-  if ((await db.place.count({ where: { familyId: actor.familyId } })) >= MAX_PLACES) throw invalid(`You can save up to ${MAX_PLACES} places. Remove one first.`);
-  const p = await db.place.create({ data: { familyId: actor.familyId, ...b }, select });
+  // Locked per family: two parents (or web and app) adding at once could both pass the count
+  const p = await db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`place.create:${actor.familyId}`}))`;
+    if ((await tx.place.count({ where: { familyId: actor.familyId } })) >= MAX_PLACES) throw invalid(`You can save up to ${MAX_PLACES} places. Remove one first.`);
+    return tx.place.create({ data: { familyId: actor.familyId, ...b }, select });
+  });
   await relabelAround(actor.familyId, p, p.radiusM);
   await audit(actor.familyId, actor.name, "place.created", `${p.name} (${p.radiusM} m, notices ${notices(p)})`);
   return p;

@@ -12,10 +12,23 @@ const RESULT = {
   verified: { Icon: BadgeCheck, title: "Email verified", body: "You're all set. You can now pair your children's devices." },
   expired: { Icon: Hourglass, title: "This link has expired", body: "Sign in and choose “Resend link” to get a new one." },
   invalid: { Icon: TriangleAlert, title: "This link doesn't work", body: "It may have been used already, or replaced by a newer link. If you've verified, you're all set." },
+  limited: { Icon: Hourglass, title: "Too many tries", body: "Wait a few minutes, then try the button again. Your link still works." },
 } as const;
 
 export function VerifyEmailForm({ token }: { token: string }) {
   const [result, action, pending] = useActionState(verifyEmail, token ? undefined : "invalid");
+  if (result === "limited") {
+    // The token wasn't used: keep the button, so the parent can try again without finding the email
+    return (
+      <form action={action} className="verify-card-body">
+        <Hourglass {...ico} />
+        <h1>{RESULT.limited.title}</h1>
+        <p role="alert">{RESULT.limited.body}</p>
+        <input type="hidden" name="token" value={token} />
+        <button className="btn btn-primary" disabled={pending}>{pending ? "Verifying…" : "Verify my email"}</button>
+      </form>
+    );
+  }
   if (result) {
     const r = RESULT[result];
     return (

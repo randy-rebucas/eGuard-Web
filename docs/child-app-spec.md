@@ -69,8 +69,8 @@ These come from how the server already works. Treat them as requirements.
 |---|---|---|
 | Minimum OS | **Decide.** Android 10 (API 29) suggested | iOS 16 (needed for `FamilyControls` `.child` authorization) |
 | Device kinds | Phone, tablet | iPhone, iPad |
-| Enforcement stack | On-device APIs: Usage access, device admin, local `VpnService`, foreground service. See [decision D1](#15-open-decisions) about Google Family Link | `FamilyControls`, `ManagedSettings`, `DeviceActivity` (Screen Time API) |
-| Needs Family Sharing / Family Link | **Decide** (D1) | Yes: the child's Apple ID must be in the parent's Family Sharing group, and a parent approves `.child` authorization |
+| Enforcement stack | On-device APIs: Usage access, device admin, local `VpnService`, foreground service. No Google Family Link ([decision D1](#15-open-decisions)) | `FamilyControls`, `ManagedSettings`, `DeviceActivity` (Screen Time API) |
+| Needs Family Sharing / Family Link | No (D1: on-device APIs) | Yes: the child's Apple ID must be in the parent's Family Sharing group, and a parent approves `.child` authorization |
 | Store entitlement | `IsMonitoringTool = parental_control`, permission declarations (app-listing.md › 9) | Family Controls **distribution** entitlement. Request it now; it can take weeks |
 
 Capabilities per platform are defined in [src/lib/protections.ts](../src/lib/protections.ts) and must match what the
@@ -514,7 +514,7 @@ against a local server (`npm run dev`, with `APP_URL` reachable from the phone) 
 
 | # | Decision | Options | Recommendation |
 |---|---|---|---|
-| D1 | Android enforcement stack | On-device APIs (this spec) · Google Family Link (the help articles mention it) · Android Enterprise / device owner | On-device APIs. Family Link has no public API for a third-party app to set or read its rules, so eGuard couldn't verify them. Then fix the "Use Google Family Link" help article |
+| D1 | Android enforcement stack | On-device APIs (this spec) · Google Family Link · Android Enterprise / device owner | **Decided 2026-10-08: on-device APIs.** Family Link has no public API for a third-party app to set or read its rules, so eGuard couldn't verify them. The help article `android-family-link` says Family Link isn't needed |
 | D2 | How Android shows the block screen | Overlay (`SYSTEM_ALERT_WINDOW`) · AccessibilityService | Overlay, with usage-stats polling. Accessibility only if overlay proves unreliable, since Play scrutinizes it |
 | D3 | Age ratings for Android apps | Play parental controls (no read API) · a bundled rating list · parent decides per app | A server-side rating lookup by package name (needs G4); until then, App Restrictions on Android relies on App Approval |
 | D4 | iOS app identity and usage data | `FamilyActivityPicker` tokens chosen by the parent · threshold-only reporting | Prototype first (G3). This decides what the iOS listing can promise |

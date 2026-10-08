@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireStaff } from "@/lib/staff-auth";
+import { logStaff, requireStaff } from "@/lib/staff-auth";
 import { searchFamilies } from "@/lib/console-queries";
 import { beforeParam, day, one } from "../../format";
 import { Empty, Pager } from "../../ui";
@@ -10,9 +10,11 @@ export const metadata = { title: "Families" };
 export const instant = false;
 
 export default async function FamiliesPage(props: PageProps<"/console/families">) {
-  await requireStaff();
+  const staff = await requireStaff();
   const sp = await props.searchParams;
   const q = one(sp.q).slice(0, 200), before = beforeParam(sp.before);
+  // A search shows parents' emails, so it's recorded like opening an account (the newest-first list isn't)
+  if (q.trim()) await logStaff(staff.id, "family.search", undefined, q.trim());
   const { rows, nextBefore } = await searchFamilies(q, before);
   return (
     <>

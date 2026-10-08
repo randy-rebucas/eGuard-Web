@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { childFor } from "@/lib/config-service";
-import { dayTime } from "@/lib/format";
-import { getFamily } from "@/lib/queries";
+import { dayStart, dayTime } from "@/lib/format";
+import { dayKey, getFamily } from "@/lib/queries";
 import { authed } from "@/lib/mobile-api";
-import { dayGroup, visitJson } from "@/lib/mobile-views";
-import { childLocation, deviceSharing, locationPolicy } from "@/lib/location";
+import { visitJson } from "@/lib/mobile-views";
+import { childLocation, deviceSharing, locationPolicy, shiftDay } from "@/lib/location";
 import { requireLocationSharing } from "@/lib/plan-access";
 
 /** Today's and yesterday's visits are listed up to this many; "View All" (/location/visits) pages the rest. */
@@ -30,11 +30,14 @@ export const GET = authed<{ id: string }>(async ({ user, params }) => {
   const l = childLocation(devices, Date.now(), locationPolicy(policies));
   const latest = l.device;
 
-  // 72 hours always covers "yesterday" in the family's time zone; the day filter below trims the rest
-  const visits = family.keepLocationHistory
-    ? await db.locationVisit.findMany({ where: { childId: child.id, arrivedAt: { gte: new Date(Date.now() - 72 * 3600_000) } }, orderBy: { arrivedAt: "desc" }, include: { device: { select: { name: true } } } })
+  // Visits that were going on yesterday or today, as the web's day view counts them: a child home since
+  // Friday is still at home on Sunday's list (picking by arrival left it empty)
+  const shown = family.keepLocationHistory
+    ? await db.locationVisit.findMany({
+      where: { childId: child.id, lastSeenAt: { gte: dayStart(shiftDay(dayKey(new Date(), tz), -1), tz) } },
+      orderBy: [{ arrivedAt: "desc" }, { id: "desc" }], take: VISITS_SHOWN + 1, include: { device: { select: { name: true } } },
+    })
     : [];
-  const shown = visits.filter((v) => ["Today", "Yesterday"].includes(dayGroup(v.arrivedAt, tz).label));
 
   return NextResponse.json({
     childId: child.id,

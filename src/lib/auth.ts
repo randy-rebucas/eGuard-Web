@@ -128,21 +128,30 @@ const timingDecoy = () => (dummyHash ??= bcrypt.hash(newToken(), 12));
 export const BAD_CREDENTIALS = "That email and password don't match an eGuard account.";
 
 /**
- * Email + password sign-in, shared by web and mobile. Failures count against the account (from any
- * address) and against the address (across accounts), in the database, so limits survive restarts.
+ * Rate-limit keys for failed sign-ins: `pair` is one account from one address, `account` is that account from
+ * everywhere. An unknown address (no proxy in front) shares one pair, which acts like the account-wide limit.
+ */
+export const loginKeys = (email: string, ip: string | null) => ({ pair: `login:acct:${email}:ip:${ip ?? "unknown"}`, account: `login:acct:${email}` });
+
+/**
+ * Email + password sign-in, shared by web and mobile. Failures count against the account from that address (10),
+ * the account from everywhere (50, for guessing spread over many addresses) and the address across accounts, in the
+ * database, so limits survive restarts. Someone else's wrong guesses don't lock the parent out of their own phone.
  */
 export async function authenticate(email: string, password: string, ip: string | null) {
-  const accountKey = `login:acct:${email}`, addrKey = ipKey("login", ip);
-  if ((await isLimited(accountKey, LIMITS.loginAccount)) || (await isLimited(addrKey, LIMITS.loginIp))) {
+  const { pair, account } = loginKeys(email, ip), addrKey = ipKey("login", ip);
+  const limited = await Promise.all([isLimited(pair, LIMITS.loginAccount), isLimited(account, LIMITS.loginAccountAll), isLimited(addrKey, LIMITS.loginIp)]);
+  if (limited.some(Boolean)) {
     throw new ServiceError(429, "Too many attempts. Wait 15 minutes and try again, or reset your password.", "rate_limited");
   }
   const user = await db.user.findUnique({ where: { email } });
   const ok = user ? await verifyPassword(password, user.passwordHash) : (await verifyPassword(password, await timingDecoy()), false);
   if (!user || !ok) {
-    await Promise.all([hit(accountKey, LIMITS.loginAccount), hit(addrKey, LIMITS.loginIp)]);
+    await Promise.all([hit(pair, LIMITS.loginAccount), hit(account, LIMITS.loginAccountAll), hit(addrKey, LIMITS.loginIp)]);
     throw new ServiceError(401, BAD_CREDENTIALS, "invalid_credentials");
   }
-  await clearLimit(accountKey);
+  // Only this address's count: the account-wide one runs out on its own, so signing in can't reset another's guesses
+  await clearLimit(pair);
   return user;
 }
 

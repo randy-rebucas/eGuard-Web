@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { FREE_CHILDREN } from "@/lib/plans";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Platform } from "@prisma/client";
@@ -153,7 +154,7 @@ export default async function ProtectionPage({ params }: PageProps<"/protections
         <div className="st-cta">
           <div>
             <h2>Turn on {def.checkName.toLowerCase()} in a few minutes</h2>
-            <p>Free for one child, with every setting checked on the device.</p>
+            <p>Free for {FREE_CHILDREN}, with every setting checked on the device.</p>
           </div>
           <Link href="/register" className="lp-btn lp-btn-white">Get Started Free<ArrowRight /></Link>
         </div>

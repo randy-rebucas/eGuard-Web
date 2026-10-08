@@ -31,7 +31,7 @@ export async function GET(req: Request) {
     ["Screen time"], ["Date", "Child", "Minutes"],
     ...data.screen.map((r) => [r.date.toISOString().slice(0, 10), name(r.childId), r._sum.minutes ?? 0]),
     [],
-    ["Top apps"], ["App", "Minutes"],
+    ["Apps"], ["App", "Minutes"],
     ...data.apps.map((a) => [a.app, a._sum.minutes ?? 0]),
     [],
     ["Protection changes"], ["When (UTC)", "Child", "Change", "By", "From", "To"],

@@ -10,6 +10,7 @@ import { handOverOrganizations } from "./organizations";
 import { audit } from "./audit";
 import { profileConfigs, type ProfileId } from "./profiles";
 import { fmtMinutes, type ProtectionConfig } from "./protections";
+import { canonicalTimeZone } from "./format";
 import type { Actor } from "./config-service";
 import { conflict, forbidden, invalid, isUniqueViolation, notFound, planLimit, planRequired } from "./errors";
 import { requireVerifiedEmail } from "./email-verification";
@@ -30,6 +31,22 @@ export type Confirm = { password?: string; phrase?: string };
 /** Longest parent or family name; it appears in emails, alerts and history lines. */
 export const NAME_MAX = 80;
 export const NAME_TOO_LONG = `Use up to ${NAME_MAX} characters.`;
+
+/** Shown to invited parents and in the weekly summary. */
+export const FamilyNameSchema = z.string().trim().min(2, "Enter a family name.").max(NAME_MAX, NAME_TOO_LONG);
+
+/** Settings › Account. Only the family admin renames the family; returns whether the name changed. */
+export async function renameFamily(actor: Actor, name: string) {
+  requireAdminActor(actor);
+  const family = await db.family.findUniqueOrThrow({ where: { id: actor.familyId }, select: { name: true } });
+  if (family.name === name) return false;
+  await db.family.update({ where: { id: actor.familyId }, data: { name } });
+  await audit(actor.familyId, actor.name, "family.renamed", `${family.name} → ${name}`);
+  return true;
+}
+
+/** The family's time zone (Settings › Account, web and mobile), stored under its proper name. */
+export const TimeZoneSchema = z.string().max(64, "Choose a valid time zone.").transform((tz, ctx) => canonicalTimeZone(tz) ?? (ctx.addIssue({ code: "custom", message: "Choose a valid time zone." }), z.NEVER));
 
 /* ---------- Children ---------- */
 
@@ -85,6 +102,27 @@ export async function createChild(actor: Actor, input: { name: string; birthYear
   });
   await audit(actor.familyId, actor.name, "child.created", child.name);
   return child;
+}
+
+/**
+ * Renames a child or changes their birth year (web Profile form and mobile PATCH). Only the fields given change,
+ * so a form that didn't touch the name can't undo another parent's rename. A birth year that stays the same isn't
+ * re-checked (a child who has grown past the age range keeps it); a new name must be free in the family.
+ */
+export async function updateChild(actor: Actor, childId: string, input: { name?: string; birthYear?: number }) {
+  const current = await db.child.findFirst({ where: { id: childId, familyId: actor.familyId }, include: { policies: { select: { key: true, config: true } } } });
+  if (!current) throw notFound("Child");
+  const name = input.name ?? current.name, birthYear = input.birthYear ?? current.birthYear;
+  const data = birthYear === current.birthYear
+    ? { ...ChildSchema.pick({ name: true }).parse({ name }), birthYear }
+    : ChildSchema.parse({ name, birthYear });
+  if (data.name !== current.name) await assertNameFree(actor.familyId, data.name, current.id);
+  const res = await db.child.updateMany({ where: { id: current.id, familyId: actor.familyId }, data });
+  if (!res.count) throw notFound("Child");
+  if (data.name !== current.name || data.birthYear !== current.birthYear) {
+    await audit(actor.familyId, actor.name, "child.updated", data.name === current.name ? current.name : `${current.name} → ${data.name}`);
+  }
+  return { before: current, after: data };
 }
 
 /** The "already have a child named …" error when another child in the family uses this name (any case). */
@@ -236,7 +274,8 @@ export async function setCategoryLimit(actor: Actor, childId: string, category: 
   const where = { childId_category: { childId, category } };
   const current = await db.childCategoryLimit.findUnique({ where });
   if ((current?.dailyLimitMinutes ?? null) === m) return { category, dailyLimitMinutes: m };
-  if (m == null) await db.childCategoryLimit.delete({ where });
+  // deleteMany: two removes at once (two parents, web and app) make the second a no-op, not a database error
+  if (m == null) await db.childCategoryLimit.deleteMany({ where: { childId, category } });
   else await db.childCategoryLimit.upsert({ where, create: { childId, category, dailyLimitMinutes: m }, update: { dailyLimitMinutes: m } });
   const label = (v: number | null) => (v ? `${fmtMinutes(v)} a day` : "No limit");
   const name = CATEGORY_BY_KEY[category].limitLabel;
@@ -266,8 +305,9 @@ export const PAIRING_CODE_TTL_S = 15 * 60;
  * (one for the phone app, one for the browser extension) are ever live.
  */
 export async function createPairingCode(actor: Actor, childId: string, opts: PairingOptions = { kind: "DEVICE" }) {
-  // The device limit comes from the plan; make sure a lapsed or refunded subscription is reflected first
-  await refreshPurchases(actor.familyId);
+  // The device limit comes from the plan; make sure a lapsed or refunded subscription is reflected first. A store
+  // that can't be reached right now mustn't stop pairing: the plan as last known decides (as when the code is used)
+  await refreshPurchases(actor.familyId).catch((e) => console.error("[pairing code] refreshing purchases failed", actor.familyId, e));
   const [child, family, count] = await Promise.all([
     db.child.findFirst({ where: { id: childId, familyId: actor.familyId } }),
     db.family.findUniqueOrThrow({ where: { id: actor.familyId } }),
@@ -557,7 +597,7 @@ export async function userIdForMailbox(email: string, exceptUserId = "") {
 
 export const RegisterSchema = z.object({
   name: z.string().trim().min(2, "Enter your name.").max(NAME_MAX, NAME_TOO_LONG),
-  familyName: z.string().trim().min(2, "Enter a family name.").max(NAME_MAX, NAME_TOO_LONG),
+  familyName: FamilyNameSchema,
   email: z.string().trim().toLowerCase().email("Enter a valid email address."),
   password: z.string().min(10, "Use at least 10 characters for your password.").refine((p) => !passwordTooLong(p), PASSWORD_TOO_LONG),
   /** Accounts are for parents and guardians only; children are added by a parent, never sign up */

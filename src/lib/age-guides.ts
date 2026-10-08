@@ -78,7 +78,7 @@ export const AGE_GUIDES: AgeGuide[] = [
     summary: "Teenagers need privacy and room to grow. eGuard suggests the Balanced profile here: firm on sleep and safety, looser on everything else.",
     stage: [
       "Friends, social apps and school work all live on the phone now. Taking it away affects their whole social life.",
-      "Rules work best when they're agreed, not imposed. eGuard is visible on their phone, and on Android teens are asked to agree to supervision.",
+      "Rules work best when they're agreed, not imposed. eGuard is visible on their phone, with a notification whenever it's active, so set it up with them, not behind their back.",
     ],
     focus: [
       ["Agree the rules together", "Sit down with the family agreement. Teens keep rules they helped write far better than rules handed to them."],

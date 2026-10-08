@@ -2,13 +2,14 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ImageResponse } from "next/og";
 import { SITE_TAGLINE } from "@/lib/site";
+import { FREE_CHILDREN } from "@/lib/plans";
 
 /** 1200 × 630 share images for link previews (Messenger, Facebook, X). Brand gradient and logo, no photos of children. */
 export const OG_SIZE = { width: 1200, height: 630 };
 
 const logo = `data:image/svg+xml;base64,${readFileSync(join(process.cwd(), "public/brand/logo-mark.svg")).toString("base64")}`;
 
-export function shareImage({ eyebrow, title, footer = "Free for 1 child · No card needed" }: { eyebrow?: string; title: string; footer?: string }) {
+export function shareImage({ eyebrow, title, footer = `Free for ${FREE_CHILDREN} · No card needed` }: { eyebrow?: string; title: string; footer?: string }) {
   const long = title.length > 60;
   return new ImageResponse(
     (

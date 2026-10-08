@@ -8,7 +8,8 @@ Ground rules (see [launch-visibility.md](launch-visibility.md#7-where-to-announc
 
 - No user counts, ratings or "trusted by" claims until they're real.
 - iPhone and iPad are **coming soon**. Don't let a headline say "Android and iOS".
-- Push alerts are **coming soon**. Alerts today are email and in-app.
+- Push alerts are included with eGuard Plus and Family Pro, in the eGuard parent app. Every plan gets email and
+  in-app alerts.
 - Screenshots show the demo family only. No real child's name, photo or location.
 
 ---
@@ -108,8 +109,8 @@ settings, not the child's behavior.
 
 eGuard collects settings, screen-time totals and app names. It never collects messages, photos or browsing
 content, shows no ads and sells no data. Parents can export or delete their family's data at any time. eGuard is
-visible on the child's device, never hidden, and on Android, children 13 and older are asked to agree to
-supervision. eGuard's privacy policy is written under the Data Privacy Act of 2012 (RA 10173).
+visible on the child's device, never hidden, and on Android it shows a notification whenever it's active.
+eGuard's privacy policy is written under the Data Privacy Act of 2012 (RA 10173).
 
 **Availability**
 

@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
+import { FREE_CHILDREN } from "@/lib/plans";
 import Link from "next/link";
 import {
   ArrowRight, BadgeCheck, Ban, Download, Eye, EyeOff, FileSignature, Fingerprint, History, KeyRound, LockKeyhole,
   MapPinned, School, ShieldCheck, Trash2, UserCog, Users, type LucideIcon,
 } from "lucide-react";
 import { LEGAL } from "@/lib/legal";
+import { META_PIXEL_ID } from "@/lib/meta-pixel";
 import { pageMetadata } from "@/lib/site";
 import { supportEmail } from "@/lib/support";
 import { ServerCloud } from "@/components/flow-devices";
@@ -18,8 +20,11 @@ export const metadata: Metadata = pageMetadata({
 });
 
 const PROMISES: [LucideIcon, string, string][] = [
-  [Ban, "No ads. Nothing sold.", "eGuard is paid for by subscriptions. We don't sell data, show ads, or use third-party tracking."],
-  [EyeOff, "The minimum, nothing more", "Settings, screen-time totals, app names and, if you turn it on, location. Never messages, photos or browsing history."],
+  // This page loads the Meta Pixel when it's on (lib/meta-pixel), so only claim "no tracking" when it's off, as /privacy does
+  [Ban, "No ads. Nothing sold.", META_PIXEL_ID
+    ? "eGuard is paid for by subscriptions. We don't sell data or show ads. Our public pages use Meta's pixel to measure our Facebook ads; it never runs once you sign in."
+    : "eGuard is paid for by subscriptions. We don't sell data, show ads, or use third-party tracking."],
+  [EyeOff, "The minimum, nothing more", "Settings, screen-time totals, app names and, if you turn it on, location. Never messages, photos or browsing history: only a site your child asks you to unblock."],
   [Eye, "Never hidden from your child", "The eGuard app is always visible on the device and shows what's on. There is no stealth mode."],
   [Users, "Only your family sees it", "Your children's data is visible to the parents in your family account, and no one else."],
   [Trash2, "Yours to take or delete", "Export everything as a file, or delete a child or your whole account, from Settings, whenever you like."],
@@ -35,12 +40,14 @@ const DATA: [string, string, string][] = [
   ["Payments", "Plan and payment records. Card details stay with PayMongo", "Until you delete your account"],
 ];
 
-const NEVER = ["Messages or chats", "Photos, videos or files", "Which websites your child visits", "Keystrokes, calls or contacts", "Camera or microphone"];
+// Browsing: the extension sends daily block counts only. A site the child asks to unblock is the one address eGuard sees.
+const NEVER = ["Messages or chats", "Photos, videos or files", "Which websites your child visits (only a site they ask you to unblock)", "Keystrokes, calls or contacts", "Camera or microphone"];
 
 const SECURITY: { title: string; icon: LucideIcon; items: string[] }[] = [
   { title: "Your account", icon: LockKeyhole, items: [
     "Passwords are hashed with bcrypt. We never store or see them in plain text.",
     "After repeated failed sign-ins, the account locks for a while.",
+    "Turn on two-step verification in Settings › Security, and signing in also needs a code from your authenticator app. Recovery codes get you in if you lose your phone.",
     "See every signed-in session and sign out of the ones you don't recognize. Resetting a password signs out everywhere.",
     "Changing your email needs your password. Email links expire: 24 hours to verify, one hour to reset a password.",
   ] },
@@ -155,7 +162,7 @@ export default function SecurityPage() {
         <div className="st-cta">
           <div>
             <h2>Protect your children, not their privacy</h2>
-            <p>Free for one child. No card needed.</p>
+            <p>Free for {FREE_CHILDREN}. No card needed.</p>
           </div>
           <Link href="/register" className="lp-btn lp-btn-white">Get Started Free<ArrowRight /></Link>
         </div>

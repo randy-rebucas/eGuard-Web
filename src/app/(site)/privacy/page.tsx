@@ -13,7 +13,7 @@ export const metadata: Metadata = pageMetadata({
 });
 
 const COLLECTED: [string, string][] = [
-  ["Your account", "Your name, email address, password (stored only as a one-way hash), your role in the family, notification preferences, and your Apple or Google account ID if you sign in with them."],
+  ["Your account", "Your name, email address, password (stored only as a one-way hash), your role in the family, notification preferences, and your Apple or Google account ID if you sign in with them. If you turn on two-step verification: your authenticator key (encrypted) and your recovery codes (stored only as hashes)."],
   ["Other parents you invite", "Their name and email address, so we can send the invitation. If they decline or you withdraw it, we delete them; until they accept, they can't sign in or see anything."],
   ["Organizations", "If your family joins a school, community group or business with its code, which organization it joined and when. If you manage an organization: its name, its admins, and the sponsor codes it bought and when each was redeemed, never by whom."],
   ["Your children", "Each child's first name, birth year, protection settings and, if you add one, a profile photo."],
@@ -25,6 +25,7 @@ const COLLECTED: [string, string][] = [
   ["Payments", "Your plan, purchase and renewal dates, and the reference numbers PayMongo gives us. Card and e-wallet details go straight to PayMongo and never reach eGuard."],
   ["Support", "The messages you send us and any details you include."],
   ["Signing in", "The browser or app you signed in from, so you can see and end your sessions. Your IP address is used briefly to limit repeated sign-in attempts."],
+  ["Push alerts", "If you allow notifications in the eGuard parent app: the token your phone gives us to deliver them, until you sign out of the app or the token stops working."],
 ];
 
 function Contact() {
@@ -85,7 +86,7 @@ export default function PrivacyPage() {
           <ul>
             <li>apply the protections you choose to your children&apos;s devices, and check that each one is really on;</li>
             <li>show you screen time, apps, location and Configuration Health;</li>
-            <li>send you alerts, sign-in and verification emails, and reminders about your plan;</li>
+            <li>send you alerts, a weekly summary if you keep it on, sign-in and verification emails, and reminders about your plan;</li>
             <li>process payments and manage your subscription;</li>
             <li>answer your support requests;</li>
             <li>keep eGuard secure, prevent abuse, and fix problems.</li>
@@ -99,7 +100,7 @@ export default function PrivacyPage() {
       body: (
         <>
           <p>eGuard is for parents and guardians. Children don&apos;t create accounts. A parent adds each child and pairs each device, and in doing so consents on the child&apos;s behalf to the collection described in this policy.</p>
-          <p>eGuard is never hidden. The eGuard app is visible on your child&apos;s device, and on Android, children 13 and older are asked to agree to supervision. We encourage you to tell your children what eGuard does and why.</p>
+          <p>eGuard is never hidden. The eGuard app is visible on your child&apos;s device, and on Android it shows a notification whenever it&apos;s active. We encourage you to tell your children what eGuard does and why.</p>
           <p>Data from a child&apos;s device is used only to provide eGuard to their family. It is never used for advertising or shared for anyone else&apos;s purposes.</p>
         </>
       ),
@@ -110,13 +111,14 @@ export default function PrivacyPage() {
         <>
           <p><strong>We don&apos;t sell personal data.</strong> Within your family, every parent you add can see your children&apos;s data. Outside your family, we share data only with:</p>
           <ul>
-            <li><strong>Service providers</strong> who run parts of eGuard for us: hosting and database, email delivery, and PayMongo for payments. They may use the data only to provide their service to us, under contract.</li>
+            <li><strong>Service providers</strong> who run parts of eGuard for us: hosting and database, email delivery, PayMongo for payments, and Google&apos;s Firebase Cloud Messaging, which delivers push alerts to the parent app (it carries each alert&apos;s title and text, which can include a child&apos;s first name). They may use the data only to provide their service to us, under contract.</li>
             <li><strong>Apple or Google</strong>, if you choose to sign in with them. We receive your name and email from them; we don&apos;t send them your family&apos;s data.</li>
             {META_PIXEL_ID && <li><strong>Meta (Facebook)</strong>, if you visit our public pages: see <a href="#cookies">Cookies</a>. Meta never receives your family&apos;s data.</li>}
             <li><strong>Authorities</strong>, when the law requires it, or to protect someone&apos;s safety.</li>
           </ul>
           <p><strong>Organizations</strong> your family joins never see your family&apos;s data: not your name, your children or which code you redeemed. They see only how many families joined and how many of their codes were used. If you manage an organization in eGuard, its other admins see your name and email address.</p>
           <p>Maps in the dashboard are loaded through our own servers, so the map provider never sees your IP address or what you&apos;re looking at.</p>
+          <p>The setup video on our home page is embedded from YouTube in its privacy-enhanced mode: YouTube receives your IP address when the player loads, and sets cookies only if you play the video.</p>
         </>
       ),
     },
@@ -137,9 +139,10 @@ export default function PrivacyPage() {
       id: "cookies", title: "Cookies",
       body: (
         <>
-          <p>eGuard sets two cookies of its own:</p>
+          <p>eGuard sets these cookies of its own:</p>
           <ul>
             <li><strong>eg_session</strong> keeps you signed in. It is required, and ends when you sign out.</li>
+            <li><strong>eg_2fa</strong>, with two-step verification on, holds your sign-in for the 10 minutes you have to enter the code. It is required.</li>
             <li><strong>eg_theme</strong> remembers whether you chose light or dark mode.</li>
           </ul>
           {META_PIXEL_ID ? (

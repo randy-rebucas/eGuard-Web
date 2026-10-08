@@ -17,7 +17,13 @@ export function ChildForm({ child }: { child?: { id: string; name: string; birth
   const year = new Date().getFullYear();
   // Always offer the child's saved year: a select without it shows its first option, and saving would change their age
   const years = [...new Set([...Array.from({ length: 18 }, (_, i) => year - 1 - i), ...(child ? [child.birthYear] : [])])].sort((a, b) => b - a);
+  const [name, setName] = useState(child?.name ?? "");
   const [birthYear, setBirthYear] = useState(child?.birthYear ?? year - 10);
+  // A save here or by another parent (the page refreshes) brings new saved values: show them, not the old ones
+  const [shown, setShown] = useState(child);
+  if (child && (child.name !== shown?.name || child.birthYear !== shown?.birthYear)) {
+    setShown(child); setName(child.name); setBirthYear(child.birthYear);
+  }
   // Follows the age (as in the app) until the parent picks one
   const [picked, setPicked] = useState<ProfileId | null>(null);
   const recommended = recommendedProfile(year - birthYear);
@@ -25,8 +31,10 @@ export function ChildForm({ child }: { child?: { id: string; name: string; birth
   return (
     <form action={action} className="dash-col" style={{ gap: 16, maxWidth: 520 }}>
       <Feedback state={state} />
+      {/* What this form showed: the server saves only fields changed from these (actions.updateChild) */}
+      {child ? <><input type="hidden" name="baseName" value={child.name} /><input type="hidden" name="baseBirthYear" value={child.birthYear} /></> : null}
       <div className="form-grid">
-        <div className="field"><label htmlFor="c-name">Name</label><input className="input" id="c-name" name="name" required maxLength={40} defaultValue={child?.name} autoComplete="off" /></div>
+        <div className="field"><label htmlFor="c-name">Name</label><input className="input" id="c-name" name="name" required maxLength={40} value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" /></div>
         <div className="field">
           <label htmlFor="c-year">Birth year</label>
           <select className="input" id="c-year" name="birthYear" value={birthYear} onChange={(e) => setBirthYear(Number(e.target.value))}>
@@ -143,6 +151,10 @@ export function AppControls({ app }: { app: { id: string; name: string; approval
   const { toast } = useFlow();
   const saved = app.dailyLimitMinutes ? String(app.dailyLimitMinutes) : "";
   const [limit, setLimit] = useState(saved);
+  // Follows the saved limit when it changes elsewhere (another parent, the app): a stale value here would be
+  // saved back the next time the field loses focus
+  const [was, setWas] = useState(saved);
+  if (saved !== was) { setWas(saved); setLimit(saved); }
   // Shown immediately; the server's value takes over once the page refreshes, or comes back on failure
   const [approval, setApproval] = useState<AppApproval | null>(null);
   const approve = (to: AppApproval, ok: string) => {
@@ -205,13 +217,27 @@ export function AppControls({ app }: { app: { id: string; name: string; approval
   );
 }
 
-/** One category's daily limit ("Gaming time"), in minutes; empty for no limit. Saved when the field loses focus. */
-export function CategoryLimitControl({ childId, category, minutes }: { childId: string; category: AppCategory; minutes: number | null }) {
+/**
+ * One category's daily limit ("Gaming time"), in minutes; empty for no limit. Saved when the field loses focus.
+ * `paused`: the plan has no category limits, so a limit kept from before can only be removed.
+ */
+export function CategoryLimitControl({ childId, category, minutes, paused = false }: { childId: string; category: AppCategory; minutes: number | null; paused?: boolean }) {
   const [pending, run] = useAction();
   const { toast } = useFlow();
   const saved = minutes ? String(minutes) : "";
   const [limit, setLimit] = useState(saved);
+  // As AppControls: follow a limit changed elsewhere, so leaving the field doesn't save an old one back
+  const [was, setWas] = useState(saved);
+  if (saved !== was) { setWas(saved); setLimit(saved); }
   const name = CATEGORY_BY_KEY[category].limitLabel;
+  if (paused) {
+    return (
+      <button type="button" className="btn btn-ghost btn-sm" disabled={pending} aria-label={`Remove the ${name.toLowerCase()} limit`}
+        onClick={() => run(() => setCategoryLimit(childId, category, null), { ok: `${name} limit removed.` })}>
+        {pending ? "Removing…" : "Remove limit"}
+      </button>
+    );
+  }
   const save = () => {
     if (limit === saved) return;
     const m = limit ? Number(limit) : null;

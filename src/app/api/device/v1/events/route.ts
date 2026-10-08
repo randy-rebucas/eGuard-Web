@@ -7,6 +7,7 @@ import { authDevice, badRequest, readJson, unauthorized } from "@/lib/device-aut
 import { LIMITS, clearLimit, hit } from "@/lib/rate-limit";
 import { isUniqueViolation } from "@/lib/errors";
 import { CATEGORY_BY_KEY, CATEGORY_KEYS } from "@/lib/app-categories";
+import { APPS_UPGRADE, mayNameApp } from "@/lib/plan-access";
 
 /** Trimmed, so " YouTube" and "YouTube" are one app, and a blank name is refused */
 const appName = z.string().trim().min(1, "app is required").max(80);
@@ -67,8 +68,11 @@ async function handle(device: NonNullable<Awaited<ReturnType<typeof authDevice>>
       throw err;
     });
     if (created) {
+      const rated = e.ageRating ? `. Rated ${e.ageRating}+` : "";
       await db.alert.create({ data: { ...base, severity: "INFO", category: "APPS", icon: "layout-grid", title: "New app installed",
-        body: `${e.app} was installed${e.ageRating ? `. Rated ${e.ageRating}+` : ""}.`, subject: `${e.app} · ${who}` } });
+        ...(await mayNameApp(device.familyId, device.childId, e.app)
+          ? { body: `${e.app} was installed${rated}.`, subject: `${e.app} · ${who}` }
+          : { body: `An app was installed${rated}. ${APPS_UPGRADE}`, subject: who }) } });
     }
   } else if (e.type === "APP_REQUESTED") {
     const app = await db.childApp.findUnique({ where: { childId_name: { childId: device.childId, name: e.app } } });
@@ -97,10 +101,13 @@ async function handle(device: NonNullable<Awaited<ReturnType<typeof authDevice>>
       { ...base, severity: "ATTENTION", category: "APPS", icon: "app-window", title: "App approval requested",
         body: `${device.child.name} asked to install ${e.app}.`, subject: `${e.app} · ${who}`, resolveKey });
   } else if (e.type === "APP_BLOCKED") {
-    await createAlertUnless(`APPBLOCKED:${device.id}:${e.app}`,
-      { ...base, title: "App blocked", subject: `${e.app} · ${who}`, createdAt: { gt: new Date(Date.now() - BLOCKED_ALERT_WINDOW_MS) } },
+    // An app the plan's Apps tab hides isn't named; those share one alert per window
+    const named = await mayNameApp(device.familyId, device.childId, e.app);
+    const subject = named ? `${e.app} · ${who}` : who;
+    await createAlertUnless(`APPBLOCKED:${device.id}:${named ? e.app : "hidden"}`,
+      { ...base, title: "App blocked", subject, createdAt: { gt: new Date(Date.now() - BLOCKED_ALERT_WINDOW_MS) } },
       { ...base, severity: "INFO", category: "APPS", icon: "ban", title: "App blocked",
-        body: `${device.child.name} tried to open ${e.app}, which is blocked.`, subject: `${e.app} · ${who}` });
+        body: named ? `${device.child.name} tried to open ${e.app}, which is blocked.` : `${device.child.name} tried to open a blocked app. ${APPS_UPGRADE}`, subject });
   } else if (e.category) {
     const name = CATEGORY_BY_KEY[e.category].limitLabel;
     await createAlertUnless(`LIMIT:${device.id}:${e.category}`,

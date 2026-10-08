@@ -11,7 +11,7 @@ const Id = z.string().min(1, "Place not found.").max(64, "Place not found.");
 /** Location pages and the child's Location tab show place names */
 const refresh = () => revalidatePath("/", "layout");
 
-export async function createPlace(input: { name: string; lat: number; lng: number; radiusM: number }): Promise<Result<{ name: string }>> {
+export async function createPlace(input: { name: string; lat: number; lng: number; radiusM: number; notifyArrive?: boolean; notifyLeave?: boolean }): Promise<Result<{ name: string }>> {
   const u = await requireUser();
   return toResult(async () => {
     const p = await places.createPlace(u, input);

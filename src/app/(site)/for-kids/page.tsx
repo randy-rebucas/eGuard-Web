@@ -26,13 +26,14 @@ const DOES: [LucideIcon, string, string, string][] = [
 const CAN_SEE = [
   "Which eGuard settings are on",
   "How long you used your phone today, and which apps",
-  "Where your phone is, if location sharing is on",
+  "Where your phone is, if location sharing is on, and places it's been, if your family keeps location history",
   "How many websites were blocked each day",
+  "An app or website you ask for, and the reason you give",
 ];
 const CANT_SEE = [
   "Your messages and chats",
   "Your photos and videos",
-  "Which websites you visit",
+  "Which websites you visit (only one you ask for)",
   "What you type",
   "Your calls",
 ];

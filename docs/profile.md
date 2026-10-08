@@ -132,8 +132,8 @@ Schools, community groups and businesses can set up an eGuard **organization**:
 - Activity is deleted automatically after 90 days.
 - Parents can export or delete their family's data at any time.
 - No ads, and no data is sold.
-- eGuard is visible on the child's device, never hidden. On Android, children 13 and older are asked to agree to
-  supervision, and there's a page written for them at [eguard.family/for-kids](https://www.eguard.family/for-kids).
+- eGuard is visible on the child's device, never hidden. On Android it shows a notification whenever it's active,
+  and there's a page written for children at [eguard.family/for-kids](https://www.eguard.family/for-kids).
 - The privacy policy is written under the Data Privacy Act of 2012 (RA 10173).
 
 ---
@@ -150,7 +150,6 @@ Schools, community groups and businesses can set up an eGuard **organization**:
 ## Coming soon
 
 - The iPhone and iPad app
-- A weekly family summary by email
 
 ---
 

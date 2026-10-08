@@ -60,7 +60,8 @@ export default async function ChildrenPage() {
                         <td>{c.devices.length ? `${c.health.score} / ${c.health.total}${c.health.offline ? `, ${c.health.offline} offline` : ""}` : b ? "No phone or tablet yet" : "No devices yet"}</td>
                         <td className="num">{c.devices.length + b}{b ? ` (${b} ${b === 1 ? "browser" : "browsers"})` : ""}</td>
                         <td style={used > limit ? { color: "var(--warn-ink)" } : undefined}>{fmtMinutesPadded(used)} of {fmtMinutes(limit)}{used > limit ? `, ${fmtMinutes(used - limit)} over` : ""}</td>
-                        <td>{LOCATION_LABEL[loc.state]}</td>
+                        {/* Where and how long ago, as on the Location page: "Available" read as live for a days-old fix */}
+                        <td>{loc.state === "available" ? `${loc.place ?? "Current location"} · ${loc.updated}` : LOCATION_LABEL[loc.state]}</td>
                       </tr>
                     );
                   })}

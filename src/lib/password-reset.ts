@@ -1,6 +1,6 @@
 import "server-only";
 import { db } from "./db";
-import { MIN_PASSWORD, PASSWORD_TOO_LONG, hashPassword, isPendingInvite, newToken, passwordTooLong, sha256 } from "./auth";
+import { MIN_PASSWORD, PASSWORD_TOO_LONG, hashPassword, isPendingInvite, loginKeys, newToken, passwordTooLong, sha256 } from "./auth";
 import { acceptInvite, sendInvite } from "./invitations";
 import { audit } from "./audit";
 import { appUrl } from "./email-verification";
@@ -73,7 +73,8 @@ export async function resetPassword(token: string, password: string, ip: string 
     }),
     db.passwordReset.deleteMany({ where: { userId: r.userId } }),
     db.session.deleteMany({ where: { userId: r.userId } }),
-    db.rateLimit.deleteMany({ where: { key: `login:acct:${r.user.email}` } }),
+    // Every failed-sign-in count for the account (from each address, and overall): the mailbox owner is back in
+    db.rateLimit.deleteMany({ where: { OR: [{ key: loginKeys(r.user.email, null).account }, { key: { startsWith: `${loginKeys(r.user.email, null).account}:ip:` } }] } }),
   ]);
   await audit(r.user.familyId, r.user.name, "password.reset", "All sessions signed out");
   return r.user;

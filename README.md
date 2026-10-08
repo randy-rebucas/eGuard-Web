@@ -133,9 +133,10 @@ development.
 | `DEVICE_SIMULATOR` | dev only | `true` lets the seeded simulated devices answer requests (never active in production) |
 | `SUPPORT_EMAIL` | production | Where support requests go, and the address the apps show |
 | **Email** | | |
-| `SMTP_URL` | production | `smtp://user:pass@host:587` or `smtps://…:465`. Empty prints emails to the server log (not allowed in production) |
+| `RESEND_API_KEY`, `RESEND_FROM` | production | Production sends with Resend. `RESEND_FROM` must be on a verified domain (default `MAIL_FROM`). Ignored outside production |
 | `MAIL_FROM` | | Sender address |
-| `RESEND_API_KEY`, `RESEND_FROM` | optional | Fallback sender when SMTP is empty or fails |
+| `MAILPIT_SMTP_URL` | dev, optional | Development and tests always send to Mailpit (default `smtp://127.0.0.1:1025`); if it isn't running, emails are printed to the server log |
+| `SMTP_URL` | optional | Production only, used only when `RESEND_API_KEY` is empty. Ignored outside production |
 | **Maps** | | |
 | `MAP_TILE_URL` | production | Tile template fetched by the server (`/api/tiles`) so the provider never sees parents' IPs. Default is OpenStreetMap |
 | `MAP_TILE_REFERER` | when the key is website-restricted | Referer sent with tile requests; one of the sites the key allows. Default `APP_URL` |
@@ -195,28 +196,26 @@ No server or database needed.
 
 ### API tests
 
-These run over HTTP against a live server whose `SMTP_URL` points at Mailpit. They create and delete their own
-families, so they are safe to run against your dev database.
+These run over HTTP against a live dev server. They create and delete their own families, so they are safe to run
+against your dev database. A dev server always sends email to Mailpit (see [Environment](#environment)), where the
+tests read verification and invitation links, so start it with `npm run db:up` first.
 
 ```bash
 # terminal 1: start the server with the test settings
-CRON_SECRET=test-cron-secret RATE_LIMIT_IP_ALLOWLIST=::1,127.0.0.1 SMTP_URL=smtp://127.0.0.1:1025 RESEND_API_KEY= npm run dev
+CRON_SECRET=test-cron-secret RATE_LIMIT_IP_ALLOWLIST=::1,127.0.0.1 npm run dev
 
-# terminal 2: the same CRON_SECRET and mail settings, so the tests don't pick up other values from .env
-CRON_SECRET=test-cron-secret SMTP_URL=smtp://127.0.0.1:1025 RESEND_API_KEY= npm run test:api   # API_BASE_URL defaults to http://localhost:3000
+# terminal 2: the same CRON_SECRET, so the tests don't pick up another value from .env
+CRON_SECRET=test-cron-secret npm run test:api   # API_BASE_URL defaults to http://localhost:3000
 ```
 
 - `CRON_SECRET=test-cron-secret` lets the maintenance-job tests run. Set it for the tests too: they read
   `CRON_SECRET` from the environment, and Prisma loads `.env` into it, so a different secret there gives `401`.
 - `RATE_LIMIT_IP_ALLOWLIST` lets one machine register many test families.
-- `SMTP_URL` and an empty `RESEND_API_KEY` send every email to Mailpit, where the tests read verification and
-  invitation links. Without them, a `.env` set up for real email sends the test emails to your real provider (to
-  undeliverable `.example` addresses), and the tests fail with "No verify-email email reached …".
 - The browser-policy tests need `BROWSER_POLICY_SIGNING_KEY` on the server, and read the same key from the
   environment, `.env.local` or `.env` to check signatures.
 
-On PowerShell, set the variables first: `$env:CRON_SECRET="test-cron-secret"; $env:RATE_LIMIT_IP_ALLOWLIST="::1,127.0.0.1"; $env:SMTP_URL="smtp://127.0.0.1:1025"; $env:RESEND_API_KEY=""; npm run dev`,
-and the same `CRON_SECRET`, `SMTP_URL` and `RESEND_API_KEY` in the second terminal before `npm run test:api`.
+On PowerShell, set the variables first: `$env:CRON_SECRET="test-cron-secret"; $env:RATE_LIMIT_IP_ALLOWLIST="::1,127.0.0.1"; npm run dev`,
+and the same `CRON_SECRET` in the second terminal before `npm run test:api`.
 
 Suites in [tests/api/](tests/api/): mobile API, verification, security, social sign-in, billing, web billing,
 browser pairing and tokens, browser policy, browser access requests, and browser health.
@@ -509,7 +508,7 @@ Production checklist:
 1. **Database:** provision PostgreSQL 16 and set `DATABASE_URL`. Run `npm run db:deploy` against it once per release,
    before switching traffic. The build doesn't migrate, so preview builds can't touch production.
 2. **URL:** set `APP_URL=https://www.eguard.family`. Canonical URLs, the sitemap and link previews are built from it.
-3. **Email:** set `SMTP_URL` (and optionally Resend as a fallback) and `MAIL_FROM`. Set `SUPPORT_EMAIL` to an inbox
+3. **Email:** set `RESEND_API_KEY`, and `RESEND_FROM` or `MAIL_FROM` on a domain verified in Resend. Set `SUPPORT_EMAIL` to an inbox
    someone reads (the legal pages use `support@devcomdigital.com` from [src/lib/legal.ts](src/lib/legal.ts)).
 4. **Proxy:** put the app behind a proxy that sets `X-Forwarded-For` (Vercel, a load balancer, nginx). Per-address
    rate limits use the entry the nearest proxy added. Set `TRUSTED_PROXY_HOPS` if more than one proxy is in front.
@@ -614,12 +613,12 @@ docs/                  developer and launch documentation
 |---|---|
 | Prisma or esbuild errors after `npm install` | npm 11 blocked install scripts. Run `npm approve-scripts @prisma/client @prisma/engines prisma esbuild unrs-resolver && npm rebuild` |
 | `Can't reach database server at 127.0.0.1:15433` | Start Docker Desktop, then `npm run db:up`. Check with `docker ps` that `eguard-db` is healthy |
-| Port 15433 or 1025/8025 already in use | Change the host port in `docker-compose.yml` (and `DATABASE_URL` / `SMTP_URL` to match) |
-| No emails arrive | Open Mailpit at <http://localhost:8025>. If `SMTP_URL` is empty, emails are printed to the server log instead |
+| Port 15433 or 1025/8025 already in use | Change the host port in `docker-compose.yml` (and `DATABASE_URL` / `MAILPIT_SMTP_URL` to match) |
+| No emails arrive in development | Open Mailpit at <http://localhost:8025>. If Mailpit isn't running, the server log has each email after "Mailpit unreachable" |
 | `npm run typecheck` fails on route types after adding a route | Run `npx next typegen` first |
 | Configuration changes stay "Waiting" forever in development | Set `DEVICE_SIMULATOR=true` and restart. The seeded Galaxy Tab A8 is offline on purpose |
 | `GET /api/browser/v1/policy` returns `503` | Set `BROWSER_POLICY_SIGNING_KEY` (generate with `node scripts/browser-policy-keys.mjs`) |
 | API tests fail with `429` | Start the server with `RATE_LIMIT_IP_ALLOWLIST=::1,127.0.0.1` |
-| API tests fail with "No verify-email email reached …", or pairing fails with "expected string to have <=12 characters" | The server is sending real email. Start it with `SMTP_URL=smtp://127.0.0.1:1025 RESEND_API_KEY=` (see [API tests](#api-tests)) |
+| API tests fail with "No verify-email email reached …" | Mailpit isn't running: `npm run db:up` (see [API tests](#api-tests)) |
 | Maintenance-job tests fail with `401` | Start the server with `CRON_SECRET=test-cron-secret`, and set the same value when running the tests |
 | Demo data looks wrong or stale | `npm run db:reset` drops, re-migrates and reseeds the database |

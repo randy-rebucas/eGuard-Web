@@ -22,20 +22,23 @@ function useRetry(error: Failure, retry: () => void) {
 }
 
 /** Whole-page failure: the body of `error.tsx` files. */
-export function ErrorPanel({ error, retry, title = "This page couldn't load", home = "/dashboard" }: { error: Failure; retry: () => void; title?: string; home?: string }) {
+export function ErrorPanel({
+  error, retry, title = "This page couldn't load", home = "/dashboard", homeLabel = "Go to dashboard",
+  note = "Something went wrong on our side. Your protections on devices aren't affected.",
+}: { error: Failure; retry: () => void; title?: string; home?: string; homeLabel?: string; note?: string }) {
   const [pending, again] = useRetry(error, retry);
   return (
     <section className="card card-pad" role="alert">
       <div className="empty">
         <span className="ico-tile crit"><TriangleAlert {...ico} /></span>
         <h3>{title}</h3>
-        <p>{reason(error) ?? "Something went wrong on our side. Your protections on devices aren't affected."}</p>
+        <p>{reason(error) ?? note}</p>
         {error.digest ? <p className="t-meta num">Reference: {error.digest}</p> : null}
         <div className="row" style={{ gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
           <button className="btn btn-primary" onClick={again} disabled={pending}>
             {pending ? <><LoaderCircle {...ico} className="spin" />Trying again…</> : <><RefreshCw {...ico} />Try again</>}
           </button>
-          <Link className="btn btn-ghost" href={home}>Go to dashboard</Link>
+          <Link className="btn btn-ghost" href={home}>{homeLabel}</Link>
         </div>
       </div>
     </section>

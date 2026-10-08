@@ -41,7 +41,7 @@ export const PROTECTION_PAGES: Record<ProtectionKey, ProtectionPage> = {
     faqs: [
       ["Does the limit count every app?", "It counts time on the phone or tablet. Apps you've given their own limit also stop when that limit runs out, even if daily time is left."],
       ["What counts as the weekend?", "Saturday and Sunday, in the device's own time zone."],
-      ["Can I see how the time was spent?", `Yes. The Screen Time view shows today or the last 7 days, with the top apps and the hours of the day they were used. ${plansWith((e) => e.advancedReports)} adds 30 days, custom ranges and CSV export.`],
+      ["Can I see how the time was spent?", `Yes. The Screen Time view shows today or the last 7 days, with the top apps and the hours of the day they were used. ${plansWith((e) => e.advancedReports)} adds 30 days and CSV export.`],
     ],
   },
   BEDTIME: {
@@ -115,7 +115,7 @@ export const PROTECTION_PAGES: Record<ProtectionKey, ProtectionPage> = {
     android: "On Android, eGuard filters the web on the phone itself, in every browser.",
     ios: "Apple doesn't let apps filter the web directly, so eGuard walks you through turning on Apple's own Limit Adult Websites, then checks it.",
     faqs: [
-      ["Does eGuard see which websites my child visits?", "No. The browser extension sends only a count of blocked pages per day, by category. eGuard never receives the sites your child visits."],
+      ["Does eGuard see which websites my child visits?", "No. The browser extension sends only a count of blocked pages per day, by category. The one address eGuard receives is a blocked site your child asks you to open, with the reason they type."],
       ["What happens when my child asks for a site?", "You get the request and can allow it for 15 minutes, an hour, the rest of today or always. The site opens right away, and the rule returns when the time's up."],
       ["Does it work in private or incognito windows?", "The extension checks this and tells you if private windows aren't protected, with the setting to change."],
     ],

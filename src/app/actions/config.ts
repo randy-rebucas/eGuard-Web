@@ -9,7 +9,7 @@ import { startCheckRun } from "@/lib/engine";
 import { notFound, toResult, type Result } from "@/lib/errors";
 import { childPhotoSrc } from "@/lib/child-photo";
 import {
-  ConfigSchema, cancelBatch as cancelConfigBatch, childFor, confirmGuided as confirmGuidedBatch, requestConfigs,
+  ConfigSchema, cancelBatch as cancelConfigBatch, childFor, confirmGuided as confirmGuidedBatch, requestConfigs, versionOf,
 } from "@/lib/config-service";
 
 const platformName = (p: "ANDROID" | "IOS") => (p === "IOS" ? "iOS" : "Android");
@@ -28,6 +28,8 @@ export type FlowContext = {
   policyLabel: string;
   devices: FlowDevice[];
   openBatch: string | null;
+  /** Sent back with the change: refused if the setting changed since (config-service.configVersion) */
+  version: string;
 };
 
 export async function getFlowChildren() {
@@ -60,6 +62,7 @@ async function flowContext(familyId: string, childId: string, key: ProtectionKey
     policy,
     policyLabel: describeConfig(policyRow?.config),
     openBatch: open?.batchId ?? null,
+    version: versionOf(policyRow?.config ?? null, open?.batchId ?? null),
     devices: devices.map((d) => {
       const p = d.protections[0];
       const cap = def.caps[d.platform];
@@ -80,11 +83,12 @@ async function flowContext(familyId: string, childId: string, key: ProtectionKey
  * Nothing is marked successful here — only processReport() can verify. A child with no device yet gets the
  * setting saved as their policy (`batchId: null`), applied when a device pairs.
  */
-export async function submitConfig(childId: string, desiredInput: unknown): Promise<Result<{ batchId: string | null }>> {
+export async function submitConfig(childId: string, desiredInput: unknown, baseVersion?: string): Promise<Result<{ batchId: string | null }>> {
   const u = await requireUser();
   return toResult(async () => {
     const desired = ConfigSchema.parse(desiredInput);
-    const { batchId } = await requestConfigs(u, Id.parse(childId), [desired], "web", { strict: true });
+    const base = z.string().max(64).optional().parse(baseVersion);
+    const { batchId } = await requestConfigs(u, Id.parse(childId), [desired], "web", { strict: true, baseVersion: base });
     return { batchId };
   });
 }

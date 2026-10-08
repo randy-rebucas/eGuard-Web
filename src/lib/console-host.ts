@@ -12,6 +12,9 @@ export const CONSOLE_HOST = "console.eguard.family";
  */
 export const STAFF_COOKIE = process.env.NODE_ENV === "production" ? "__Host-eg_staff" : "eg_staff";
 
+/** A staff session ends after this long without a request (lib/staff-auth; the maintenance job removes such rows). */
+export const STAFF_IDLE_MS = 30 * 60_000;
+
 /** Console paths a signed-out visitor may open; anything else without the cookie is sent to /login by the proxy. */
 export const CONSOLE_PUBLIC = ["/login", "/robots.txt"];
 

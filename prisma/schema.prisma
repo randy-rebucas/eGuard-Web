@@ -178,6 +178,7 @@ model User {
   supportTickets SupportTicket[]
   orgRoles   OrgMember[]
   orgApiKeys OrgApiKey[]
+  orgInvitesSent OrgInvite[]
 
   @@index([familyId])
 }
@@ -358,6 +359,24 @@ model Organization {
   batches     VoucherBatch[]
   events      OrgEvent[]
   apiKeys     OrgApiKey[]
+  invites     OrgInvite[]
+}
+
+/// An owner's invitation to help manage an organization. The person becomes an admin only when they accept it in
+/// Settings › Organizations. Kept whether or not the email has an eGuard account, so the owner can't tell which.
+model OrgInvite {
+  id          String       @id @default(cuid())
+  orgId       String
+  org         Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  /// Lowercased; matched against the signed-in person's email when they accept
+  email       String
+  invitedById String
+  invitedBy   User         @relation(fields: [invitedById], references: [id], onDelete: Cascade)
+  createdAt   DateTime     @default(now())
+  expiresAt   DateTime
+
+  @@unique([orgId, email])
+  @@index([email])
 }
 
 /// A key for the organization API (/api/org/v1, docs/organization-api.md). Only its hash is stored.

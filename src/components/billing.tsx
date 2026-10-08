@@ -86,13 +86,14 @@ export function BuyPlan({ plans, current, methods, payer, autoRenewBlocked, pass
   );
 }
 
-export function CancelAutoRenew({ plan, endsOn }: { plan: string; endsOn: string }) {
+/** `losing`: what the family loses back on Free, e.g. "1 child, 2 devices, no location sharing" */
+export function CancelAutoRenew({ plan, endsOn, losing }: { plan: string; endsOn: string; losing: string }) {
   const [confirm, setConfirm] = useState(false);
   const [pending, run] = useAction();
   if (!confirm) return <button className="btn btn-secondary btn-sm" onClick={() => setConfirm(true)}>Turn off auto-renew</button>;
   return (
     <div className="row" role="alert" style={{ gap: 10, flexWrap: "wrap" }}>
-      <span className="t-meta" style={{ color: "var(--ink-2)" }}>You keep {plan} until {endsOn}. After that your family goes back to Free: 1 child, no location sharing. Children and devices already added stay protected.</span>
+      <span className="t-meta" style={{ color: "var(--ink-2)" }}>You keep {plan} until {endsOn}. After that your family goes back to Free: {losing}. Children and devices already added stay protected.</span>
       <span className="row" style={{ gap: 6 }}>
         <button className="btn btn-ghost btn-sm" disabled={pending} onClick={() => setConfirm(false)}>Keep it on</button>
         <button className="btn btn-primary btn-sm" disabled={pending} onClick={() => run(cancelAutoRenew, {

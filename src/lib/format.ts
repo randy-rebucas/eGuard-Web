@@ -11,6 +11,22 @@ export function dateFormat(locale: string, tz: string, o: Intl.DateTimeFormatOpt
   return f;
 }
 
+/**
+ * The zone name to store for a family's time zone, or null if it isn't one. "asia/manila" becomes "Asia/Manila";
+ * offsets like "+05:00" are refused (they ignore daylight saving). A well-formed name is kept as sent, since Intl
+ * turns modern names back into old ones ("Asia/Kolkata" into "Asia/Calcutta").
+ */
+export function canonicalTimeZone(tz: string) {
+  let resolved: string;
+  try {
+    resolved = new Intl.DateTimeFormat("en", { timeZone: tz }).resolvedOptions().timeZone;
+  } catch {
+    return null;
+  }
+  if (resolved !== "UTC" && !resolved.includes("/")) return null;
+  return /^[A-Z][A-Za-z_]+(\/[A-Z0-9][A-Za-z0-9_+-]*)+$/.test(tz) ? tz : resolved;
+}
+
 /** Milliseconds `tz` is ahead of UTC at instant `d`. */
 function tzOffset(d: Date, tz: string) {
   const p = Object.fromEntries(

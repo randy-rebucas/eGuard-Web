@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { FREE_CHILDREN } from "@/lib/plans";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { Icon } from "@/components/icon";
@@ -61,7 +62,7 @@ export default function ProtectionsPage() {
         <div className="st-cta">
           <div>
             <h2>Start with the protections that matter most to you</h2>
-            <p>Free for one child. No card needed.</p>
+            <p>Free for {FREE_CHILDREN}. No card needed.</p>
           </div>
           <Link href="/register" className="lp-btn lp-btn-white">Get Started Free<ArrowRight /></Link>
         </div>

@@ -61,14 +61,15 @@ export async function todayActivity(graph: FamilyGraph, tz: string, opts: { loca
     const childApps = apps.filter((a) => a.childId === c.id);
     const top = childApps.filter((a) => a.app !== "Others" && nameable[i](a.app)).slice(0, 3).map((a) => [a.app, a.minutes] as [string, number]);
     const rest = childApps.reduce((s, a) => s + a.minutes, 0) - top.reduce((s, [, m]) => s + m, 0);
+    const browsers = opts.browsers.filter((b) => b.childId === c.id);
     return {
-      id: c.id, name: c.name, hue: c.hue, photo: c.photo, deviceName: c.primary?.name ?? "No device",
+      id: c.id, name: c.name, hue: c.hue, photo: c.photo, deviceName: c.primary?.name ?? (browsers.some((b) => !b.revokedAt) ? "Browser only" : "No device"),
       used: usage.find((u) => u.childId === c.id)?._sum.minutes ?? 0,
       limit: limitOn(c, todayKey),
       apps: rest > 0 ? [...top, ["Others", rest]] : top,
       location: locationOf(c, opts.locationSharing, tz),
       devices: c.devices.map((d) => ({ id: d.id, name: d.name, state: graph.deviceStates[d.id].key, issues: graph.deviceStates[d.id].issues, firstCheck: graph.deviceStates[d.id].firstCheck })),
-      browsers: opts.browsers.filter((b) => b.childId === c.id).map((b) => {
+      browsers: browsers.map((b) => {
         const [tone, label] = browserStatus(b);
         return { id: b.id, name: `${b.browser} on ${b.deviceLabel}`, tone, label };
       }),

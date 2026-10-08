@@ -14,6 +14,9 @@ import {
 /** `confirmOff`: turning it off can't be undone, so it asks first with this text. */
 export function SettingSwitch({ setting, title, desc, checked, disabled, confirmOff }: { setting: string; title: string; desc: string; checked: boolean; disabled?: boolean; confirmOff?: string }) {
   const [on, setOn] = useState(checked);
+  // Follow the saved value when the page refreshes (another parent or the app changed it)
+  const [saved, setSaved] = useState(checked);
+  if (saved !== checked) { setSaved(checked); setOn(checked); }
   const [confirming, setConfirming] = useState(false);
   const [pending, run] = useAction();
   const id = `sw-${setting}`;
@@ -41,7 +44,8 @@ export function SettingSwitch({ setting, title, desc, checked, disabled, confirm
   );
 }
 
-export function AccountForm({ name, email, timezone, zones, canSetTimezone, hasPassword, linkedSignIns }: { name: string; email: string; timezone: string; zones: string[]; canSetTimezone: boolean; hasPassword: boolean; linkedSignIns: number }) {
+/** `canSetTimezone`: the family admin, who also names the family. */
+export function AccountForm({ name, email, familyName, timezone, zones, canSetTimezone, hasPassword, linkedSignIns }: { name: string; email: string; familyName: string; timezone: string; zones: string[]; canSetTimezone: boolean; hasPassword: boolean; linkedSignIns: number }) {
   const [state, action, pending] = useActionState(updateAccount, undefined);
   const [newEmail, setNewEmail] = useState(email);
   const changingEmail = newEmail.trim().toLowerCase() !== email;
@@ -66,6 +70,11 @@ export function AccountForm({ name, email, timezone, zones, canSetTimezone, hasP
             </span>
           </div>
         ) : null}
+        <div className="field">
+          <label htmlFor="fam">Family name</label>
+          <input className="input" id="fam" name="familyName" defaultValue={familyName} maxLength={80} required={canSetTimezone} disabled={!canSetTimezone} aria-describedby="fam-hint" />
+          <span className="field-hint" id="fam-hint">{canSetTimezone ? "Shown to parents you invite and in the weekly summary." : "Only the family admin can change this."}</span>
+        </div>
         <div className="field">
           <label htmlFor="tz">Family time zone</label>
           <select className="input" id="tz" name="timezone" defaultValue={timezone} disabled={!canSetTimezone}>

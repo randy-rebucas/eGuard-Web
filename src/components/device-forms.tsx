@@ -23,7 +23,10 @@ const PAIR_POLL_MS = 3000;
  * `upgrade`: a bigger plan exists, so a full family is offered "change your plan" (not on the top plan).
  */
 export function PairDevice({ kids: children, used, limit, upgrade = true, kind = "DEVICE", initialChildId }: { kids: { id: string; name: string }[]; used: number; limit: number; upgrade?: boolean; kind?: "DEVICE" | "BROWSER"; initialChildId?: string }) {
-  const [childId, setChildId] = useState(initialChildId ?? children[0]?.id ?? "");
+  const [picked, setChildId] = useState(initialChildId ?? children[0]?.id ?? "");
+  // A child removed since (another parent; the page refreshed): the select shows the first child, so use that one,
+  // not the removed child's id ("Child not found")
+  const childId = children.some((c) => c.id === picked) ? picked : children[0]?.id ?? "";
   const [label, setLabel] = useState("");
   const browser = kind === "BROWSER";
   const idp = browser ? "pair-browser" : "pair";

@@ -78,23 +78,30 @@ async function safely(what: string, fn: () => Promise<unknown>) {
 
 /* ---------- Who manages the organization ---------- */
 
-export const notifyAdminAdded = (org: Organization, addedId: string, by: { id: string; name: string }) => safely("admin added", async () => {
-  const added = await db.user.findUniqueOrThrow({ where: { id: addedId } });
-  const you = await person(addedId);
-  if (you) {
-    await deliver([you], () => ({
-      subject: `You're now an admin of ${org.name} on eGuard`,
-      paragraphs: [
-        `${by.name} added you as an admin of ${org.name}. You can share its join code, buy sponsor codes that pay for families' plans, and see how many families joined. You never see which families joined or used a code.`,
-        `If you don't know this organization, open it and choose "Stop managing".`,
-      ],
-      link: orgLink(org.id), cta: `Open ${org.name}`,
-    }));
-  }
-  const others = await orgAdmins(org.id, { except: [by.id, addedId] });
+/** To the person invited, only when they have an account with a verified email (the caller checks the account). */
+export const notifyAdminInvited = (org: Organization, invitedId: string, by: { id: string; name: string }, expiresAt: Date) => safely("admin invited", async () => {
+  const you = await person(invitedId);
+  if (!you) return;
+  await deliver([you], () => ({
+    subject: `${by.name} invited you to help manage ${org.name} on eGuard`,
+    paragraphs: [
+      `${by.name} invited you to be an admin of ${org.name}. Admins share its join code, buy sponsor codes that pay for families' plans, and see how many families joined. They never see which families joined or used a code.`,
+      `Accept or decline in Settings › Organizations by ${shortDate(expiresAt, you.tz)}. You're not an admin unless you accept. If you don't know this organization, decline it or ignore this email.`,
+    ],
+    link: `${appUrl()}/settings/organizations`, cta: "See the invitation",
+  }));
+});
+
+/** To the other admins once someone accepts an invitation. */
+export const notifyAdminAccepted = (org: Organization, addedId: string, invitedById: string) => safely("admin accepted", async () => {
+  const [added, inviter] = await Promise.all([
+    db.user.findUniqueOrThrow({ where: { id: addedId } }),
+    db.user.findUnique({ where: { id: invitedById }, select: { name: true } }),
+  ]);
+  const others = await orgAdmins(org.id, { except: [addedId] });
   await deliver(others, () => ({
-    subject: `${added.name} was added as an admin of ${org.name}`,
-    paragraphs: [`${by.name} added ${added.name} (${added.email}) as an admin of ${org.name}. Admins can see and hand out its sponsor codes and buy more.`],
+    subject: `${added.name} is now an admin of ${org.name}`,
+    paragraphs: [`${added.name} (${added.email}) accepted ${inviter ? `${inviter.name}'s` : "an"} invitation and is now an admin of ${org.name}. Admins can see and hand out its sponsor codes and buy more.`],
     link: orgLink(org.id), cta: "See admins",
   }));
 });

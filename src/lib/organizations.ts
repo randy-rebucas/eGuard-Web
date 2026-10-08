@@ -121,24 +121,95 @@ export async function replaceJoinCode(actor: Actor, orgId: string) {
   }
 }
 
-/** Owners add another eGuard user, by the email they sign in with, as an admin. */
-export async function addOrgAdmin(actor: Actor, orgId: string, email: string) {
+/* ---------- Admin invitations ---------- */
+
+/** How long an invitation to manage an organization can be accepted */
+const INVITE_DAYS = 14;
+const MAX_PENDING_INVITES = 20;
+
+/**
+ * Owners invite someone, by the email they sign in to eGuard with, to help manage the organization. They become an
+ * admin only when they accept (Settings › Organizations). The answer is the same whether or not the email has an
+ * account, and nobody without one is emailed, so inviting can't be used to find out who uses eGuard. Inviting again
+ * renews the invitation and resends the email.
+ */
+export async function inviteOrgAdmin(actor: Actor, orgId: string, email: string) {
   await requireOrgAdmin(actor.id, orgId, { owner: true });
-  const address = z.string().trim().toLowerCase().email("Enter a valid email address.").parse(email);
-  const user = await db.user.findUnique({ where: { email: address } });
-  // An invitation they haven't accepted isn't an account they can sign in with
-  if (!user || isPendingInvite(user)) throw invalid("There's no eGuard account with that email. Ask them to sign up first, then add them.");
-  const existing = await db.orgMember.findUnique({ where: { orgId_userId: { orgId, userId: user.id } } });
-  if (existing) throw conflict(`${user.name} already manages this organization.`);
-  const managed = await db.orgMember.count({ where: { userId: user.id } });
-  if (managed >= MAX_ORGS_PER_USER) throw conflict(`${user.name} already manages ${MAX_ORGS_PER_USER} organizations.`);
-  const { org } = await db.orgMember.create({ data: { orgId, userId: user.id, role: "ADMIN" }, include: { org: true } }).catch((e) => {
-    // Added at the same moment by another owner or tab
-    if (isUniqueViolation(e)) throw conflict(`${user.name} already manages this organization.`);
-    throw e;
+  const address = z.string().trim().toLowerCase().email("Enter a valid email address.").max(254, "Enter a valid email address.").parse(email);
+  // Each invitation can email someone outside the organization
+  await enforce(`orgadmin:${actor.id}`, LIMITS.orgAdminUser, "You've sent several invitations. Wait a while and try again.");
+  // Admins are listed on the page already, so saying so reveals nothing
+  const member = await db.orgMember.findFirst({ where: { orgId, user: { email: address } }, include: { user: { select: { name: true } } } });
+  if (member) throw conflict(`${member.user.name} already manages this organization.`);
+  const expiresAt = new Date(Date.now() + INVITE_DAYS * 864e5);
+  const invite = await db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`org.invites:${orgId}`}))`;
+    const renewing = await tx.orgInvite.findUnique({ where: { orgId_email: { orgId, email: address } } });
+    if (!renewing && (await tx.orgInvite.count({ where: { orgId, expiresAt: { gt: new Date() } } })) >= MAX_PENDING_INVITES) {
+      throw conflict(`This organization has ${MAX_PENDING_INVITES} invitations waiting. Cancel some first.`);
+    }
+    return tx.orgInvite.upsert({
+      where: { orgId_email: { orgId, email: address } },
+      create: { orgId, email: address, invitedById: actor.id, expiresAt },
+      update: { invitedById: actor.id, expiresAt, createdAt: new Date() },
+      include: { org: true },
+    });
   });
-  await notify.notifyAdminAdded(org, user.id, actor);
-  return { name: user.name };
+  const user = await db.user.findUnique({ where: { email: address } });
+  // An invitation to a family they haven't accepted isn't an account they can sign in with
+  if (user && !isPendingInvite(user)) await notify.notifyAdminInvited(invite.org, user.id, actor, expiresAt);
+  return { email: address };
+}
+
+/** Owners take back an invitation that hasn't been accepted. */
+export async function cancelOrgInvite(actor: Actor, orgId: string, inviteId: string) {
+  await requireOrgAdmin(actor.id, orgId, { owner: true });
+  await db.orgInvite.deleteMany({ where: { id: inviteId, orgId } });
+}
+
+/** Invitations waiting for the signed-in person, for Settings › Organizations. */
+export async function invitationsFor(userId: string) {
+  const u = await db.user.findUniqueOrThrow({ where: { id: userId }, select: { email: true } });
+  const rows = await db.orgInvite.findMany({
+    where: { email: u.email.toLowerCase(), expiresAt: { gt: new Date() } }, orderBy: { createdAt: "asc" },
+    include: { org: { select: { name: true, kind: true } }, invitedBy: { select: { name: true } } },
+  });
+  return rows.map((i) => ({ id: i.id, orgId: i.orgId, org: i.org.name, kind: i.org.kind, by: i.invitedBy.name, expiresAt: i.expiresAt }));
+}
+
+/** Only an invitation to the signed-in person's own email, still open. Anything else is "not found". */
+async function ownInvite(actor: Actor, inviteId: string) {
+  const u = await db.user.findUniqueOrThrow({ where: { id: actor.id }, select: { email: true } });
+  const invite = await db.orgInvite.findFirst({ where: { id: inviteId, email: u.email.toLowerCase(), expiresAt: { gt: new Date() } }, include: { org: true } });
+  if (!invite) throw notFound("Invitation");
+  return invite;
+}
+
+export async function acceptOrgInvite(actor: Actor, inviteId: string) {
+  const invite = await ownInvite(actor, inviteId);
+  // Proves the address is theirs: whoever can sign in with an unverified copy of it mustn't take the invitation
+  await requireVerifiedEmail(actor.id, "accept an invitation to manage an organization");
+  await db.$transaction(async (tx) => {
+    // The same lock as createOrganization, so accepting and creating at once can't pass the limit together
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`org.manage:${actor.id}`}))`;
+    const already = await tx.orgMember.findUnique({ where: { orgId_userId: { orgId: invite.orgId, userId: actor.id } } });
+    if (!already) {
+      if ((await tx.orgMember.count({ where: { userId: actor.id } })) >= MAX_ORGS_PER_USER) {
+        throw conflict(`You can manage up to ${MAX_ORGS_PER_USER} organizations. Stop managing one to accept this.`);
+      }
+      await tx.orgMember.create({ data: { orgId: invite.orgId, userId: actor.id, role: "ADMIN" } });
+    }
+    await tx.orgInvite.deleteMany({ where: { id: invite.id } });
+  });
+  await notify.notifyAdminAccepted(invite.org, actor.id, invite.invitedById);
+  return { orgId: invite.orgId, name: invite.org.name };
+}
+
+/** Declining tells no one: the owner mustn't learn from it that the email has an account. */
+export async function declineOrgInvite(actor: Actor, inviteId: string) {
+  const invite = await ownInvite(actor, inviteId);
+  await db.orgInvite.deleteMany({ where: { id: invite.id } });
+  return { name: invite.org.name };
 }
 
 /** Owners remove anyone; admins can remove themselves. The last owner stays, so an organization is never orphaned. */
@@ -203,6 +274,8 @@ export async function organizationView(actor: Actor, orgId: string) {
     include: {
       _count: { select: { memberships: true } },
       members: { include: { user: { select: { id: true, name: true, email: true } } }, orderBy: { createdAt: "asc" } },
+      // Only the address the owner typed: never whether it has an account
+      invites: { where: { expiresAt: { gt: new Date() } }, orderBy: { createdAt: "asc" }, select: { id: true, email: true, expiresAt: true } },
       batches: {
         where: { state: { in: ["PAID", "VOIDED", "PENDING"] } }, orderBy: { createdAt: "desc" },
         include: { vouchers: { orderBy: { code: "asc" }, select: { id: true, code: true, expiresAt: true, redeemedAt: true, revokedAt: true } } },
@@ -217,16 +290,19 @@ export async function organizationView(actor: Actor, orgId: string) {
     codes: b.vouchers.map((v) => ({ id: v.id, code: formatCode(v.code), expiresAt: v.expiresAt, redeemedAt: v.redeemedAt, status: status(v) })),
   }));
   const codes = batches.flatMap((b) => b.codes);
+  // A refunded batch's unused codes were never paid for: "redeemed of bought" leaves them out
+  const refunded = new Set(batches.filter((b) => b.state === "VOIDED").flatMap((b) => b.codes.filter((c) => c.status === "CANCELLED").map((c) => c.id)));
   return {
     id: org.id, name: org.name, kind: org.kind, joinCode: formatCode(org.joinCode), role: me.role,
     families: org._count.memberships,
     totals: {
-      bought: codes.length,
+      bought: codes.length - refunded.size,
       redeemed: codes.filter((c) => c.status === "REDEEMED").length,
       available: codes.filter((c) => c.status === "AVAILABLE").length,
     },
     batches,
     admins: org.members.map((m) => ({ id: m.user.id, name: m.user.name, email: m.user.email, role: m.role, you: m.userId === actor.id })),
+    invites: org.invites,
   };
 }
 

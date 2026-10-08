@@ -92,7 +92,8 @@ script uses the development key and warns, and those codes only work locally.
   `eg_staff`.
 - It's `httpOnly` and `SameSite=Lax`, so a console link opened from chat still arrives signed in. Changes go
   through server actions, which Next checks against the request's Origin.
-- A session ends 12 hours after sign-in, or after 30 minutes idle.
+- A session ends 12 hours after sign-in, or after 30 minutes idle. The maintenance job removes ended sessions'
+  rows.
 - Deactivating an account ends its sessions.
 - Every console server action (`src/app/actions/console.ts`) first checks it was sent to the console host.
 
@@ -102,12 +103,15 @@ script uses the development key and warns, and those codes only work locally.
 | --- | --- |
 | `/` | Totals: families (and new in 7 and 30 days), parents, children, devices, browsers, open tickets, organizations. Families by plan. |
 | `/families` | Search by parent email or name, family name or id. Newest first, 50 per page. |
-| `/families/[id]` | Account, parents, purchases, support tickets, organizations joined and sponsor codes redeemed. |
+| `/families/[id]` | Account, parents, purchases, support tickets, organizations joined and sponsor codes redeemed. The plan says "renews" or "ends" as the parent's Settings does, and device slots count phones, tablets and connected browsers, as pairing does. |
 | `/tickets` | Support tickets, filtered by Open, Closed or All. |
 | `/tickets/[id]` | The message, who sent it, and a Close/Reopen button. Replies still go out from the support inbox, where tickets are forwarded with Reply-To set to the parent. |
 | `/organizations` | Organizations with counts of admins, families and code batches. |
 | `/organizations/[id]` | Admins, join code, and code batches with how many codes were redeemed. |
 | `/audit` | The staff audit log. |
+
+A page or action that fails shows the console's own error panel (`(signed-in)/error.tsx`), with the bar and nav
+kept.
 
 Links to detail pages use `prefetch={false}`. Opening one writes an audit entry, so a hover must not count as a
 view.
@@ -117,6 +121,7 @@ view.
 `StaffAuditLog` records each of these with who did it and when:
 - `staff.login`
 - opening a family, ticket or organization (`family.view`, `ticket.view`, `organization.view`)
+- searching families (`family.search`, with the search text as the detail; paging through results logs each page)
 - each change (`ticket.status`, with "OPEN → CLOSED" as the detail)
 
 The audit log is read-only in the console.

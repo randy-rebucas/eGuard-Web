@@ -219,10 +219,10 @@ export async function processReport(deviceId: string, report: DeviceReport) {
 }
 
 /** Child.dailyLimitMinutes mirrors the Screen Time policy for quick display. */
-export async function syncChildLimits(childId: string, cfg: unknown) {
+export async function syncChildLimits(childId: string, cfg: unknown, client: Pick<typeof db, "child"> = db) {
   const c = cfg as { key?: string; dailyMinutes?: number; weekendMinutes?: number } | null;
   if (c?.key !== "SCREEN_TIME" || typeof c.dailyMinutes !== "number") return;
-  await db.child.update({ where: { id: childId }, data: { dailyLimitMinutes: c.dailyMinutes, weekendLimitMinutes: c.weekendMinutes ?? c.dailyMinutes } });
+  await client.child.update({ where: { id: childId }, data: { dailyLimitMinutes: c.dailyMinutes, weekendLimitMinutes: c.weekendMinutes ?? c.dailyMinutes } });
 }
 
 const rpHasLocation =(r: DeviceReport) => r.protections.some((p) => p.key === "LOCATION");

@@ -114,9 +114,13 @@ when a device reported sharing off, or nothing shares and the parent's setting i
 
 **Saved places** (always): the family's named places, by name, each "Within 150 m" with **Edit** (name and radius)
 and **Remove** (confirmed inline: "Visits at Home lose its name…"). Empty: "Name the places your children go, like Home
-or School…". A place is made with **Name *Mia*'s place** under a child who's outside every saved place, or **Name
-this place** on a visit in their places: a name (1–40 characters) and a radius (100, 150, 250, 500 m or 1 km). Any
-parent can manage them; up to 30 per family; on Free only removing works ([§6](#6-how-location-is-recorded-and-kept)).
+or School…". A place is made with **Name *Mia*'s place** under a child who's outside every saved place, **Name
+this place** on a visit in their places, or **Add a place** anywhere (School before the first day): a small map to tap,
+or a "latitude, longitude" field for keyboard use and pasting from a maps app (`parseLatLng`), plus the arrive and
+leave alerts. Every form takes a name (1–40 characters) and a radius (100, 150, 250, 500 m or 1 km). The browser's own
+location isn't offered (Permissions-Policy blocks geolocation), and there's no address search (no third-party
+geocoding). Any parent can manage them; up to 30 per family. On Free, places saved on an earlier plan are listed under
+the upgrade note with **Remove** only ([§6](#6-how-location-is-recorded-and-kept)); mobile `GET` and `DELETE` work there too.
 
 **Recent places** (only when the family keeps history): one row per child who has a device, with the last **3**
 places they **stayed at** in the past 24 hours (`recentVisits`, fetched per child so a busy child can't crowd out the
@@ -147,7 +151,7 @@ Two views, as tabs: **By day** (the default) and **All places** (`?view=all`, th
 |---|---|
 | Day | `?day=YYYY-MM-DD` in the family's time zone, today by default; a day before the retention period or in the future falls back to today. Previous and next buttons (disabled past either end) and a date picker (`min`/`max` the same bounds) |
 | Map | the day's route: a dashed line through its visits in order, each stay as a numbered pin, passing-by fixes as small dots, saved places as dashed circles. Framed on the whole route |
-| Visits | oldest first, stays numbered as on the map ("1. School"). A visit spanning midnight is on both days. At most 300 a day (`DAY_VISITS_MAX`) |
+| Visits | oldest first, stays numbered as on the map ("1. School"). A visit spanning midnight is on both days. At most about 300 a day (`DAY_VISITS_MAX`): on a busier day every stay is kept and passing-by fixes are thinned evenly (`thinRoute`), with a note saying so |
 | Show on map | on every row (also in All places, where it opens that visit's day): `?day=…&focus=<visitId>` centres the map on it and enlarges its pin |
 | No visits | "No places this day" |
 
@@ -251,7 +255,7 @@ place covering the same spot names those visits instead. Creating and editing ne
 | A child's places page | Done | Day groups, durations, passing by, midnight spans, paging, removed devices, empty states; a day's route on a map with numbered stays, Show on map |
 | Arrive and leave alerts | Done | Per saved place, off by default; edge margin, one per child, place and direction per 30 min; emailed and pushed; web and mobile |
 | Visit recording | Done | Stays vs passing by; one visit per place across the child's devices |
-| Place names | Done | Saved places, named from the list, a child's location or a visit; relabels what's kept |
+| Place names | Done | Saved places, named from a child's location, a visit, or anywhere on the map (Add a place); relabels what's kept |
 | Saved places management | Done | Rename, resize, alerts, remove; drawn on the map; web and mobile |
 | Live vs last seen | Done | 20-minute window over 15-minute fixes |
 | Sharing on/off | Done | Through the `LOCATION` protection; off clears the position; tamper alert |

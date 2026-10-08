@@ -8,9 +8,9 @@ vi.mock("@/lib/mail", async (orig) => ({
   sendMail: async (m: { to: string; subject: string; text: string }) => { mail.sent.push(m); },
 }));
 import {
-  addOrgAdmin, buyCodes, cancelCode, codesCsv, confirmBatchReturn, createOrganization, familyOrganizations, handOverOrganizations,
-  joinOrganization, leaveOrganization, makeOrgOwner, managedOrganizations, normalizeCode, organizationView, previewJoin,
-  redeemCode, removeOrgAdmin, replaceJoinCode, sponsorOf,
+  acceptOrgInvite, buyCodes, cancelCode, cancelOrgInvite, codesCsv, confirmBatchReturn, createOrganization, declineOrgInvite, familyOrganizations,
+  handOverOrganizations, invitationsFor, inviteOrgAdmin, joinOrganization, leaveOrganization, makeOrgOwner, managedOrganizations, normalizeCode,
+  organizationView, previewJoin, redeemCode, removeOrgAdmin, replaceJoinCode, sponsorOf,
 } from "@/lib/organizations";
 import { sendCodeExpiryReminders, sendOrgDigests } from "@/lib/org-notifications";
 import { handlePaymongoEvent } from "@/lib/web-billing";
@@ -47,6 +47,14 @@ async function family(name: string, { verified = true } = {}) {
 }
 
 const fam = (a: Actor) => db.family.findUniqueOrThrow({ where: { id: a.familyId } });
+
+/** Makes `who` an admin the way the app does: an owner invites them, and they accept. */
+async function addAdmin(by: Actor, orgId: string, who: Actor) {
+  const { email } = await db.user.findUniqueOrThrow({ where: { id: who.id } });
+  await inviteOrgAdmin(by, orgId, email);
+  const invite = (await invitationsFor(who.id)).find((i) => i.orgId === orgId)!;
+  await acceptOrgInvite(who, invite.id);
+}
 const event = (type: string, resource: { id: string; type: string; attributes?: object }) => parseWebhookEvent(pm.webhook(type, resource).raw)!;
 
 /** Buys and pays for a batch; returns its codes (as shown to the organization). */
@@ -68,6 +76,7 @@ afterAll(async () => {
   const users = await db.user.findMany({ where: { email: { endsWith: DOMAIN } }, select: { id: true } });
   await db.organization.deleteMany({ where: { members: { some: { userId: { in: users.map((u) => u.id) } } } } });
   await db.family.deleteMany({ where: { users: { some: { email: { endsWith: DOMAIN } } } } });
+  await db.rateLimit.deleteMany({ where: { key: { in: users.map((u) => `orgadmin:${u.id}`) } } });
   await db.$disconnect();
 });
 
@@ -101,14 +110,42 @@ describe("organizations and admins", () => {
     await expect(codesCsv(outsider, orgId)).rejects.toMatchObject({ status: 404 });
   });
 
-  it("lets owners add admins by the email of an existing account", async () => {
-    await expect(addOrgAdmin(owner, orgId, `nobody.${DOMAIN}`)).rejects.toMatchObject({ status: 400 });
-    expect(await addOrgAdmin(owner, orgId, `admin.bautista.${DOMAIN}`)).toEqual({ name: "Bautista Admin" });
-    await expect(addOrgAdmin(owner, orgId, `admin.bautista.${DOMAIN}`)).rejects.toMatchObject({ status: 409 });
-    // Admins can't add or remove others
-    await expect(addOrgAdmin(helper, orgId, `admin.garcia.${DOMAIN}`)).rejects.toMatchObject({ status: 403 });
+  it("lets owners invite admins, who manage it only once they accept", async () => {
+    const sent = mail.sent.length;
+    // The same answer whether or not the email has an account, and only an account is emailed
+    expect(await inviteOrgAdmin(owner, orgId, `nobody.${DOMAIN}`)).toEqual({ email: `nobody.${DOMAIN}` });
+    expect(await inviteOrgAdmin(owner, orgId, ` Admin.Bautista.${DOMAIN}`)).toEqual({ email: `admin.bautista.${DOMAIN}` });
+    expect(mail.sent.slice(sent).map((m) => m.to)).toEqual([`admin.bautista.${DOMAIN}`]);
+    await expect(organizationView(helper, orgId)).rejects.toMatchObject({ status: 404 }); // not an admin yet
+    expect((await organizationView(owner, orgId)).invites.map((i) => i.email)).toEqual([`nobody.${DOMAIN}`, `admin.bautista.${DOMAIN}`]);
+
+    // Only the person the invitation is for can answer it
+    const [inv] = await invitationsFor(helper.id);
+    expect(inv).toMatchObject({ orgId, org: "San Isidro Elementary", by: "Cruz Admin" });
+    await expect(acceptOrgInvite(outsider, inv.id)).rejects.toMatchObject({ status: 404 });
+    await expect(declineOrgInvite(outsider, inv.id)).rejects.toMatchObject({ status: 404 });
+    await acceptOrgInvite(helper, inv.id);
+    expect(await invitationsFor(helper.id)).toEqual([]);
+    await expect(inviteOrgAdmin(owner, orgId, `admin.bautista.${DOMAIN}`)).rejects.toMatchObject({ status: 409 });
+
+    // Admins can't invite or remove others, or take back invitations
+    await expect(inviteOrgAdmin(helper, orgId, `admin.garcia.${DOMAIN}`)).rejects.toMatchObject({ status: 403 });
     await expect(removeOrgAdmin(helper, orgId, owner.id)).rejects.toMatchObject({ status: 403 });
+    const [nobody] = (await organizationView(owner, orgId)).invites;
+    await expect(cancelOrgInvite(helper, orgId, nobody.id)).rejects.toMatchObject({ status: 403 });
+    await cancelOrgInvite(owner, orgId, nobody.id);
+    expect((await organizationView(owner, orgId)).invites).toEqual([]);
     expect((await organizationView(helper, orgId)).admins.map((a) => a.role)).toEqual(["OWNER", "ADMIN"]);
+  });
+
+  it("needs a verified email to accept, and declining tells no one", async () => {
+    await inviteOrgAdmin(owner, orgId, `admin.mendoza.${DOMAIN}`);
+    const [inv] = await invitationsFor(unverified.id);
+    await expect(acceptOrgInvite(unverified, inv.id)).rejects.toMatchObject({ status: 403, code: "email_unverified" });
+    const sent = mail.sent.length;
+    await declineOrgInvite(unverified, inv.id);
+    expect(mail.sent.length).toBe(sent);
+    expect((await organizationView(owner, orgId)).invites).toEqual([]);
   });
 
   it("never leaves an organization without an owner", async () => {
@@ -116,10 +153,22 @@ describe("organizations and admins", () => {
     await makeOrgOwner(owner, orgId, helper.id);
     await removeOrgAdmin(helper, orgId, helper.id); // an owner can step down once there's another
     // The only owner's account is deleted: the longest-serving admin takes over
-    await addOrgAdmin(owner, orgId, `parent.cruz.${DOMAIN}`);
+    await addAdmin(owner, orgId, ownerParent);
     await handOverOrganizations([owner.id]);
     expect((await db.orgMember.findUniqueOrThrow({ where: { orgId_userId: { orgId, userId: ownerParent.id } } })).role).toBe("OWNER");
     await removeOrgAdmin(owner, orgId, ownerParent.id);
+  });
+
+  it("limits how many invitations one person sends", async () => {
+    // A fresh owner, so the invitations above don't count toward this one's limit
+    const [lead] = await family("Mercado");
+    const org = await createOrganization(lead, { name: "Limit Test School", kind: "SCHOOL" });
+    for (let i = 0; i < 10; i++) await inviteOrgAdmin(lead, org.id, `nobody${i}.${DOMAIN}`);
+    // An existing account gets the same 429 as a missing one, and isn't emailed
+    const sent = mail.sent.length;
+    await expect(inviteOrgAdmin(lead, org.id, `admin.garcia.${DOMAIN}`)).rejects.toMatchObject({ status: 429 });
+    await expect(inviteOrgAdmin(lead, org.id, `nobody.${DOMAIN}`)).rejects.toMatchObject({ status: 429 });
+    expect(mail.sent.length).toBe(sent);
   });
 });
 
@@ -280,6 +329,7 @@ describe("sponsor codes", () => {
     const [free] = await family("Aquino");
     await redeemCode(free, used);
     const batch = await db.voucherBatch.findFirstOrThrow({ where: { vouchers: { some: { code: used } } } });
+    const before = (await organizationView(owner, orgId)).totals;
     // A partial refund changes nothing: the codes stay usable
     expect(await handlePaymongoEvent(event("refund.succeeded", pm.refund(batch.paymentId!, 1000)), opts)).toEqual({ handled: true, partial: true });
     expect((await db.voucherBatch.findUniqueOrThrow({ where: { id: batch.id } })).state).toBe("PAID");
@@ -287,6 +337,8 @@ describe("sponsor codes", () => {
     expect(r).toEqual({ handled: true });
     expect((await db.voucherBatch.findUniqueOrThrow({ where: { id: batch.id } })).state).toBe("VOIDED");
     expect((await db.voucher.findUniqueOrThrow({ where: { code: unused } })).revokedAt).not.toBeNull();
+    // The refunded code no longer counts as bought; the redeemed one still counts both ways
+    expect((await organizationView(owner, orgId)).totals).toEqual({ bought: before.bought - 1, redeemed: before.redeemed, available: before.available - 1 });
     expect((await fam(free)).plan).toBe("eGuard Plus");
     const [another] = await family("Ramos");
     await expect(redeemCode(another, unused)).rejects.toMatchObject({ status: 409 });
@@ -325,9 +377,14 @@ describe("notifications", () => {
   beforeEach(() => { mail.sent.length = 0; });
 
   it("tells admins when who manages the organization changes", async () => {
-    await addOrgAdmin(lead, orgId, addr("admin.tan"));
-    expect(inbox(addr("admin.tan"))).toEqual(["You're now an admin of Barangay Malinis on eGuard"]);
+    await inviteOrgAdmin(lead, orgId, addr("admin.tan"));
+    expect(inbox(addr("admin.tan"))).toEqual(["Lim Admin invited you to help manage Barangay Malinis on eGuard"]);
     expect(inbox(addr("admin.lim"))).toEqual([]); // not the one who did it
+
+    mail.sent.length = 0;
+    await acceptOrgInvite(deputy, (await invitationsFor(deputy.id))[0].id);
+    expect(inbox(addr("admin.lim"))).toEqual(["Tan Admin is now an admin of Barangay Malinis"]);
+    expect(inbox(addr("admin.tan"))).toEqual([]);
 
     mail.sent.length = 0;
     const { joinCode: fresh } = await replaceJoinCode(lead, orgId);
@@ -343,7 +400,7 @@ describe("notifications", () => {
     mail.sent.length = 0;
     await removeOrgAdmin(deputy, orgId, lead.id);
     expect(inbox(addr("admin.lim"))).toEqual(["You no longer manage Barangay Malinis on eGuard"]);
-    await addOrgAdmin(deputy, orgId, addr("admin.lim"));
+    await addAdmin(deputy, orgId, lead);
   });
 
   it("tells the family, not the organization, who joined and left", async () => {

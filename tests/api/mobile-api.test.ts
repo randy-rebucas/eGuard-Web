@@ -635,8 +635,21 @@ describe("16–17. Settings and subscription", () => {
     const me = await call("PATCH", "/me", { token, body: { timezone: "Asia/Manila", name: "Randy Cruz" } });
     expect(me.data.family.timezone).toBe("Asia/Manila");
     expect((await call("PATCH", "/me", { token, body: { timezone: "Mars/Olympus" } })).status).toBe(400);
+    // Stored under its proper name; a fixed offset isn't a zone
+    expect((await call("PATCH", "/me", { token, body: { timezone: "asia/manila" } })).data.family.timezone).toBe("Asia/Manila");
+    expect((await call("PATCH", "/me", { token, body: { timezone: "+08:00" } })).status).toBe(400);
     const n = await call("PATCH", "/me/notifications", { token, body: { weeklySummary: false } });
     expect(n.data).toMatchObject({ weeklySummary: false, notifyPush: true });
+  });
+
+  it("family admin renames the family", async () => {
+    const r = await call("PATCH", "/family", { token, body: { name: "  The Cruzes  " } });
+    expect(r.data).toMatchObject({ name: "The Cruzes", canManage: true });
+    expect((await call("PATCH", "/family", { token, body: { name: "X" } })).status).toBe(400);
+    expect((await call("PATCH", "/family", { token, body: { name: "x".repeat(81) } })).status).toBe(400);
+    expect(await db.auditLog.count({ where: { familyId: r.data.id, action: "family.renamed" } })).toBe(1);
+    // Later tests expect the original name
+    await call("PATCH", "/family", { token, body: { name: "Cruz Family" } });
   });
 
   it("registers and removes a push token", async () => {
@@ -652,6 +665,7 @@ describe("16–17. Settings and subscription", () => {
     expect(fam.data).toMatchObject({ name: "Cruz Family", canManage: false });
     expect(fam.data.members).toHaveLength(2);
     expect((await call("PATCH", "/family/privacy", { token: anaToken, body: { shareAnalytics: true } })).status).toBe(403);
+    expect((await call("PATCH", "/family", { token: anaToken, body: { name: "Ana's Family" } })).status).toBe(403);
     expect((await call("POST", "/family/members", { token: anaToken, body: { name: "X Y", email: email("x"), password: PASSWORD } })).status).toBe(403);
     // Parents do see the family's children
     expect((await call("GET", `/children/${miaId}`, { token: anaToken })).status).toBe(200);

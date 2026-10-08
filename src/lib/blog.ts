@@ -1,9 +1,10 @@
 /** Blog posts for /blog. Static for now, like the help articles; a CMS can replace `POSTS` later. Newest first. */
-import { FREE_APP_LIMIT, planById, webPrice, type PaidPlanId } from "./plans";
+import { FREE_APP_LIMIT, FREE_CHILDREN, childCount, planById, webPrice, type PaidPlanId } from "./plans";
 
 /** Prices and limits from the plan catalogue, since prices can change without a release (PRICE_*_MONTHLY). */
 const price = (id: PaidPlanId) => { const c = webPrice(id); return `₱${c % 100 ? (c / 100).toFixed(2) : c / 100} a month`; };
 const limits = (id: PaidPlanId) => planById(id).entitlements;
+const free = planById("FREE").entitlements;
 
 export type Block =
   | { h2: string }
@@ -76,7 +77,7 @@ export const POSTS: Post[] = [
       ] },
       { p: "On Android, you can also turn on Notification controls to keep the phone quiet during bedtime, so late-night messages don't light up the screen." },
       { h2: "Talk about it first" },
-      { p: "Rules that come out of nowhere get pushed back on. Rules that were talked through tend to stick. Before you switch bedtime on, tell your child what time it starts, why, and when you'll look at it again together. If they're 13 or older on Android, they'll be asked to agree to supervision on their device, so it's better they hear about it from you first." },
+      { p: "Rules that come out of nowhere get pushed back on. Rules that were talked through tend to stick. Before you switch bedtime on, tell your child what time it starts, why, and when you'll look at it again together. eGuard is never hidden on their phone, so they'll see the change either way. It's better they hear about it from you first." },
       { note: "Bedtime works best alongside a daily screen time limit. A limit caps how much time they spend; bedtime decides when that time ends." },
     ],
   },
@@ -85,12 +86,12 @@ export const POSTS: Post[] = [
     tag: "Plans",
     date: "2026-09-28",
     title: "What eGuard's Free plan covers",
-    description: "Free parental controls for one child, with every setting verified on the device. Here's exactly what's included, and when an upgrade makes sense.",
+    description: `Free parental controls for ${FREE_CHILDREN}, with every setting verified on the device. Here's exactly what's included, and when an upgrade makes sense.`,
     body: [
-      { p: "eGuard's Free plan isn't a trial. It doesn't expire, and you don't need a card to start. It's built for a family with one child who wants the basics set up properly." },
+      { p: `eGuard's Free plan isn't a trial. It doesn't expire, and you don't need a card to start. It's built for a family with ${FREE_CHILDREN} who wants the basics set up properly.` },
       { h2: "What's included" },
       { ul: [
-        "1 child and up to 2 devices, for example a phone and a tablet",
+        `${childCount(free.childLimit, { digits: true })} and up to ${free.deviceLimit} devices, for example a phone and a tablet`,
         "Guided setup for Android (iPhone and iPad coming soon)",
         "Screen time limits, with a separate weekend limit",
         "Bedtime, content age ratings, web filtering, download approval and uninstall protection",
@@ -101,8 +102,8 @@ export const POSTS: Post[] = [
       ] },
       { p: "Verification isn't a paid extra. Every plan, Free included, only marks a setting as done once the device confirms it." },
       { h2: "When to upgrade" },
-      { p: `eGuard Plus (${price("PLUS")}) makes sense when you have more than one child, want to see where your child's device is, or need to manage all of their apps rather than ${FREE_APP_LIMIT}. It covers up to ${limits("PLUS").childLimit} children and ${limits("PLUS").deviceLimit} devices.` },
-      { p: `Family Pro (${price("PRO")}) is for larger families and organizations: up to ${limits("PRO").childLimit} children and ${limits("PRO").deviceLimit} devices, 30-day and custom reports with CSV export, and API access for schools.` },
+      { p: `eGuard Plus (${price("PLUS")}) makes sense when you have more than ${FREE_CHILDREN}, want to see where your child's device is, or need to manage all of their apps rather than ${FREE_APP_LIMIT}. It covers up to ${limits("PLUS").childLimit} children and ${limits("PLUS").deviceLimit} devices.` },
+      { p: `Family Pro (${price("PRO")}) is for larger families and organizations: up to ${limits("PRO").childLimit} children and ${limits("PRO").deviceLimit} devices, 30-day reports, custom ranges longer than a week and CSV export, and API access for schools.` },
       { p: "You can upgrade on the web with a card, Maya, GCash or QR Ph, and cancel any time. If you move back to Free, the children and devices you already added stay protected; you just can't add more until you upgrade again." },
     ],
   },

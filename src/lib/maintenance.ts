@@ -13,6 +13,7 @@ import { escapeHtml, sendMail } from "./mail";
 import { familyEntitlements } from "./plan-access";
 import { alertPush, pushAvailable, pushToUsers } from "./push";
 import { sendWeeklyDigests } from "./weekly-digest";
+import { STAFF_IDLE_MS } from "./console-host";
 
 /**
  * Background upkeep, run every few minutes by /api/cron/maintenance. Before this existed, offline
@@ -102,7 +103,8 @@ export async function closeStaleWork(now = new Date()) {
 /**
  * Deletes activity older than each family's retention period (Settings › Privacy): screen time, app
  * usage, location visits, change history, finished requests and checks, browser health reports, daily
- * block counts and site requests, and alerts that are no longer open. Plus expired sessions, links, pairing codes and rate-limit counters.
+ * block counts and site requests, and alerts that are no longer open. Plus expired sessions, links, pairing codes,
+ * organization invitations and rate-limit counters.
  */
 export async function purgeExpiredData(now = new Date()) {
   const cutoff = (col: string) => `${col} < now() - make_interval(days => f."retentionDays")`;
@@ -121,9 +123,14 @@ export async function purgeExpiredData(now = new Date()) {
     orgEvents: await db.orgEvent.deleteMany({ where: { createdAt: { lt: new Date(now.getTime() - ORG_EVENT_RETENTION_DAYS * 864e5) } } }).then((r) => r.count),
     auditLog: await db.auditLog.deleteMany({ where: { createdAt: { lt: new Date(now.getTime() - AUDIT_RETENTION_DAYS * 864e5) } } }).then((r) => r.count),
     sessions: await db.session.deleteMany({ where: { expiresAt: { lt: now } } }).then((r) => r.count),
+    // Otherwise only removed when the browser comes back with the cookie
+    staffSessions: await db.staffSession.deleteMany({
+      where: { OR: [{ expiresAt: { lt: now } }, { lastSeenAt: { lt: new Date(now.getTime() - STAFF_IDLE_MS) } }] },
+    }).then((r) => r.count),
     signInChallenges: await db.loginChallenge.deleteMany({ where: { expiresAt: { lt: now } } }).then((r) => r.count),
     links: (await db.emailVerification.deleteMany({ where: { expiresAt: { lt: now } } })).count + (await db.passwordReset.deleteMany({ where: { expiresAt: { lt: now } } })).count,
     pairingCodes: await db.pairingCode.deleteMany({ where: { expiresAt: { lt: new Date(now.getTime() - 864e5) } } }).then((r) => r.count),
+    orgInvites: await db.orgInvite.deleteMany({ where: { expiresAt: { lt: now } } }).then((r) => r.count),
     rateLimits: await db.rateLimit.deleteMany({ where: { resetAt: { lt: now } } }).then((r) => r.count),
   };
   return counts;

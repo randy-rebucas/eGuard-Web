@@ -16,16 +16,32 @@ const PROVIDERS: Record<Provider, { issuers: string[]; jwksUrl: string; audience
   google: { issuers: ["https://accounts.google.com", "accounts.google.com"], jwksUrl: "https://www.googleapis.com/oauth2/v3/certs", audienceEnv: "GOOGLE_CLIENT_IDS" },
 };
 
-const jwksCache = new Map<string, { keys: Jwk[]; until: number }>();
+const jwksCache = new Map<string, { keys: Jwk[]; until: number; fetchedAt: number }>();
 
-async function fetchJwks(url: string): Promise<Jwk[]> {
+/** A refresh for an unknown key id happens at most this often, so made-up ids can't make us hammer the provider. */
+const REFRESH_EVERY_MS = 60_000;
+const FETCH_TIMEOUT_MS = 5_000;
+const unavailable = () => new ServiceError(502, "Couldn't reach the sign-in provider. Try again.", "provider_unavailable");
+
+/**
+ * The provider's signing keys, cached for an hour. `refresh`: a token named a key we don't have, which is how a key
+ * rotation looks, so fetch again (rate-limited). A provider that can't be reached falls back to the keys we have.
+ */
+async function fetchJwks(url: string, { refresh = false } = {}): Promise<Jwk[]> {
   const hit = jwksCache.get(url);
-  if (hit && hit.until > Date.now()) return hit.keys;
-  const res = await fetch(url);
-  if (!res.ok) throw new ServiceError(502, "Couldn't reach the sign-in provider. Try again.", "provider_unavailable");
-  const keys = ((await res.json()) as { keys: Jwk[] }).keys;
-  jwksCache.set(url, { keys, until: Date.now() + 3600_000 });
-  return keys;
+  if (hit && (refresh ? Date.now() - hit.fetchedAt < REFRESH_EVERY_MS : hit.until > Date.now())) return hit.keys;
+  try {
+    // A plain fetch error (network, timeout) would otherwise be a 500, not "try again"
+    const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+    if (!res.ok) throw unavailable();
+    const keys = ((await res.json()) as { keys?: Jwk[] }).keys;
+    if (!Array.isArray(keys)) throw unavailable();
+    jwksCache.set(url, { keys, until: Date.now() + 3600_000, fetchedAt: Date.now() });
+    return keys;
+  } catch (e) {
+    if (hit) return hit.keys;
+    throw e instanceof ServiceError ? e : unavailable();
+  }
 }
 
 export const audiencesFor = (provider: Provider) =>
@@ -49,10 +65,17 @@ export async function verifyIdToken(
   try { header = b64json(parts[0]); payload = b64json(parts[1]); } catch { throw bad(); }
   if (header.alg !== "RS256" || !header.kid) throw bad();
 
-  const keys = await (opts.getKeys ?? fetchJwks)(cfg.jwksUrl);
-  const jwk = keys.find((k) => k.kid === header.kid);
+  const getKeys = opts.getKeys ?? fetchJwks;
+  let jwk = (await getKeys(cfg.jwksUrl)).find((k) => k.kid === header.kid);
+  // Providers rotate their keys: a token signed with a new one names a kid our cached set doesn't have yet
+  if (!jwk) jwk = (await (opts.getKeys ?? ((u: string) => fetchJwks(u, { refresh: true })))(cfg.jwksUrl)).find((k) => k.kid === header.kid);
   if (!jwk) throw bad();
-  const ok = verify("RSA-SHA256", Buffer.from(`${parts[0]}.${parts[1]}`), createPublicKey({ key: jwk, format: "jwk" }), Buffer.from(parts[2], "base64url"));
+  let ok: boolean;
+  try {
+    ok = verify("RSA-SHA256", Buffer.from(`${parts[0]}.${parts[1]}`), createPublicKey({ key: jwk, format: "jwk" }), Buffer.from(parts[2], "base64url"));
+  } catch {
+    throw bad();
+  }
   if (!ok) throw bad();
 
   const now = Math.floor((opts.now ?? Date.now()) / 1000);

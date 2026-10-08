@@ -1,6 +1,6 @@
 ---
 name: qa-audit
-description: Expert QA audit of one feature, route or area of this app (e.g. src/app/(app)/dashboard, src/app/(app)/children/[id], the mobile API), planned first and then fixed, until it's complete, functional and production ready. Use this whenever the user asks to audit, QA, review for production readiness, harden, or "check and fix" a page, feature, folder, flow or API, or says "next <path>" / "proceed" while working through such an audit, even if they don't say "QA". Not for a plain code review of a diff (use code-review) or for pure visual/design polish.
+description: Expert QA audit of one feature, route or area of this app (e.g. src/app/(app)/dashboard, src/app/(app)/children/[id], the mobile API), planned first and then fixed, until it's complete, functional and production ready. Use this whenever the user asks to audit, QA, review for production readiness, harden, or "check and fix" a page, feature, folder, flow or API, asks to check that something is "properly wired, functional, completed, error handling, state management, production ready", asks for a security audit, pentest, vulnerability or permissions check of an area, or says "next", "next <path>", "continue the audit" or "proceed" while working through such an audit (references/progress.md says what's done and what's next), even if they don't say "QA". Not for a plain code review of a diff (use code-review) or for pure visual/design polish.
 ---
 
 # QA audit: plan, then fix
@@ -15,6 +15,11 @@ approval unless a finding needs a decision only they can make.
 
 ## 1. Scope the audit
 
+- Read [references/progress.md](references/progress.md) first. If the user named no area, or said "next" / "continue",
+  audit the first area there that isn't done, and say which one you picked. Note findings an earlier audit left for
+  the user's decision, so you don't re-raise them as new.
+- Check `git status` for features that landed since the area was last audited: their new code is where stale copy and
+  missing wiring hide.
 - Read every file in the target folder, then follow what it depends on: components, server actions, `lib/` services,
   and the API routes that share the same service (web and mobile often both call it). Bugs usually live one layer down
   from the page.
@@ -29,6 +34,10 @@ approval unless a finding needs a decision only they can make.
 
 Go through every item for the area. Each one has produced real bugs here before.
 
+**Security** is part of every audit, not an extra. Work through [references/security.md](references/security.md) for
+the area: who is calling, whose data, what goes out, untrusted input, abuse, platform. If the user asks for a security
+audit only, do that list in full and the items below only where they overlap.
+
 **Correctness of what's shown**
 - Every state: no children, children but no devices, devices offline, unverified email, Free vs paid plan, family admin
   vs other parent, many items (10 children, 20 devices, 200 apps), empty strings and names.
@@ -38,7 +47,24 @@ Go through every item for the area. Each one has produced real bugs here before.
   existing helper (`childLocation`, `limitOn`, `computeHealth`) over re-deriving it.
 - Dates and time zones: weekend vs weekday, month boundaries ("Sep 25 – 1"), the family's time zone, values computed
   once at module load (`new Date()` in a schema).
-- Hardcoded totals (`/ 10`) that should come from data.
+- Hardcoded totals (`/ 10`) that should come from data, and hardcoded plan facts ("Free: 1 child") that should come
+  from `entitlementsFor`.
+- Copy that went stale when a feature shipped: grep the area for "yet", "coming soon", "isn't sent", and check each
+  against the code (a "weekly summary isn't sent yet" line outlived the digest that sends it).
+
+**Wiring**
+- Every button and form reaches a server action, the action reaches the service, and `revalidatePath` covers every
+  page that shows the changed data.
+- Every preference the page saves is actually read somewhere (grep the field). A saved switch nothing reads is either
+  a bug or a product decision; say which.
+- The mobile API twin of each action (`src/app/api/mobile/v1`) applies the same rules and validation; share one schema
+  instead of two copies.
+
+**Error handling**
+- Calls to outside services (PayMongo, Google Play, FCM, mail) during a page load or action: a network error or
+  timeout throws a plain `TypeError`/`AbortError`, not a `ServiceError`, so code that only catches `ServiceError`
+  crashes the page. Wrap the fetch with a timeout and turn failures into a `ServiceError`.
+- `findUniqueOrThrow` and similar on a page are fine only when the row must exist; otherwise expect the error panel.
 
 **Server side and data safety**
 - Authorization: every ID from a URL, form or body is checked against the caller's family before use.
@@ -50,6 +76,13 @@ Go through every item for the area. Each one has produced real bugs here before.
 - Stale forms that save the whole object can silently undo a change made elsewhere: send the base version, refuse stale
   saves with a clear message.
 - Data from devices or other clients is rendered later: validate its shape before storing it.
+
+**State management**
+- `useState(prop)` copies a server value once and never follows it after `router.refresh()` or `revalidatePath`, so
+  a change made by another parent or the app doesn't show. Re-sync when the prop changes (store the previous prop and
+  compare during render).
+- Optimistic updates revert on error and are disabled while pending; confirm steps close on failure.
+- Forms reset or keep values deliberately after success; feedback has `role="status"`/`role="alert"`.
 
 **UI behaviour**
 - A `<select>` whose current value isn't among its options silently shows the first option, and saving changes the
@@ -63,7 +96,8 @@ Go through every item for the area. Each one has produced real bugs here before.
 
 Rank findings, then show them before fixing:
 
-- **P1**: wrong information shown, data loss or corruption, security or plan-limit leaks.
+- **P1**: wrong information shown, data loss or corruption, security or plan-limit leaks. Every reachable security
+  finding is P1; say who can do what to whom.
 - **P2**: broken edge cases, crashes on unusual data, accessibility gaps.
 - **P3**: polish and copy.
 
@@ -77,6 +111,7 @@ Also list what you checked and found fine, so the user knows it was covered. If 
 - Match the surrounding code: its comment density, naming and idiom. Comments explain why, briefly.
 - Keep API changes backward compatible (optional fields) and update the docs that describe them (`docs/mobile-api.md`,
   `docs/child-app-spec.md`).
+- A `page.tsx` may only export what Next allows (`default`, `generateMetadata`, config); keep helpers unexported.
 - Add focused unit tests for logic you fix (validation, date math, safe-redirect checks), mocking `server-only` and the
   database the way existing `src/lib/*.test.ts` files do.
 
@@ -86,11 +121,16 @@ Run `tsc`, `eslint` and `vitest` again. Then check the real thing: render the ch
 endpoints against the running dev server, using the session and fixture helpers in
 [references/eguard.md](references/eguard.md). For concurrency fixes, fire real concurrent requests and count the rows.
 
+Prove security checks with real requests, not by reading code: a second fixture family's IDs with the first family's
+session (expect 404), a non-admin parent's session on admin actions (expect 403), a removed parent's old token
+(expect 401), and bad or oversized input (expect 400). Keep the requests and status codes for the report.
+
 Safety rules that come from real incidents:
 - **Before anything that sends email** (registering, the API test suite), confirm mail goes to Mailpit, not a real
   provider. See the mail section of the reference; a misconfigured run sent test mail through a live account.
 - Never stop or restart the user's dev server. If you start one, track it and stop its whole process tree when done.
-- Never print or copy secrets (passwords, API keys, SMTP URLs) into output, files or the skill.
+- Never print or copy secrets (passwords, API keys, SMTP URLs) into output, files or the skill. A session token you
+  mint goes in a shell variable or the scratchpad, never the repo or `/tmp`, and is deleted with `qa.mts cleanup`.
 - Clean up every fixture, session and test row you create, and report anything you left behind.
 
 ## 6. Report
@@ -103,3 +143,6 @@ End with a summary written for the user, in this order:
 4. Anything needing their decision, and anything you couldn't verify.
 5. Test data left behind, if any, and that nothing is committed (don't commit unless asked).
 Then suggest the next area to audit.
+
+Before reporting, update [references/progress.md](references/progress.md): mark the area done with today's date, a
+one-line outcome, and any open decisions, so the next session can pick up from there.

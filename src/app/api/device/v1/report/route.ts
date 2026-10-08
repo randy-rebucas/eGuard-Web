@@ -3,6 +3,7 @@ import { z } from "zod";
 import { processReport } from "@/lib/engine";
 import { ReportedConfigSchema } from "@/lib/config-service";
 import { authDevice, badRequest, readJson, unauthorized } from "@/lib/device-auth";
+import { LIMITS, hit } from "@/lib/rate-limit";
 
 const KEYS = ["SCREEN_TIME", "BEDTIME", "APP_RESTRICTIONS", "APP_APPROVAL", "CONTENT", "WEB", "DOWNLOADS", "LOCATION", "NOTIFICATIONS", "UNINSTALL_PROTECTION"] as const;
 
@@ -22,6 +23,10 @@ const Body = z.object({
 export async function POST(req: Request) {
   const device = await authDevice(req);
   if (!device) return unauthorized();
+  // Each report re-checks every protection and can raise alerts: a looping device mustn't do that without limit
+  if ((await hit(`devicereport:${device.id}`, LIMITS.deviceReport)).limited) {
+    return NextResponse.json({ error: "Too many reports. Send the next one in a few minutes." }, { status: 429 });
+  }
   const parsed = Body.safeParse(await readJson(req));
   if (!parsed.success) return badRequest(parsed.error.issues[0].message);
   const protections: typeof parsed.data.protections = [];

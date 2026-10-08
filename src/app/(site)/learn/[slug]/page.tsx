@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { FREE_CHILDREN } from "@/lib/plans";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ArrowRight } from "lucide-react";
@@ -89,7 +90,7 @@ export default async function LearnArticlePage({ params }: PageProps<"/learn/[sl
             <div className="kc-cta">
               <div>
                 <b>Want help putting this into practice?</b>
-                <p>eGuard sets up screen time, bedtime and app rules on your child&apos;s phone and checks that each one is really on. Free for one child.</p>
+                <p>eGuard sets up screen time, bedtime and app rules on your child&apos;s phone and checks that each one is really on. Free for {FREE_CHILDREN}.</p>
               </div>
               <Link href="/register" className="lp-btn lp-btn-primary">Try eGuard free<ArrowRight /></Link>
             </div>

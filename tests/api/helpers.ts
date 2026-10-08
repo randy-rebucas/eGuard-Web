@@ -9,7 +9,7 @@ export const RUN = `t${Date.now().toString(36)}`;
 export const email = (who: string) => `${who}.${RUN}@mobile-test.example`;
 export const PASSWORD = "CorrectHorse123!";
 
-/** Mailpit (docker compose `mail`), which the dev server's SMTP_URL points at. */
+/** Mailpit (docker compose `mail`), where a dev server always sends email (lib/mail). */
 const MAILPIT = process.env.MAILPIT_URL ?? "http://localhost:8025";
 
 /** The token from the newest email sent to `to` whose link matches `path`. Waits for it, since it's sent after the response. */

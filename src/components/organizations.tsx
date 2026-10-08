@@ -9,8 +9,8 @@ import { peso } from "@/lib/format";
 import { planById } from "@/lib/plans";
 import { BATCH_DISCOUNTS, batchDiscount, discountedCodePrice } from "@/lib/batch-discount";
 import {
-  addOrgAdmin, buyCodes, cancelCode, createApiKey, createOrganization, joinOrganization, leaveOrganization, makeOrgOwner, previewJoin,
-  redeemCode, removeOrgAdmin, replaceJoinCode, revokeApiKey,
+  acceptOrgInvite, buyCodes, cancelCode, cancelOrgInvite, createApiKey, createOrganization, declineOrgInvite, inviteOrgAdmin, joinOrganization,
+  leaveOrganization, makeOrgOwner, previewJoin, redeemCode, removeOrgAdmin, replaceJoinCode, revokeApiKey,
 } from "@/app/actions/organizations";
 
 /* ---------- Families ---------- */
@@ -160,6 +160,8 @@ export function BuyCodesForm({ orgId, monthly, maxQuantity, methods }: {
   // Kept as typed, so clearing the field leaves it empty instead of turning it into 0
   const [quantity, setQuantity] = useState("10");
   const q = Math.min(maxQuantity, Math.max(0, Math.floor(Number(quantity)) || 0));
+  // The total is for at most maxQuantity, but the form sends what was typed: say so rather than show a total it won't charge
+  const tooMany = Number(quantity) > maxQuantity;
   const full = monthly[plan] * months;
   const each = discountedCodePrice(full, q);
   const discount = batchDiscount(q);
@@ -192,8 +194,9 @@ export function BuyCodesForm({ orgId, monthly, maxQuantity, methods }: {
           <div className="org-total-amount num">{peso(each * q)}</div>
           {discount ? <div className="org-saving">{discount}% volume discount: you save {peso((full - each) * q)}</div> : null}
           {next ? <div className="t-meta">Buy {next.minQuantity} or more codes for {next.percent}% off.</div> : null}
+          {tooMany ? <div className="t-meta" role="alert" style={{ color: "var(--warn-ink)" }}>Buy up to {maxQuantity} codes at a time. For more, buy another batch after this one.</div> : null}
         </div>
-        <button className="btn btn-primary" disabled={pending || q < 1}>{pending ? <><Icon name="loader-circle" className="spin" />Opening checkout…</> : <>Continue to payment<Icon name="arrow-right" /></>}</button>
+        <button className="btn btn-primary" disabled={pending || q < 1 || tooMany}>{pending ? <><Icon name="loader-circle" className="spin" />Opening checkout…</> : <>Continue to payment<Icon name="arrow-right" /></>}</button>
       </div>
       <p className="t-meta">Pay once with {methods}, through PayMongo. Codes appear here as soon as the payment is confirmed. Each code can be redeemed by one family within 12 months.</p>
     </form>
@@ -258,17 +261,49 @@ function CodeRow({ orgId, c }: { orgId: string; c: Code }) {
   );
 }
 
-export function AddOrgAdminForm({ orgId }: { orgId: string }) {
-  const [state, action, pending] = useActionState(addOrgAdmin.bind(null, orgId), undefined);
+export function InviteOrgAdminForm({ orgId }: { orgId: string }) {
+  const [state, action, pending] = useActionState(inviteOrgAdmin.bind(null, orgId), undefined);
   return (
     <form action={action} className="dash-col" style={{ gap: 10 }}>
       <Feedback state={state} />
       <div className="row org-code-form">
         <label className="sr-only" htmlFor="oa-email">Their eGuard email</label>
-        <input className="input" id="oa-email" name="email" type="email" placeholder="Email they sign in to eGuard with" style={{ flex: 1, minWidth: 0 }} />
-        <button className="btn btn-secondary" disabled={pending}>{pending ? "Adding…" : <><Icon name="user-plus" />Add admin</>}</button>
+        {/* A fresh field after each invitation sent */}
+        <input key={state?.ok} className="input" id="oa-email" name="email" type="email" placeholder="Email they sign in to eGuard with" style={{ flex: 1, minWidth: 0 }} />
+        <button className="btn btn-secondary" disabled={pending}>{pending ? "Inviting…" : <><Icon name="user-plus" />Invite admin</>}</button>
       </div>
     </form>
+  );
+}
+
+/** An invitation nobody has accepted yet, on the organization page. Owners can take it back. */
+export function OrgInviteRow({ orgId, id, email, expires, canManage }: { orgId: string; id: string; email: string; expires: string; canManage: boolean }) {
+  const [pending, run] = useAction();
+  return (
+    <div className="setting-row">
+      <span className="ico-tile muted"><Icon name="mail" /></span>
+      <div className="grow" style={{ minWidth: 0 }}><div className="t-title" style={{ overflowWrap: "anywhere" }}>{email}</div><div className="t-meta">Invited · until {expires}</div></div>
+      {canManage ? (
+        <button className="btn btn-ghost btn-sm" disabled={pending} onClick={() => run(() => cancelOrgInvite(orgId, id), { ok: `Invitation to ${email} cancelled.` })}>
+          {pending ? "Cancelling…" : "Cancel"}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+/** Settings › Organizations: accept or decline an invitation to manage an organization. */
+export function OrgInvitationActions({ id, org }: { id: string; org: string }) {
+  const [pending, run] = useAction();
+  const router = useRouter();
+  return (
+    <div className="row" style={{ gap: 6 }}>
+      <button className="btn btn-ghost btn-sm" disabled={pending} onClick={() => run(() => declineOrgInvite(id), { ok: `Invitation to ${org} declined.` })}>Decline</button>
+      <button className="btn btn-primary btn-sm" disabled={pending}
+        onClick={() => run(() => acceptOrgInvite(id), { ok: `You're now an admin of ${org}.`, onOk: (r) => { if (r.error === undefined) router.push(`/organizations/${r.orgId}`); } })}>
+        {pending ? <><Icon name="loader-circle" className="spin" />Accepting…</> : "Accept"}
+      </button>
+    </div>
   );
 }
 

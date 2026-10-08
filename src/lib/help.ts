@@ -1,5 +1,5 @@
 /** Help & Support content for the apps. Static for now; a CMS can replace `HELP_ARTICLES` later. */
-import { planById, webPrice, type PaidPlanId } from "./plans";
+import { childCount, planById, webPrice, type PaidPlanId } from "./plans";
 
 /** Price and limits from the plan catalogue, since prices can change without a release (PRICE_*_MONTHLY). */
 function planLine(id: PaidPlanId) {
@@ -37,19 +37,22 @@ export const HELP_ARTICLES: HelpArticle[] = [
     ],
   },
   {
+    // The slug stays: the apps and docs/mobile-api.md link to it, and parents still search for Family Link
     slug: "android-family-link", category: "SETUP", title: "Set up supervision on Android",
-    summary: "Use Google Family Link so eGuard can manage your child's Android device.",
+    summary: "eGuard supervises your child's Android phone or tablet itself. You don't need Google Family Link.",
     body: [
-      "Install Google Family Link on your phone, open it, and add your child's Google account. Follow the steps on your child's device to supervise it.",
-      "Then install eGuard on your child's device and enter the pairing code from your eGuard app. eGuard applies and verifies every protection directly on Android.",
-      "If your child is 13 or older, they'll be asked to agree to supervision on their device.",
+      "Install eGuard from Google Play on your child's phone or tablet, choose I'm setting up my child's device, and enter the pairing code from your eGuard app or the web.",
+      "eGuard then asks for a few permissions: usage access for screen time and app limits, a local web filter, location if you turn it on, and device admin for uninstall protection. Each one is explained before Android asks for it.",
+      "You don't need Google Family Link. eGuard applies and verifies every protection directly on Android.",
+      "eGuard shows a notification on your child's device whenever it's active, so it's never hidden. Tell your child what it does before you set it up.",
     ],
   },
   {
     slug: "protection-profiles", category: "SETUP", title: "Choose a protection profile",
     summary: "Balanced, Protected or Custom, and how to change it later.",
     body: [
-      "Protected uses eGuard's recommended settings for your child's age. Balanced allows more screen time, a later bedtime and a higher age rating.",
+      // lib/profiles: Protected is the age defaults; Balanced adds an hour, starts bedtime an hour later and raises ratings a tier
+      "Protected uses eGuard's standard settings for your child's age. Balanced allows an hour more screen time, a bedtime an hour later and a higher age rating. eGuard suggests Protected for children under 13 and Balanced from 13.",
       "Custom starts from the recommended settings and lets you change each one. You can change any setting later from Protection & Controls.",
     ],
   },
@@ -65,8 +68,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
     slug: "upgrade-plan", category: "FAQ", title: "Plans: Free, eGuard Plus and Family Pro",
     summary: "What each plan includes, and how to upgrade.",
     body: [
-      "Free covers 1 child with basic protection setup, screen time management, limited app monitoring and email support.",
-      `${planLine("PLUS")}, and adds location sharing, full app monitoring and priority support. ${planLine("PRO")}, and adds advanced reports, API access for schools and organizations, and dedicated support.`,
+      `Free covers ${childCount(planById("FREE").entitlements.childLimit, { digits: true })} with basic protection setup, screen time management, limited app monitoring and email support.`,
+      `${planLine("PLUS")}, and adds location sharing, full app monitoring, push alerts, category limits like gaming time, and priority support. ${planLine("PRO")}, and adds advanced reports, API access for schools and organizations, and dedicated support.`,
       "Upgrade in Settings › Subscription on the web, with a card, Maya, GCash or QR Ph. If you move to a smaller plan, children and devices you already added stay protected; you just can't add more until you upgrade.",
       "You can cancel any time. Your plan stays active until the end of the paid period.",
       "Only the family admin can change the plan.",
@@ -101,7 +104,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     slug: "data-we-keep", category: "PRIVACY", title: "What data eGuard keeps",
     summary: "Configuration, daily screen-time totals and alerts. Never messages or browsing content.",
     body: [
-      "eGuard stores protection settings, daily and hourly screen-time totals, app names and usage, alerts, and the current location if location is on. For browsers, it keeps a daily count of blocked pages by category, never which sites.",
+      "eGuard stores protection settings, daily and hourly screen-time totals, app names and usage, alerts, and the current location if location is on. For browsers, it keeps a daily count of blocked pages by category, never which sites, apart from a blocked site your child asks you to open, with their reason.",
       "You can export all of your family's data or delete a child's data at any time from Settings.",
     ],
   },

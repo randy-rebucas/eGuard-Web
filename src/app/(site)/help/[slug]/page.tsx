@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { FREE_CHILDREN } from "@/lib/plans";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ArrowRight } from "lucide-react";
@@ -58,7 +59,7 @@ export default async function HelpArticlePage({ params }: PageProps<"/help/[slug
         <div className="st-cta">
           <div>
             <h2>Try eGuard free</h2>
-            <p>One child, every setting verified on the device. No card needed.</p>
+            <p>Free for {FREE_CHILDREN}, every setting verified on the device. No card needed.</p>
           </div>
           <Link href="/register" className="lp-btn lp-btn-white">Get Started Free<ArrowRight /></Link>
         </div>

@@ -7,6 +7,8 @@ import { addDays, reportData } from "./reports";
 import { fmtMinutes } from "./protections";
 import { dayLabel } from "./format";
 import { escapeHtml, sendMail } from "./mail";
+import { entitlementsFor } from "./plans";
+import { familyNameableApps } from "./plan-access";
 
 /**
  * The weekly summary ("Weekly summary" in Settings › Notifications): every Sunday at 6 PM in the family's time
@@ -55,7 +57,7 @@ export type DigestContent = {
   requests: number;
 };
 
-export async function digestContent(family: { id: string; name: string; timezone: string }, from: string, to: string): Promise<DigestContent> {
+export async function digestContent(family: { id: string; name: string; timezone: string; plan: string }, from: string, to: string): Promise<DigestContent> {
   const [report, devices, open, changes] = await Promise.all([
     reportData(family.id, family.timezone, from, to, { maxChanges: 0 }),
     db.device.findMany({ where: { familyId: family.id }, include: { protections: true } }),
@@ -66,12 +68,14 @@ export async function digestContent(family: { id: string; name: string; timezone
   const perChild = new Map<string, number>();
   for (const r of report.screen) perChild.set(r.childId, (perChild.get(r.childId) ?? 0) + (r._sum.minutes ?? 0));
   const requests = open.filter((a) => a.resolveKey && /^(APPREQ|WEBREQ):/.test(a.resolveKey)).length;
+  // Only apps the Apps tab shows, as on the Reports page: the email can't name the ones the plan hides
+  const nameable = await familyNameableApps(report.children.map((c) => c.id), entitlementsFor(family.plan).appMonitoringLimit, family.timezone);
   return {
     family: family.name, from, to,
     health: { score: health.score, total: health.total, offline: health.offline },
     avg: report.avg, prevAvg: report.prevTotal ? report.prevAvg : null,
     children: report.children.map((c) => ({ name: c.name, minutes: perChild.get(c.id) ?? 0 })),
-    topApps: report.apps.slice(0, 3).map((a) => ({ app: a.app, minutes: a._sum.minutes ?? 0 })),
+    topApps: report.apps.filter((a) => nameable(a.app)).slice(0, 3).map((a) => ({ app: a.app, minutes: a._sum.minutes ?? 0 })),
     changes,
     attention: open.length - requests,
     requests,
@@ -124,7 +128,7 @@ export async function sendWeeklyDigests(now = new Date()) {
       // Sent in the last 6 days: can't be due again yet
       OR: [{ digestSentAt: null }, { digestSentAt: { lt: new Date(now.getTime() - 6 * 864e5) } }],
     },
-    select: { id: true, name: true, timezone: true, digestSentAt: true },
+    select: { id: true, name: true, timezone: true, digestSentAt: true, plan: true },
   });
   let sent = 0, due = 0;
   for (const f of families) {
@@ -135,6 +139,7 @@ export async function sendWeeklyDigests(now = new Date()) {
     if (!claimed.count) continue;
     due++;
     const content = await digestContent(f, week.from, week.to);
+    // A week-long custom range, which every plan can open (BASIC_RANGE_DAYS)
     const link = `${appUrl()}/reports?period=custom&from=${week.from}&to=${week.to}`;
     const parents = await db.user.findMany({ where: { familyId: f.id, weeklySummary: true, emailVerifiedAt: { not: null } }, select: { email: true, name: true } });
     for (const p of parents) {

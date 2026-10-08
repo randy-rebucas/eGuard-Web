@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { FREE_CHILDREN } from "@/lib/plans";
 import Link from "next/link";
 import {
   ArrowDown, ArrowRight, BellRing, Check, Cloud, EyeOff, KeyRound, Monitor, Puzzle, Send, ShieldCheck, Smartphone,
@@ -69,10 +70,11 @@ const SEES = [
   "Screen time totals and the names of apps used",
   "Current location, only if you turn location on",
   "How many pages the browser blocked each day, by category",
+  "A site or app your child asks for, with their reason",
 ];
 const NEVER = [
   "Messages, photos or files",
-  "Which websites your child visits",
+  "Which websites your child visits, beyond a site they ask for",
   "Keystrokes, calls, contacts, camera or microphone",
   "Anything to sell or show ads with. eGuard has no ads",
 ];
@@ -132,7 +134,8 @@ export default function HowItWorksPage() {
                   <Laptop browser="chrome" url="eguard.family/dashboard" tab="Dashboard · eGuard" site label="The eGuard web dashboard on a laptop">
                     <ScreenWebDashboard />
                   </Laptop>
-                  <Phone os="ios" className="hw-at-left" label="The eGuard parent app on an iPhone, showing Mia's protections"><ScreenParentChild /></Phone>
+                  {/* Android only while the iPhone app isn't out (the platforms list below says "iPhone: soon") */}
+                  <Phone os="android" className="hw-at-left" label="The eGuard parent app on an Android phone, showing Mia's protections"><ScreenParentChild /></Phone>
                   <Phone os="android" className="hw-at-right" label="The eGuard parent app on an Android phone, showing a website request"><ScreenParentAlerts /></Phone>
                 </div>
                 <h3>Parent app and web dashboard</h3>
@@ -199,13 +202,13 @@ export default function HowItWorksPage() {
                 <span className="hw-num">1</span>
                 <h3>Create your family account</h3>
                 <p>Sign up at eguard.family or in the Android app. Add each child with their age, and eGuard suggests a starting profile, <b>Balanced</b> or <b>Protected</b>, that you can adjust.</p>
-                <p className="hw-tip"><Check />Free for one child. No card needed.</p>
+                <p className="hw-tip"><Check />Free for {FREE_CHILDREN}. No card needed.</p>
               </div>
             </li>
 
             <li className="hw-step">
               <div className="hw-art">
-                <Phone os="ios" caption="Parent app on iPhone" className="hw-solo" label="The parent app showing a pairing code, K7PQ 2M9X, for Mia's phone">
+                <Phone os="android" caption="Parent app on Android" className="hw-solo" label="The parent app showing a pairing code, K7PQ 2M9X, for Mia's phone">
                   <ScreenPairingCode />
                 </Phone>
               </div>
@@ -421,7 +424,7 @@ export default function HowItWorksPage() {
         <div className="st-cta">
           <div>
             <h2>Ready to see it on your own family&apos;s devices?</h2>
-            <p>Free for one child. No card needed.</p>
+            <p>Free for {FREE_CHILDREN}. No card needed.</p>
           </div>
           <StartLink className="lp-btn lp-btn-white" />
         </div>

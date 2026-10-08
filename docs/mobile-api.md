@@ -284,7 +284,7 @@ Every error has the same shape. `error` is always written for the parent and saf
 | 409 | `conflict`, `unsupported`, `not_dismissible` | Duplicate email/app, device limit reached, protection unsupported on the child's devices, alert can't be dismissed |
 | 413 | `too_large` | Photo over 2 MB |
 | 415 | `unsupported_media_type` | Photo isn't a JPEG/PNG/WebP/HEIC, or its bytes don't match its declared type |
-| 429 | `rate_limited` | 5 failed sign-ins in 10 minutes (per email and IP) |
+| 429 | `rate_limited` | Too many tries, e.g. 10 failed sign-ins for one account from one address in 15 minutes (see `POST /auth/login`) |
 | 501 | `provider_not_configured` | Apple/Google sign-in isn't enabled on this server (check `/app-info` first) |
 | 500 | `server_error` | Unexpected. Show `error` and let the parent retry |
 
@@ -444,7 +444,8 @@ and `appVersion?` may be null.
 
 - Group lists into sections by `day.key`, using `day.label` as the header ("Today", "Yesterday", "Fri, Sep 25").
 - `fromValue` / `toValue`, when present, show a before → after change (e.g. `9:30 PM – 6:00 AM` → `10:30 PM – 6:30 AM`).
-- `action?` is the alert's button. Route it by `type`:
+- `action?` is the alert's button. Route it by `type`, and show no button for a `type` you don't know (new ones are
+  added over time):
 
 | `action.type` | Extra fields | Open |
 |---|---|---|
@@ -453,8 +454,15 @@ and `appVersion?` may be null.
 | `REVIEW_APPS` | `childId` | App Management (Pending tab for requests) |
 | `VIEW_SCREEN_TIME` | `childId` | Screen Time |
 | `VIEW_HISTORY` | `childId` | Child profile › History |
-| `MANAGE_SUBSCRIPTION` | none | Subscription |
+| `MANAGE_SUBSCRIPTION` | none | Subscription (plan changes, passes ending, sponsor codes) |
 | `VIEW_LOCATION` | `childId` | The child's places (location history), for "Mia arrived at School" |
+| `REVIEW_SITE_REQUEST` | `childId`, `requestId` | The child's website requests (`GET /children/{id}/browser-access-requests`), with that request open to approve or deny |
+| `VIEW_BROWSERS` | `childId` (or `null`) | The child's browser protection (`GET /children/{id}/browser-policy`); with `childId: null`, the family's browsers list (`GET /browsers`; a browser disconnected for security) |
+| `VIEW_ORGANIZATIONS` | none | Settings › Organizations (joined or left an organization) |
+| `VIEW_FAMILY` | none | Settings › Family (another parent accepted their invitation) |
+
+Other account notices (`category: "SYSTEM"`) have no button. Before these types existed, every `SYSTEM` alert had
+`MANAGE_SUBSCRIPTION` and website requests had `VIEW_HISTORY`.
 
 #### Batch (configuration progress)
 
@@ -521,7 +529,7 @@ Returned by `PUT /children/{id}/protections/{KEY}`, `POST /children/{id}/setup` 
 | 4 | Add Child | `POST /children` → `PUT /children/{id}/photo` |
 | 5 | Protection Profile | `GET /profiles?age=` |
 | 6 | Recommended Setup | `GET /children/{id}/recommendations?profile=` |
-| 7 | Setup Progress | `POST /children/{id}/pairing-code` ("Set up supervision": Family Sharing on iOS, Family Link on Android; help articles `ios-family-sharing` / `android-family-link`), `POST /children/{id}/setup`, poll `GET /batches/{id}`, `POST /batches/{id}/confirm` |
+| 7 | Setup Progress | `POST /children/{id}/pairing-code` ("Set up supervision": Family Sharing on iOS; on Android the eGuard app itself, no Family Link; help articles `ios-family-sharing` / `android-family-link`), `POST /children/{id}/setup`, poll `GET /batches/{id}`, `POST /batches/{id}/confirm` |
 | 8 | Configuration Health | `GET /health?childId=` ("Fix N settings" uses `toFix`) |
 | 9 | Setup Complete | Use the last `GET /batches/{id}` (the verified items) |
 | 10 | Dashboard | `GET /dashboard` |
@@ -530,7 +538,7 @@ Returned by `PUT /children/{id}/protections/{KEY}`, `POST /children/{id}/setup` 
 | 13 | App Management | `GET /children/{id}/apps?filter=`, `PATCH /apps/{id}`, `POST /children/{id}/apps` (Request to Install App) |
 | 14 | Location | `GET /children/{id}/location`, "View All" → `GET /children/{id}/location/visits`, `GET /locations` |
 | 15 | Alerts | `GET /alerts?filter=`, `POST /alerts/{id}/read`, `/read-all`, `/dismiss`, `GET /alerts/unread-count` (includes "App blocked") |
-| 16 | Settings | `GET /family`, `/me`, `/me/notifications`, `/family/privacy`, `/me/sessions`, `POST /me/password`, `/me/two-factor`, `/me/identities`, `POST /me/export`, `DELETE /me`, `GET /organizations`, `POST /auth/logout` |
+| 16 | Settings | `GET /family`, `PATCH /family`, `/me`, `/me/notifications`, `/family/privacy`, `/me/sessions`, `POST /me/password`, `/me/two-factor`, `/me/identities`, `POST /me/export`, `DELETE /me`, `GET /organizations`, `POST /auth/logout` |
 | 17 | Subscription | `GET /subscription`. Android upgrade: `GET /subscription/plans` → Play Billing → `POST /subscription/google-play` |
 | 18 | Help & Support | `GET /help?q=`, `GET /help/{slug}`, `POST /support/tickets` |
 | — | Tab-bar badge | `GET /alerts/unread-count` |
@@ -639,8 +647,9 @@ Otherwise the link opens a web page, where the parent taps **Verify my email**. 
 
 Response: `{ token, expiresAt, user }`, or `{ twoFactorRequired: true, challenge, expiresAt }` when the parent has
 two-step verification on (see below). Errors: `401 invalid_credentials`, `429 rate_limited`. After 10 wrong
-passwords in 15 minutes the account is locked for the rest of that window, even with the right password; offer
-"Forgot password?", since a reset lifts the lock.
+passwords in 15 minutes from one address, that address can't sign in to the account for the rest of the window, even
+with the right password; other addresses (the parent's own phone) still can, unless the account has 50 wrong
+passwords from everywhere in that time. Offer "Forgot password?" on `429`, since a reset lifts every lock.
 
 ##### `POST /auth/forgot-password` → `202`
 
@@ -722,7 +731,7 @@ Ends this session only. Pass the device's push token so this phone stops receivi
 | Method & path | Body | Response |
 |---|---|---|
 | `GET /me` | none | `User` |
-| `PATCH /me` | any of `{ name, email, password, timezone }` | `User`. `timezone` (IANA, e.g. `Asia/Manila`) is the family's: only the family admin can change it (`403 forbidden` for another parent sending a different zone). Changing `email` needs the current `password` (`403 wrong_password`, or `403 password_not_set` when `hasPassword` is false). `409` if the email is taken. A new email sets `emailVerified: false`, sends a link to the new address, and unlinks Apple/Google sign-ins |
+| `PATCH /me` | any of `{ name, email, password, timezone }` | `User`. `timezone` (IANA, e.g. `Asia/Manila`) is the family's, stored with proper casing (`asia/manila` → `Asia/Manila`); fixed offsets like `+08:00` are `400`. Only the family admin can change it (`403 forbidden` for another parent sending a different zone). Changing `email` needs the current `password` (`403 wrong_password`, or `403 password_not_set` when `hasPassword` is false). `409` if the email is taken. A new email sets `emailVerified: false`, sends a link to the new address, and unlinks Apple/Google sign-ins |
 | `DELETE /me` | `{ password }`, or `{ confirm: "DELETE" }` when `hasPassword` is false ([Confirming deletions](#confirming-deletions)) | `{ ok, deleted: "family" \| "account" }`. **Deletes the account.** The family admin's account deletes the whole family (children, devices, history, other parents). Another parent's account removes only them. Sign out locally afterwards |
 | `POST /me/export` | none | The family's data as a JSON file (`Content-Disposition: attachment; filename="eguard-family-export.json"`): parents, children, settings, devices, app rules, screen time, location visits, history, alerts, browsers, support requests and purchases. Never includes passwords or tokens. Save it or hand it to the share sheet. Any parent can export; each export is recorded in the family's audit log. Same file as the website's export |
 | `GET /me/identities` | none | `{ identities: [{ id, provider, email, createdAt }] }`: linked Apple/Google sign-ins |
@@ -754,10 +763,18 @@ One call for the whole Home tab.
   "health": { "score": 8, "total": 10, "offline": 1, "verified": false, "label": "Good protection" },
   "children": [ …ChildSummary ],
   "deviceCount": 5,
+  "browserCount": 1,
   "recentAlerts": [ …Alert (up to 3) ],
   "unreadAlerts": 4
 }
 ```
+
+`deviceCount` is phones and tablets; `browserCount` is connected browser extensions (not ones disconnected for
+security). Each takes a slot of the plan's device limit, so show `deviceCount + browserCount` where the web's
+Devices card shows its total.
+
+`recentAlerts` are open alerts, most severe first and then newest (as on the web dashboard), so newer info never
+pushes a critical alert off the Home tab.
 
 `summary` is one of:
 - "Add your first child to get started." when the family has no children yet (show the Add Child call to action)
@@ -935,7 +952,10 @@ Child Profile › Overview.
   `plan_required` on plans without location sharing (then `sharing` is false and there's no place). `location.label`
   is "Sharing enabled", "Waiting for location", "Sharing off", "No devices yet" or "Not on your plan".
   `updatedAt` is when the newest fix was taken.
-- `deviceProtection.state` is `healthy`, `issues`, `offline` or `no_devices`.
+- `deviceProtection.state` is `healthy`, `issues`, `offline` or `no_devices`. `issues` wins over `offline`; `offline`
+  means no device has issues but at least one hasn't synced for a day, so its state can't be verified ("Offline", or
+  "1 of 2 devices offline"). A device that was just paired and hasn't reported yet is `issues` with the label
+  "Waiting for first check".
 - `pendingApprovals` counts app requests waiting for the parent (use it for a badge on the Apps tab).
 
 ##### `PATCH /children/{id}`
@@ -1009,6 +1029,7 @@ reports.
       "policyLabel": "Off",
       "status": "PASS",
       "openBatchId": null,
+      "version": "q7Yb3kLm0aZx9VtR",
       "devices": [
         {
           "deviceId": "cmujeonbc00d5ncgs3k2m4glb",
@@ -1030,6 +1051,8 @@ reports.
 
 - Pre-fill the edit form from `policy`.
 - If `openBatchId` is set, a change is still in progress: resume polling it instead of starting a new one.
+- Send `version` back as `baseVersion` when you change the protection (below), so a change another parent made or
+  queued since you loaded it isn't silently replaced.
 - `capability` says how eGuard can apply this protection on the device (`AVAILABLE`, `GUIDED`, `VERIFY_ONLY` or
   `UNSUPPORTED`).
 - A protection the parent turned off passes once the device confirms it's off (as above): it's the parent's choice,
@@ -1042,10 +1065,15 @@ Change one protection. `KEY` is case-insensitive. The body is that protection's 
 
 ```json
 PUT /children/{id}/protections/BEDTIME
-{ "enabled": true, "start": "21:00", "end": "06:30", "days": "SCHOOL_NIGHTS" }
+{ "enabled": true, "start": "21:00", "end": "06:30", "days": "SCHOOL_NIGHTS", "baseVersion": "q7Yb3kLm0aZx9VtR" }
 ```
 
 The response is a `Batch`. Poll `GET /batches/{batchId}`.
+
+`baseVersion` is optional (older apps work without it): the `version` of this protection from
+`GET /children/{id}/protections`. When the setting changed since, or another change was queued for it, the answer is
+`409` `stale` ("Bedtime for Mia was changed by someone else since you opened this…"): reload the protection and show
+the parent what's there now. Without `baseVersion`, the newest change wins and cancels one still waiting.
 
 A child with no paired device yet has nothing to verify the change, so it's saved as their setting straight away and
 applied when a device pairs: `200` with `{ "batchId": null, "saved": ["BEDTIME"] }`. Say so ("Saved. It applies when
@@ -1219,7 +1247,8 @@ before a downgrade is kept but not sent to devices until the family upgrades aga
   aren't stored.
 - The banner at the top of the screen reads "Location sharing Enabled" when `sharing` is true.
 - `history.visits` covers today and yesterday, newest first, up to 100 (`more: true` when there were more; "View All"
-  pages them), and is empty unless `history.enabled`. The admin turns history on with
+  pages them), and is empty unless `history.enabled`. A visit that began earlier and went on into yesterday or today
+  is included (a child home since Friday is still at home on Sunday); its `day` is the day it began. The admin turns history on with
   `PATCH /family/privacy { keepLocationHistory: true }`. When it's off, show a prompt instead of the "Today" list.
 - A visit with `stayed: false` is a fix taken while passing by (it lasted under about 4 minutes): show it as
   "Passing by", and leave it out of any list of places the child went. A device and another of the child's devices at
@@ -1244,17 +1273,20 @@ and pages use `nextBefore` (the `arrivedAt` of the last item).
       "arrivedAt": "…", "lastSeenAt": "…", "timeLabel": "Today, 2:32 PM", "day": { "key": "2026-09-27", "label": "Today" },
       "stayed": true, "durationMinutes": 45, "spanLabel": "2:32 PM – 3:17 PM · 45 min" }
   ],
-  "nextBefore": "2026-09-27T06:12:44.031Z"
+  "nextBefore": "2026-09-27T06:12:44.031Z",
+  "thinned": false
 }
 ```
 
-With history off, the response is `{ "enabled": false, "visits": [], "nextBefore": null }`. Group sections by
-`day.key`, like alerts.
+With history off, the response is `{ "enabled": false, "visits": [], "nextBefore": null, "thinned": false }`. Group
+sections by `day.key`, like alerts.
 
 **A day's route:** with `day` (YYYY-MM-DD in the family's time zone), the response holds that day's visits **oldest
-first**, all of them (`limit` and `before` are ignored, `nextBefore` is `null`). Draw them in order as a line;
-number the ones with `stayed: true`, and show the rest as small dots. A visit that spans midnight is in both days.
-A `day` that isn't a real date is a `400`.
+first** (`limit` and `before` are ignored, `nextBefore` is `null`). Draw them in order as a line; number the ones
+with `stayed: true`, and show the rest as small dots. A visit that spans midnight is in both days. A `day` that isn't
+a real date is a `400`. Every stay is included; on a very busy day (a long drive sends a fix every 150 m) passing-by
+fixes are thinned to about 300 visits in all, evenly along the route and always keeping the last one, and `thinned`
+is `true`: say "Some spots passed on the way are left out". `thinned` is always `false` without `day`.
 
 ##### `GET /locations`
 
@@ -1280,7 +1312,10 @@ parent's setting is off) or `no_devices`. `fresh` and `approximate` work as in `
 
 Places the parents name (Home, School). A location or visit inside one (the nearest, when they overlap) is
 labelled with its name; naming, renaming, resizing or removing a place relabels what's already kept. Any parent can
-manage them; 403 `plan_required` on Free (except `DELETE`).
+manage them. A place can be anywhere, not only where a child has been: offer "Add a place" with a map to tap (and a
+latitude, longitude field), so parents can set up School before the first day. `POST` and `PATCH` are 403
+`plan_required` on Free; `GET` and `DELETE` work on every plan, so places saved before a move to Free can be listed
+and removed (show them with Remove only, under the upgrade note).
 
 | Request | Body | Response |
 |---|---|---|
@@ -1289,7 +1324,8 @@ manage them; 403 `plan_required` on Free (except `DELETE`).
 | `PATCH /places/{id}` | `{ name?, radiusM?, notifyArrive?, notifyLeave? }` (at least one) | the place |
 | `DELETE /places/{id}` | | `{ ok: true }`; visits there lose its name unless another saved place covers them |
 
-Offer "Name this place" on the child's current location and on a visit with no `placeId`, using its `lat` and `lng`.
+Offer "Name this place" on the child's current location and on a visit with no `placeId`, using its `lat` and `lng`,
+and "Add a place" anywhere on the map.
 
 **Arrive and leave alerts.** With `notifyArrive` / `notifyLeave` on, a child's device reaching or leaving the place
 raises an `INFO` alert in the `LOCATION` category ("Mia arrived at School", "Mia left Home", action `VIEW_LOCATION`),
@@ -1401,10 +1437,11 @@ Compare `devicesUsed` with `deviceLimit` ("6 of 8 devices").
 
 | Method & path | Body | Response / notes |
 |---|---|---|
+| `PATCH /family` | `{ name }` | Same as `GET /family`. Renames the family (2–80 characters); admin only (`403 forbidden`). Show the field read-only when `canManage` is false. The name appears in invitations and the weekly summary |
 | `POST /family/members` | `{ name, email }` | `201 { id, name, email, role: "PARENT", pending: true, emailSent, expiresInDays }`. Admin only. **Sends an invitation**: they join once they accept it (see Invitations). A `password` from older apps is ignored. `409` if the email already has an eGuard account; `429` after 10 invitations an hour. `emailSent: false` means the email failed: offer Resend |
 | `POST /family/members/{id}/invite` | none | `{ ok }`. Admin only. Sends a pending invitation again with a new 7-day link. `409` if they already accepted, `503 mail_failed` |
 | `DELETE /family/members/{id}` | none | `{ ok }`. Admin only. Removes a `PARENT` (not yourself) and signs them out everywhere, or withdraws a pending invitation |
-| `GET /family/privacy` | none | `{ keepLocationHistory, shareAnalytics, retentionDays }` |
+| `GET /family/privacy` | none | `{ keepLocationHistory, shareAnalytics, retentionDays }`. eGuard doesn't collect product analytics yet: `shareAnalytics` is saved as the family's consent and applies if it starts, so say that under the switch |
 | `PATCH /family/privacy` | any of `{ keepLocationHistory, shareAnalytics }` | Same object. Admin only. **Turning `keepLocationHistory` off deletes all stored visits**, so confirm with the parent first |
 
 ##### Organizations
@@ -1464,7 +1501,7 @@ Sponsor codes, which pay for a plan, are redeemed on the website only (see [Know
     turning on location history is refused
   - with an `appMonitoringLimit`, `GET /children/{id}/apps` lists that many (apps waiting for approval first, then the
     most used) and `limited: { hidden, message }` says how many more there are; `/children/{id}/screen-time`
-    names that many apps too (`hiddenApps`)
+    names only apps that list shows today, for every period, and sums the rest as Others (`hiddenApps`)
   - without `realtimeAlerts`, turning on `notifyPush` → `403 plan_required`
   - without `advancedReports`, `/children/{id}/screen-time?period=30d` → `403 plan_required`
 - **Plans are paid for on the web for now** (PayMongo, in Settings › Subscription on the website). The apps show the
@@ -1761,7 +1798,7 @@ they're holding, the app signs out of the parent session after pairing
 | 400 | Validation failed (the message names the problem, e.g. `date must be YYYY-MM-DD`), or a bad pairing code. A `400` on a queued item is a bug: log it locally and **drop it**, don't retry |
 | 401 | `Invalid or missing device token`: the device was removed. Stop everything |
 | 409 | `/pair` only: the plan's device limit is reached |
-| 429 | Rate limited (`/pair` per IP, `/events` per device). Back off and retry later |
+| 429 | Rate limited (`/pair` per IP; `/events`, `/report`, `/usage` and `/location` per device). Back off and retry later |
 | 5xx / network | Retry with exponential backoff from 30 seconds to 15 minutes, with jitter |
 
 Request bodies are limited to **64 KB**. A larger or non-JSON body is read as empty (`400` where a body is required).
@@ -1949,7 +1986,8 @@ The configuration the device **actually has**, read back from the OS. This is th
 ```
 
 Response: `{ "ok": true }`, plus `ignored: [{ key, error }]` when some entries didn't match their schema. Those are
-skipped and the rest of the report still counts. Fix the app; don't retry them.
+skipped and the rest of the report still counts. Fix the app; don't retry them. `429` after 120 reports an hour from
+one device: wait a few minutes, then send one report with the current state.
 
 Send a report:
 - after applying anything from `/sync`, with **every protection that arrived in `requests`**, even if nothing changed
@@ -1992,7 +2030,9 @@ Daily screen-time totals. Idempotent per device and day: the latest total wins, 
 
 Response: `{ "ok": true }`. Send today's running totals every sync cycle, and a final total for yesterday once after
 midnight. Totals are kept per device, and a child's phone and tablet are added together for the parent. Sending
-`hourly` once and leaving it out later keeps the earlier hourly values.
+`hourly` once and leaving it out later keeps the earlier hourly values. Up to 300 different apps are kept per device
+and day; names past that are ignored. `429` after 120 usage reports an hour from one device: keep the newest total
+per day and send it later (a backlog after a few days offline fits easily).
 
 #### `POST /location`
 
@@ -2030,9 +2070,9 @@ detected from `/report`.
 
 | `type` | Extra fields | Send when | Server effect |
 |---|---|---|---|
-| `APP_INSTALLED` | `app`, `ageRating?` (0–21) | A new app appears and App Approval is off | Adds the app to the child's list; INFO alert "New app installed" the first time the name is seen for this child (from any device) |
+| `APP_INSTALLED` | `app`, `ageRating?` (0–21) | A new app appears and App Approval is off | Adds the app to the child's list; INFO alert "New app installed" the first time the name is seen for this child (from any device). On a plan that limits apps (Free), the alert names the app only if the parent's Apps list shows it; otherwise it says "An app was installed" with the upgrade line |
 | `APP_REQUESTED` | `app` | The child taps Ask, or a new app is installed with App Approval on | Marks the app `PENDING` and raises an ATTENTION "App approval requested". One open request per app |
-| `APP_BLOCKED` | `app` | The child opens a `BLOCKED` app | INFO "App blocked", at most once per app per device per hour |
+| `APP_BLOCKED` | `app` | The child opens a `BLOCKED` app | INFO "App blocked", at most once per app per device per hour. On Free, an app the Apps list hides isn't named ("tried to open a blocked app"), and those share one alert per hour |
 | `LIMIT_REACHED` | `minutes` (0–1440, the limit) | The daily screen-time limit is hit | INFO "Screen time limit reached", at most once per device per 12 hours |
 
 ```json

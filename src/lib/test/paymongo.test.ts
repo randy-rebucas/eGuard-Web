@@ -1,5 +1,26 @@
-import { describe, expect, it } from "vitest";
-import { isFullyRefunded, type Payment } from "../paymongo";
+import { describe, expect, it, vi } from "vitest";
+import { ServiceError } from "../errors";
+import { getPayment, getSubscription as getPaymongoSubscription, isFullyRefunded, type Payment } from "../paymongo";
+import { getSubscription } from "../google-play";
+
+describe("unreachable payment providers", () => {
+  const down = vi.fn(async () => { throw new TypeError("fetch failed"); }) as unknown as typeof fetch;
+  const cfg = { secretKey: "sk_test_x", publicKey: "pk_test_x", livemode: false, webhookSecret: null };
+
+  it("PayMongo: a network failure is a 502 the page can show, not a crash", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(getPayment(cfg, "pay_1", down)).rejects.toMatchObject({ status: 502, code: "payment_unavailable" });
+    await expect(getPaymongoSubscription(cfg, "sub_1", down)).rejects.toBeInstanceOf(ServiceError);
+  });
+
+  it("Google Play: a network failure is a 502 too", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { generateKeyPairSync } = await import("node:crypto");
+    const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+    const account = { client_email: "x@y.iam.gserviceaccount.com", private_key: privateKey.export({ type: "pkcs8", format: "pem" }).toString() };
+    await expect(getSubscription({ packageName: "app.eguard", account }, "tok", down)).rejects.toMatchObject({ status: 502, code: "store_unavailable" });
+  });
+});
 
 const refund = (id: string, amount: number, status = "succeeded") => ({ id, type: "refund", attributes: { amount, status } });
 const payment = (amount: number, refunds: ReturnType<typeof refund>[] = []): Payment => ({ amount, status: "paid", refunds });

@@ -121,7 +121,7 @@ PRIVACY FIRST
 PLANS
 eGuard is free for 1 child and 2 devices. eGuard Plus and Family Pro add more children and devices, location sharing, full app monitoring and advanced reports.
 
-eGuard is a parental control app. Your child's device shows that eGuard is active, and children 13 and older are asked to agree to supervision on their device.
+eGuard is a parental control app. Your child's device shows that eGuard is active, with a notification whenever it's running.
 ```
 
 About 2,600 characters. Before publishing:
@@ -348,9 +348,8 @@ reject permissions the app requests but doesn't use.
 | AccessibilityService | Only if used for app blocking or web filtering | **Yes**: accessibility declaration and a prominent in-app disclosure. Avoid if Usage access and VPN are enough |
 | `CAMERA` / photo picker | Child photo in parent mode | Use the Android photo picker so no media permission is needed |
 
-The help articles say Android supervision goes through Google Family Link. If the build applies protections
-through Family Link instead of on-device APIs, most of the rows above go away. Update this table and the Data
-safety form to match.
+Decided 2026-10-08: the Android app applies protections with these on-device APIs, not Google Family Link
+(child-app-spec D1). The help article `android-family-link` now says Family Link isn't needed.
 
 Every sensitive permission needs an **in-app disclosure before the system prompt**: what's collected, why, and
 that it's for parental control. Background location, accessibility and VPN reviewers look for it.

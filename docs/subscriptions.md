@@ -79,7 +79,7 @@ What each plan unlocks is its `entitlements`, checked on the server and returned
 | `locationSharing` | ✗ | ✓ | ✓ | Fixes aren't stored on Free; location pages and `/locations`, `/children/{id}/location…` return 403 `plan_required`; location history can't be turned on |
 | `appMonitoringLimit` | 5 | all | all | Apps lists show apps waiting for approval, then the most used; `limited` says how many are hidden |
 | `realtimeAlerts` | ✗ | ✓ | ✓ | Push notifications can't be turned on (alerts still show in the app and by email) |
-| `advancedReports` | ✗ | ✗ | ✓ | 30-day and custom report ranges, CSV export (403 otherwise) |
+| `advancedReports` | ✗ | ✗ | ✓ | 30-day reports, custom ranges longer than 7 days (other plans keep the last 7 days of a longer range), CSV export (403 otherwise) |
 | `apiAccess` | ✗ | ✗ | ✓ | Listed only: Pro admins get a "Request access" link to support. There's no organization API yet. |
 
 Configuration verification and health checks run on every plan, so protections stay honest on Free too.

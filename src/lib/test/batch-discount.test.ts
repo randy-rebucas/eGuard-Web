@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { batchDiscount, discountedCodePrice } from "../batch-discount";
+import { batchDiscount, discountSummary, discountedCodePrice } from "../batch-discount";
 
 describe("batch discounts", () => {
   it("gives the highest tier the quantity reaches", () => {
@@ -15,5 +15,9 @@ describe("batch discounts", () => {
     expect(discountedCodePrice(24900, 100)).toBe(19920);
     // 333 × 0.9 = 299.7 rounds to 300
     expect(discountedCodePrice(333, 10)).toBe(300);
+  });
+
+  it("describes the tiers for the pricing page, smallest first", () => {
+    expect(discountSummary()).toBe("10% off 10 or more codes, 15% off 50 or more, and 20% off 100 or more");
   });
 });

@@ -23,7 +23,8 @@ export async function overview() {
     db.user.count(),
     db.child.count(),
     db.device.count(),
-    db.browserInstallation.count(),
+    // A browser eGuard disconnected for security is gone for the family too (lib/device-slots)
+    db.browserInstallation.count({ where: { revokedAt: null } }),
     db.family.groupBy({ by: ["plan"], _count: { _all: true }, orderBy: { plan: "asc" } }),
     db.family.count({ where: { createdAt: { gte: daysAgo(7) } } }),
     db.family.count({ where: { createdAt: { gte: daysAgo(30) } } }),
@@ -79,7 +80,7 @@ export async function familyDetail(id: string) {
           sessions: { select: { lastSeenAt: true }, orderBy: { lastSeenAt: "desc" }, take: 1 },
         },
       },
-      _count: { select: { children: true, devices: true, browsers: true, places: true } },
+      _count: { select: { children: true, devices: true, browsers: { where: { revokedAt: null } }, places: true } },
       devices: { select: { platform: true, kind: true } },
       purchases: {
         orderBy: { createdAt: "desc" },

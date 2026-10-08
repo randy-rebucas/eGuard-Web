@@ -11,7 +11,7 @@ import { LOCATION_UPGRADE } from "@/lib/plan-access";
 import { Icon } from "@/components/icon";
 import { Avatar, EmptyState, PageHead, UpgradeNote } from "@/components/ui";
 import { FlowButton } from "@/components/flow";
-import { NamePlaceButton, PlaceRow } from "@/components/place-forms";
+import { AddPlaceButton, NamePlaceButton, PlaceRow } from "@/components/place-forms";
 import type { MapPerson } from "@/components/family-map";
 import { LazyMap, LocationRefresh } from "./lazy-map";
 
@@ -26,10 +26,19 @@ export default async function LocationPage(props: PageProps<"/location">) {
   const sp = await props.searchParams;
   const [family, { children }] = await Promise.all([getFamily(u.familyId), getFamilyGraph(u.familyId)]);
   if (!entitlementsFor(family.plan).locationSharing) {
+    // Places saved on an earlier plan stay listed so they can be removed (places.deletePlace allows it on any plan)
+    const saved = await listPlaces(u.familyId);
     return (
       <>
         <PageHead title="Family Location" text="Where your children are, when they share their location." />
         <section className="card card-pad"><UpgradeNote icon="map-pin-off" title="Location sharing isn't on your plan" text={`${LOCATION_UPGRADE} ${family.plan} keeps protections and screen time; location stays off.`} /></section>
+        {saved.length ? (
+          <section className="card card-pad" aria-labelledby="saved-places" style={{ marginTop: 16 }}>
+            <div className="card-head"><h2 id="saved-places" style={{ fontSize: 18 }}>Saved places</h2></div>
+            <p className="t-meta">Kept from your earlier plan. Remove any you don&apos;t want eGuard to keep.</p>
+            {saved.map((p) => <PlaceRow key={p.id} place={p} removeOnly />)}
+          </section>
+        ) : null}
       </>
     );
   }
@@ -96,12 +105,19 @@ export default async function LocationPage(props: PageProps<"/location">) {
           <section className="card card-pad" aria-labelledby="saved-places">
             <div className="card-head"><h2 id="saved-places" style={{ fontSize: 18 }}>Saved places</h2></div>
             {places.length ? places.map((p) => <PlaceRow key={p.id} place={p} />) : (
-              <p className="t-meta">Name the places your children go, like Home or School, and their location and visits there show the name. Name one from a child&apos;s current location above, or from a visit in their places.</p>
+              <p className="t-meta">
+                Name the places your children go, like Home or School, and their location{family.keepLocationHistory ? " and visits" : ""} there show the name.
+                {` Add one on the map${people.length ? `, or name a child's current location above${family.keepLocationHistory ? " or a visit in their places" : ""}` : ""}.`}
+              </p>
             )}
+            {places.length < MAX_PLACES
+              ? <AddPlaceButton places={places} center={[...people, ...places].map(({ lat, lng }) => ({ lat, lng }))[0] ?? null} attribution={tileAttribution()} />
+              : <p className="t-meta">You&apos;ve saved {MAX_PLACES} places, the most a family can. Remove one to add another.</p>}
           </section>
           {family.keepLocationHistory ? (
             <section className="card card-pad" aria-labelledby="recent-places">
               <div className="card-head"><h2 id="recent-places" style={{ fontSize: 18 }}>Recent places</h2></div>
+              {rows.some(({ c }) => c.devices.length) ? null : <p className="t-meta">Places appear here once a child&apos;s device shares its location.</p>}
               {rows.filter(({ c }) => c.devices.length).map(({ c }) => {
                 const visits = recent.filter((v) => v.childId === c.id);
                 return (
@@ -111,7 +127,7 @@ export default async function LocationPage(props: PageProps<"/location">) {
                       <div className="t-title">{c.name}</div>
                       <div className="t-meta">{visits.length ? visits.map((v) => `${v.placeLabel ?? "Unnamed place"} (${ago(v.arrivedAt, tz)})`).join(" · ") : "No places in the last day"}</div>
                     </div>
-                    <Link className="link-btn" href={`/location/${c.id}`}>View all</Link>
+                    <Link className="link-btn" href={`/location/${c.id}`} aria-label={`${c.name}'s history`}>History</Link>
                   </div>
                 );
               })}

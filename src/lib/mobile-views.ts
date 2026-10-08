@@ -8,7 +8,7 @@ import { photoUrl } from "./mobile-api";
 import { ensureOfflineAlerts } from "./engine";
 import { touchSimulated } from "./simulator";
 import { notFound } from "./errors";
-import { healthLabel, isDismissible } from "./health";
+import { healthLabel, isDismissible, systemAction, type DeviceState } from "./health";
 import { capAppUsage, nameableApps } from "./plan-access";
 import { childLocation, locationPolicy, stayed, visitSpan } from "./location";
 import type { Entitlements } from "./plans";
@@ -111,24 +111,38 @@ type AlertAction =
   | { type: "VIEW_SCREEN_TIME"; label: string; childId: string }
   | { type: "VIEW_HISTORY"; label: string; childId: string }
   | { type: "MANAGE_SUBSCRIPTION"; label: string }
-  | { type: "VIEW_LOCATION"; label: string; childId: string };
+  | { type: "VIEW_LOCATION"; label: string; childId: string }
+  | { type: "REVIEW_SITE_REQUEST"; label: string; childId: string; requestId: string }
+  | { type: "VIEW_BROWSERS"; label: string; childId: string | null }
+  | { type: "VIEW_ORGANIZATIONS"; label: string }
+  | { type: "VIEW_FAMILY"; label: string };
 
 /** What the alert's button does in the app. Mirrors alertAction() on the web. */
-export function mobileAlertAction(a: Pick<Alert, "resolveKey" | "category" | "childId" | "deviceId" | "resolvedAt">): AlertAction | null {
+export function mobileAlertAction(a: Pick<Alert, "resolveKey" | "category" | "childId" | "deviceId" | "subject" | "title" | "resolvedAt">): AlertAction | null {
   if (a.resolvedAt) return null;
-  const [k] = (a.resolveKey ?? "").split(":");
+  const [k, id] = (a.resolveKey ?? "").split(":");
   if (k && k in PROTECTION_BY_KEY && a.childId) {
     return { type: "FIX_SETTING", label: k === "LOCATION" ? "Guide me" : k === "BEDTIME" ? "Set bedtime" : "Review setting", childId: a.childId, key: k as ProtectionKey };
   }
   if (k === "OFFLINE" && a.deviceId) return { type: "VIEW_DEVICE", label: "View device", deviceId: a.deviceId };
   if (k === "APPREQ" && a.childId) return { type: "REVIEW_APPS", label: "Review request", childId: a.childId };
   if (k === "PLACE" && a.childId) return { type: "VIEW_LOCATION", label: "View places", childId: a.childId };
+  if (k === "WEBREQ" && a.childId && id) return { type: "REVIEW_SITE_REQUEST", label: "Review request", childId: a.childId, requestId: id };
+  if (k === "BROWSER_REVOKED") return { type: "VIEW_BROWSERS", label: "View browsers", childId: null };
+  // Browser health: drift, private windows, Safe Browsing, silence
+  if (k?.startsWith("BROWSER_") && a.childId) return { type: "VIEW_BROWSERS", label: "View browser", childId: a.childId };
   switch (a.category) {
     case "APPS": return a.childId ? { type: "REVIEW_APPS", label: "Review app", childId: a.childId } : null;
     case "SCREEN_TIME": return a.childId ? { type: "VIEW_SCREEN_TIME", label: "View activity", childId: a.childId } : null;
     case "DEVICES": return a.deviceId ? { type: "VIEW_DEVICE", label: "View device", deviceId: a.deviceId } : null;
     case "PROTECTION": return a.childId ? { type: "VIEW_HISTORY", label: "Review", childId: a.childId } : null;
-    case "SYSTEM": return { type: "MANAGE_SUBSCRIPTION", label: "Manage plan" };
+    case "SYSTEM": {
+      const page = systemAction(a);
+      return page === "subscription" ? { type: "MANAGE_SUBSCRIPTION", label: "Manage plan" }
+        : page === "organizations" ? { type: "VIEW_ORGANIZATIONS", label: "View organizations" }
+        : page === "family" ? { type: "VIEW_FAMILY", label: "View family" }
+        : null;
+    }
     default: return null;
   }
 }
@@ -195,10 +209,12 @@ export async function screenTime(child: ChildView, tz: string, period: Period, a
     if (today.length) hourly = Array.from({ length: 24 }, (_, h) => today.reduce((s, r) => s + r.hourly[h], 0));
   }
   const byName = new Map(rules.map((r) => [r.name, r]));
-  // No more app names than the plan's Apps list shows; the rest are summed as Others. For today, also only the apps
-  // that list shows (it keeps apps waiting for approval first), as on the web; a longer period has no single such list.
+  // No more app names than the plan's Apps list shows; the rest are summed as Others. Only the apps that list shows
+  // today (it keeps apps waiting for approval first), for every period, as the web's reports do: a week's most used
+  // could otherwise name apps the plan hides.
   const usage = apps.map((a) => ({ app: a.app, minutes: a._sum.minutes ?? 0 }));
-  const nameable = period === "today" ? await nameableApps(child.id, appLimit, (n) => usage.find((a) => a.app === n)?.minutes ?? 0) : () => true;
+  const todayUsage = period === "today" || appLimit == null ? usage : await appMinutesOn([child.id], to);
+  const nameable = await nameableApps(child.id, appLimit, (n) => todayUsage.find((a) => a.app === n)?.minutes ?? 0);
   const unnamed = usage.filter((a) => a.app !== "Others" && !nameable(a.app)).length;
   const capped = capAppUsage(usage.map((a) => (nameable(a.app) ? a : { ...a, app: "Others" })), appLimit);
   const appRows = capped.named.concat(capped.others > 0 ? [{ app: "Others", minutes: capped.others }] : []);
@@ -251,6 +267,19 @@ export function overviewLocation(devices: Parameters<typeof childLocation>[0], p
   };
 }
 
+/**
+ * The overview's device protection card, from each device's state. Never "Healthy" while a device is offline (its
+ * last known state can't be verified), and a just-paired device is waiting for its first check, not ten issues.
+ */
+export function deviceProtectionSummary(states: DeviceState[]) {
+  if (!states.length) return { state: "no_devices" as const, label: "No devices yet" };
+  const worst = [...states].sort((a, b) => b.issues - a.issues)[0];
+  if (worst.issues) return { state: "issues" as const, label: worst.firstCheck ? "Waiting for first check" : `${worst.issues} issue${worst.issues > 1 ? "s" : ""}` };
+  const offline = states.filter((s) => s.key === "offline").length;
+  if (!offline) return { state: "healthy" as const, label: "Healthy" };
+  return { state: "offline" as const, label: offline === states.length ? "Offline" : `${offline} of ${states.length} devices offline` };
+}
+
 /** How many apps the overview names; the rest are left to the Screen Time tab. Same as the web overview. */
 const OVERVIEW_APPS = 5;
 
@@ -270,7 +299,6 @@ export async function childOverview(graph: FamilyGraph, childId: string, tz: str
   // Only apps the plan's Apps tab shows, and no more of them: same rule as the web overview
   const nameable = await nameableApps(c.id, plan.appMonitoringLimit, (n) => appsToday.find((a) => a.app === n)?.minutes ?? 0);
   const named = capAppUsage(appsToday.filter((a) => nameable(a.app)), Math.min(OVERVIEW_APPS, plan.appMonitoringLimit ?? OVERVIEW_APPS)).named;
-  const worstDevice = c.devices.map((d) => graph.deviceStates[d.id]).sort((a, b) => b.issues - a.issues)[0];
 
   return {
     child: childJson(c, { photo: photos.get(c.id), todayMinutes: minutes.get(c.id), tz }),
@@ -286,10 +314,7 @@ export async function childOverview(graph: FamilyGraph, childId: string, tz: str
     },
     bedtime: bedtime ? { enabled: bedtime.enabled, start: bedtime.start, end: bedtime.end, days: bedtime.days, label: describeConfig(bedtime) } : null,
     location: overviewLocation(c.devices, plan, Date.now(), locationPolicy(c.policies)),
-    deviceProtection: {
-      state: !c.devices.length ? "no_devices" : worstDevice.issues ? "issues" : c.devices.every((d) => graph.deviceStates[d.id].key === "offline") ? "offline" : "healthy",
-      label: !c.devices.length ? "No devices yet" : worstDevice.issues ? `${worstDevice.issues} issue${worstDevice.issues > 1 ? "s" : ""}` : "Healthy",
-    },
+    deviceProtection: deviceProtectionSummary(c.devices.map((d) => graph.deviceStates[d.id])),
     pendingApprovals: pending,
     devices: c.devices.map((d) => deviceJson(d, graph, tz)),
     recentChanges: changes.map((ch) => ({ id: ch.id, key: ch.key, title: ch.title, actor: ch.actor, fromValue: ch.fromValue, toValue: ch.toValue, createdAt: ch.createdAt })),

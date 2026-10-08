@@ -10,6 +10,11 @@ export const BATCH_DISCOUNTS = [
   { minQuantity: 10, percent: 10 },
 ] as const;
 
+/** "10% off 10 or more codes, 15% off 50 or more, and 20% off 100 or more", for the site's copy. */
+export const discountSummary = () => [...BATCH_DISCOUNTS].reverse()
+  .map((t, i) => `${t.percent}% off ${t.minQuantity} or more${i === 0 ? " codes" : ""}`)
+  .join(", ").replace(/, ([^,]*)$/, ", and $1");
+
 /** Percent off for a batch of this many codes (0 below the first tier). */
 export const batchDiscount = (quantity: number) => BATCH_DISCOUNTS.find((t) => quantity >= t.minQuantity)?.percent ?? 0;
 

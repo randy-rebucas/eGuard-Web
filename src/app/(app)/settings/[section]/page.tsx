@@ -13,13 +13,13 @@ import {
 } from "@/components/forms";
 import { pendingInvites } from "@/lib/invitations";
 import { BuyPlan, CancelAutoRenew } from "@/components/billing";
-import { CreateOrgForm, JoinOrgForm, LeaveOrgButton, RedeemCodeForm } from "@/components/organizations";
-import { ORG_KINDS, VOUCHER_STORE, familyOrganizations, managedOrganizations, sponsorOf } from "@/lib/organizations";
+import { CreateOrgForm, JoinOrgForm, LeaveOrgButton, OrgInvitationActions, RedeemCodeForm } from "@/components/organizations";
+import { ORG_KINDS, VOUCHER_STORE, familyOrganizations, invitationsFor, managedOrganizations, sponsorOf } from "@/lib/organizations";
 import { SECTIONS } from "../sections";
 import { supportEmail } from "@/lib/support";
 import { currentPurchase, refreshPurchases } from "@/lib/billing";
 import { renewalWord } from "@/lib/entitlement";
-import { PLANS, entitlementsFor, planByName, planByProduct, webPrice, webProduct } from "@/lib/plans";
+import { BASE_PLAN, PLANS, entitlementsFor, planByName, planByProduct, webPrice, webProduct, type Entitlements } from "@/lib/plans";
 import { LOCATION_UPGRADE, planWith } from "@/lib/plan-access";
 import { confirmReturn, passMethods, webBillingAvailable } from "@/lib/web-billing";
 import { status as twoFactorStatus } from "@/lib/two-factor";
@@ -47,7 +47,7 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
   switch (section) {
     case "account": {
       const linkedSignIns = await db.oAuthIdentity.count({ where: { userId: u.id } });
-      return (<>{head}<AccountForm name={user.name} email={user.email} timezone={tz} zones={timeZones(tz)} canSetTimezone={admin} hasPassword={user.passwordSet} linkedSignIns={linkedSignIns} /></>);
+      return (<>{head}<AccountForm name={user.name} email={user.email} familyName={family.name} timezone={tz} zones={timeZones(tz)} canSetTimezone={admin} hasPassword={user.passwordSet} linkedSignIns={linkedSignIns} /></>);
     }
 
     case "family": {
@@ -82,6 +82,12 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
               <Link className="link-btn" href={`/children/${c.id}`}>Open</Link>
             </div>
           ))}
+          {graph.children.length ? null : (
+            <div className="setting-row">
+              <div className="grow"><div className="t-title">No children yet</div><div className="t-meta">Add a child to choose their protections and pair their devices.</div></div>
+              <Link className="btn btn-secondary btn-sm" href="/children"><Icon name="plus" />Add a child</Link>
+            </div>
+          )}
           {admin ? (
             <>
               <hr className="divider" style={{ margin: "18px 0" }} />
@@ -94,7 +100,7 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
     }
 
     case "organizations": {
-      const [joined, managed] = await Promise.all([familyOrganizations(u.familyId), managedOrganizations(u.id)]);
+      const [joined, managed, invitations] = await Promise.all([familyOrganizations(u.familyId), managedOrganizations(u.id), invitationsFor(u.id)]);
       return (
         <>
           {head}
@@ -117,6 +123,13 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
 
           <hr className="divider" style={{ margin: "24px 0 8px" }} />
           <h3 className="org-sub">Organizations you manage</h3>
+          {invitations.map((i) => (
+            <div className="setting-row" key={i.id}>
+              <span className="ico-tile"><Icon name="mail" /></span>
+              <div className="grow"><div className="t-title">{i.org}</div><div className="t-meta">{ORG_KINDS[i.kind]} · {i.by} invited you to be an admin · until {shortDate(i.expiresAt, tz)}</div></div>
+              <OrgInvitationActions id={i.id} org={i.org} />
+            </div>
+          ))}
           {managed.map((o) => (
             <div className="setting-row" key={o.id}>
               <span className="ico-tile"><Icon name={o.kind === "SCHOOL" ? "school" : o.kind === "BUSINESS" ? "briefcase" : "users"} /></span>
@@ -149,10 +162,13 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
             checked={user.notifyPush && plan.realtimeAlerts} disabled={!plan.realtimeAlerts} />
           <SettingSwitch setting="notifyEmail" title="Email alerts" desc="Protection changes, devices that stop syncing, anything that needs action, and organization activity" checked={user.notifyEmail} />
           <SettingSwitch setting="notifyApproval" title="App approval requests" desc="When a child asks for an app or a blocked website. Sent by email and push, for whichever of those is on." checked={user.notifyApproval} />
-          <SettingSwitch setting="weeklySummary" title="Weekly summary" desc="Every Sunday at 6 PM" checked={user.weeklySummary} />
+          {/* What sendWeeklyDigests needs: a paired device, and the family's own Sunday evening */}
+          <SettingSwitch setting="weeklySummary" title="Weekly summary" desc={`An email every Sunday at 6 PM (${tz.replace(/_/g, " ")} time) with last week's health, screen time and changes, once a device is paired`} checked={user.weeklySummary} />
           <p className="t-meta" style={{ marginTop: 12 }}>
-            Email alerts go to your verified email address.{" "}
-            {push ? "The weekly summary isn't sent yet; your choice is saved and applies once it is." : "Push notifications and the weekly summary aren't sent yet; your choices are saved and apply once they are."}
+            {user.emailVerifiedAt
+              ? `Emails go to ${user.email}.`
+              : `Your email isn't verified yet, so nothing is emailed until you open the link we sent to ${user.email}.`}
+            {push ? "" : " Push notifications aren't sent yet; your choice is saved and applies once they are."}
           </p>
         </>
       );
@@ -162,9 +178,9 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
       return (
         <>
           {head}
-          <SettingSwitch setting="keepLocationHistory" title="Keep location history" desc={!plan.locationSharing ? LOCATION_UPGRADE : family.keepLocationHistory ? "On: recent locations are kept for the retention period. Turning it off deletes the history already kept" : "Off: only the current location is stored"} checked={family.keepLocationHistory} disabled={!admin || (!plan.locationSharing && !family.keepLocationHistory)}
+          <SettingSwitch setting="keepLocationHistory" title="Keep location history" desc={!plan.locationSharing ? (family.keepLocationHistory ? `${LOCATION_UPGRADE} History kept before is still here; turning this off deletes it.` : LOCATION_UPGRADE) : family.keepLocationHistory ? "On: recent locations are kept for the retention period. Turning it off deletes the history already kept" : "Off: only the current location is stored"} checked={family.keepLocationHistory} disabled={!admin || (!plan.locationSharing && !family.keepLocationHistory)}
             confirmOff="This deletes every child's location history now. It can't be undone. Current locations keep working." />
-          <SettingSwitch setting="shareAnalytics" title="Share anonymous product analytics" desc="Helps improve eGuard. Never includes children's data" checked={family.shareAnalytics} disabled={!admin} />
+          <SettingSwitch setting="shareAnalytics" title="Share anonymous product analytics" desc="Helps improve eGuard. Never includes children's data. eGuard doesn't collect product analytics yet; your choice is saved and applies if it starts" checked={family.shareAnalytics} disabled={!admin} />
           <div className="setting-row"><div className="grow"><div className="t-title">What children can see</div><div className="t-meta">Children see which protections are on, and can ask you for new apps and for blocked websites</div></div></div>
           <div className="setting-row"><div className="grow"><div className="t-title">Data retention</div><div className="t-meta">{/* What purgeExpiredData deletes; open alerts stay until they're resolved */}Screen time, app usage, location visits, change history, browser block counts and site requests, and resolved alerts are deleted after {family.retentionDays} days</div></div><span className="pill tone-accent">{family.retentionDays} days</span></div>
           {!admin ? <p className="t-meta" style={{ marginTop: 12 }}>Only the family admin can change privacy settings.</p> : null}
@@ -292,7 +308,7 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
           ) : purchase?.autoRenewing && nextCharge ? (
             <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
               <div><div className="t-title">Auto-renew is on</div><div className="t-meta">{purchase.state === "past_due" ? "The last renewal payment failed. PayMongo will try again; check your card or Maya balance." : `Next charge${nextAmount ? ` ${nextAmount}` : ""} on ${paidUntil ?? "your next billing date"}. To switch plans, turn auto-renew off; you keep ${fam.plan} until then.`}</div></div>
-              <CancelAutoRenew plan={fam.plan} endsOn={paidUntil ?? "the end of this period"} />
+              <CancelAutoRenew plan={fam.plan} endsOn={paidUntil ?? "the end of this period"} losing={freePlanLimits(current.entitlements)} />
             </div>
           ) : (
             <BuyPlan
@@ -318,7 +334,7 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
           {graph.devices.map((d) => (
             <div className="setting-row" key={d.id}>
               <span className="ico-tile"><DeviceIcon kind={d.kind} /></span>
-              <div className="grow"><div className="t-title">{d.name}</div><div className="t-meta">{d.child.name} · {d.osVersion} · synced {dayTime(d.lastSeenAt, tz)}</div></div>
+              <div className="grow"><div className="t-title">{d.name}</div><div className="t-meta">{d.child.name} · {d.osVersion} · {!d.lastSeenAt ? "hasn't synced yet" : isOffline(d) ? `offline, last synced ${dayTime(d.lastSeenAt, tz)}` : `synced ${dayTime(d.lastSeenAt, tz)}`}</div></div>
               <Link className="link-btn" href={`/devices/${d.id}`}>Open</Link>
             </div>
           ))}
@@ -326,6 +342,7 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
             <div className="setting-row" key={b.id}>
               <span className="ico-tile"><Icon name="monitor" /></span>
               <div className="grow"><div className="t-title">{browserLabel(b)}</div><div className="t-meta">{b.child.name} · {b.revokedAt ? "Disconnected for security, doesn't count toward your plan"
+                : !b.lastSeenAt ? "hasn't connected yet"
                 : isOffline(b) ? `not seen since ${dayTime(b.lastSeenAt, tz)}`
                 : `${(b.protectionState && BROWSER_STATE[b.protectionState]?.[1]) || "Connected"} · seen ${dayTime(b.lastSeenAt, tz)}`}</div></div>
               <Link className="link-btn" href="/devices#add-browser">Manage</Link>
@@ -353,7 +370,7 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
       return (
         <>
           {head}
-          <div className="setting-row"><div className="grow"><div className="t-title">Export family data</div><div className="t-meta">Settings, children, devices and browsers, configuration history and activity summaries as JSON</div></div><form method="post" action="/api/account/export"><button className="btn btn-secondary btn-sm"><Icon name="download" />Download</button></form></div>
+          <div className="setting-row"><div className="grow"><div className="t-title">Export family data</div><div className="t-meta">One JSON file with your family&apos;s parents, children, devices and browsers, settings and change history, activity, alerts, places and billing records. Any parent in the family can download it. Passwords and sign-in tokens are never included.</div></div><form method="post" action="/api/account/export"><button className="btn btn-secondary btn-sm"><Icon name="download" />Download</button></form></div>
           {/* Only the family admin can delete a child (deleteChildData uses requireAdmin) */}
           <div className="setting-row"><div className="grow"><div className="t-title">Delete a child&apos;s data</div><div className="t-meta">{admin
             ? `Open the child's page, then Profile. ${user.passwordSet ? "Needs your password." : "You'll type DELETE to confirm."}`
@@ -387,6 +404,19 @@ function timeZones(current: string) {
   return [...new Set([current, "UTC", ...zones])].sort((a, b) => (a === "UTC" ? -1 : b === "UTC" ? 1 : a.localeCompare(b)));
 }
 
+/** What Free allows, and the features of `from` it doesn't have: "1 child, 2 devices, no location sharing, …" */
+function freePlanLimits(from: Entitlements) {
+  const free = entitlementsFor(BASE_PLAN);
+  return [
+    `${free.childLimit} ${free.childLimit === 1 ? "child" : "children"}`,
+    `${free.deviceLimit} ${free.deviceLimit === 1 ? "device" : "devices"}`,
+    from.appMonitoringLimit === null && free.appMonitoringLimit !== null ? `${free.appMonitoringLimit} apps shown per child` : null,
+    from.locationSharing && !free.locationSharing ? "no location sharing" : null,
+    from.categoryLimits && !free.categoryLimits ? "no category limits" : null,
+    from.advancedReports && !free.advancedReports ? "reports up to a week" : null,
+  ].filter(Boolean).join(", ");
+}
+
 const METHOD_NAMES: Record<string, string> = {
   gcash: "GCash", paymaya: "Maya", card: "card", qrph: "QR Ph", grab_pay: "GrabPay", shopee_pay: "ShopeePay", billease: "BillEase", dob: "online banking", brankas: "online banking",
 };
@@ -400,6 +430,8 @@ function passMethodLabel() {
 
 function summarizeAgent(ua: string | null) {
   if (!ua) return "Unknown device";
+  // The parent app sends "eGuard/1.0 (iPhone; iOS 18.1)" (docs/mobile-api.md › Headers)
+  if (/^eGuard\//i.test(ua)) return `eGuard app on ${/Android/i.test(ua) ? "Android" : /iPhone|iPad|iOS/i.test(ua) ? "iOS" : "a phone"}`;
   const os = /Windows/.test(ua) ? "Windows" : /Android/.test(ua) ? "Android" : /iPhone|iPad/.test(ua) ? "iOS" : /Mac OS/.test(ua) ? "macOS" : /Linux/.test(ua) ? "Linux" : "Unknown OS";
   const br = /Edg\//.test(ua) ? "Edge" : /Chrome\//.test(ua) ? "Chrome" : /Firefox\//.test(ua) ? "Firefox" : /Safari\//.test(ua) ? "Safari" : "Browser";
   return `${br} on ${os}`;

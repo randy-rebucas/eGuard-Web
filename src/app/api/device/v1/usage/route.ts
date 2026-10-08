@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { authDevice, badRequest, readJson, unauthorized } from "@/lib/device-auth";
+import { LIMITS, hit } from "@/lib/rate-limit";
 
 /** Furthest a device's local day can be from the server's UTC day (time zones run from UTC-12 to UTC+14). */
 const MAX_SKEW_MS = 2 * 864e5;
@@ -25,14 +26,25 @@ const Body = z.object({
   hourly: z.array(z.number().int().min(0).max(60)).length(24).optional(),
 });
 
+/** Different apps one device can report for one day; a phone uses far fewer. Past it, new names are ignored. */
+const MAX_APPS_PER_DAY = 300;
+
 /** Daily screen-time totals. Idempotent per device and day (the latest total wins). */
 export async function POST(req: Request) {
   const device = await authDevice(req);
   if (!device) return unauthorized();
+  // A looping or tampered device must not be able to write app rows without limit
+  if ((await hit(`deviceusage:${device.id}`, LIMITS.deviceUsage)).limited) {
+    return NextResponse.json({ error: "Too many usage reports. Send the next one in a few minutes." }, { status: 429 });
+  }
   const parsed = Body.safeParse(await readJson(req));
   if (!parsed.success) return badRequest(parsed.error.issues[0].message);
-  const { date: day, totalMinutes, apps, hourly } = parsed.data;
+  const { date: day, totalMinutes, hourly } = parsed.data;
   const date = new Date(`${day}T00:00:00.000Z`);
+  // Each call may name 200 apps: without a cap per day, new names on every call would grow the table without end
+  const known = new Set((await db.appUsageDaily.findMany({ where: { deviceId: device.id, date }, select: { app: true } })).map((r) => r.app));
+  let room = MAX_APPS_PER_DAY - known.size;
+  const apps = parsed.data.apps.filter((a) => known.has(a.name) || room-- > 0);
   await db.screenTimeDaily.upsert({
     where: { deviceId_date: { deviceId: device.id, date } },
     create: { deviceId: device.id, childId: device.childId, date, minutes: totalMinutes, hourly: hourly ?? [] },

@@ -153,8 +153,12 @@ are `StorePurchase` rows owned by the family and aren't touched.
 1. Settings › Organizations › **Create an organization**: name and kind. The creator becomes `OWNER`.
 2. The organization page shows the join code (copy, replace), the number of families that joined, sponsor codes,
    and admins.
-3. The owner adds an admin by the email of an existing eGuard account, and can remove admins. The last owner can't
-   be removed.
+3. The owner invites an admin by the email they sign in to eGuard with (`OrgInvite`, open for 14 days). The answer
+   is the same whether or not the email has an account, and only an account with a verified email is emailed, so
+   inviting can't be used to find out who uses eGuard. The person accepts or declines in Settings › Organizations
+   (accepting needs a verified email; declining tells no one) and becomes an admin only on accepting. Owners see
+   and can cancel waiting invitations, and can remove admins. The last owner can't be removed. Owners send up to
+   10 invitations an hour, and an organization has up to 20 waiting.
 
 ### Join and leave
 

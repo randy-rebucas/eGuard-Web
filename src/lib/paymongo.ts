@@ -14,6 +14,17 @@ import { ServiceError } from "./errors";
 type Fetch = typeof fetch;
 
 const API = "https://api.paymongo.com";
+const TIMEOUT_MS = 15_000;
+
+/** A request that can't reach PayMongo (network down, timeout) fails like a 5xx, not as a crash. */
+async function reach(f: Fetch, url: string, init: RequestInit) {
+  try {
+    return await f(url, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS) });
+  } catch (e) {
+    console.error("[paymongo]", init.method ?? "GET", url.slice(API.length), e instanceof Error ? e.message : e);
+    throw new ServiceError(502, "Couldn't reach PayMongo. Try again in a moment.", "payment_unavailable");
+  }
+}
 
 export function paymongoConfig(env: Record<string, string | undefined> = process.env) {
   const secretKey = env.PAYMONGO_SECRET_KEY?.trim();
@@ -30,7 +41,7 @@ export type PaymongoConfig = NonNullable<ReturnType<typeof paymongoConfig>>;
 export type Resource<A> = { id: string; type: string; attributes: A };
 
 async function call<A>(cfg: PaymongoConfig, method: string, path: string, body: unknown, f: Fetch): Promise<Resource<A>> {
-  const res = await f(`${API}${path}`, {
+  const res = await reach(f, `${API}${path}`, {
     method,
     headers: {
       authorization: `Basic ${Buffer.from(`${cfg.secretKey}:`).toString("base64")}`,
@@ -133,9 +144,9 @@ export async function planFor(cfg: PaymongoConfig, planName: string, amount: num
 }
 
 async function callList<A>(cfg: PaymongoConfig, path: string, f: Fetch) {
-  const res = await f(`${API}${path}`, { headers: { authorization: `Basic ${Buffer.from(`${cfg.secretKey}:`).toString("base64")}` } });
+  const res = await reach(f, `${API}${path}`, { headers: { authorization: `Basic ${Buffer.from(`${cfg.secretKey}:`).toString("base64")}` } });
   if (!res.ok) throw new ServiceError(502, "Couldn't reach PayMongo. Try again in a moment.", "payment_unavailable");
-  const json = (await res.json()) as { data?: Resource<A>[] };
+  const json = (await res.json().catch(() => { throw new ServiceError(502, "Couldn't reach PayMongo. Try again in a moment.", "payment_unavailable"); })) as { data?: Resource<A>[] };
   return json.data ?? [];
 }
 

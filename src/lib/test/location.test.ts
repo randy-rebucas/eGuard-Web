@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../db", () => ({ db: {} }));
 
-import { FRESH_MS, LEAVE_MARGIN_M, childLocation, durationLabel, isDayKey, locationPolicy, placeFor, placeMove, shiftDay, stayed, visitSpan, waitingText } from "../location";
+import { FRESH_MS, LEAVE_MARGIN_M, childLocation, durationLabel, isDayKey, locationPolicy, placeFor, placeMove, shiftDay, stayed, thinRoute, visitSpan, waitingText } from "../location";
 
 const now = Date.parse("2026-10-04T10:00:00Z");
 const min = 60_000;
@@ -46,6 +46,30 @@ describe("day keys", () => {
   it("shifts across months and years", () => {
     expect(shiftDay("2026-10-01", -1)).toBe("2026-09-30");
     expect(shiftDay("2026-12-31", 1)).toBe("2027-01-01");
+  });
+});
+
+describe("thinRoute", () => {
+  // A stay every 50th visit, passing-by fixes a minute apart in between (a long drive)
+  const day = Array.from({ length: 1000 }, (_, i) => {
+    const at = new Date(now + i * min);
+    return { i, arrivedAt: at, lastSeenAt: new Date(at.getTime() + (i % 50 === 0 ? 30 * min : 0)) };
+  });
+
+  it("leaves a day under the cap alone", () => {
+    expect(thinRoute(day.slice(0, 300), 300)).toHaveLength(300);
+  });
+  it("keeps every stay, fits the cap, keeps order and the end of the route", () => {
+    const kept = thinRoute(day, 300);
+    expect(kept).toHaveLength(300);
+    expect(kept.filter(stayed)).toHaveLength(20);
+    expect(kept.map((v) => v.i)).toEqual([...kept.map((v) => v.i)].sort((a, b) => a - b));
+    expect(kept.at(-1)!.i).toBe(999);
+    // Spread out, not the first 280 passing fixes
+    expect(kept.filter((v) => v.i > 900).length).toBeGreaterThan(20);
+  });
+  it("keeps only stays when they alone fill the cap", () => {
+    expect(thinRoute(day, 10).every(stayed)).toBe(true);
   });
 });
 

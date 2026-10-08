@@ -46,7 +46,9 @@ export default async function ProtectionPage() {
   return (
     <>
       <PageHead title="Protection" text="Configuration Health tells you whether each protection is set up and verified on your children's devices. It measures configuration, not your children's behavior.">
-        {devices.length ? <CheckButton><Icon name="scan-search" />Run Configuration Check</CheckButton> : <Link className="btn btn-primary" href="/devices#pair"><Icon name="plus" />Pair a device</Link>}
+        {/* With every device offline a check can only time out (as on a device's page) */}
+        {devices.length ? <CheckButton disabled={offline.length === devices.length}><Icon name="scan-search" />Run Configuration Check</CheckButton> : <Link className="btn btn-primary" href="/devices#pair"><Icon name="plus" />Pair a device</Link>}
+        {devices.length && offline.length === devices.length ? <span className="t-meta">Available when a device is back online</span> : null}
       </PageHead>
 
       <section className="card card-pad" aria-labelledby="ch-title">

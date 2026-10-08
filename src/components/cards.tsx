@@ -3,7 +3,7 @@ import type { Alert, BrowserInstallation, ProtectionKey } from "@prisma/client";
 import { Icon } from "./icon";
 import { Avatar, DeviceIcon, SEVERITY, StatusBadge, statusLabel, platformName } from "./ui";
 import type { ChildView, DeviceView } from "@/lib/queries";
-import { isOffline, type DeviceState } from "@/lib/health";
+import { isOffline, systemAction, type DeviceState } from "@/lib/health";
 import { ageLabel, dayTime } from "@/lib/format";
 import { PROTECTION_BY_KEY } from "@/lib/protections";
 
@@ -99,7 +99,7 @@ export function BrowserStatusCard({ b, tz }: { b: BrowserLike & Pick<BrowserInst
 export type AlertAction ={ label: string; href?: string; flow?: { key: ProtectionKey; childId: string } };
 
 /** What a parent can do about an alert. */
-export function alertAction(a: Pick<Alert, "resolveKey" | "category" | "childId" | "deviceId" | "title" | "resolvedAt">): AlertAction | null {
+export function alertAction(a: Pick<Alert, "resolveKey" | "category" | "childId" | "deviceId" | "title" | "subject" | "resolvedAt">): AlertAction | null {
   if (a.resolvedAt) return null;
   const [k] = (a.resolveKey ?? "").split(":");
   if (k && k in PROTECTION_BY_KEY && a.childId) {
@@ -117,7 +117,13 @@ export function alertAction(a: Pick<Alert, "resolveKey" | "category" | "childId"
     case "SCREEN_TIME": return a.childId ? { label: "View activity", href: `/children/${a.childId}?tab=screen` } : null;
     case "DEVICES": return a.deviceId ? { label: "View device", href: `/devices/${a.deviceId}` } : null;
     case "PROTECTION": return a.childId ? { label: "Review", href: `/children/${a.childId}?tab=history` } : null;
-    case "SYSTEM": return { label: "Manage plan", href: "/settings/subscription" };
+    case "SYSTEM": {
+      const page = systemAction(a);
+      return page === "subscription" ? { label: "Manage plan", href: "/settings/subscription" }
+        : page === "organizations" ? { label: "View organizations", href: "/settings/organizations" }
+        : page === "family" ? { label: "View family", href: "/settings/family" }
+        : null;
+    }
     default: return null;
   }
 }

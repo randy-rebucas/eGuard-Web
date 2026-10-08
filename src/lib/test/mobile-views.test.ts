@@ -6,7 +6,50 @@ vi.mock("../engine", () => ({ ensureOfflineAlerts: async () => {} }));
 vi.mock("../simulator", () => ({ touchSimulated: async () => {} }));
 vi.mock("../family-service", () => ({ requestedApps: async () => new Set() }));
 
-const { overviewLocation } = await import("../mobile-views");
+const { overviewLocation, mobileAlertAction, deviceProtectionSummary } = await import("../mobile-views");
+
+describe("deviceProtectionSummary", () => {
+  const s = (key: "healthy" | "issues" | "offline", issues = 0, firstCheck = false) => ({ key, issues, firstCheck });
+
+  it("never calls an offline device healthy", () => {
+    expect(deviceProtectionSummary([s("offline")])).toEqual({ state: "offline", label: "Offline" });
+    expect(deviceProtectionSummary([s("healthy"), s("offline")])).toEqual({ state: "offline", label: "1 of 2 devices offline" });
+    expect(deviceProtectionSummary([s("healthy"), s("healthy")])).toEqual({ state: "healthy", label: "Healthy" });
+  });
+
+  it("puts issues first and says when a device hasn't reported yet", () => {
+    expect(deviceProtectionSummary([s("offline"), s("issues", 2)])).toEqual({ state: "issues", label: "2 issues" });
+    expect(deviceProtectionSummary([s("issues", 10, true)])).toEqual({ state: "issues", label: "Waiting for first check" });
+    expect(deviceProtectionSummary([])).toEqual({ state: "no_devices", label: "No devices yet" });
+  });
+});
+
+describe("mobileAlertAction", () => {
+  const alert = (a: Partial<Parameters<typeof mobileAlertAction>[0]>) =>
+    ({ resolveKey: null, category: "SYSTEM", childId: null, deviceId: null, subject: "", title: "", resolvedAt: null, ...a }) as Parameters<typeof mobileAlertAction>[0];
+
+  it("sends account notices to the page they're about, and plan changes to Subscription", () => {
+    expect(mobileAlertAction(alert({ subject: "Subscription", title: "Welcome to eGuard Plus" }))?.type).toBe("MANAGE_SUBSCRIPTION");
+    expect(mobileAlertAction(alert({ subject: "Organizations", title: "Joined Rizal High" }))?.type).toBe("VIEW_ORGANIZATIONS");
+    expect(mobileAlertAction(alert({ subject: "Ana Cruz", title: "Parent joined" }))?.type).toBe("VIEW_FAMILY");
+    // Anything else: no button rather than "Manage plan"
+    expect(mobileAlertAction(alert({ subject: "Something new", title: "Notice" }))).toBeNull();
+  });
+
+  it("opens the website request, not the child's history", () => {
+    expect(mobileAlertAction(alert({ category: "PROTECTION", childId: "c1", resolveKey: "WEBREQ:r1" })))
+      .toEqual({ type: "REVIEW_SITE_REQUEST", label: "Review request", childId: "c1", requestId: "r1" });
+  });
+
+  it("sends browser alerts to the browser screens", () => {
+    expect(mobileAlertAction(alert({ category: "DEVICES", childId: "c1", resolveKey: "BROWSER_REVOKED:b1" }))).toMatchObject({ type: "VIEW_BROWSERS", childId: null });
+    expect(mobileAlertAction(alert({ category: "PROTECTION", childId: "c1", resolveKey: "BROWSER_DRIFT:b1" }))).toMatchObject({ type: "VIEW_BROWSERS", childId: "c1" });
+  });
+
+  it("has no button once resolved", () => {
+    expect(mobileAlertAction(alert({ subject: "Subscription", resolvedAt: new Date() }))).toBeNull();
+  });
+});
 
 const now = Date.parse("2026-10-02T06:00:00Z");
 const at = (minAgo: number) => new Date(now - minAgo * 60_000);

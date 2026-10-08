@@ -57,8 +57,8 @@ export async function setTicketStatus(form: FormData) {
   if (!id || !isTicketStatus(status)) throw new ServiceError(400, "Choose a status.", "invalid");
   const t = await db.supportTicket.findUnique({ where: { id }, select: { status: true } });
   if (!t) throw new ServiceError(404, "Ticket not found.", "not_found");
-  if (t.status !== status) {
-    await db.supportTicket.update({ where: { id }, data: { status } });
+  // Only from the state just read, so two staff (or a double click) closing at once log one change, not two
+  if (t.status !== status && (await db.supportTicket.updateMany({ where: { id, status: t.status }, data: { status } })).count) {
     await logStaff(staff.id, "ticket.status", `ticket:${id}`, `${t.status} → ${status}`);
   }
   refresh();

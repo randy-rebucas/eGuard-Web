@@ -79,7 +79,7 @@ export default async function Dashboard() {
   const lastSync = [...devices, ...browsers].reduce<Date | null>((m, d) => (d.lastSeenAt && (!m || d.lastSeenAt > m) ? d.lastSeenAt : m), null);
   const ent = entitlementsFor(family.plan), upgrade = nextPlan(family.plan);
   // Children added but no phone or tablet: health checks have nothing to verify, so don't report them as failing
-  const unpaired = !devices.length;
+  const unpaired = !devices.length, allOffline = !unpaired && health.offline === devices.length;
   const { lede, issues, unpaired: unpairedKids } = familySummary(health, children, devices.length);
   const badge = healthBadge(health, devices.length);
 
@@ -131,7 +131,7 @@ export default async function Dashboard() {
             {children.slice(0, HERO_CHILDREN).map((c) => (
               <Link key={c.id} href={`/children/${c.id}`} className="glass-child">
                 <Avatar name={c.name} hue={c.hue} photo={c.photo} />
-                <span><span className="t-title" style={{ display: "block" }}>{c.name}</span><span className="t-meta">{c.primary?.name ?? "No device"}</span></span>
+                <span><span className="t-title" style={{ display: "block" }}>{c.name}</span><span className="t-meta">{c.primary?.name ?? (browsers.some((b) => b.childId === c.id) ? "Browser only" : "No device")}</span></span>
                 <span className={`state ${c.status === "protected" ? "st-ok" : c.status === "attention" ? "st-warn" : "st-off"}`}>
                   <Icon name={c.status === "protected" ? "shield-check" : c.status === "attention" ? "triangle-alert" : "circle-dashed"} />{statusLabel(c.status)}
                 </span>
@@ -169,7 +169,7 @@ export default async function Dashboard() {
           </div>
           <div className="m-foot">
             {unpaired ? <span className="link-btn">Pair a device <Icon name="arrow-right" /></span>
-              : attention ? <span className="link-btn" style={{ color: "var(--warn-ink)" }}>{attention} need attention <Icon name="arrow-right" /></span>
+              : attention ? <span className="link-btn" style={{ color: "var(--warn-ink)" }}>{attention} {attention === 1 ? "needs" : "need"} attention <Icon name="arrow-right" /></span>
               : <span className="link-btn">All healthy <Icon name="arrow-right" /></span>}
           </div>
         </Link>
@@ -226,7 +226,8 @@ export default async function Dashboard() {
             <div style={{ display: "flex", flexDirection: "column", gap: 2, margin: "0 -12px" }}>
               {unpaired
                 ? <Link href="/devices#pair" className="list-row"><span className="ico-tile"><Icon name="plus" /></span><span className="grow t-title">Pair a Device</span><span className="chev"><Icon name="chevron-right" /></span></Link>
-                : <CheckButton className="list-row"><span className="ico-tile"><Icon name="scan-search" /></span><span className="grow t-title">Run Configuration Check</span><span className="chev"><Icon name="chevron-right" /></span></CheckButton>}
+                // A check asks devices to report now: with all of them offline it could only time out (as on Protection)
+                : <CheckButton className="list-row" disabled={allOffline}><span className="ico-tile"><Icon name="scan-search" /></span><span className="grow"><span className="t-title" style={{ display: "block" }}>Run Configuration Check</span>{allOffline ? <span className="t-meta">{devices.length === 1 ? "The device is" : "Every device is"} offline</span> : null}</span><span className="chev"><Icon name="chevron-right" /></span></CheckButton>}
               <FlowButton protection="SCREEN_TIME" className="list-row"><span className="ico-tile"><Icon name="hourglass" /></span><span className="grow t-title">Set Screen Time Limits</span><span className="chev"><Icon name="chevron-right" /></span></FlowButton>
               <FlowButton protection="APP_RESTRICTIONS" className="list-row"><span className="ico-tile"><Icon name="layout-grid" /></span><span className="grow t-title">Manage Apps</span><span className="chev"><Icon name="chevron-right" /></span></FlowButton>
               <FlowButton protection="BEDTIME" className="list-row"><span className="ico-tile"><Icon name="moon" /></span><span className="grow t-title">Set Bedtime Schedule</span><span className="chev"><Icon name="chevron-right" /></span></FlowButton>

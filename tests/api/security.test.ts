@@ -52,15 +52,18 @@ describe("forgot password", () => {
 describe("sign-in lockout", () => {
   it("locks an account after repeated wrong passwords, even with the right one, until a reset", async () => {
     const who = email("locked");
+    const from = (n: number) => ({ "x-forwarded-for": `203.0.113.${n}` });
+    const login = (password: string, headers?: Record<string, string>) => call("POST", "/auth/login", { body: { email: who, password }, headers });
     await call("POST", "/auth/register", { body: { name: "Lock Test", email: who, password: PASSWORD, guardian: true } });
-    for (let i = 0; i < 10; i++) {
-      expect((await call("POST", "/auth/login", { body: { email: who, password: `wrong-${i}` } })).status).toBe(401);
-    }
-    const blocked = await call("POST", "/auth/login", { body: { email: who, password: PASSWORD } });
+    for (let i = 0; i < 10; i++) expect((await login(`wrong-${i}`)).status).toBe(401);
+    const blocked = await login(PASSWORD);
     expect(blocked.status).toBe(429);
     expect(blocked.data.code).toBe("rate_limited");
-    // Changing the spoofable forwarded-for header doesn't help: the account itself is locked
-    expect((await call("POST", "/auth/login", { body: { email: who, password: PASSWORD }, headers: { "x-forwarded-for": "203.0.113.9" } })).status).toBe(429);
+    // 10 failures lock the account from that address only: someone else's guesses don't lock the parent out of their own phone
+    expect((await login(PASSWORD, from(1))).status).toBe(200);
+    // ...but 50 from anywhere lock it everywhere (guessing spread over many addresses)
+    for (let n = 2; n <= 5; n++) for (let i = 0; i < 10; i++) expect((await login(`wrong-${n}-${i}`, from(n))).status).toBe(401);
+    expect((await login(PASSWORD, from(9))).status).toBe(429);
     await call("POST", "/auth/forgot-password", { body: { email: who } });
     const r = await call("POST", "/auth/reset-password", { body: { token: await resetToken(who), password: PASSWORD } });
     expect(r.status).toBe(200);

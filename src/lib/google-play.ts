@@ -37,6 +37,19 @@ export const obfuscatedAccountId = (familyId: string) => createHash("sha256").up
 
 const b64url = (v: string | Buffer) => Buffer.from(v).toString("base64url");
 
+const TIMEOUT_MS = 15_000;
+const unreachable = () => new ServiceError(502, "Couldn't reach Google Play. Try again in a moment.", "store_unavailable");
+
+/** A request that can't reach Google (network down, timeout) fails like a 5xx, not as a crash. */
+async function reach(f: Fetch, url: string, init: RequestInit = {}) {
+  try {
+    return await f(url, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS) });
+  } catch (e) {
+    console.error("[google-play]", new URL(url).host, e instanceof Error ? e.message : e);
+    throw unreachable();
+  }
+}
+
 const tokenCache = new Map<string, { token: string; until: number }>();
 
 /**
@@ -52,13 +65,13 @@ export async function accessToken(account: ServiceAccount, f: Fetch = fetch, now
   const head = b64url(JSON.stringify({ alg: "RS256", typ: "JWT", ...(account.private_key_id ? { kid: account.private_key_id } : {}) }));
   const claims = b64url(JSON.stringify({ iss: account.client_email, scope, aud, iat, exp: iat + 3600 }));
   const sig = createSign("RSA-SHA256").update(`${head}.${claims}`).sign(account.private_key).toString("base64url");
-  const res = await f(aud, {
+  const res = await reach(f, aud, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion: `${head}.${claims}.${sig}` }),
   });
-  if (!res.ok) throw new ServiceError(502, "Couldn't reach Google Play. Try again in a moment.", "store_unavailable");
-  const body = (await res.json()) as { access_token: string; expires_in: number };
+  if (!res.ok) throw unreachable();
+  const body = (await res.json().catch(() => { throw unreachable(); })) as { access_token: string; expires_in: number };
   tokenCache.set(cacheKey, { token: body.access_token, until: now + (body.expires_in - 60) * 1000 });
   return body.access_token;
 }
@@ -94,20 +107,20 @@ export function summarize(sub: PlaySubscription, productId: string, now = Date.n
 
 export async function getSubscription(cfg: GooglePlayConfig, purchaseToken: string, f: Fetch = fetch): Promise<PlaySubscription> {
   const token = await accessToken(cfg.account, f);
-  const res = await f(`${API}/${encodeURIComponent(cfg.packageName)}/purchases/subscriptionsv2/tokens/${encodeURIComponent(purchaseToken)}`, {
+  const res = await reach(f, `${API}/${encodeURIComponent(cfg.packageName)}/purchases/subscriptionsv2/tokens/${encodeURIComponent(purchaseToken)}`, {
     headers: { authorization: `Bearer ${token}` },
   });
   if (res.status === 404 || res.status === 400 || res.status === 410) {
     throw new ServiceError(400, "Google Play didn't recognize this purchase.", "invalid_purchase");
   }
-  if (!res.ok) throw new ServiceError(502, "Couldn't reach Google Play. Try again in a moment.", "store_unavailable");
-  return (await res.json()) as PlaySubscription;
+  if (!res.ok) throw unreachable();
+  return (await res.json().catch(() => { throw unreachable(); })) as PlaySubscription;
 }
 
 /** Unacknowledged purchases are refunded by Google after 3 days, so acknowledge once eGuard has granted access. */
 export async function acknowledge(cfg: GooglePlayConfig, productId: string, purchaseToken: string, f: Fetch = fetch) {
   const token = await accessToken(cfg.account, f);
   const url = `${API}/${encodeURIComponent(cfg.packageName)}/purchases/subscriptions/${encodeURIComponent(productId)}/tokens/${encodeURIComponent(purchaseToken)}:acknowledge`;
-  const res = await f(url, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: "{}" });
+  const res = await reach(f, url, { method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: "{}" });
   if (!res.ok) throw new ServiceError(502, "Couldn't confirm the purchase with Google Play. Try again in a moment.", "store_unavailable");
 }

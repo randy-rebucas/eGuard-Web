@@ -25,7 +25,7 @@ export default async function AuditPage(props: PageProps<"/console/audit">) {
   return (
     <>
       <h1 className="cn-h1">Audit log</h1>
-      <p className="cn-muted">Every sign-in, every account opened and every change made in the console.</p>
+      <p className="cn-muted">Every sign-in, every family search, every account opened and every change made in the console.</p>
       <section className="card">
         {rows.length ? (
           <div className="table-scroll">

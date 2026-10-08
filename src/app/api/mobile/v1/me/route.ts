@@ -2,21 +2,20 @@ import { NextResponse } from "next/server";
 import { sendVerificationEmailLater } from "@/lib/email-verification";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { NAME_MAX, NAME_TOO_LONG, changeEmail, deleteAccount } from "@/lib/family-service";
+import { NAME_MAX, NAME_TOO_LONG, TimeZoneSchema, changeEmail, deleteAccount } from "@/lib/family-service";
 import { meJson } from "@/lib/mobile-account";
 import { ConfirmBody, authed, body } from "@/lib/mobile-api";
 import { ServiceError } from "@/lib/errors";
 
 export const GET = authed(async ({ user }) => NextResponse.json(await meJson(user.id)));
 
-const validTz = (tz: string) => { try { new Intl.DateTimeFormat("en", { timeZone: tz }); return true; } catch { return false; } };
 const Body = z.object({
   name: z.string().trim().min(2, "Enter your name.").max(NAME_MAX, NAME_TOO_LONG).optional(),
   email: z.string().trim().toLowerCase().email("Enter a valid email address.").optional(),
   /** Required to change `email`: the parent's current password */
   password: z.string().max(200).optional(),
   /** Family time zone; only the family admin can change it */
-  timezone: z.string().refine(validTz, "Choose a valid time zone.").optional(),
+  timezone: TimeZoneSchema.optional(),
 });
 
 /**

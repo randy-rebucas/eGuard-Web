@@ -10,8 +10,13 @@ import { ServiceError } from "./errors";
 export type Limit = { max: number; windowMs: number };
 
 export const LIMITS = {
-  /** failed sign-ins for one account, from anywhere (stops password guessing from rotating IPs) */
+  /**
+   * failed sign-ins for one account from one address (and wrong passwords or codes for a signed-in parent): blocks
+   * only that address, so someone who knows a parent's email can't lock the parent out from their own phone
+   */
   loginAccount: { max: 10, windowMs: 15 * 60_000 },
+  /** failed sign-ins for one account from everywhere: stops guessing spread over many addresses */
+  loginAccountAll: { max: 50, windowMs: 15 * 60_000 },
   /** failed sign-ins from one address, across accounts (stops password spraying) */
   loginIp: { max: 30, windowMs: 15 * 60_000 },
   signupIp: { max: 10, windowMs: 60 * 60_000 },
@@ -27,10 +32,16 @@ export const LIMITS = {
   checkUser: { max: 30, windowMs: 60 * 60_000 },
   /** parent invitations an admin sends or resends: each emails someone outside the family */
   inviteUser: { max: 10, windowMs: 60 * 60_000 },
+  /** invitations to manage an organization an owner sends: each can email someone outside it */
+  orgAdminUser: { max: 10, windowMs: 60 * 60_000 },
   /** events one child device reports (each can add an app row or an alert); a real phone sends a handful an hour */
   deviceEvents: { max: 120, windowMs: 60 * 60_000 },
   /** location fixes one child device sends (each is several writes with history on); a real phone sends 12–20 an hour */
   deviceLocation: { max: 240, windowMs: 60 * 60_000 },
+  /** daily totals one child device sends (each can write up to 200 app rows); a real phone sends one per sync, plus a backlog after a few days offline */
+  deviceUsage: { max: 120, windowMs: 60 * 60_000 },
+  /** configuration reports one child device sends (each re-checks every protection); a real phone sends one per sync or change */
+  deviceReport: { max: 120, windowMs: 60 * 60_000 },
   /** an event id seen once is a retry after that (device/v1/events `eventId`); devices retry for up to a few days */
   deviceEventId: { max: 1, windowMs: 7 * 24 * 60 * 60_000 },
   /** organization join codes a user tries (a wrong guess only joins an organization, but don't allow enumeration) */

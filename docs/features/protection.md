@@ -248,7 +248,7 @@ Comparison ignores key order, and Web filtering compares `mode` only.
 |---|---|---|
 | Family-wide view | `/protection` (health, checks, 10 cards) | `GET /dashboard` (score and checks); no per-protection cards across children |
 | One child | child's Protection tab | `GET /children/{id}/protections`: policy, per-device status, reported value, message, guide, open batch |
-| Change one protection | setup flow (`strict`) | `PUT /children/{id}/protections/{key}` (`strict`), returns the batch |
+| Change one protection | setup flow (`strict`, sends the setting's `version`) | `PUT /children/{id}/protections/{key}` (`strict`, optional `baseVersion`; `409 stale` when the setting changed since), returns the batch |
 | Child with no device | saved as the setting; toast | `200 { batchId: null, saved: [key] }` |
 | Whole profile at once | at child creation (children.md) | `POST /children/{id}/setup` with overrides; protections no device can verify are saved directly |
 | Progress | `/api/flow/{batchId}` | `GET /batches/{id}`, `POST /batches/{id}/confirm` |

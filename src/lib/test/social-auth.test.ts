@@ -1,5 +1,5 @@
 import { generateKeyPairSync, sign } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { verifyIdToken } from "../social-auth";
 
 const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
@@ -55,5 +55,29 @@ describe("verifyIdToken", () => {
 
   it("reports 501 when the provider isn't configured", async () => {
     await expect(verifyIdToken("apple", token(apple()), { ...opts, audiences: [] })).rejects.toMatchObject({ status: 501, code: "provider_not_configured" });
+  });
+});
+
+describe("verifyIdToken with the provider's published keys", () => {
+  const live = { audiences: ["app.eguard.ios"], now };
+  const old = { ...other.publicKey.export({ format: "jwk" }), kid: "k0", alg: "RS256" };
+  const keys = (list: unknown[]) => Promise.resolve(new Response(JSON.stringify({ keys: list })));
+  afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+
+  it("says try again (502), not a server error, when the provider can't be reached", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("fetch failed")));
+    await expect(verifyIdToken("apple", token(apple()), live)).rejects.toMatchObject({ status: 502, code: "provider_unavailable" });
+  });
+
+  it("fetches again for a key it hasn't seen (a rotation), then keeps the cached keys if the provider goes down", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const fetch = vi.fn().mockReturnValueOnce(keys([old])).mockReturnValueOnce(keys([old, jwk])).mockRejectedValue(new TypeError("fetch failed"));
+    vi.stubGlobal("fetch", fetch);
+    await expect(verifyIdToken("apple", token(apple(), { kid: "k0", key: other.privateKey }), live)).resolves.toMatchObject({ subject: "001234.abc" });
+    vi.setSystemTime(Date.now() + 120_000);
+    await expect(verifyIdToken("apple", token(apple()), live)).resolves.toMatchObject({ subject: "001234.abc" });
+    expect(fetch).toHaveBeenCalledTimes(2);
+    vi.setSystemTime(Date.now() + 2 * 3600_000);
+    await expect(verifyIdToken("apple", token(apple()), live)).resolves.toMatchObject({ subject: "001234.abc" });
   });
 });

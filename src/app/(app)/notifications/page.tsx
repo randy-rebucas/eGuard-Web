@@ -33,7 +33,7 @@ export default async function NotificationsPage(props: PageProps<"/notifications
 
   return (
     <>
-      <PageHead title="Notifications" text="Changes to your family's protections and devices. Critical is reserved for genuine security events.">
+      <PageHead title="Notifications" text="Protection changes, devices that need attention, your children's requests, place arrivals and account updates. Critical is reserved for genuine security events.">
         <Link className="btn btn-ghost" href={q(filter, !showResolved)}>{showResolved ? "Hide resolved" : "Show resolved"}</Link>
         <MarkAllRead />
       </PageHead>
@@ -52,12 +52,13 @@ export default async function NotificationsPage(props: PageProps<"/notifications
       ) : null}
       <section className="card" style={{ padding: 8 }}>
         {alerts.length ? alerts.map((a) => <NotificationItem key={a.id} a={toAlertItem(a, family.timezone)} />)
-          : filter === "ALL" ? <EmptyState icon="bell" title="You're all caught up" text={showResolved ? `There are no notifications${child ? ` about ${child.name}` : ""} yet.` : "New notifications appear here. Resolved ones are hidden."} />
+          : filter === "ALL" ? <EmptyState icon="bell" title="You're all caught up" text={showResolved ? `There are no notifications${child ? ` about ${child.name}` : ""} yet.` : `New notifications${child ? ` about ${child.name}` : ""} appear here. Resolved ones are hidden.`} />
           : <EmptyState icon="bell-off" title="Nothing here" text={`There are no notifications${child ? ` about ${child.name}` : ""} in this category.`} />}
         {alerts.length < inTab ? (
           <div className="row t-meta" style={{ justifyContent: "space-between", gap: 10, flexWrap: "wrap", padding: "12px 8px 4px" }}>
             <span>Showing {alerts.length} of {inTab}</span>
-            {limit < MAX ? <Link className="link-btn" href={q(filter, showResolved, limit + PAGE)} scroll={false}>Show more</Link> : null}
+            {limit < MAX ? <Link className="link-btn" href={q(filter, showResolved, limit + PAGE)} scroll={false}>Show more</Link>
+              : <span>The newest {MAX} are shown. Older ones are in your data export (Settings › Data).</span>}
           </div>
         ) : null}
       </section>

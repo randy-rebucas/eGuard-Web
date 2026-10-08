@@ -154,7 +154,11 @@ opens the new organization. It needs a verified email: on `403 email_unverified`
 | **Join code** | `XXXX-XXXX`, large | **Copy**; **Share** (system share sheet, text below); **Replace code** (confirm: *"The old code stops working. Families who already joined stay."*) → `POST /organizations/{id}/join-code` |
 | **Families** | *"{n} families joined"*. A count only, never a list | none |
 | **Sponsor codes** | Totals: bought, redeemed, available. Then batches, newest first: *"eGuard Plus · 3 months · 20 codes"*, paid date, state | Open a batch |
-| **Admins** | Name, email, role, "You" | Owners: **Add admin** (by email), **Remove**, **Make owner**. Anyone: **Stop managing** on their own row |
+| **Admins** | Name, email, role, "You"; then waiting invitations (email, *"Invited · until {date}"*) | Owners: **Invite admin** (by email), **Cancel** an invitation, **Remove**, **Make owner**. Anyone: **Stop managing** on their own row |
+
+**Inviting** always answers *"Invitation saved. If {email} has an eGuard account, they'll get an email and become
+an admin once they accept."*, whether or not the email has an account. The invited person sees the invitation at
+the top of **Organizations you manage**, with **Accept** (needs a verified email) and **Decline** (tells no one).
 
 **Share text for the join code:** *"Join {org} on eGuard with the code {XXXX-XXXX}. In eGuard, open Settings ›
 Organizations › Join with a code. {org} only sees how many families joined, never anything about your children."*
@@ -177,7 +181,7 @@ here."*
 
 **Admin errors** all come back as `{ error, code }` with a message safe to show: `403 forbidden` (owner-only
 action), `404 not_found` (you no longer manage it: go back to the list and refresh), `409 conflict` (last owner,
-already an admin, limits), `400 invalid` (no eGuard account with that email).
+already an admin, limits), `400 invalid` (not an email address), `429 rate_limited` (10 invitations an hour).
 
 ### 6.5 Refresh
 
@@ -202,7 +206,11 @@ and `body()` from `src/lib/mobile-api.ts`, like the other mobile routes. The ser
 | `GET /organizations/{id}` | none | `OrgView` | `organizationView` |
 | `POST /organizations/{id}/join-code` | none | `{ joinCode }` | `replaceJoinCode` |
 | `POST /organizations/{id}/codes/{codeId}/cancel` | none | `{ ok }` | `cancelCode` |
-| `POST /organizations/{id}/admins` | `{ email }` | `201 { name }` | `addOrgAdmin` |
+| `POST /organizations/{id}/invites` | `{ email }` | `201 { email }` (the same whether or not it has an account) | `inviteOrgAdmin` |
+| `DELETE /organizations/{id}/invites/{inviteId}` | none | `{ ok }` | `cancelOrgInvite` |
+| `GET /organizations/invitations` | none | `{ invitations: [{ id, orgId, org, kind, by, expiresAt }] }` | `invitationsFor` |
+| `POST /organizations/invitations/{id}/accept` | none | `{ orgId, name }` | `acceptOrgInvite` |
+| `POST /organizations/invitations/{id}/decline` | none | `{ ok }` | `declineOrgInvite` |
 | `DELETE /organizations/{id}/admins/{userId}` | none | `{ ok }` | `removeOrgAdmin` (your own id = stop managing) |
 | `POST /organizations/{id}/admins/{userId}/owner` | none | `{ ok }` | `makeOrgOwner` |
 
@@ -327,7 +335,9 @@ Organizations: admins
 - [ ] The join code can be copied, shared and replaced; the old code stops working right away.
 - [ ] Codes show the right status; an available code can be copied, shared and cancelled; a redeemed one can't be
       cancelled.
-- [ ] Owners can add, remove and promote admins; the last owner can't be removed; any admin can stop managing.
+- [ ] Owners can invite, remove and promote admins; an invited person is an admin only after accepting; inviting
+  answers the same for an email with or without an account; the last owner can't be removed; any admin can stop
+  managing.
 - [ ] An admin removed on the web gets "not found" on next load and is returned to the list.
 
 Server

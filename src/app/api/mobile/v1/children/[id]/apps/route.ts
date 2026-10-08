@@ -23,17 +23,20 @@ export const GET = authed<{ id: string }>(async ({ req, user, params }) => {
   const child = await childFor(user.familyId, params.id);
   const family = await getFamily(user.familyId);
   const requested = await requestedApps(child.id);
-  const where = filter === "blocked" ? { approval: "BLOCKED" as AppApproval }
-    : filter === "pending" ? { OR: [{ approval: "PENDING" as AppApproval }, { name: { in: [...requested] } }] }
-    : filter === "installed" ? { approval: { not: "BLOCKED" as AppApproval } } : {};
-  const [all, usage, counts, pending, plan] = await Promise.all([
-    db.childApp.findMany({ where: { childId: child.id, ...where }, orderBy: [{ approval: "asc" }, { name: "asc" }] }),
+  const matches = (a: { approval: AppApproval; name: string }) => filter === "blocked" ? a.approval === "BLOCKED"
+    : filter === "pending" ? a.approval === "PENDING" || requested.has(a.name)
+    : filter === "installed" ? a.approval !== "BLOCKED" : true;
+  const [every, usage, counts, pending, plan] = await Promise.all([
+    db.childApp.findMany({ where: { childId: child.id }, orderBy: [{ approval: "asc" }, { name: "asc" }] }),
     appMinutesOn([child.id], dateFromKey(dayKey(new Date(), family.timezone))),
     db.childApp.groupBy({ by: ["approval"], where: { childId: child.id }, _count: true }),
     db.childApp.count({ where: { childId: child.id, OR: [{ approval: "PENDING" }, { name: { in: [...requested] } }] } }),
     familyEntitlements(user.familyId),
   ]);
-  const { apps, hidden } = visibleApps(all, plan.appMonitoringLimit, { requested, minutes: (n) => usage.find((u) => u.app === n)?.minutes ?? 0 });
+  // The plan's cap applies to the whole list, then the filter: capping each filtered list on its own would let
+  // "installed" and "blocked" together name more apps than the plan shows
+  const visible = visibleApps(every, plan.appMonitoringLimit, { requested, minutes: (n) => usage.find((u) => u.app === n)?.minutes ?? 0 }).apps;
+  const apps = visible.filter(matches), hidden = every.filter(matches).length - apps.length;
   const count = (a: AppApproval) => counts.find((c) => c.approval === a)?._count ?? 0;
   return NextResponse.json({
     counts: { all: counts.reduce((s, c) => s + c._count, 0), blocked: count("BLOCKED"), pending, installed: counts.reduce((s, c) => s + c._count, 0) - count("BLOCKED") },
