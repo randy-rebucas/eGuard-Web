@@ -81,7 +81,9 @@ export async function register(_: FormState, form: FormData): Promise<FormState>
   let userId: string;
   try {
     await enforce(ipKey("signup", clientIpFrom(await headers())), LIMITS.signupIp);
-    userId = (await createFamily({ ...parsed.data, passwordHash: await hashPassword(parsed.data.password) })).id;
+    // Only the hash goes on: the plain password stops here
+    const { name, familyName, email, password } = parsed.data;
+    userId = (await createFamily({ name, familyName, email, passwordHash: await hashPassword(password) })).id;
   } catch (e) {
     if (e instanceof ServiceError) return { error: e.message, fields };
     throw e;
