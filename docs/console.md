@@ -17,6 +17,7 @@ with its own sign-in.
 5. [Audit log](#5-audit-log)
 6. [Setup](#6-setup)
 7. [Not in v1](#7-not-in-v1)
+8. [Email broadcasts](#8-email-broadcasts)
 
 ---
 
@@ -108,6 +109,8 @@ script uses the development key and warns, and those codes only work locally.
 | `/tickets/[id]` | The message, who sent it, and a Close/Reopen button. Replies still go out from the support inbox, where tickets are forwarded with Reply-To set to the parent. |
 | `/organizations` | Organizations with counts of admins, families and code batches. |
 | `/organizations/[id]` | Admins, join code, and code batches with how many codes were redeemed. |
+| `/broadcasts` | Emails to many parents: drafts, scheduled, sending and sent, with how many went out. See [section 8](#8-email-broadcasts). |
+| `/broadcasts/new`, `/broadcasts/[id]` | Write an email; preview it, send yourself a test, send it now or schedule it; stop it; see failures. |
 | `/audit` | The staff audit log. |
 
 A page or action that fails shows the console's own error panel (`(signed-in)/error.tsx`), with the bar and nav
@@ -123,6 +126,9 @@ view.
 - opening a family, ticket or organization (`family.view`, `ticket.view`, `organization.view`)
 - searching families (`family.search`, with the search text as the detail; paging through results logs each page)
 - each change (`ticket.status`, with "OPEN → CLOSED" as the detail)
+- email broadcasts: `broadcast.create`, `broadcast.edit`, `broadcast.test`, `broadcast.send` / `broadcast.schedule`
+  (with the kind, plans and how many parents), `broadcast.unschedule`, `broadcast.cancel`, `broadcast.delete`, `broadcast.ai_draft` (with the start of the brief), and
+  opening one (`broadcast.view`)
 
 The audit log is read-only in the console.
 
@@ -144,5 +150,92 @@ The audit log is read-only in the console.
 
 - Changing a family's plan, issuing refunds, or deleting accounts from the console.
 - Replying to tickets from the console.
+- Email broadcasts by other criteria than plan (signed up between dates, organization, has a device), images or
+  rich formatting in them, and automatic lifecycle emails (welcome series, win-back).
 - Staff roles (everyone sees everything above).
 - Staff changing their own password in the console (use the script to reset).
+
+## 8. Email broadcasts
+
+**Status:** built 2026-10-12 (migration `20261012111731_broadcasts`, `src/lib/broadcasts.ts`, pages in
+`src/app/console/(signed-in)/broadcasts/`, forms in `src/app/console/broadcast-forms.tsx`, unsubscribe at
+`src/app/unsubscribe/` and `src/app/api/email/unsubscribe/`, tests `src/lib/test/broadcasts.test.ts` and
+`src/app/actions/console-broadcasts.test.ts`).
+
+One email to many parents at once, from **Email** in the console.
+
+### Two kinds
+
+| Kind | For | Goes to | Unsubscribe |
+| --- | --- | --- | --- |
+| Product update | New features, news | Verified parents with **Product updates** on (Settings › Notifications, on by default; `productUpdates` in the mobile API) | Link in the footer, plus `List-Unsubscribe` / `List-Unsubscribe-Post` headers so Gmail and others show their own one-click button |
+| Service notice | Terms or privacy changes, security notices, outages | Every verified parent, whatever their settings | None: it isn't marketing. Don't use it for news. |
+
+Either can be narrowed to some plans (none ticked: every plan). Unverified addresses never get one.
+
+### Manual and scheduled
+
+1. **New email** saves a draft (subject, plain-text message, kind, plans). A blank line starts a paragraph, links
+   become clickable, and "Hi <first name>," and the footer are added. The page shows a preview and how many parents
+   it would reach now.
+2. **Send me a test** sends one copy, subject marked `[Test]`, to the signed-in staff member.
+3. **Send to N parents** (now) or **Schedule** (a date and time, Philippine time), after ticking the confirmation.
+   Only a draft can be edited, sent or deleted. A scheduled email can go **Back to draft**, or be cancelled.
+
+Either way the maintenance job (`/api/cron/maintenance`, every 10 minutes) does the sending, step "broadcast
+emails". "Send now" also starts the first batch straight after the click.
+
+### Write with AI
+
+The editor has a **Write with AI** box (`src/lib/broadcast-ai.ts`). Staff describe what the email should tell
+parents, press **Draft with AI**, and the AI (Claude or OpenAI) fills the subject and message. With a message already written, the box
+is read as what to change ("shorter", "in Filipino", "add that it's free for Pro"). It only fills the form: nothing
+is saved or sent until staff save the draft, and the test, preview and confirmation steps stay the same.
+
+- **Provider:** whichever key is set. With both, Claude, unless `AI_PROVIDER="openai"`. `AI_PROVIDER` naming a
+  provider whose key isn't set turns the box off rather than quietly using the other one. Both get the same
+  instructions and return the same structured reply (subject and body).
+  - **Claude:** Claude Opus 5.5 (`claude-opus-5-5`) through the Anthropic SDK, effort `medium`. If a safety check
+    declines, the API's own fallback (`fallbacks: "default"`) retries on another model in the same call.
+  - **OpenAI:** the Responses API through the OpenAI SDK, model `gpt-5.5` or `OPENAI_MODEL`, with `store: false`.
+  - A refusal from either is shown as "The AI wouldn't write this one".
+- **What it's told:** what eGuard is, that the greeting, sign-off and footer are added for it, plain text only, the
+  kind (a service notice gets no marketing), the plans it goes to, and never to invent features, prices, dates or
+  links. A fact it needs and wasn't given comes back as `[TODO: …]`, and **an email with a `[TODO` in it can't be
+  sent or scheduled** until staff fill it in.
+- **Privacy:** only what staff type (the brief and the current subject and message) goes to the provider. No parent's
+  name, address or data does.
+- **Cost and limits:** each draft is one paid API request, a few cents at most. Each staff member gets 30 an hour
+  (`LIMITS.aiDraftStaff`). Each draft is in the audit log as `broadcast.ai_draft`, with the provider and the start of
+  the brief.
+- **Setup:** set `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` on the server (optionally `AI_PROVIDER`, `OPENAI_MODEL`).
+  Without one the box is replaced by a note saying so.
+
+### How sending works
+
+- When a broadcast is due, one run claims it (SCHEDULED → SENDING) and takes its recipient list, in one
+  transaction: a `BroadcastDelivery` row per parent. The list doesn't change after that.
+- Each run then sends up to **100 emails** (`BATCH_SIZE`), stopping early after 90 seconds, with 550 ms between
+  emails in production to stay under Resend's default rate limit. That's about **600 an hour**, so 5,000 parents
+  take about 8½ hours. Raise `BATCH_SIZE` (and lower the gap) once Resend's limit is raised.
+- Each email is claimed (PENDING → SENDING) before it's sent, and only while its broadcast is still SENDING, so two
+  overlapping runs never send one twice and **Stop sending** takes effect at once.
+- At their turn a parent is checked again and **skipped** if they unsubscribed, deleted their account, changed or
+  unverified their address since the list was taken.
+- A failed email is recorded with Resend's reason and not retried. One claimed but never finished (the run died) is
+  marked failed after 15 minutes. When nobody is left waiting, the broadcast is SENT.
+- The broadcast's page shows sent, waiting, failed and skipped counts, and the latest 50 failed or skipped addresses
+  with why.
+
+### Unsubscribing
+
+Each delivery has its own random token. The email's footer link opens `/unsubscribe?t=…`, which changes nothing
+until the parent presses **Unsubscribe** (link scanners open links). Mail apps' own button POSTs to
+`/api/email/unsubscribe?t=…` (RFC 8058); a GET there does nothing. Both turn `productUpdates` off, are rate limited
+like the other emailed links, and are refused for a service notice's token. A parent can turn product updates back
+on in Settings. Deleting a draft is the only delete, so sent emails' links keep working.
+
+### Setup
+
+`npm run db:deploy` applies the migration. It uses the existing mail settings, `APP_URL` for links, and the
+maintenance cron. `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` turns on Write with AI.

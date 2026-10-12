@@ -342,7 +342,7 @@ Returned by `/me`, every sign-in, and `dashboard.user`.
   "role": "FAMILY_ADMIN",
   "emailVerified": true,
   "family": { "id": "cmujeoltx0000ncgsox90ftwt", "name": "Cruz Family", "timezone": "Asia/Manila" },
-  "notifications": { "notifyPush": true, "notifyEmail": true, "notifyApproval": true, "weeklySummary": true },
+  "notifications": { "notifyPush": true, "notifyEmail": true, "notifyApproval": true, "weeklySummary": true, "productUpdates": true },
   "hasPassword": true,
   "twoFactor": false,
   "createdAt": "2026-09-27T05:56:40.493Z"
@@ -737,7 +737,7 @@ Ends this session only. Pass the device's push token so this phone stops receivi
 | `GET /me/identities` | none | `{ identities: [{ id, provider, email, createdAt }] }`: linked Apple/Google sign-ins |
 | `DELETE /me/identities/{id}` | none | `{ ok }`. `409` if it's the only way to sign in (no password set) |
 | `POST /me/password` | `{ current, next }` | `{ ok, message }`. `403 wrong_password`, `400` if `next` < 10 chars. **Signs out every other session**; this one stays |
-| `GET /me/notifications` | none | `{ notifyPush, notifyEmail, notifyApproval, weeklySummary }`. `notifyEmail` emails alerts that need attention; `notifyPush` pushes the same alerts to this parent's phones (plans with `realtimeAlerts`); `notifyApproval` also sends a child's requests for an app or a blocked website, by whichever of email and push is on |
+| `GET /me/notifications` | none | `{ notifyPush, notifyEmail, notifyApproval, weeklySummary, productUpdates }`. `notifyEmail` emails alerts that need attention; `notifyPush` pushes the same alerts to this parent's phones (plans with `realtimeAlerts`); `notifyApproval` also sends a child's requests for an app or a blocked website, by whichever of email and push is on; `productUpdates` is the eGuard team's emails about new features (notices about the account, privacy or security are sent regardless) |
 | `PATCH /me/notifications` | any subset of those booleans | Same object, updated |
 | `POST /me/push-tokens` | `{ token, platform: "IOS" \| "ANDROID" }` | `201 { ok }`. `token` is an **FCM registration token** on both platforms (iOS: from the Firebase Messaging SDK, not the raw APNs token). Call it after sign-in and whenever FCM rotates the token. Re-registering the same token under another parent moves it. Tokens FCM reports as uninstalled are removed |
 | `DELETE /me/push-tokens` | `{ token }` | `{ ok }` |

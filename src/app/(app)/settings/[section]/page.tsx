@@ -164,6 +164,7 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
           <SettingSwitch setting="notifyApproval" title="App approval requests" desc="When a child asks for an app or a blocked website. Sent by email and push, for whichever of those is on." checked={user.notifyApproval} />
           {/* What sendWeeklyDigests needs: a paired device, and the family's own Sunday evening */}
           <SettingSwitch setting="weeklySummary" title="Weekly summary" desc={`An email every Sunday at 6 PM (${tz.replace(/_/g, " ")} time) with last week's health, screen time and changes, once a device is paired`} checked={user.weeklySummary} />
+          <SettingSwitch setting="productUpdates" title="Product updates" desc="Occasional emails from the eGuard team about new features. Notices about your account, privacy or security still reach you." checked={user.productUpdates} />
           <p className="t-meta" style={{ marginTop: 12 }}>
             {user.emailVerifiedAt
               ? `Emails go to ${user.email}.`

@@ -18,7 +18,8 @@ function transporter(url: string) {
   return transport.t;
 }
 
-export type Mail = { to: string; subject: string; text: string; html: string; replyTo?: string };
+/** `headers`: extra headers, e.g. List-Unsubscribe on product updates (lib/broadcasts) */
+export type Mail = { to: string; subject: string; text: string; html: string; replyTo?: string; headers?: Record<string, string> };
 
 const mailFrom = () => process.env.MAIL_FROM || "eGuard <no-reply@eguard.family>";
 
@@ -30,6 +31,7 @@ async function sendWithResend(mail: Mail, apiKey: string) {
     body: JSON.stringify({
       from: process.env.RESEND_FROM || mailFrom(), to: [mail.to], subject: mail.subject, text: mail.text, html: mail.html,
       ...(mail.replyTo ? { reply_to: mail.replyTo } : {}),
+      ...(mail.headers ? { headers: mail.headers } : {}),
     }),
     signal: AbortSignal.timeout(15_000),
   });

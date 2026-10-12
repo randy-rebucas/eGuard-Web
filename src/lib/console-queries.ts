@@ -170,3 +170,35 @@ export async function listAudit(before?: Date) {
     before,
   );
 }
+
+/** Email broadcasts (console › Email): what staff wrote and how sending went. No family's data beyond the address. */
+export async function listBroadcasts(before?: Date) {
+  return pageByTime(
+    PAGE,
+    (createdAt, take) => db.broadcast.findMany({
+      where: { createdAt },
+      orderBy: { createdAt: "desc" },
+      take,
+      select: {
+        id: true, kind: true, subject: true, status: true, plans: true, scheduledAt: true, finishedAt: true, recipients: true, createdAt: true,
+        createdBy: { select: { name: true } },
+      },
+    }),
+    (b) => b.createdAt,
+    before,
+  );
+}
+
+export async function broadcastDetail(id: string) {
+  return db.broadcast.findUnique({ where: { id }, include: { createdBy: { select: { name: true, email: true } } } });
+}
+
+/** The latest emails that failed or were skipped, with why */
+export async function broadcastProblems(broadcastId: string, take = 50) {
+  return db.broadcastDelivery.findMany({
+    where: { broadcastId, status: { in: ["FAILED", "SKIPPED"] } },
+    orderBy: { updatedAt: "desc" },
+    take,
+    select: { id: true, email: true, status: true, error: true, updatedAt: true },
+  });
+}

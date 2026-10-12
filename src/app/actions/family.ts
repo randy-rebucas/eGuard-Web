@@ -339,7 +339,7 @@ export async function changePassword(_: FormState, form: FormData): Promise<Form
   return { ok: "Password changed. Other sessions were signed out." };
 }
 
-const USER_TOGGLES = ["notifyPush", "notifyEmail", "notifyApproval", "weeklySummary"] as const;
+const USER_TOGGLES = ["notifyPush", "notifyEmail", "notifyApproval", "weeklySummary", "productUpdates"] as const;
 const FAMILY_TOGGLES = ["keepLocationHistory", "shareAnalytics"] as const;
 
 export async function setToggle(key: string, value: boolean): Promise<Result> {

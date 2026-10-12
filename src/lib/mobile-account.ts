@@ -13,7 +13,7 @@ export async function meJson(userId: string) {
     /** false: show "Verify your email"; pairing a device returns 403 email_unverified until it's true */
     emailVerified: !!u.emailVerifiedAt,
     family: { id: u.family.id, name: u.family.name, timezone: u.family.timezone },
-    notifications: { notifyPush: u.notifyPush, notifyEmail: u.notifyEmail, notifyApproval: u.notifyApproval, weeklySummary: u.weeklySummary },
+    notifications: { notifyPush: u.notifyPush, notifyEmail: u.notifyEmail, notifyApproval: u.notifyApproval, weeklySummary: u.weeklySummary, productUpdates: u.productUpdates },
     /** false for Apple/Google accounts until they set a password via /auth/forgot-password */
     hasPassword: u.passwordSet,
     /** Two-step verification is on: signing in returns `twoFactorRequired` before a session (see /auth/two-factor) */

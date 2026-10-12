@@ -13,6 +13,7 @@ import { escapeHtml, sendMail } from "./mail";
 import { familyEntitlements } from "./plan-access";
 import { alertPush, pushAvailable, pushToUsers } from "./push";
 import { sendWeeklyDigests } from "./weekly-digest";
+import { deliverBroadcasts } from "./broadcasts";
 import { STAFF_IDLE_MS } from "./console-host";
 
 /**
@@ -207,7 +208,8 @@ export async function runMaintenance() {
   const orgDigests = await step("organization digests", () => sendOrgDigests());
   const emails = await step("alert emails and push", notifyNewAlerts);
   const weeklyDigests = await step("weekly summaries", () => sendWeeklyDigests());
+  const broadcasts = await step("broadcast emails", () => deliverBroadcasts());
   const stale = await step("stale checks and changes", () => closeStaleWork());
   const purged = await step("data retention", () => purgeExpiredData());
-  return { offlineFamilies, offlineBrowsers, purchases, passReminders, codeBatches, codeReminders, orgDigests, emails, weeklyDigests, stale, purged, failed };
+  return { offlineFamilies, offlineBrowsers, purchases, passReminders, codeBatches, codeReminders, orgDigests, emails, weeklyDigests, broadcasts, stale, purged, failed };
 }

@@ -158,6 +158,8 @@ model User {
   notifyEmail    Boolean @default(true)
   notifyApproval Boolean @default(true)
   weeklySummary  Boolean @default(true)
+  /// Product-update emails the eGuard team sends (console › Email). Off: only service notices reach this parent
+  productUpdates Boolean @default(true)
   /// Two-step verification is on: signing in needs a code from the authenticator app (or a recovery code)
   twoFactor      Boolean @default(false)
   /// The authenticator secret, AES-GCM encrypted (lib/two-factor). Set while setting up, before `twoFactor` turns on.
@@ -179,6 +181,7 @@ model User {
   orgRoles   OrgMember[]
   orgApiKeys OrgApiKey[]
   orgInvitesSent OrgInvite[]
+  broadcastDeliveries BroadcastDelivery[]
 
   @@index([familyId])
 }
@@ -999,8 +1002,9 @@ model StaffUser {
   lastLoginAt  DateTime?
   createdAt    DateTime  @default(now())
 
-  sessions  StaffSession[]
-  auditLogs StaffAuditLog[]
+  sessions   StaffSession[]
+  auditLogs  StaffAuditLog[]
+  broadcasts Broadcast[]
 }
 
 /// A signed-in console browser. Only the SHA-256 of the cookie's token is stored.
@@ -1032,4 +1036,57 @@ model StaffAuditLog {
 
   @@index([createdAt])
   @@index([staffId, createdAt])
+}
+
+/// An email the eGuard team sends to many parents at once (console › Email, docs/console.md §8)
+model Broadcast {
+  id          String    @id @default(cuid())
+  /// UPDATE: product news, only to parents with productUpdates on, with an unsubscribe link.
+  /// SERVICE: account, legal or security notices every verified parent gets.
+  kind        String    @default("UPDATE")
+  subject     String
+  /// Plain text; a blank line starts a new paragraph, and links are made clickable
+  body        String
+  /// Plan names (Family.plan) it goes to; empty: every plan
+  plans       String[]
+  /// DRAFT → SCHEDULED → SENDING → SENT, or CANCELLED from any of the first three
+  status      String    @default("DRAFT")
+  /// When the maintenance job starts sending it (now, for "Send now")
+  scheduledAt DateTime?
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  /// How many parents the recipient list held when sending started
+  recipients  Int       @default(0)
+  createdById String
+  createdBy   StaffUser @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  deliveries BroadcastDelivery[]
+
+  @@index([status, scheduledAt])
+  @@index([createdAt])
+  @@index([createdById])
+}
+
+/// One parent on a broadcast's recipient list, taken when sending starts, so a run that stops halfway resumes
+/// where it left off and nobody gets it twice
+model BroadcastDelivery {
+  id          String    @id @default(cuid())
+  broadcastId String
+  broadcast   Broadcast @relation(fields: [broadcastId], references: [id], onDelete: Cascade)
+  userId      String?
+  user        User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  email       String
+  /// PENDING → SENDING → SENT or FAILED; SKIPPED when cancelled, unsubscribed or gone before their turn
+  status      String    @default("PENDING")
+  error       String?
+  /// The email's unsubscribe link (product updates only); it can do nothing else
+  token       String    @unique
+  sentAt      DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([broadcastId, email])
+  @@index([broadcastId, status])
+  @@index([userId])
 }

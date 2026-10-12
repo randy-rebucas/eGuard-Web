@@ -10,7 +10,7 @@ export const metadata = { title: "Audit log" };
 export const instant = false;
 
 /** "family:clx…" → a link to that record, when the console has a page for it. */
-const PAGES: Record<string, string> = { family: "/families", ticket: "/tickets", organization: "/organizations" };
+const PAGES: Record<string, string> = { family: "/families", ticket: "/tickets", organization: "/organizations", broadcast: "/broadcasts" };
 function Target({ target }: { target: string | null }) {
   if (!target) return <>—</>;
   const [kind, id] = target.split(":");
