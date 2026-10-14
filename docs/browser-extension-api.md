@@ -448,8 +448,9 @@ may be off in this browser".
 ### Asking for a site
 
 1. The block page offers "Ask a parent". `POST /access-requests` with the blocked site and an optional reason.
-2. Show "Waiting for a parent". Refresh `GET /access-requests` while the page is open. It has no rate limit,
-   but it doesn't need to run more often than every 15–30 seconds.
+2. Show "Waiting for a parent". Refresh `GET /access-requests` while the page is open, every 15–30
+   seconds. It's limited to 300 reads in 15 minutes per installation, so open block pages should share one recent
+   copy (the extension keeps it 15 seconds, and the last answer when a read is refused).
 3. On `APPROVED`, `GET /policy` straight away, then reload the tab once the signed policy allows the site.
 4. On `DENIED`, say so; the child can ask again later.
 
