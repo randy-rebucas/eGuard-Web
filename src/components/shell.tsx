@@ -7,6 +7,7 @@ import { Icon } from "./icon";
 import { Brand, LogoMark } from "./logo";
 import { logout } from "@/app/actions/auth";
 import { setTheme } from "@/app/actions/family";
+import { startTour } from "./tour";
 
 export const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: "house" },
@@ -15,8 +16,10 @@ export const NAV = [
   { href: "/protection", label: "Protection", icon: "shield-check" },
   { href: "/reports", label: "Reports", icon: "chart-column" },
   { href: "/location", label: "Location", icon: "map-pin" },
-  { href: "/settings", label: "Settings", icon: "settings" },
-];
+  // Straight to the first section: going through the /settings redirect (next.config) costs a round trip, and a client
+  // navigation that hits it while the dev server is compiling fails ("Failed to fetch RSC payload") and reloads the page
+  { href: "/settings/account", section: "/settings", label: "Settings", icon: "settings" },
+] as { href: string; section?: string; label: string; icon: string }[];
 
 function useActive() {
   const path = usePathname();
@@ -43,7 +46,7 @@ function NavList({ attention, onNavigate }: { attention: number; onNavigate?: ()
   return (
     <nav className="nav" aria-label="Primary">
       {NAV.map((n) => (
-        <Link key={n.href} href={n.href} className="nav-item" aria-current={isActive(n.href) ? "page" : undefined} title={n.label} onClick={onNavigate}>
+        <Link key={n.href} href={n.href} className="nav-item" aria-current={isActive(n.section ?? n.href) ? "page" : undefined} title={n.label} onClick={onNavigate} data-tour={`nav-${(n.section ?? n.href).slice(1)}`}>
           <Icon name={n.icon} />
           <span className="label">{n.label}</span>
           {n.href === "/devices" && attention ? <span className="count num" aria-label={`${attention} need attention`}>{attention}</span> : null}
@@ -77,11 +80,11 @@ export function BottomNav({ attention, plan }: { attention: number; plan: PlanIn
     <>
       <nav className="bottom-nav" aria-label="Primary">
         {NAV.slice(0, 4).map((n) => (
-          <Link key={n.href} href={n.href} aria-current={isActive(n.href) ? "page" : undefined}>
+          <Link key={n.href} href={n.href} aria-current={isActive(n.href) ? "page" : undefined} data-tour={`nav-${n.href.slice(1)}`}>
             <Icon name={n.icon} /><span>{n.label}</span>
           </Link>
         ))}
-        <button aria-current={moreActive ? "page" : undefined} onClick={() => setOpen(true)} aria-haspopup="dialog">
+        <button aria-current={moreActive ? "page" : undefined} onClick={() => setOpen(true)} aria-haspopup="dialog" data-tour="nav-more">
           <Icon name="menu" /><span>More</span>
         </button>
       </nav>
@@ -143,7 +146,7 @@ function SearchBar() {
   let group = "";
   return (
     <>
-      <div className={`search ${openMobile ? "open" : ""}`} role="search" ref={box}>
+      <div className={`search ${openMobile ? "open" : ""}`} role="search" ref={box} data-tour="search">
         <Icon name="search" />
         <label htmlFor="q" className="sr-only">Search</label>
         <input
@@ -180,7 +183,7 @@ function SearchBar() {
           </div>
         ) : null}
       </div>
-      <button className="icon-btn search-toggle" aria-label="Search" onClick={() => { setOpenMobile(true); setTimeout(() => input.current?.focus(), 0); }}>
+      <button className="icon-btn search-toggle" aria-label="Search" data-tour="search-toggle" onClick={() => { setOpenMobile(true); setTimeout(() => input.current?.focus(), 0); }}>
         <Icon name="search" />
       </button>
     </>
@@ -205,7 +208,7 @@ function Bell({ initial }: { initial: number }) {
     return () => { clearInterval(t); document.removeEventListener("visibilitychange", onShow); };
   }, [refresh]);
   return (
-    <Link className="icon-btn" href="/notifications" aria-label={n ? `Notifications, ${n} need review` : "Notifications"}>
+    <Link className="icon-btn" href="/notifications" data-tour="alerts" aria-label={n ? `Notifications, ${n} need review` : "Notifications"}>
       <Icon name="bell" />
       {n ? <span className="badge-dot num">{n}</span> : null}
     </Link>
@@ -234,7 +237,7 @@ function ProfileMenu({ name, email, role, theme }: { name: string; email: string
   const initials = name.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase();
   return (
     <div ref={ref}>
-      <button className="profile" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+      <button className="profile" data-tour="account" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
         <span className="avatar" style={{ ["--h" as string]: 212 }}>{initials}</span>
         <span className="who"><b>{name}</b><span>{role === "FAMILY_ADMIN" ? "Family Admin" : "Parent"}</span></span>
         <Icon name="chevron-down" />
@@ -246,6 +249,7 @@ function ProfileMenu({ name, email, role, theme }: { name: string; email: string
           <Link className="menu-item" role="menuitem" href="/settings/account" onClick={() => setOpen(false)}><Icon name="user" />Account</Link>
           <Link className="menu-item" role="menuitem" href="/settings/family" onClick={() => setOpen(false)}><Icon name="users" />Family members</Link>
           <Link className="menu-item" role="menuitem" href="/settings/security" onClick={() => setOpen(false)}><Icon name="key-round" />Security</Link>
+          <button className="menu-item" role="menuitem" onClick={() => { setOpen(false); startTour(); }}><Icon name="compass" />Take the quick tour</button>
           <hr />
           <div className="eyebrow" style={{ padding: "4px 10px" }}>Appearance</div>
           <div className="seg" role="group" aria-label="Theme">

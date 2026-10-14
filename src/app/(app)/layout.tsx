@@ -6,6 +6,7 @@ import { touchSimulated } from "@/lib/simulator";
 import { BottomNav, Sidebar, TopHeader } from "@/components/shell";
 import { FlowProvider } from "@/components/flow";
 import { VerifyEmailBanner } from "@/components/verify-email-banner";
+import { Tour } from "@/components/tour";
 import { hasPendingVerification } from "@/lib/email-verification";
 import { entitlementsFor, nextPlan } from "@/lib/plans";
 
@@ -41,6 +42,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </div>
       </div>
       <BottomNav attention={attention} plan={plan} />
+      <Tour intro={!user.introSeen} firstName={user.name.trim().split(/\s+/)[0] || "there"} hasChildren={graph.children.length > 0} />
     </FlowProvider>
   );
 }

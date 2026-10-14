@@ -177,7 +177,11 @@ label.btn.disabled{opacity:.5; cursor:not-allowed}
 .avatar{--h:210; width:40px; height:40px; border-radius:50%; flex:none; display:grid; place-items:center; font-family:var(--display); font-weight:600; font-size:15px; color:hsl(var(--h) 60% 28%); background:hsl(var(--h) 85% 92%); border:2px solid var(--surface)}
 :root[data-theme="dark"] .avatar{color:hsl(var(--h) 85% 88%); background:hsl(var(--h) 45% 26%)}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .avatar{color:hsl(var(--h) 85% 88%); background:hsl(var(--h) 45% 26%)}}
-.avatar img{width:100%; height:100%; border-radius:50%; object-fit:cover; display:block}
+/* The photo is pinned to the circle, not sized from the grid: a grid track sized by its own content leaves width:100%
+   circular, and Safari (iPad, iPhone) then draws the photo at its full size, e.g. on map pins, where leaflet.css also
+   lifts max-width from marker images */
+.avatar{position:relative; overflow:hidden}
+.avatar img{position:absolute; inset:0; width:100%; height:100%; max-width:none; border-radius:50%; object-fit:cover; display:block}
 .avatar.lg{width:64px; height:64px; font-size:24px}
 .avatar.xl{width:84px; height:84px; font-size:32px}
 .avatar-group{display:flex}
@@ -526,6 +530,34 @@ button.check-item:hover{border-color:var(--line-strong); background:var(--surfac
 .guide-steps{counter-reset:g; display:flex; flex-direction:column; gap:10px; margin:0; padding:0; list-style:none}
 .guide-steps li{counter-increment:g; display:grid; grid-template-columns:28px 1fr; gap:10px; font-size:14px}
 .guide-steps li::before{content:counter(g); width:26px; height:26px; border-radius:50%; display:grid; place-items:center; background:var(--accent-soft); color:var(--accent-ink); font-weight:700; font-size:13px}
+/* First-run intro (components/tour-dialogs) */
+.dialog.intro{max-width:480px}
+.intro-band{display:grid; place-items:center; height:112px; background:radial-gradient(120% 140% at 50% 0%, var(--navy-3), var(--navy-1)); border-bottom:1px solid var(--line)}
+.intro h2{font-size:22px; font-weight:600; margin-top:6px; text-wrap:balance}
+.intro-lede{margin-top:8px; font-size:14.5px}
+.intro-steps{list-style:none; margin:18px 0 0; padding:0; display:flex; flex-direction:column; gap:14px}
+.intro-steps li{display:flex; gap:12px; align-items:flex-start}
+.intro-steps b{display:block; font-size:14.5px; margin-bottom:2px}
+.intro .dialog-foot{justify-content:space-between}
+/* Quick tour: the highlight is a hole in a dimmed screen, the card sits beside it. Both follow the element every
+   frame (components/tour-dialogs), so no position transitions: they'd trail behind while the page scrolls */
+.tour{position:fixed; inset:0; z-index:70; animation:fade .2s var(--ease)}
+/* Transparent, not hidden, until the first measurement: the card still takes focus */
+.tour:not([data-ready]){opacity:0}
+.tour-block{position:absolute; inset:0}
+.tour-dim{position:absolute; inset:0; background:rgba(7,18,38,.55)}
+.tour-hole{position:fixed; border-radius:14px; box-shadow:0 0 0 2px var(--accent), 0 0 0 200vmax rgba(7,18,38,.55); pointer-events:none}
+.tour-card{position:fixed; width:min(340px, calc(100vw - 32px)); padding:16px 18px 14px; background:var(--surface); border:1px solid var(--line); border-radius:var(--r-lg); box-shadow:var(--shadow-lg); outline:none}
+.tour-card:focus-visible{box-shadow:0 0 0 3px var(--accent-soft-2), var(--shadow-lg)}
+.tour-top{justify-content:space-between; margin:-4px -8px 4px 0}
+.tour-x{display:grid; place-items:center; width:32px; height:32px; border-radius:8px; color:var(--ink-3)}
+.tour-x:hover{background:var(--surface-2); color:var(--ink)}
+.tour-card h2{font-size:17px; font-weight:600}
+.tour-card p{margin-top:6px; font-size:14px; color:var(--ink-2)}
+.tour-dots{display:flex; gap:5px; margin-top:14px}
+.tour-dots span{width:6px; height:6px; border-radius:3px; background:var(--line-strong); transition:width .2s var(--ease), background .2s}
+.tour-dots span.on{width:18px; background:var(--accent)}
+.tour-foot{display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:12px}
 .check{display:flex; gap:10px; align-items:flex-start; padding:12px; border-radius:12px; border:1px solid var(--line); cursor:pointer}
 .check input{flex:none; width:20px; height:20px; margin:1px 0 0; accent-color:var(--accent-btn)}
 .toasts{position:fixed; right:24px; bottom:calc(24px + env(safe-area-inset-bottom,0px)); z-index:80; display:flex; flex-direction:column; gap:10px; max-width:min(380px, calc(100vw - 32px))}
@@ -573,10 +605,11 @@ button.check-item:hover{border-color:var(--line-strong); background:var(--surfac
 @media (max-width:1180px){
   .app{grid-template-columns:84px minmax(0,1fr)}
   .sidebar{padding:20px 12px; align-items:center}
-  .brand{padding:0}
-  .brand > div, .nav-item .label, .nav-item .count, .plan{display:none}
-  .nav-item{justify-content:center; padding:0; width:52px}
-  .nav-item[aria-current="page"]::before{left:-12px}
+  /* The icon rail is the sidebar only: the phone "More" drawer reuses the brand, nav and plan card at full width */
+  .sidebar .brand{padding:0}
+  .sidebar .brand > div, .sidebar .nav-item .label, .sidebar .nav-item .count, .sidebar .plan{display:none}
+  .sidebar .nav-item{justify-content:center; padding:0; width:52px}
+  .sidebar .nav-item[aria-current="page"]::before{left:-12px}
   .dash-grid,.detail-grid{grid-template-columns:minmax(0,1fr)}
   .dash-grid{grid-template-rows:none}
   .prot-grid{grid-template-columns:repeat(2,minmax(0,1fr))}

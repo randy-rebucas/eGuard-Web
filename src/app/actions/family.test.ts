@@ -9,7 +9,7 @@ const nav = vi.hoisted(() => ({ redirect: vi.fn(), revalidatePath: vi.fn() }));
 vi.mock("next/navigation", () => ({ redirect: nav.redirect }));
 vi.mock("next/cache", () => ({ revalidatePath: nav.revalidatePath }));
 vi.mock("next/headers", () => ({ cookies: vi.fn() }));
-const db = vi.hoisted(() => ({ child: { findFirst: vi.fn(), updateMany: vi.fn() } }));
+const db = vi.hoisted(() => ({ child: { findFirst: vi.fn(), updateMany: vi.fn() }, user: { updateMany: vi.fn() } }));
 vi.mock("@/lib/db", () => ({ db }));
 const user = { id: "u1", familyId: "fam1", name: "Ana", role: "FAMILY_ADMIN" };
 vi.mock("@/lib/auth", () => ({
@@ -231,5 +231,12 @@ describe("device actions", () => {
     expect(await actions.moveDevice("d1", undefined, form({ childId: "c2", password: "pw" }))).toEqual({ error: "That child was removed. Reload the page and choose again." });
     svc.moveDevice.mockRejectedValue(new ServiceError(400, "Galaxy A54 already belongs to Mia.", "invalid"));
     expect(await actions.moveDevice("d1", undefined, form({ childId: "c1", password: "pw" }))).toEqual({ error: "Galaxy A54 already belongs to Mia." });
+  });
+});
+
+describe("finishIntro", () => {
+  it("marks the signed-in parent's intro seen, keeping the first time", async () => {
+    await actions.finishIntro();
+    expect(db.user.updateMany).toHaveBeenCalledWith({ where: { id: "u1", introSeenAt: null }, data: { introSeenAt: expect.any(Date) } });
   });
 });

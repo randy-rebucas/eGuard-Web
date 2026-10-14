@@ -167,6 +167,8 @@ model User {
   /// The last 30-second step a code was accepted for, so one code can't be used twice
   totpLastStep   Int?
   passwordChangedAt DateTime @default(now())
+  /// Set when the parent closes the first-run intro on the web app (taking the quick tour or not). Null: show it.
+  introSeenAt  DateTime?
   createdAt    DateTime @default(now())
 
   sessions Session[]

@@ -55,7 +55,7 @@ export async function userForToken(token: string): Promise<SessionUser | null> {
     where: { tokenHash: sha256(token) },
     select: {
       id: true, expiresAt: true, lastSeenAt: true,
-      user: { select: { id: true, name: true, email: true, emailVerifiedAt: true, role: true, familyId: true, passwordSet: true } },
+      user: { select: { id: true, name: true, email: true, emailVerifiedAt: true, role: true, familyId: true, passwordSet: true, introSeenAt: true } },
     },
   });
   if (!s || s.expiresAt < new Date()) return null;
@@ -63,7 +63,7 @@ export async function userForToken(token: string): Promise<SessionUser | null> {
     await db.session.update({ where: { id: s.id }, data: { lastSeenAt: new Date() } }).catch(() => {});
   }
   const u = s.user;
-  return { id: u.id, name: u.name, email: u.email, emailVerified: !!u.emailVerifiedAt, hasPassword: u.passwordSet, role: u.role, familyId: u.familyId, sessionId: s.id };
+  return { id: u.id, name: u.name, email: u.email, emailVerified: !!u.emailVerifiedAt, hasPassword: u.passwordSet, role: u.role, familyId: u.familyId, sessionId: s.id, introSeen: !!u.introSeenAt };
 }
 
 export async function createSession(userId: string) {
@@ -101,6 +101,8 @@ export type SessionUser = {
   role: Role;
   familyId: string;
   sessionId: string;
+  /** The parent has closed the web app's first-run intro (components/tour) */
+  introSeen: boolean;
 };
 
 /** Current user, or null. Cached per request. */

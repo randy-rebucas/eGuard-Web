@@ -95,7 +95,7 @@ export default async function Dashboard() {
             <p className="lede">Let&apos;s set up your family.<br />Start by adding your first child.</p>
           </div>
         </section>
-        <section className="card card-pad">
+        <section className="card card-pad" data-tour="get-started">
           <EmptyState icon="users" title="No children yet" text="Add a child, then pair their Android phone or tablet with the eGuard app (iPhone and iPad coming soon). Protections start as soon as the device syncs.">
             <Link className="btn btn-primary" href="/children/new"><Icon name="plus" />Add child</Link>
           </EmptyState>
@@ -143,7 +143,7 @@ export default async function Dashboard() {
         </div>
       </section>
 
-      <section className="metrics" aria-label="Family summary">
+      <section className="metrics" aria-label="Family summary" data-tour="summary">
         <Link className="card metric interactive" href="/protection">
           <div className="m-top"><span className="m-label">Family Protection</span><span className="ico-tile"><Icon name="shield-check" /></span></div>
           {unpaired ? <div className="m-value num">–<small> / {health.total}</small></div> : <div className="m-value num">{health.score}<small> / {health.total}</small></div>}
@@ -226,7 +226,7 @@ export default async function Dashboard() {
         </div>
 
         <aside className="dash-col dash-aside" aria-label="Quick actions">
-          <section className="card card-pad" aria-labelledby="actions-title">
+          <section className="card card-pad" aria-labelledby="actions-title" data-tour="quick-actions">
             <div className="card-head"><h2 id="actions-title">Quick Actions</h2></div>
             <div style={{ display: "flex", flexDirection: "column", gap: 2, margin: "0 -12px" }}>
               {unpaired

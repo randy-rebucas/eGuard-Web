@@ -450,3 +450,9 @@ export async function setTheme(theme: "system" | "light" | "dark") {
   if (theme !== "light" && theme !== "dark") jar.delete("eg_theme");
   else jar.set("eg_theme", theme, { path: "/", maxAge: 365 * 864e2, sameSite: "lax" });
 }
+
+/** The first-run intro was closed (tour taken or skipped): it isn't shown again; the profile menu replays the tour. */
+export async function finishIntro() {
+  const u = await requireUser();
+  await db.user.updateMany({ where: { id: u.id, introSeenAt: null }, data: { introSeenAt: new Date() } });
+}
