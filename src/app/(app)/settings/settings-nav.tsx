@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Icon } from "@/components/icon";
 import { SECTIONS } from "./sections";
 
@@ -22,11 +22,22 @@ export function PrivacyHero() {
 
 export function SettingsNav() {
   const path = usePathname();
+  const router = useRouter();
+  const current = SECTIONS.find(([k]) => path === `/settings/${k}`)?.[0] ?? "account";
   return (
-    <nav className="settings-nav" aria-label="Settings sections">
-      {SECTIONS.map(([k, l, ic]) => (
-        <Link key={k} href={`/settings/${k}`} aria-current={path === `/settings/${k}` ? "page" : undefined}><Icon name={ic} />{l}</Link>
-      ))}
-    </nav>
+    <>
+      <nav className="settings-nav" aria-label="Settings sections">
+        {SECTIONS.map(([k, l, ic]) => (
+          <Link key={k} href={`/settings/${k}`} aria-current={path === `/settings/${k}` ? "page" : undefined}><Icon name={ic} />{l}</Link>
+        ))}
+      </nav>
+      {/* Phones: twelve sections don't fit a row, so one picker reaches them all */}
+      <div className="field settings-pick">
+        <label htmlFor="settings-section">Section</label>
+        <select className="input" id="settings-section" value={current} onChange={(e) => router.push(`/settings/${e.target.value}`)}>
+          {SECTIONS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+        </select>
+      </div>
+    </>
   );
 }

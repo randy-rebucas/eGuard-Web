@@ -63,6 +63,10 @@ export function LoginForm({ next = "" }: { next?: string }) {
         <Link className="auth-forgot" href="/forgot-password">Forgot password?</Link>
       </PasswordInput>
       <button className="btn btn-primary auth-submit" disabled={pending}>{pending ? "Signing in…" : "Sign in"}</button>
+      {/* The website has no Apple/Google sign-in, so an app-only account has no password here yet */}
+      {state?.error ? (
+        <p className="auth-foot">Signed up in the eGuard app with Apple or Google? <Link href="/forgot-password">Set a password</Link> to sign in here.</p>
+      ) : null}
       <p className="auth-foot">Don&apos;t have an account? <Link href="/register">Create account</Link></p>
       {process.env.NODE_ENV !== "production" ? (
         <p className="dev-banner"><Icon name="info" />Demo account: randy@example.com / ChangeMe123!</p>

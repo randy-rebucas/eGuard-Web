@@ -4,6 +4,7 @@ import { newToken, sha256 } from "./auth";
 import { audit } from "./audit";
 import { ServiceError, conflict } from "./errors";
 import { LIMITS, clearLimit, hit, isLimited } from "./rate-limit";
+import { sendSecurityNotice } from "./security-notice";
 import { matchStep, newRecoveryCode, newSecret, normalizeCode, openSecret, otpauthUri, base32Encode, sealSecret, secretKey } from "./totp";
 
 /**
@@ -28,6 +29,17 @@ function key() {
   return k;
 }
 
+/** The stored secret, opened. Fails closed when it was sealed under another TWO_FACTOR_KEY (the key changed). */
+function opened(sealed: string) {
+  try {
+    return openSecret(sealed, key());
+  } catch (e) {
+    if (e instanceof ServiceError) throw e;
+    console.error("Two-step secret can't be opened: was TWO_FACTOR_KEY changed?", e);
+    throw new ServiceError(503, "Two-step verification can't be checked right now. Use a recovery code, or contact support.", "two_factor_unavailable");
+  }
+}
+
 type Who = { id: string; email: string; name: string; familyId: string };
 
 /** Step 1 of turning it on: a new secret, kept aside until a code from it is confirmed. */
@@ -45,7 +57,7 @@ export async function confirmSetup(user: Who, code: string) {
   if (u.twoFactor) throw conflict("Two-step verification is already on.");
   if (!u.totpSecret) throw new ServiceError(400, "Start again: the setup expired.", "setup_missing");
   await throttle(user.id);
-  const step = matchStep(openSecret(u.totpSecret, key()), normalizeCode(code));
+  const step = matchStep(opened(u.totpSecret), normalizeCode(code));
   if (step === null) { await miss(user.id); throw new ServiceError(400, WRONG_CODE, "wrong_code"); }
   // Only the first of two confirmations at once turns it on (and makes the codes the parent sees)
   const on = await db.user.updateMany({ where: { id: user.id, twoFactor: false, totpSecret: u.totpSecret }, data: { twoFactor: true, totpLastStep: step } });
@@ -65,6 +77,7 @@ export async function disable(user: Who, code: string) {
     db.loginChallenge.deleteMany({ where: { userId: user.id } }),
   ]);
   await audit(user.familyId, user.name, "security.two_factor.off", "");
+  sendSecurityNotice(user.email, user.name, { kind: "two_factor_off" });
 }
 
 export async function regenerateRecoveryCodes(user: Who, code: string) {
@@ -110,7 +123,7 @@ export async function checkCode(userId: string, code: string): Promise<{ ok: boo
   const u = await db.user.findUniqueOrThrow({ where: { id: userId }, select: { twoFactor: true, totpSecret: true, totpLastStep: true } });
   if (!u.twoFactor || !u.totpSecret) return { ok: false, recovery: false };
   if (/^\d{6}$/.test(c)) {
-    const step = matchStep(openSecret(u.totpSecret, key()), c);
+    const step = matchStep(opened(u.totpSecret), c);
     if (step === null || (u.totpLastStep !== null && step <= u.totpLastStep)) return { ok: false, recovery: false };
     // Compare-and-swap, so the same code sent twice at once only works once
     const used = await db.user.updateMany({ where: { id: userId, OR: [{ totpLastStep: null }, { totpLastStep: { lt: step } }] }, data: { totpLastStep: step } });

@@ -38,7 +38,8 @@ async function Activity({ graph, tz, locationSharing, appLimit, browsers }: { gr
 
 async function Weekly({ familyId, graph, tz }: { familyId: string; graph: FamilyGraph; tz: string }) {
   const weekly = await weeklySeries(familyId, tz, graph);
-  return <WeeklyChart series={weekly.series} days={weekly.days} subtitle={`Daily totals, ${weekly.range}. Today is still in progress.`} />;
+  // One child gets the wide chart rather than a third-width one
+  return <WeeklyChart single={weekly.series.length === 1} series={weekly.series} days={weekly.days} subtitle={`Daily totals, ${weekly.range}. Today is still in progress.`} />;
 }
 
 async function RecentAlerts({ familyId, userId, tz }: { familyId: string; userId: string; tz: string }) {
@@ -175,17 +176,30 @@ export default async function Dashboard() {
         </Link>
         <Link className="card metric interactive" href="/settings/subscription">
           <div className="m-top"><span className="m-label">Active Plan</span><span className="ico-tile"><Icon name="crown" /></span></div>
-          <div className="m-value" style={{ fontSize: 26 }}>{family.plan}</div>
+          <div className="m-value m-plan">{family.plan}</div>
           <div className="t-meta">Up to {ent.childLimit} {ent.childLimit === 1 ? "child" : "children"} · {family.deviceLimit} devices</div>
           <div className="m-foot"><span className="muted num">{family.renewsAt ? `${renewalWord(purchase)} ${shortDate(family.renewsAt, tz)}` : upgrade ? `Upgrade to ${upgrade.name}` : "No renewal date"}</span></div>
         </Link>
       </section>
 
+      {/* Alerts come first in the source so a single column reads summary, alerts, then detail; wide screens put them atop the side column */}
       <div className="dash-grid">
-        <div className="dash-col">
+        <section className="card card-pad dash-alerts" aria-labelledby="alerts-title">
+          <div className="card-head"><h2 id="alerts-title">Recent Alerts</h2><ViewAll href="/notifications" /></div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 2, margin: "0 -12px" }}>
+            <SectionBoundary title="Recent alerts">
+              <Suspense fallback={<div className="dash-col" role="status" aria-label="Loading alerts" style={{ gap: 8, padding: "0 12px" }}>{[0, 1, 2].map((i) => <div key={i} className="skeleton" style={{ height: 56 }} />)}</div>}>
+                <RecentAlerts familyId={u.familyId} userId={u.id} tz={tz} />
+              </Suspense>
+            </SectionBoundary>
+          </div>
+        </section>
+
+        <div className="dash-col dash-main">
           <section aria-labelledby="kids-title">
             <div className="section-title"><h2 id="kids-title">Your Children</h2><ViewAll href="/children" /></div>
-            <div className="children-grid">{children.map((c) => <ChildCard key={c.id} c={c} browsers={browsers.filter((b) => b.childId === c.id).length} />)}</div>
+            {/* One child fills the row as a wide card instead of a third of it */}
+            <div className={`children-grid${children.length === 1 ? " solo" : ""}`}>{children.map((c) => <ChildCard key={c.id} c={c} browsers={browsers.filter((b) => b.childId === c.id).length} />)}</div>
           </section>
 
           <Streamed title="Today's activity" height={340}><Activity graph={graph} tz={tz} locationSharing={ent.locationSharing} appLimit={ent.appMonitoringLimit} browsers={allBrowsers} /></Streamed>
@@ -200,7 +214,8 @@ export default async function Dashboard() {
                 <Link className="btn btn-primary" href="/devices#pair"><Icon name="plus" />Pair a device</Link>
               </EmptyState>
             ) : (
-              <div className="devices-grid">
+              // One or two cards read better as full-width rows than as small tiles beside empty space
+              <div className={`devices-grid${devices.length + allBrowsers.length <= 2 ? " rows" : ""}`}>
                 {devices.map((d) => <DeviceCard key={d.id} d={d} state={deviceStates[d.id]} tz={tz} />)}
                 {allBrowsers.map((b) => <BrowserStatusCard key={b.id} b={b} tz={tz} />)}
               </div>
@@ -210,19 +225,9 @@ export default async function Dashboard() {
           <Streamed title="Weekly screen time" height={380}><Weekly familyId={u.familyId} graph={graph} tz={tz} /></Streamed>
         </div>
 
-        <aside className="dash-col dash-aside" aria-label="Alerts and actions">
-          <section className="card card-pad">
-            <div className="card-head"><h2 style={{ fontSize: 18 }}>Recent Alerts</h2><ViewAll href="/notifications" /></div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 2, margin: "0 -12px" }}>
-              <SectionBoundary title="Recent alerts">
-                <Suspense fallback={<div className="dash-col" role="status" aria-label="Loading alerts" style={{ gap: 8, padding: "0 12px" }}>{[0, 1, 2].map((i) => <div key={i} className="skeleton" style={{ height: 56 }} />)}</div>}>
-                  <RecentAlerts familyId={u.familyId} userId={u.id} tz={tz} />
-                </Suspense>
-              </SectionBoundary>
-            </div>
-          </section>
-          <section className="card card-pad">
-            <div className="card-head"><h2 style={{ fontSize: 18 }}>Quick Actions</h2></div>
+        <aside className="dash-col dash-aside" aria-label="Quick actions">
+          <section className="card card-pad" aria-labelledby="actions-title">
+            <div className="card-head"><h2 id="actions-title">Quick Actions</h2></div>
             <div style={{ display: "flex", flexDirection: "column", gap: 2, margin: "0 -12px" }}>
               {unpaired
                 ? <Link href="/devices#pair" className="list-row"><span className="ico-tile"><Icon name="plus" /></span><span className="grow t-title">Pair a Device</span><span className="chev"><Icon name="chevron-right" /></span></Link>

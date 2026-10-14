@@ -7,6 +7,7 @@ import { refreshPurchases } from "./billing";
 import { withDeviceSlot } from "./device-slots";
 import { ServiceError, notFound } from "./errors";
 import { OFFLINE_AFTER_MS } from "./health";
+import { signRevocation } from "./browser-policy";
 import type { Actor } from "./config-service";
 
 /**
@@ -88,10 +89,24 @@ export async function pairBrowser(input: PairInput) {
 }
 
 const unauthorized = () => new ServiceError(401, "This browser is no longer connected to eGuard.", "unauthorized");
+/**
+ * Final answers, with eGuard's signed revocation (signRevocation): the extension disconnects and lifts its rules
+ * only on a revocation that verifies. A plain `unauthorized` never disconnects it. `installation_revoked` also
+ * covers an id with no row: a removed browser's row is deleted.
+ */
+const withProof = (installationId: string) => {
+  const proof = signRevocation(installationId);
+  return proof ? { revocation: proof } : undefined;
+};
+const revoked = (installationId: string) =>
+  new ServiceError(401, "This browser is no longer connected to eGuard.", "installation_revoked", withProof(installationId));
+const reused = (installationId: string) =>
+  new ServiceError(401, "eGuard disconnected this browser because its sign-in key was used from two places.", "token_reused", withProof(installationId));
 
 /**
  * Rotates the refresh token and issues a new access token. A rotated-out token presented again after the
- * grace window means someone copied it: the installation is disconnected and the family told.
+ * grace window, when the tokens that replaced it were already used, means someone copied it: the installation is
+ * disconnected and the family told.
  */
 export async function refreshBrowserTokens(installationId: string, refreshToken: string): Promise<TokenGrant> {
   const hash = sha256(refreshToken);
@@ -109,14 +124,22 @@ export async function refreshBrowserTokens(installationId: string, refreshToken:
     where: { id: installationId, prevRefreshTokenHash: hash, revokedAt: null },
     include: { child: true },
   });
-  if (!replayed) throw unauthorized();
+  if (!replayed) {
+    const live = await db.browserInstallation.findFirst({ where: { id: installationId, revokedAt: null }, select: { id: true } });
+    throw live ? unauthorized() : revoked(installationId);
+  }
 
   const withinGrace = replayed.refreshRotatedAt && now.getTime() - replayed.refreshRotatedAt.getTime() < REFRESH_RETRY_GRACE_MS;
-  if (withinGrace) {
-    // Lost response: issue fresh tokens, keeping the original rotation time so the window can't be extended
+  // Nothing has used the tokens of the last rotation (authBrowser moves lastSeenAt past refreshRotatedAt): the
+  // extension never got them (a slow server answered after it gave up, or the browser closed before saving them).
+  // Then the old token is still its own, however late it comes back.
+  const unused = replayed.refreshRotatedAt && replayed.lastSeenAt && replayed.lastSeenAt <= replayed.refreshRotatedAt;
+  if (withinGrace || unused) {
+    // Lost response: fresh tokens. A new rotation time with lastSeenAt equal to it, so they too count as unused
+    // until something uses them; a copied token whose holder uses it is caught at the next replay.
     const retried = await db.browserInstallation.updateMany({
       where: { id: installationId, prevRefreshTokenHash: hash, revokedAt: null },
-      data: { ...hashes, lastSeenAt: now },
+      data: { ...hashes, refreshRotatedAt: now, lastSeenAt: now },
     });
     if (retried.count) return grant;
     throw unauthorized();
@@ -135,7 +158,7 @@ export async function refreshBrowserTokens(installationId: string, refreshToken:
       body: `eGuard saw ${browserLabel(replayed)}'s sign-in key used from two places, so it disconnected that browser. Remove it and add it again with a new code.`,
     },
   });
-  throw unauthorized();
+  throw reused(replayed.id);
 }
 
 /** Resolves `Authorization: Bearer <access token>` to a live installation. */
@@ -145,7 +168,9 @@ export async function authBrowser(req: Request) {
   if (!token) return null;
   const inst = await db.browserInstallation.findUnique({ where: { accessTokenHash: sha256(token) }, include: { child: true } });
   if (!inst || inst.revokedAt || !inst.accessTokenExpiresAt || inst.accessTokenExpiresAt < new Date()) return null;
-  if (!inst.lastSeenAt || Date.now() - inst.lastSeenAt.getTime() > 60_000) {
+  // Also the first use after a token rotation: that marks the new tokens as received (refreshBrowserTokens)
+  const firstUse = inst.refreshRotatedAt && inst.lastSeenAt && inst.lastSeenAt <= inst.refreshRotatedAt;
+  if (!inst.lastSeenAt || firstUse || Date.now() - inst.lastSeenAt.getTime() > 60_000) {
     await db.browserInstallation.update({ where: { id: inst.id }, data: { lastSeenAt: new Date() } }).catch(() => {});
   }
   if (!inst.lastSeenAt || Date.now() - inst.lastSeenAt.getTime() > OFFLINE_AFTER_MS) {
@@ -155,7 +180,7 @@ export async function authBrowser(req: Request) {
   return inst;
 }
 
-/** resolveKey of "eGuard can't verify this browser" (raised by the maintenance job after a day of silence). */
+/** resolveKey of "eGuard may be off in this browser" (raised by the maintenance job after a day of silence). */
 export const browserOfflineKey = (id: string) => `BROWSER_OFFLINE:${id}`;
 
 /**

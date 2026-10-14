@@ -5,7 +5,7 @@ import { audit } from "./audit";
 import type { Actor } from "./config-service";
 import { planByGoogleProduct } from "./plans";
 import { acknowledge, getSubscription, googlePlayConfig, obfuscatedAccountId, summarize, type GooglePlayConfig } from "./google-play";
-import { CLOSED_STATES, applyEntitlement, openPurchases } from "./entitlement";
+import { CLOSED_STATES, applyEntitlement, currentPurchase, openPurchases } from "./entitlement";
 import { STORE as PAYMONGO, syncWebPurchase, type WebBillingOpts } from "./web-billing";
 
 export { currentPurchase, familiesWithPurchases } from "./entitlement";
@@ -33,6 +33,13 @@ export async function redeemGooglePlay(actor: Actor, productId: string, purchase
   const existing = await db.storePurchase.findUnique({ where: { purchaseToken } });
   if (existing && existing.familyId !== actor.familyId) throw conflict("This purchase is already linked to another eGuard family.");
   if (existing?.state === "VOIDED") throw conflict("This purchase was refunded. Buy the plan again to upgrade.");
+  if (!existing) {
+    // Left unacknowledged, Google refunds it within 3 days, rather than charging both every month
+    const current = await currentPurchase(actor.familyId);
+    if (current?.store === PAYMONGO && current.autoRenewing) {
+      throw new ServiceError(409, "Your plan already renews on the eGuard website. Turn auto-renew off there first. Google Play refunds this purchase within 3 days.", "billed_elsewhere");
+    }
+  }
 
   const s = summarize(await getSubscription(cfg, purchaseToken, opts.fetch), productId);
   if (!s.productMatches) throw invalid("This purchase is for a different product.");
@@ -54,8 +61,8 @@ export async function redeemGooglePlay(actor: Actor, productId: string, purchase
 export const RECHECK_ACTIVE_MS = 24 * 3600_000;
 
 /**
- * Re-checks purchases whose paid period has passed (renewed? cancelled? in grace?) and unfinished web
- * checkouts at most every 10 minutes, and active ones once a day (refunded? revoked?), then updates the
+ * Re-checks unfinished web checkouts at most every minute, purchases whose paid period has passed (renewed?
+ * cancelled? in grace?) at most every 10 minutes, and active ones once a day (refunded? revoked?), then updates the
  * family's plan. Paid passes don't change, so they aren't re-checked. Store errors keep the last known state.
  */
 export async function refreshPurchases(familyId: string, opts: { cfg?: GooglePlayConfig | null; fetch?: Fetch; web?: WebBillingOpts } = {}) {
@@ -64,7 +71,9 @@ export async function refreshPurchases(familyId: string, opts: { cfg?: GooglePla
     where: {
       familyId, AND: [openPurchases(now), { state: { not: "PAID" } }],
       OR: [
-        { OR: [{ expiresAt: { lt: now } }, { expiresAt: null }], checkedAt: { lt: new Date(now.getTime() - 10 * 60_000) } },
+        // A checkout or first payment that may just have been paid: the parent is often waiting on the page
+        { expiresAt: null, checkedAt: { lt: new Date(now.getTime() - 60_000) } },
+        { expiresAt: { lt: now }, checkedAt: { lt: new Date(now.getTime() - 10 * 60_000) } },
         { checkedAt: { lt: new Date(now.getTime() - RECHECK_ACTIVE_MS) } },
       ],
     },

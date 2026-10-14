@@ -61,13 +61,21 @@ describe("getFlowContext", () => {
     });
   });
 
-  it("starts from the age default when the child has no setting yet, and gives guided steps on iOS", async () => {
-    db.device.findMany.mockResolvedValue([{ id: "d2", name: "iPad", platform: "IOS", protections: [] }]);
+  it("starts from the age default when the child has no setting yet, and gives guided steps on Android", async () => {
+    db.device.findMany.mockResolvedValue([{ id: "d2", name: "Pixel", platform: "ANDROID", protections: [] }]);
     const r = await actions.getFlowContext("c1", "WEB");
     expect(r).toMatchObject({ policy: { key: "WEB", mode: "FILTER" }, policyLabel: "Not configured" });
     if ("error" in r) throw new Error(r.error);
     expect(r.devices[0]).toMatchObject({ capability: "GUIDED" });
     expect(r.devices[0].guide?.length).toBeGreaterThan(0);
+  });
+
+  it("gives Google Play steps for an Android age rating, and ignores an echoed Pass", async () => {
+    db.device.findMany.mockResolvedValue([{ id: "d2", name: "Pixel", platform: "ANDROID", protections: [{ key: "APP_RESTRICTIONS", status: "PASS", reported: { key: "APP_RESTRICTIONS", maxAgeRating: 9 } }] }]);
+    const r = await actions.getFlowContext("c1", "APP_RESTRICTIONS");
+    if ("error" in r) throw new Error(r.error);
+    expect(r.devices[0]).toMatchObject({ capability: "PARENT_SET", status: "NOT_CONFIGURED", currentLabel: "Not set up yet" });
+    expect(r.devices[0].guide?.join(" ")).toMatch(/Google Play|Play Store/);
   });
 
   it("says when the child isn't in the family", async () => {
@@ -112,7 +120,14 @@ describe("confirmGuided and cancelBatch", () => {
     expect(await actions.confirmGuided("b1")).toEqual({});
     expect(svc.confirmGuided).toHaveBeenCalledWith("fam1", "b1");
     expect(await actions.cancelBatch("b1")).toEqual({});
-    expect(svc.cancelBatch).toHaveBeenCalledWith("fam1", "b1");
+    expect(svc.cancelBatch).toHaveBeenCalledWith("fam1", "b1", undefined);
+  });
+  it("cancels only the dialog's protection when given one, and refuses an unknown one", async () => {
+    expect(await actions.cancelBatch("b1", "BEDTIME")).toEqual({});
+    expect(svc.cancelBatch).toHaveBeenCalledWith("fam1", "b1", "BEDTIME");
+    svc.cancelBatch.mockClear();
+    expect(await actions.cancelBatch("b1", "NOPE" as never)).toHaveProperty("error");
+    expect(svc.cancelBatch).not.toHaveBeenCalled();
   });
   it("refuse a batch id that isn't a string", async () => {
     expect(await actions.confirmGuided({ in: ["b1"] } as never)).toHaveProperty("error");

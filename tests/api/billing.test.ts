@@ -113,6 +113,16 @@ describe("redeemGooglePlay", () => {
     expect(await db.storePurchase.count({ where: { familyId: admin.familyId } })).toBe(1);
   });
 
+  it("refuses a new purchase while web auto-renew is on, so the family isn't charged twice a month", async () => {
+    const [web] = await family("Dee");
+    await db.storePurchase.create({
+      data: { familyId: web.familyId, store: "PAYMONGO", productId: "plus_monthly", purchaseToken: `subs_${RUN}`, state: "active", autoRenewing: true, expiresAt: new Date(Date.now() + 20 * 864e5) },
+    });
+    play.subs.set("tok-web", playSub({ accountId: obfuscatedAccountId(web.familyId) }));
+    await expect(redeemGooglePlay(web, "eguard_family", "tok-web", opts)).rejects.toMatchObject({ status: 409, code: "billed_elsewhere" });
+    expect(play.acknowledged).not.toContain("tok-web"); // left for Google to refund
+  });
+
   it("is admin only, and 501 when Google Play isn't configured", async () => {
     await expect(redeemGooglePlay(parent, "eguard_family", "tok-1", opts)).rejects.toMatchObject({ status: 403 });
     await expect(redeemGooglePlay(admin, "eguard_family", "tok-1", { cfg: null })).rejects.toMatchObject({ status: 501, code: "billing_not_configured" });

@@ -83,7 +83,8 @@ export function PairDevice({ kids: children, used, limit, upgrade = true, kind =
           ? <> Remove a device or <Link className="inline-link" href="/settings/subscription">change your plan</Link> to add another.</>
           : <> Remove a device to add another.</> : null}
       </p>
-      <div className="row" style={{ flexWrap: "wrap", alignItems: "flex-end" }}>
+      {/* Capped: a child's name or a computer name doesn't need the card's full width */}
+      <div className="row" style={{ flexWrap: "wrap", alignItems: "flex-end", maxWidth: 720 }}>
         <div className="field grow" style={{ minWidth: 180 }}>
           <label htmlFor={`${idp}-child`}>{browser ? "Browser belongs to" : "Device belongs to"}</label>
           <select id={`${idp}-child`} className="input" value={childId} disabled={full} onChange={(e) => { setChildId(e.target.value); setResult(null); setPair(null); }}>
@@ -218,7 +219,7 @@ export function RemoveDeviceButton({ deviceId, name, hasPassword }: { deviceId: 
   return (
     <form action={action} className="dash-col" style={{ gap: 10 }}>
       <p className="t-meta" style={{ color: "var(--ink-2)" }}>
-        Removing {name} stops eGuard verifying it, so you won&apos;t hear if its protections change. Protections already on the device stay until someone changes them there. Other parents in your family are told. {confirmHint(hasPassword)}
+        Removing {name} disconnects eGuard from it: the eGuard app there stops applying your settings, and eGuard stops checking it. Other parents in your family are told. {confirmHint(hasPassword)}
       </p>
       {/* Unchecked keeps the history with the child (deviceId becomes null), until the family's retention period */}
       <label className="check" style={{ maxWidth: 520 }}>

@@ -1,16 +1,18 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { PrismaClient } from "@prisma/client";
 import { hashPassword, issueSession, newToken, sha256 } from "@/lib/auth";
 import { processReport } from "@/lib/engine";
 import { requestConfigs, type Actor } from "@/lib/config-service";
-import { createChild, createPairingCode, pairingCodeStatus, removeDevice, setAppApproval } from "@/lib/family-service";
+import { createChild, createPairingCode, endExtraTime, extraTimeFor, grantExtraTime, pairingCodeStatus, removeDevice, setAppApproval } from "@/lib/family-service";
 import { childLocation, recentVisits, recordLocation, stayed, visitsPage } from "@/lib/location";
 import { createPlace, deletePlace, updatePlace } from "@/lib/places";
 import { limitOn } from "@/lib/queries";
 import { ServiceError } from "@/lib/errors";
 import { POST as deviceEvent } from "@/app/api/device/v1/events/route";
 import { POST as pairDevice } from "@/app/api/device/v1/pair/route";
+import { POST as syncDevice } from "@/app/api/device/v1/sync/route";
 import { GET as listApps } from "@/app/api/mobile/v1/children/[id]/apps/route";
+import { DELETE as extraTimeDelete, GET as extraTimeGet, POST as extraTimePost } from "@/app/api/mobile/v1/children/[id]/extra-time/route";
 
 /**
  * What parents are told about their children's devices: tamper alerts while a change is in flight, and a
@@ -31,7 +33,7 @@ async function device(name: string) {
   const event = (body: unknown) => deviceEvent(new Request("http://test/api/device/v1/events", {
     method: "POST", headers: { authorization: `Bearer ${token}`, "content-type": "application/json" }, body: JSON.stringify(body),
   }));
-  return { id: d.id, event };
+  return { id: d.id, token, event };
 }
 
 const apps = async (filter: string) => {
@@ -353,5 +355,107 @@ describe("a child asking for a blocked app", () => {
     expect((await apps("pending")).apps.find((a) => a.name === "Duolingo")).toMatchObject({ requested: true });
     await setAppApproval(admin, app.id, "ALLOWED", "test");
     expect(await db.alert.count({ where: { resolveKey: `APPREQ:${childId}:Duolingo`, resolvedAt: null } })).toBe(0);
+  });
+});
+
+describe("a child asking for more time", () => {
+  const timeAlerts = () => db.alert.findMany({ where: { childId, title: "More time requested" }, orderBy: { createdAt: "asc" } });
+  beforeEach(async () => { await db.alert.deleteMany({ where: { childId, title: "More time requested" } }); });
+
+  it("tells the parent once, however often the child asks", async () => {
+    const phone = await device("Lia's Phone");
+    for (let i = 0; i < 3; i++) {
+      expect(await (await phone.event({ type: "TIME_REQUESTED", reason: "DAILY_LIMIT" })).json()).toEqual({ ok: true });
+    }
+    const alerts = await timeAlerts();
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).toMatchObject({ severity: "ATTENTION", category: "SCREEN_TIME", resolvedAt: null });
+    expect(alerts[0].body).toContain("paused by the daily limit");
+  });
+
+  it("understands the request older Android apps send for an app the parent allowed", async () => {
+    const phone = await device("Lia's Old Phone");
+    await db.childApp.create({ data: { childId, name: "Minecraft", approval: "ALLOWED" } });
+    expect(await (await phone.event({ type: "APP_REQUEST", app: "Minecraft" })).json()).toMatchObject({ ok: true, approval: "ALLOWED" });
+    expect(await timeAlerts()).toHaveLength(1);
+    // Still an app request for an app nobody decided on
+    await phone.event({ type: "APP_REQUEST", app: "Among Us" });
+    expect((await db.childApp.findUniqueOrThrow({ where: { childId_name: { childId, name: "Among Us" } } })).approval).toBe("PENDING");
+    // The documented name for an allowed app stays a no-op
+    await db.alert.deleteMany({ where: { childId, title: "More time requested" } });
+    await phone.event({ type: "APP_REQUESTED", app: "Minecraft" });
+    expect(await timeAlerts()).toHaveLength(0);
+  });
+
+  it("the parent answers with extra time, which the device gets on sync", async () => {
+    const phone = await device("Lia's Grant Phone");
+    const sync = async () => (await syncDevice(new Request("http://test/api/device/v1/sync", {
+      method: "POST", headers: { authorization: `Bearer ${phone.token}`, "content-type": "application/json" }, body: "{}",
+    }))).json() as Promise<{ extraTimeUntil: string | null; nextSyncSeconds: number }>;
+    expect(await sync()).toMatchObject({ extraTimeUntil: null, nextSyncSeconds: 300 });
+
+    await phone.event({ type: "TIME_REQUESTED", reason: "BEDTIME" });
+    expect((await extraTimeFor(admin, childId)).request?.body).toContain("paused by bedtime");
+
+    const before = Date.now();
+    const { extraTimeUntil } = await grantExtraTime(admin, childId, 30, "test");
+    expect(extraTimeUntil.getTime() - before).toBeGreaterThanOrEqual(30 * 60_000 - 1000);
+    expect((await timeAlerts())[0].resolvedAt).not.toBeNull();
+    const during = await sync();
+    expect(new Date(during.extraTimeUntil!).getTime()).toBe(extraTimeUntil.getTime());
+    // Syncs every minute meanwhile, so ending it early reaches the device quickly
+    expect(during.nextSyncSeconds).toBe(60);
+
+    // More is added to what's left, never past 4 hours ahead
+    const more = await grantExtraTime(admin, childId, 15, "test");
+    expect(more.extraTimeUntil.getTime()).toBe(extraTimeUntil.getTime() + 15 * 60_000);
+    for (let i = 0; i < 6; i++) await grantExtraTime(admin, childId, 60, "test");
+    expect((await extraTimeFor(admin, childId)).until!.getTime()).toBeLessThanOrEqual(Date.now() + 4 * 3600_000);
+
+    // Asking again right after an answer doesn't raise another request straight away
+    await phone.event({ type: "TIME_REQUESTED" });
+    expect((await extraTimeFor(admin, childId)).request).toBeNull();
+
+    await endExtraTime(admin, childId, "test");
+    expect((await sync()).extraTimeUntil).toBeNull();
+    expect((await extraTimeFor(admin, childId)).until).toBeNull();
+  });
+
+  it("not now answers the request without giving time", async () => {
+    const phone = await device("Lia's Other Tablet");
+    await phone.event({ type: "TIME_REQUESTED", reason: "DAILY_LIMIT" });
+    await endExtraTime(admin, childId, "test");
+    expect((await timeAlerts()).every((a) => a.resolvedAt)).toBe(true);
+    expect((await extraTimeFor(admin, childId)).until).toBeNull();
+  });
+
+  it("the parent app reads, gives and ends extra time", async () => {
+    const call = (method: string, body?: unknown) => {
+      const req = new Request(`http://test/api/mobile/v1/children/${childId}/extra-time`, {
+        method, headers: { authorization: `Bearer ${parentToken}`, "content-type": "application/json", "x-eguard-client": "android" },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      });
+      const ctx = { params: Promise.resolve({ id: childId }) };
+      return (method === "GET" ? extraTimeGet : method === "POST" ? extraTimePost : extraTimeDelete)(req, ctx);
+    };
+    const phone = await device("Lia's App Phone");
+    await phone.event({ type: "TIME_REQUESTED", app: "YouTube", reason: "APP_LIMIT" });
+    const before = await (await call("GET")).json();
+    expect(before).toMatchObject({ until: null, choices: [15, 30, 60] });
+    expect(before.request.body).toContain("paused by an app limit");
+
+    expect((await call("POST", { minutes: 20 })).status).toBe(400);
+    const given = await (await call("POST", { minutes: 15 })).json();
+    expect(new Date(given.until).getTime()).toBeGreaterThan(Date.now());
+    expect((await (await call("GET")).json()).request).toBeNull();
+
+    expect(await (await call("DELETE")).json()).toEqual({ until: null });
+    expect((await (await call("GET")).json()).until).toBeNull();
+  });
+
+  it("another family can't give or see a child's extra time", async () => {
+    const stranger = { ...admin, familyId: "not-this-family" };
+    await expect(grantExtraTime(stranger, childId, 15, "test")).rejects.toThrow(ServiceError);
+    await expect(extraTimeFor(stranger, childId)).rejects.toThrow(ServiceError);
   });
 });

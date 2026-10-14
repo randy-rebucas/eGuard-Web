@@ -176,7 +176,8 @@ export function PlaceRow({ place, removeOnly = false }: { place: Place; removeOn
   return (
     <div className="setting-row" style={{ flexWrap: "wrap" }}>
       <span className="ico-tile"><Icon name={/home/i.test(place.name) ? "house" : /school/i.test(place.name) ? "school" : "map-pin"} /></span>
-      <div className="grow">
+      {/* Room for the radius on one line; in a narrow column Edit and Remove move under it */}
+      <div className="grow" style={{ minWidth: 140 }}>
         <div className="t-title">{place.name}</div>
         <div className="t-meta">Within {place.radiusM < 1000 ? `${place.radiusM} m` : "1 km"}{noticeText(place) ? ` · ${noticeText(place)}` : ""}</div>
       </div>

@@ -25,6 +25,17 @@ export const LIMITS = {
   /** pairing codes a parent creates (each new one replaces the child's previous code) */
   pairCodeUser: { max: 20, windowMs: 60 * 60_000 },
   tokenIp: { max: 30, windowMs: 15 * 60_000 },
+  /**
+   * Browser token refreshes from one address. Each browser refreshes about every 14 minutes, and many families can
+   * share one address (carrier-grade NAT, a school), so this is only a ceiling; refresh tokens can't be guessed.
+   */
+  browserTokenIp: { max: 600, windowMs: 15 * 60_000 },
+  /** Token refreshes for one browser installation: a healthy one needs one or two per 15 minutes */
+  browserTokenInstallation: { max: 20, windowMs: 15 * 60_000 },
+  /** Policy reads for one browser installation: it syncs every 5 minutes, plus "Sync now" and restarts */
+  browserPolicy: { max: 120, windowMs: 15 * 60_000 },
+  /** Access-request lists for one browser installation: one per block page shown, so a child reloading one adds up */
+  browserAccessList: { max: 300, windowMs: 15 * 60_000 },
   resetEmail: { max: 3, windowMs: 60 * 60_000 },
   resetIp: { max: 10, windowMs: 60 * 60_000 },
   supportUser: { max: 10, windowMs: 60 * 60_000 },
@@ -51,6 +62,10 @@ export const LIMITS = {
   /** sponsor codes a family tries; codes are worth money, so keep guessing slow */
   voucherFamily: { max: 10, windowMs: 60 * 60_000 },
   voucherUser: { max: 10, windowMs: 60 * 60_000 },
+  /** checkouts and auto-renew starts per family: each one creates objects on PayMongo with eGuard's shared key */
+  billingStart: { max: 20, windowMs: 60 * 60_000 },
+  /** one new auto-renew subscription per family at a time: two windows at once would each create one */
+  autoRenewCreate: { max: 1, windowMs: 60_000 },
   /** organization API requests per key (docs/organization-api.md): 600 per 10 minutes, about one a second */
   orgApiKey: { max: 600, windowMs: 10 * 60_000 },
   /** organization API requests with a wrong key, from one address */

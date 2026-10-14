@@ -11,6 +11,8 @@ const Body = z.object({
   accuracyM: z.number().min(0).max(100000).optional(),
   // A blank label would show as an empty place name and stop "same place" from matching: treat it as none
   placeLabel: z.string().trim().max(80).optional().transform((s) => s || undefined),
+  // When the OS took the fix. Optional for older apps (then: when it arrives); see fixTime for what's kept
+  at: z.iso.datetime({ offset: true, error: "at must be an ISO 8601 time." }).optional().transform((s) => (s ? new Date(s) : undefined)),
 });
 
 /**

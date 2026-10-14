@@ -269,10 +269,15 @@ model PushToken {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   token     String   @unique
   platform  Platform
+  /// The sign-in that registered it: signing that session out (here or from another device) stops its alerts.
+  /// Null for tokens registered before this was recorded.
+  sessionId String?
+  session   Session? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([userId])
+  @@index([sessionId])
 }
 
 /// A plan purchase, verified with the store or payment provider. One purchase token belongs to one family.
@@ -325,6 +330,7 @@ model Session {
   createdAt  DateTime @default(now())
   lastSeenAt DateTime @default(now())
   expiresAt  DateTime
+  pushTokens PushToken[]
 
   @@index([userId])
 }
@@ -505,6 +511,8 @@ model Child {
   hue        Int      @default(205)
   dailyLimitMinutes   Int @default(180)
   weekendLimitMinutes Int @default(240)
+  /// Extra time a parent gave: until then, the child's devices don't pause apps for limits or bedtime
+  extraTimeUntil DateTime?
   createdAt  DateTime @default(now())
 
   devices    Device[]
@@ -563,6 +571,9 @@ model Device {
   tokenHash   String?    @unique
   lastSeenAt  DateTime?
   checkRequestedAt DateTime?
+  /// FCM registration token the child app sends on /sync, so a change can wake it (silent push) instead of
+  /// waiting for its next poll. Null until the app sends one, or once FCM reports it gone.
+  pushToken   String?
   /// Dev-only: device is driven by the built-in simulator
   simulated   Boolean    @default(false)
   simulatedOnline Boolean @default(true)
@@ -750,6 +761,8 @@ model BrowserPolicy {
   version            Int      @default(1)
   safeBrowsing       Boolean  @default(true)
   safeSearch         Boolean  @default(true)
+  /// YouTube Restricted Mode: OFF | MODERATE | STRICT
+  youtubeRestrict    String   @default("MODERATE")
   blockedCategories  String[]
   blockedDomains     String[]
   allowedDomains     String[]

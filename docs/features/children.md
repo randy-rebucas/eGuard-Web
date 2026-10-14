@@ -79,7 +79,7 @@ They stay protected; to add more, remove some or upgrade." Nobody is removed.
 |---|---|
 | Name | required, trimmed, 1–40 characters; must not match another child in the family (any case) |
 | Birth year | the last 18 years, shown as "2015 (about 11 years old)"; must make the child under 18 |
-| Starting protections | **Protected** or **Balanced**; the recommended one follows the age until the parent picks (under 13 → Protected, 13+ → Balanced) |
+| Starting protections | **Protected** or **Balanced**; the recommended one follows the age until the parent picks (under 13 → Protected, 13+ → Balanced). It carries a "Recommended" pill, and the chosen option gets a Sky Accent border and Sky Wash fill. The card is sized to the form (568px), as is the "plan is full" note |
 
 **What the profiles set** (all 10 protections are always on, so neither lowers the health score):
 
@@ -124,7 +124,13 @@ protection **health ring** with one line:
 **See checks** links to the Protection tab.
 
 **Tabs** are links (`?tab=overview|screen|apps|protection|browser|location|devices|history`); an unknown tab opens
-Overview, and the old `?tab=activity` opens Screen Time. Each tab is rendered on the server.
+Overview, and the old `?tab=activity` opens Screen Time. Each tab is rendered on the server. On phones the tab
+bar wraps onto two lines instead of scrolling, so the current tab is always visible.
+
+**Layout:** one or two devices or browsers show as full-width rows rather than small tiles (as on the dashboard and
+the list page, where a lone child gets one wide card). On Overview the Profile card sits in its own row after
+Screen time today and Recent alerts, so a phone shows today's picture before the edit form. On a phone, each app's
+access and limit share a line and its category takes the full width beneath.
 
 ## 5. The eight tabs
 
@@ -134,9 +140,9 @@ Overview, and the old `?tab=activity` opens Screen Time. Each tab is rendered on
 |---|---|
 | **Needs your attention** | every check not passing, each with its status, detail and **Fix this** (opens the setup flow on that protection for this child). Otherwise "Everything is configured", "Nothing to fix right now" (offline), or "Pair a device first" |
 | **Devices** | the same grid as the Devices tab, with **Pair a device** |
-| **Profile** | photo (**Add photo** / **Change photo** / **Remove**), rename, change birth year; **Remove *Mia*…** for the family admin only |
 | **Screen time today** | used / limit, bar (amber at ≥ 85%, red past the limit), "Limit reached" / "Over by *x*", top 5 apps + Others (Free: only apps the Apps tab shows), **Manage apps** |
 | **Recent alerts** | this child's 4 most important open alerts, most severe first, then newest; **View all** → `/notifications?child=…` |
+| **Profile** (own row, last) | photo (**Add photo** / **Change photo** / **Remove**), rename, change birth year; **Remove *Mia*…** for the family admin only |
 
 **Editing the profile:** a changed name is checked against the other children; a birth year that hasn't changed
 isn't re-validated, so a child who has turned 18 can still be renamed. Saving never changes protections. When the
@@ -197,8 +203,8 @@ rounded to whole minutes, capped at 1440, and 0 means no limit.
 
 The 10 checks for this child (see [dashboard.md §4](dashboard.md#4-how-protection-is-measured)). Each row shows the
 check, its status badge, the parent's setting ("9:30 PM – 6:00 AM"), the device detail ("Verified on 2 of 2
-devices"), and what each platform supports (Android: Available; iOS: Guided setup, Verification only or
-Unsupported). Clicking a row opens the **setup flow**: select protection → review current → choose new → apply to
+devices"), and what each platform supports (Available, Guided setup, Set by you or Unsupported; e.g. Android:
+Set by you for App Restrictions and Content, which read "Set by you" once confirmed and never "Pass"). Clicking a row opens the **setup flow**: select protection → review current → choose new → apply to
 device → verify → health updated. With no device paired, a banner explains the settings apply once one is.
 
 ### 5.5 Browser
@@ -269,8 +275,8 @@ app and browser changes when they're made. 50 at a time, newest first, with **Sh
 |---|---|---|
 | `PENDING` | Waiting for your approval | installed or requested, not usable yet |
 | `ALLOWED` | Allowed | usable within screen time |
-| `ALWAYS_ALLOWED` | Always allowed | usable even when screen time runs out |
-| `FILTERED` | Filtered | usable with content filtering |
+| `ALWAYS_ALLOWED` | Always allowed | usable when screen time or its category's limit runs out (not at bedtime, nor past its own limit) |
+| `FILTERED` | Filtered (blocked) | blocked like `BLOCKED`; not offered on web unless the app already has it |
 | `BLOCKED` | Blocked | not usable; "Asked again" when the child requests it |
 
 **Check statuses, device states, alert severities, location states:** as in

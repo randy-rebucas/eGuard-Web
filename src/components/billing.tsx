@@ -86,18 +86,23 @@ export function BuyPlan({ plans, current, methods, payer, autoRenewBlocked, pass
   );
 }
 
-/** `losing`: what the family loses back on Free, e.g. "1 child, 2 devices, no location sharing" */
-export function CancelAutoRenew({ plan, endsOn, losing }: { plan: string; endsOn: string; losing: string }) {
+/**
+ * `losing`: what the family loses back on Free, e.g. "1 child, 2 devices, no location sharing".
+ * `endsOn` null: the last renewal failed, so the plan only runs on while it's retried and ends as soon as it's off.
+ */
+export function CancelAutoRenew({ plan, endsOn, losing }: { plan: string; endsOn: string | null; losing: string }) {
   const [confirm, setConfirm] = useState(false);
   const [pending, run] = useAction();
   if (!confirm) return <button className="btn btn-secondary btn-sm" onClick={() => setConfirm(true)}>Turn off auto-renew</button>;
   return (
     <div className="row" role="alert" style={{ gap: 10, flexWrap: "wrap" }}>
-      <span className="t-meta" style={{ color: "var(--ink-2)" }}>You keep {plan} until {endsOn}. After that your family goes back to Free: {losing}. Children and devices already added stay protected.</span>
+      <span className="t-meta" style={{ color: "var(--ink-2)" }}>
+        {endsOn ? `You keep ${plan} until ${endsOn}. After that your family goes back to Free` : `The last renewal wasn't paid, so ${plan} ends now and your family goes back to Free`}: {losing}. Children and devices already added stay protected.
+      </span>
       <span className="row" style={{ gap: 6 }}>
         <button className="btn btn-ghost btn-sm" disabled={pending} onClick={() => setConfirm(false)}>Keep it on</button>
         <button className="btn btn-primary btn-sm" disabled={pending} onClick={() => run(cancelAutoRenew, {
-          ok: `Auto-renew is off. ${plan} stays until ${endsOn}.`,
+          ok: endsOn ? `Auto-renew is off. ${plan} stays until ${endsOn}.` : `Auto-renew is off. Your family is back on Free.`,
           onOk: () => setConfirm(false),
         })}>{pending ? <><Icon name="loader-circle" className="spin" />Turning off…</> : "Turn off"}</button>
       </span>

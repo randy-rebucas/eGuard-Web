@@ -50,7 +50,8 @@ export async function simulateTick(familyId: string) {
     for (const r of due.filter((x) => x.mode === "GUIDED")) applied.set(r.key, stripKey(r.desired));
 
     const protections: ReportedProtection[] = checkDue
-      ? d.protections.map((p) => ({ key: p.key, config: applied.get(p.key) ?? stripKey(p.reported) }))
+      // A protection with nothing in force (reported null) stays left out, as a real device's full report would
+      ? d.protections.filter((p) => applied.has(p.key) || p.reported != null).map((p) => ({ key: p.key, config: applied.get(p.key) ?? stripKey(p.reported) }))
       : [...applied].map(([key, config]) => ({ key, config }));
     await processReport(d.id, { protections, full: !!checkDue, battery: d.battery });
   }

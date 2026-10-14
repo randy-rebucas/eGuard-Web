@@ -4,7 +4,8 @@ import { z } from "zod";
 import type { ProtectionKey } from "@prisma/client";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { PROTECTION_BY_KEY, defaultConfig, describeConfig, type ProtectionConfig } from "@/lib/protections";
+import { PROTECTION_BY_KEY, defaultConfig, describeConfig, isGuided, type ProtectionConfig } from "@/lib/protections";
+import { reportedLabel, statusOn } from "@/lib/health";
 import { startCheckRun } from "@/lib/engine";
 import { notFound, toResult, type Result } from "@/lib/errors";
 import { childPhotoSrc } from "@/lib/child-photo";
@@ -66,12 +67,13 @@ async function flowContext(familyId: string, childId: string, key: ProtectionKey
     devices: devices.map((d) => {
       const p = d.protections[0];
       const cap = def.caps[d.platform];
+      const status = statusOn(d, key);
       return {
         id: d.id, name: d.name, platform: d.platform, platformLabel: platformName(d.platform), capability: cap,
-        currentLabel: p ? (p.status === "NOT_CONFIGURED" ? "Not configured" : describeConfig(p.reported)) : "Not reported",
-        status: p?.status ?? "NOT_CONFIGURED",
+        currentLabel: reportedLabel(cap, status, p),
+        status,
         lastVerified: p?.lastVerifiedAt?.toISOString() ?? null,
-        guide: cap === "GUIDED" || cap === "VERIFY_ONLY" ? def.guide?.[d.platform] ?? null : null,
+        guide: isGuided(cap) ? def.guide?.[d.platform] ?? null : null,
       };
     }),
   };
@@ -99,9 +101,14 @@ export async function confirmGuided(batchId: string): Promise<Result> {
   return toResult(async () => { await confirmGuidedBatch(u.familyId, Id.parse(batchId)); return {}; });
 }
 
-export async function cancelBatch(batchId: string): Promise<Result> {
+/** `key`: only that protection's change, so cancelling from one protection's dialog leaves the rest of a setup going */
+export async function cancelBatch(batchId: string, key?: ProtectionKey): Promise<Result> {
   const u = await requireUser();
-  return toResult(async () => { await cancelConfigBatch(u.familyId, Id.parse(batchId)); return {}; });
+  return toResult(async () => {
+    if (key !== undefined && (typeof key !== "string" || !Object.hasOwn(PROTECTION_BY_KEY, key))) throw notFound("Protection");
+    await cancelConfigBatch(u.familyId, Id.parse(batchId), key);
+    return {};
+  });
 }
 
 export async function startCheck(deviceId?: string): Promise<Result<{ runId: string }>> {

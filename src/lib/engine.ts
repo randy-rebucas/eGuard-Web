@@ -1,12 +1,14 @@
 import "server-only";
-import type { CheckStatus, Device, Prisma, ProtectionKey } from "@prisma/client";
+import { Prisma, type CheckStatus, type Device, type ProtectionKey } from "@prisma/client";
 import { db } from "./db";
-import { PROTECTION_BY_KEY, configMatches, describeConfig, isConfigured } from "./protections";
+import { PROTECTIONS, PROTECTION_BY_KEY, configMatches, describeConfig, isConfigured } from "./protections";
 import { evaluate, isPassing } from "./health";
 import { ServiceError } from "./errors";
 import { LIMITS, enforce } from "./rate-limit";
+import { wakeDevices } from "./push";
 
-export type ReportedProtection = { key: ProtectionKey; config: Record<string, unknown> };
+/** `error`: the device tried to apply it and couldn't, and says why (e.g. "Choose at least one app or category first.") */
+export type ReportedProtection = { key: ProtectionKey; config: Record<string, unknown>; error?: string };
 
 export type DeviceReport = {
   protections: ReportedProtection[];
@@ -26,10 +28,12 @@ export const CHANGE_GRACE_MS = 6 * 3600_000;
 
 const deviceLabel =(d: { name: string; child: { name: string } }) => `${d.child.name}'s ${d.name}`;
 
-function messageFor(status: CheckStatus, key: ProtectionKey, label: string, reported: unknown) {
+function messageFor(status: CheckStatus, key: ProtectionKey, label: string, reported: unknown, error?: string) {
   if (isPassing(status)) return null;
   const name = PROTECTION_BY_KEY[key].name;
+  // No setting for the child: nothing was asked of the device, so there's nothing it failed to apply
   if (status === "NOT_CONFIGURED") return `Not configured on ${label}`;
+  if (error) return `${name} couldn't be applied on ${label}: ${error}`;
   if (key === "LOCATION" && !isConfigured(reported)) return `Sharing turned off on ${label}`;
   if (status === "ACTION_REQUIRED") return `${name} turned off on ${label}`;
   return `${name} on ${label} doesn't match your setting (${describeConfig(reported)})`;
@@ -39,8 +43,12 @@ function messageFor(status: CheckStatus, key: ProtectionKey, label: string, repo
  * Called when the device sends a heartbeat/sync. Delivers open APPLY requests: new ones, and delivered ones the device
  * hasn't reported on yet, since a sync response lost on the way (timeout, app killed) would otherwise strand them.
  * Applying the same config again is harmless; the first report on that protection verifies or fails the request.
+ *
+ * `policy` is what the device should enforce now: the verified policy with open requests laid over it (the newest
+ * per protection). A device that enforces from `policy` alone (Android) would otherwise keep the old value, report
+ * it, and fail the change. A cancelled or failed request stops being sent, so the device goes back to the policy.
  */
-export async function deviceSync(deviceId: string, info: { battery?: number | null; osVersion?: string; appVersion?: string } = {}) {
+export async function deviceSync(deviceId: string, info: { battery?: number | null; osVersion?: string; appVersion?: string; pushToken?: string | null } = {}) {
   const now = new Date();
   const [device, open] = await Promise.all([
     db.device.update({
@@ -50,6 +58,8 @@ export async function deviceSync(deviceId: string, info: { battery?: number | nu
         ...(info.battery !== undefined ? { battery: info.battery } : {}),
         ...(info.osVersion ? { osVersion: info.osVersion } : {}),
         ...(info.appVersion ? { appVersion: info.appVersion } : {}),
+        // null clears it (push turned off on the device); absent leaves it
+        ...(info.pushToken !== undefined ? { pushToken: info.pushToken } : {}),
       },
       include: { child: { include: { policies: true } } },
     }),
@@ -64,10 +74,12 @@ export async function deviceSync(deviceId: string, info: { battery?: number | nu
     fresh.length && db.configRequest.updateMany({ where: { id: { in: fresh.map((p) => p.id) }, status: "PENDING" }, data: { status: "DELIVERED", deliveredAt: now } }),
     resolveAlerts(device.familyId, `OFFLINE:${deviceId}`),
   ]);
+  const policy = new Map<ProtectionKey, Prisma.JsonValue>(device.child.policies.map((p) => [p.key, p.config]));
+  for (const r of open) policy.set(r.key, r.desired); // oldest first, so the newest wins
   return {
     device,
     requests: open.map((r) => ({ id: r.id, key: r.key, config: r.desired })),
-    policy: device.child.policies.map((p) => ({ key: p.key, config: p.config })),
+    policy: [...policy].map(([key, config]) => ({ key, config })),
     checkRequested: !!device.checkRequestedAt,
   };
 }
@@ -90,8 +102,20 @@ export async function processReport(deviceId: string, report: DeviceReport) {
     include: { child: true, protections: true },
   });
   const label = deviceLabel(device);
+  // The device can't read a protection the parent sets in another app (older Android builds echoed the policy back)
+  const entries: (ReportedProtection & { missing?: boolean })[] = report.protections.filter((p) => PROTECTION_BY_KEY[p.key]?.caps[device.platform] !== "PARENT_SET");
+  if (report.full) {
+    // A full report covers everything the device can apply. One it leaves out isn't in force (older Android builds
+    // drop a protection when its permission is turned off): left alone, it would keep its last "Pass".
+    const sent = new Set(entries.map((p) => p.key));
+    for (const def of PROTECTIONS) {
+      const cap = def.caps[device.platform];
+      if (sent.has(def.key) || cap === "UNSUPPORTED" || cap === "PARENT_SET") continue;
+      entries.push({ key: def.key, config: {}, error: "eGuard isn't applying it. A permission it needs may be turned off.", missing: true });
+    }
+  }
   // Read once for the whole report instead of per protection: a full report covers every protection
-  const keys = report.protections.map((p) => p.key);
+  const keys = entries.map((p) => p.key);
   const [openRequests, policyRows] = await Promise.all([
     db.configRequest.findMany({
       where: { deviceId, key: { in: keys }, status: { in: ["PENDING", "DELIVERED", "AWAITING_PARENT"] } },
@@ -106,10 +130,10 @@ export async function processReport(deviceId: string, report: DeviceReport) {
   // Requests verified or failed by an earlier entry (a report may repeat a key)
   const settled = new Set<string>();
 
-  for (const rp of report.protections) {
+  for (const rp of entries) {
     const def = PROTECTION_BY_KEY[rp.key];
     if (!def) continue;
-    const reported = { ...rp.config, key: rp.key };
+    const reported = rp.missing ? null : { ...rp.config, key: rp.key };
 
     // 1. Open requests for this protection on this device
     const open = openRequests.filter((r) => r.key === rp.key && !settled.has(r.id));
@@ -137,7 +161,7 @@ export async function processReport(deviceId: string, report: DeviceReport) {
         settled.add(req.id);
         await db.configRequest.update({
           where: { id: req.id },
-          data: { status: "FAILED", failureReason: `Device reported ${describeConfig(reported)}` },
+          data: { status: "FAILED", failureReason: rp.error ? `The device couldn't apply it: ${rp.error}` : `Device reported ${describeConfig(reported)}` },
         });
       }
     }
@@ -145,11 +169,11 @@ export async function processReport(deviceId: string, report: DeviceReport) {
     // 2. Evaluate against (possibly updated) policy
     const status = evaluate(def.caps[device.platform], policies.get(rp.key), reported);
     const prev = device.protections.find((p) => p.key === rp.key);
-    const message = messageFor(status, rp.key, label, reported);
+    const message = messageFor(status, rp.key, label, reported, rp.error);
     await db.deviceProtection.upsert({
       where: { deviceId_key: { deviceId, key: rp.key } },
-      create: { deviceId, key: rp.key, status, reported: reported as Prisma.InputJsonValue, message, lastVerifiedAt: now },
-      update: { status, reported: reported as Prisma.InputJsonValue, message, lastVerifiedAt: now },
+      create: { deviceId, key: rp.key, status, reported: reported ?? Prisma.JsonNull, message, lastVerifiedAt: now },
+      update: { status, reported: reported ?? Prisma.JsonNull, message, lastVerifiedAt: now },
     });
     statuses.set(rp.key, status);
 
@@ -170,10 +194,12 @@ export async function processReport(deviceId: string, report: DeviceReport) {
         severity: status === "ACTION_REQUIRED" || isLocation ? "ACTION_REQUIRED" : "ATTENTION",
         category: isLocation ? "LOCATION" : "PROTECTION",
         icon: isLocation ? "map-pin-off" : "shield-alert",
-        title: isLocation ? "Location sharing turned off" : "Protection setting changed",
+        title: isLocation ? "Location sharing turned off" : rp.error ? "Protection couldn't be applied" : "Protection setting changed",
         body: isLocation
           ? "Location sharing was switched off on the device."
-          : `${def.name} was changed on the device and no longer matches your setting.`,
+          : rp.error
+            ? `${def.name} couldn't be applied on the device: ${rp.error}`
+            : `${def.name} was changed on the device and no longer matches your setting.`,
         subject: label,
         fromValue: isLocation ? null : describeConfig(prevCfg),
         toValue: isLocation ? null : describeConfig(reported),
@@ -193,9 +219,9 @@ export async function processReport(deviceId: string, report: DeviceReport) {
     await db.alert.updateMany({ where: { familyId: device.familyId, resolveKey: { in: [...passing] }, resolvedAt: null }, data: { resolvedAt: now } });
   }
 
-  if (rpHasLocation(report)) {
-    // The last LOCATION entry, like the status above when a report repeats a key
-    const sharing = !!report.protections.findLast((p) => p.key === "LOCATION")!.config.sharing;
+  if (entries.some((p) => p.key === "LOCATION")) {
+    // The last LOCATION entry, like the status above when a report repeats a key; left out of a full report is off
+    const sharing = !!entries.findLast((p) => p.key === "LOCATION")!.config.sharing;
     // Sharing off: forget where the device was, so no stale position is kept, shown or exported
     const cleared = sharing ? {} : { lat: null, lng: null, accuracyM: null, placeLabel: null, placeId: null, locatedAt: null };
     await db.deviceLocation.upsert({
@@ -224,8 +250,6 @@ export async function syncChildLimits(childId: string, cfg: unknown, client: Pic
   if (c?.key !== "SCREEN_TIME" || typeof c.dailyMinutes !== "number") return;
   await client.child.update({ where: { id: childId }, data: { dailyLimitMinutes: c.dailyMinutes, weekendLimitMinutes: c.weekendMinutes ?? c.dailyMinutes } });
 }
-
-const rpHasLocation =(r: DeviceReport) => r.protections.some((p) => p.key === "LOCATION");
 
 /**
  * Creates an alert unless one matching `exists` is already there. Check and create run under one lock per
@@ -288,16 +312,21 @@ export async function startCheckRun(familyId: string, userId: string, deviceIds?
     data: { familyId, results: { create: devices.map((d) => ({ deviceId: d.id })) } },
   });
   await db.device.updateMany({ where: { id: { in: devices.map((d) => d.id) } }, data: { checkRequestedAt: now } });
+  await wakeDevices(devices.map((d) => d.id), "check");
   return run;
 }
 
 export const CHECK_TIMEOUT_MS = 12_000;
+/** iOS delivers the wake as a background push, which the system can hold back for a while; Android's is immediate */
+export const CHECK_TIMEOUT_IOS_MS = 30_000;
 
 export async function finalizeCheckRun(runId: string) {
-  const run = await db.checkRun.findUnique({ where: { id: runId }, include: { results: true } });
+  const run = await db.checkRun.findUnique({ where: { id: runId }, include: { results: { include: { device: { select: { platform: true } } } } } });
   if (!run || run.status === "COMPLETED") return run;
-  const done = run.results.every((r) => r.reportedAt);
-  const timedOut = Date.now() - run.createdAt.getTime() > CHECK_TIMEOUT_MS;
+  const waiting = run.results.filter((r) => !r.reportedAt);
+  const done = !waiting.length;
+  const timeout = waiting.some((r) => r.device?.platform === "IOS") ? CHECK_TIMEOUT_IOS_MS : CHECK_TIMEOUT_MS;
+  const timedOut = Date.now() - run.createdAt.getTime() > timeout;
   if (done || timedOut) {
     await db.checkRunResult.updateMany({ where: { runId, reportedAt: null }, data: { reachable: false } });
     await db.checkRun.update({ where: { id: runId }, data: { status: "COMPLETED", completedAt: new Date() } });

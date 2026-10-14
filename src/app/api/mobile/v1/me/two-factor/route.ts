@@ -3,7 +3,8 @@ import { z } from "zod";
 import { authed, body } from "@/lib/mobile-api";
 import { disable, status } from "@/lib/two-factor";
 
-const Code = z.object({ code: z.string().trim().min(6).max(40) });
+const CODE_HINT = "Enter the 6-digit code from your authenticator app, or a recovery code.";
+const Code = z.object({ code: z.string(CODE_HINT).trim().min(6, CODE_HINT).max(40, CODE_HINT) });
 
 /** Whether two-step verification is on, can be turned on here, and how many recovery codes are left. */
 export const GET = authed(async ({ user }) => NextResponse.json(await status(user.id)));

@@ -23,14 +23,18 @@ export function StatusBadge({ status, count }: { status: StatusKey; count?: numb
   return <span className={`pill tone-${s.tone}`}><Icon name={s.icon} />{s.label}</span>;
 }
 
-export function CheckBadge({ status, code }: { status: CheckStatus; code?: boolean }) {
+/** `parentSet`: the parent set it on the device and eGuard can't check it (PARENT_SET), which isn't "Unsupported" */
+export function CheckBadge({ status, code, parentSet }: { status: CheckStatus; code?: boolean; parentSet?: boolean }) {
+  if (parentSet) return <span className="pill tone-accent"><Icon name="user-check" />Set by you</span>;
   const m = CHECK_META[status];
   return <span className={`pill tone-${m.tone}`}><Icon name={m.icon} />{code ? <span className="code">{status}</span> : m.label}</span>;
 }
 
+export const CAPABILITY_CLASS: Record<Capability, string> = { AVAILABLE: "available", GUIDED: "guided", VERIFY_ONLY: "verify", PARENT_SET: "verify", UNSUPPORTED: "unsupported" };
+
 export function CapabilityChip({ cap, platform }: { cap: Capability; platform: string }) {
   const m = CAPABILITY_META[cap];
-  const cls = { AVAILABLE: "available", GUIDED: "guided", VERIFY_ONLY: "verify", UNSUPPORTED: "unsupported" }[cap];
+  const cls = CAPABILITY_CLASS[cap];
   return (
     <div className={`cap ${cls}`}>
       <span className="plat">{platform}</span>
@@ -46,13 +50,11 @@ export const SEVERITY: Record<AlertSeverity, { label: string; icon: string; tone
   CRITICAL: { label: "Critical", icon: "siren", tone: "crit", tile: "crit" },
 };
 
+/** A notification's severity as a status pill. Info is the baseline, so it gets none; its icon tile says enough. */
 export function SeverityLabel({ severity }: { severity: AlertSeverity }) {
   const s = SEVERITY[severity];
-  return (
-    <span className="sev" style={{ color: `var(--${s.tone === "accent" ? "accent-ink" : s.tone + "-ink"})` }}>
-      <Icon name={s.icon} />{s.label}
-    </span>
-  );
+  if (severity === "INFO") return null;
+  return <span className={`pill tone-${s.tone}`}><Icon name={s.icon} />{s.label}</span>;
 }
 
 /** A child's or parent's initial on their colour, or their photo (`photo`: a child's URL from childPhotoSrc). */
@@ -152,6 +154,8 @@ export function PageHead({ title, text, children, crumbs }: { title: string; tex
                 <Icon name="chevron-right" size={14} />
               </span>
             ))}
+            {/* End on where you are, as on the child and device pages, rather than a bare chevron */}
+            <span aria-current="page">{title}</span>
           </div>
         ) : null}
         <h1>{title}</h1>

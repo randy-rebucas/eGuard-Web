@@ -83,7 +83,7 @@ app does:
 | App Restrictions | Available | Available |
 | App Approval | Available | Available |
 | Content | Available | Available |
-| Web Filtering | Available | Guided |
+| Web Filtering | Guided (Private DNS) | Guided |
 | Downloads | Available | Verify only |
 | Location | Available | Guided |
 | Notification Controls | Available | Unsupported |
@@ -150,7 +150,7 @@ parent reads out. `201` returns `{ deviceId, token, childName }`. Store the toke
 | Usage access (`PACKAGE_USAGE_STATS`) | Screen Time, per-app limits, app blocking | "Lets eGuard count screen time and pause apps when time is up." |
 | Display over other apps, or AccessibilityService | Showing the block screen over a blocked app | **Decide** (D2). Prefer overlay; accessibility needs a Play declaration |
 | Device admin | Uninstall Protection | "Stops eGuard from being removed without a parent." |
-| VPN (local only) | Web Filtering | "Filters websites on this device. Traffic is not sent to eGuard." |
+| None (Private DNS is a system setting the parent sets with the guided steps; eGuard only reads it) | Web Filtering | — |
 | Location, then "Allow all the time" | Location | "Shares this device's location with your parent." Ask for background location on a separate screen after foreground |
 | Notifications (`POST_NOTIFICATIONS`) | The "eGuard is active" notification | "Shows that eGuard is on." |
 | Notification policy access | Notification Controls (quiet at bedtime) | "Silences notifications during bedtime." |
@@ -194,7 +194,7 @@ Every block screen has the eGuard mark, a title, one line of why, and a way forw
 | Daily limit reached | "Screen time is up for today" | "Your limit is {2h}. Apps come back tomorrow." | Allowed apps (phone, messages, always-allowed apps) · Close |
 | Bedtime | "It's bedtime" | "Apps are paused until {6:00 AM}." | Allowed apps · Close |
 | App over age rating | "{App} isn't allowed" | "It's rated {17}+." | Ask for it · Close |
-| Website blocked (Android VPN) | Handled by a local block page or a notification | "{site} is blocked on this device." | None in v1 (the browser access-request flow is extension-only; see G7) |
+| Website blocked (Android Private DNS) | The family resolver's own block page, or the site just doesn't load | Shown by the browser | None in v1 (the browser access-request flow is extension-only; see G7) |
 
 Emergency calls and the phone dialer are never blocked. **Decide** (D5) the full always-allowed list (phone,
 messages, maps, eGuard itself).
@@ -224,20 +224,29 @@ protection that was skipped. Treat a non-empty `ignored` as a bug and log it.
 
 | Key | Config to report | Android: apply and read back | iOS: apply and read back |
 |---|---|---|---|
-| `SCREEN_TIME` | `{ dailyMinutes, weekendMinutes }` | Stored in the app. Count with `UsageStatsManager`; at the limit, show the block screen over non-allowed apps. Report the limits the app is enforcing | `DeviceActivityMonitor` schedule with a threshold event; at the threshold, apply a shield through `ManagedSettingsStore`. Report the thresholds actually registered |
+| `SCREEN_TIME` | `{ dailyMinutes, weekendMinutes }` | Stored in the app. Count with `UsageStatsManager`, including the app open right now; at the limit, show the block screen over non-allowed apps at once, even mid-game or mid-video (Android plans a check for the exact moment the open app's time, extra time or the wait for bedtime runs out, and checks again as soon as a sync changes the rules). Report the limits the app is enforcing | `DeviceActivityMonitor` schedule with a threshold event; at the threshold, apply a shield through `ManagedSettingsStore`. Report the thresholds actually registered |
 | `BEDTIME` | `{ enabled, start: "HH:MM", end: "HH:MM", days: "EVERY_DAY" \| "SCHOOL_NIGHTS" }` | App-enforced schedule; block screen during the window. Handle windows that cross midnight | `DeviceActivitySchedule` with `repeats: true`; shield on `intervalDidStart`, clear on `intervalDidEnd`. Report the registered schedule |
-| `APP_RESTRICTIONS` | `{ maxAgeRating }` (4, 9, 12, 13 or 17) | Look up each installed app's rating (**Decide** D3: source of ratings), block over-rating apps | `ManagedSettings` `application.denyAppInstallation`/`appStore.maxRating` (`ageRating` mapping). Read back from the store |
-| `APP_APPROVAL` | `{ enabled }` | When on, a newly installed app is blocked until approved; send `APP_REQUESTED` | When on, set `appStore.requirePasswordForPurchases` / Ask to Buy is the system path; the app enforces with shields on unknown app tokens. **Decide** (D4) |
-| `CONTENT` | `{ maxAgeRating }` | Report the age rating the app applies to media apps it knows about. **Decide** whether Android enforces anything beyond Play parental controls | `ManagedSettings` `media.maxRatingMovies` / `maxRatingTVShows` / books. Read back |
-| `WEB` | `{ mode: "OFF" \| "FILTER" \| "ALLOWLIST", blockedSites }` | Local `VpnService` with DNS filtering on the device. Report `blockedSites` as the count actually loaded; the server compares `mode` only | **Guided.** The parent sets Limit Adult Websites in Settings. Where readable, report `webContent` from `ManagedSettings`; otherwise see G3 |
-| `DOWNLOADS` | `{ requireApproval }` | Block installs from the Play Store app until approved (same mechanism as App Approval) | **Verify only.** Parent sets it in Settings. Report `denyAppInstallation` if readable; otherwise G3 |
+| `APP_RESTRICTIONS` | `{ maxAgeRating }` (4, 9, 12, 13 or 17) | **Set by the parent (`PARENT_SET`), don't report.** Android can't read app ratings (D3), so the parent sets Google Play's parental controls from the guide and confirms; the server records it as set by them, not verified, and ignores anything a device reports for this key | `ManagedSettings` `appStore.maximumRating` (`ageRating` mapping). Read back from the store |
+| `APP_APPROVAL` | `{ enabled }` | When on, a newly installed app is blocked until approved; send `APP_REQUESTED` | `application.denyAppInstallation` (shared with `DOWNLOADS`: denied when either is on). Report `enabled` = installs denied **and** approval wanted |
+| `CONTENT` | `{ maxAgeRating }` | **Set by the parent (`PARENT_SET`), don't report.** Google Play's parental controls for movies and TV, as for `APP_RESTRICTIONS` | `ManagedSettings` `media.maximumMovieRating` / `maximumTVShowRating`, explicit content. Report the higher of the movie and TV tiers (no cap counts as 21), so either one loosened shows as not matching |
+| `WEB` | `{ mode: "OFF" \| "FILTER" \| "ALLOWLIST", blockedSites }` | **Guided.** The parent sets Private DNS to a family filter (`family.cloudflare-dns.com`; `FamilyDns.HOSTS` also accepts AdGuard, CleanBrowsing and Mullvad family resolvers). Read back with `LinkProperties.privateDnsServerName`: `FILTER` when it's one of those, else `OFF` (always `OFF` below Android 9). `ALLOWLIST` isn't possible, so it shows as not matching. `blockedSites` is 0; the server compares `mode` only. Turning it off on the phone is noticed on the next cycle (it's in the capability set) | **Applied by eGuard.** `webContent.blockedByFilter = .auto()` unless the mode is `OFF` (`ALLOWLIST` is applied as a filter, so it shows as not matching). Report `mode` from the store and `blockedSites: 0` |
+| `DOWNLOADS` | `{ requireApproval }` | A newly installed app stays locked until approved (same mechanism as App Approval; Android can't stop the Play Store download itself) | **Applied by eGuard.** `application.denyAppInstallation` (shared with `APP_APPROVAL`). Report `requireApproval` = installs denied **and** downloads approval wanted |
 | `LOCATION` | `{ sharing }` | `true` when location permission (background) is granted **and** the policy has sharing on | **Guided.** `true` when Always/While Using is granted and sharing is on |
 | `NOTIFICATIONS` | `{ quietDuringBedtime }` | Turn on Do Not Disturb during bedtime with `NotificationManager.setInterruptionFilter`. Report whether the app has policy access and the rule is registered | **Unsupported.** Don't report this key |
 | `UNINSTALL_PROTECTION` | `{ enabled }` | Device admin active (`DevicePolicyManager.isAdminActive`) | `ManagedSettings` `application.denyAppRemoval = true`. Read back |
 
 Additional rules:
 
-- **Only report protections the platform supports.** iOS never sends `NOTIFICATIONS`.
+- **Only report protections the platform supports.** iOS never sends `NOTIFICATIONS`; Android never sends
+  `APP_RESTRICTIONS` or `CONTENT` (set by the parent). The server counts an unsupported protection as unsupported
+  whether or not it's reported.
+- **A full report covers every protection the device can apply.** One left out of a `full: true` report is taken as
+  not in force (status Warning, or Action required for App Approval and Uninstall Protection) with "eGuard isn't
+  applying it". Better: report what is in force (e.g. `{ enabled: false }`) with `error` saying why ("Accessibility
+  for eGuard is turned off."). Leave `error` out when there's nothing to say: `null` is rejected. Android does this
+  for `SCREEN_TIME` (`{ dailyMinutes: 0, weekendMinutes: 0 }` without accessibility or usage access), `BEDTIME`,
+  `APP_APPROVAL`, `DOWNLOADS` (without accessibility) and `NOTIFICATIONS` (without Do Not Disturb access); one the
+  policy turns off is reported as the policy has it, with no `error`.
 - **Report after every change,** whether the change came from the parent or from the child turning something off in
   system settings. Listen for permission and admin revocation (Android `DeviceAdminReceiver.onDisabled`, location
   permission changes, VPN revoked) and report within a minute of the app next running.
@@ -260,17 +269,21 @@ the only key: there's no package name or bundle ID (**Server gap G4**).
 | `approval` | What the device does |
 |---|---|
 | `ALLOWED` | Usable, subject to screen time, bedtime and its own `dailyLimitMinutes` |
-| `ALWAYS_ALLOWED` | Usable even after the daily limit and during bedtime. **Server gap G5:** confirm this meaning |
-| `FILTERED` | **Server gap G5:** the server has this value but no definition. Treat as `ALLOWED` until defined |
+| `ALWAYS_ALLOWED` | Not paused by the daily screen-time limit or a category limit. Bedtime and its own `dailyLimitMinutes` still apply |
+| `FILTERED` | Blocked, like `BLOCKED` (reserved for content filtering; parents can't pick it on web any more). Asking for it reaches the parent as for a blocked app |
 | `BLOCKED` | Always shows the block screen. Opening it sends `APP_BLOCKED` |
 | `PENDING` | Blocked, with the "Waiting for your parent" screen |
 | Not in the list | New app. If App Approval is on, block it and send `APP_REQUESTED`; else allow it and send `APP_INSTALLED` |
 
+Apps that were on the phone before pairing are never "installed": the server adds every app named in `/usage` to the
+list (as `ALLOWED`, no alert), so they appear in `apps` on a later sync and the parent can block or limit them.
+
 **Category limits.** Each app has a `category` (`GAMES`, `SOCIAL`, `VIDEO`, `MESSAGING`, `EDUCATION`, `CREATIVITY`,
 `BROWSERS`, `OTHER`): the parent's choice or the server's guess from the name. `categoryLimits:
 [{ category, dailyLimitMinutes }]` caps the day's total for all apps in a category, in the family's time zone. Once
-it's used up, pause those apps (except `ALWAYS_ALLOWED`) like a per-app limit and send `LIMIT_REACHED` with the
-`category`. An app not in `apps` yet counts as `OTHER` until the next sync. The list is empty on plans without
+it's used up, pause those apps (except `ALWAYS_ALLOWED`, whose minutes still count) like a per-app limit and send
+`LIMIT_REACHED` with the `category`; asking for more time there sends `TIME_REQUESTED` with reason `CATEGORY_LIMIT`.
+An app not in `apps` yet counts as `OTHER` until the next sync. Android: `EnforcementEngine` (since this change). The list is empty on plans without
 category limits (`features.categoryLimits: false`).
 
 **Asking for an app.** From a block screen or Home › Ask for an app, send `POST /events`
@@ -280,6 +293,9 @@ The answer reaches the device on a later sync (up to 5 minutes, or longer on iOS
 **iOS note.** The Screen Time API gives opaque app tokens and no app names, even inside extensions. Showing app
 names to parents, `APP_INSTALLED` events and name-based rules all depend on this. **Decide** (D4) how iOS maps the
 server's names to tokens, for example by having the parent pick apps with `FamilyActivityPicker` in parent mode.
+Until then the iOS app enforces none of the per-app rules in `apps` (approval, `dailyLimitMinutes`, `category`) nor
+`categoryLimits`, sends `/usage` without `apps`, and has no `TIME_REQUESTED` or `extraTimeUntil` (checked 2026-10-13).
+It does read `FILTERED` as blocked when answering a child's request.
 
 ## 8. Sync and reporting
 
@@ -289,10 +305,10 @@ All calls: `Authorization: Bearer <device token>`, JSON, HTTPS only. Errors are 
 
 | Call | When | Body |
 |---|---|---|
-| `POST /sync` | Every `nextSyncSeconds` (300 today), at app start, after network returns, after boot | `{ battery, osVersion, appVersion }`. Returns `{ deviceId, childName, policy, requests, apps, categoryLimits, fullReportRequested, nextSyncSeconds, timezone, features: { locationSharing, categoryLimits }, minAppVersion }`. `childName` can change: a parent may move the device to another child, so show the latest one, not the name from pairing |
+| `POST /sync` | Every `nextSyncSeconds` (300 today), at app start, after network returns, after boot | `{ battery, osVersion, appVersion }`. Returns `{ deviceId, childName, policy, requests, apps, categoryLimits, extraTimeUntil, fullReportRequested, nextSyncSeconds, timezone, features: { locationSharing, categoryLimits }, minAppVersion }`. `childName` can change: a parent may move the device to another child, so show the latest one, not the name from pairing |
 | `POST /report` | After applying anything from `/sync`, after any on-device change, and in full when `fullReportRequested` | `{ protections: [{ key, config }], full?, battery?, osVersion?, appVersion? }` |
 | `POST /usage` | Every sync cycle for today, and once for yesterday after midnight | `{ date, totalMinutes, apps, hourly }` |
-| `POST /location` | Section 9 | `{ lat, lng, accuracyM, placeLabel? }` |
+| `POST /location` | Section 9 | `{ lat, lng, accuracyM, placeLabel?, at }` (`at`: when the OS took the fix) |
 | `POST /events` | Section 9 | One event |
 
 ### The sync cycle
@@ -308,8 +324,10 @@ schedule next run in nextSyncSeconds
 ```
 
 - Apply `requests` in the order given. Also reconcile against `policy`: if the policy says a protection is on and
-  the device doesn't have it, re-apply it. The `policy` is the source of truth for enforcement; `requests` tells you
-  what the parent changed and hasn't been verified yet.
+  the device doesn't have it, re-apply it. The `policy` is the source of truth for enforcement, and already includes
+  any change still waiting to be verified (the newest per protection), so enforcing `policy` alone is enough;
+  `requests` tells you what the parent changed and hasn't been verified yet. A cancelled or failed change stops being
+  sent, and `policy` goes back to the verified setting.
 - A request keeps coming back in every `/sync` until the device reports that protection (then it's `VERIFIED` or
   `FAILED`), so a sync response lost on the way doesn't strand a change. Applying it again must be harmless: apply,
   read back, report. Report every protection that arrived in `requests`, even when nothing changed on the device.
@@ -317,9 +335,15 @@ schedule next run in nextSyncSeconds
   `null` means no minimum.
 - `features.locationSharing: false` means the family's plan doesn't include location: don't collect or send fixes,
   whatever the `LOCATION` policy says. Still report the `LOCATION` protection as usual.
-- A full report must answer quickly. The parent's "Run a check" waits 12 seconds
-  (`CHECK_TIMEOUT_MS` in [engine.ts](../src/lib/engine.ts)), and after that marks the device unreachable. On
-  Android, answer within the same sync. On iOS, answer when the app next runs (see below).
+- A full report must answer quickly. The parent's "Run a check" waits 12 seconds, or 30 when an iOS device hasn't
+  answered yet (`CHECK_TIMEOUT_MS` / `CHECK_TIMEOUT_IOS_MS` in [engine.ts](../src/lib/engine.ts)), and after that
+  marks the device unreachable. The check wakes the device (below); answer within that sync.
+- When applying a protection fails, never swallow it: still report what the OS has, with `error` set to the reason
+  (`/report`), and tell the child on their home screen. The parent sees "*Name* couldn't be applied on *device*:
+  *reason*", and a change that fails keeps the reason.
+- Send `pushToken` (the app's FCM registration token) on `/sync` whenever push is available. A message with
+  `data.type == "sync"` (no notification part) means "sync now": a parent changed a setting, app rules or extra time,
+  ran a check, or moved the device. `data.reason` is `config`, `check`, `apps` or `extra_time`, for logging only.
 - Every call counts as "seen". A device that doesn't call for 24 hours raises "Device hasn't synced in over a day".
 
 ### Background execution
@@ -328,11 +352,13 @@ schedule next run in nextSyncSeconds
 |---|---|---|
 | Keeping alive | Foreground service with the persistent "eGuard is active" notification (type `specialUse` or `dataSync`, Android 14+ declaration) | No always-on process. Enforcement lives in the system (`ManagedSettings`) and keeps working without the app |
 | Periodic sync | Inside the service, every `nextSyncSeconds`. `WorkManager` 15-minute job as a backup | `BGAppRefreshTask` (system-scheduled, often hours apart), `DeviceActivityMonitor` callbacks, location updates, and app launches |
-| Instant changes | Not available (G1) | Not available (G1) |
+| Instant changes | FCM high-priority data message → `EGuardMessagingService` → expedited sync (`syncNow`) | FCM → APNs background push (`content-available`) → `didReceiveRemoteNotification` → one sync. Needs the `remote-notification` background mode |
 | After reboot | `RECEIVE_BOOT_COMPLETED` restarts the service | Enforcement survives; sync resumes on next wake |
 
-On iOS, parent changes and checks can wait hours. The parent app should say "Applies the next time {device} checks
-in", not show a spinner. **Server gap G1** (silent push) fixes this.
+On iOS the system decides when a background push runs: usually within seconds, but it can hold them back (Low Power
+Mode, a force-quit app, a budget of a few per hour). Polling stays the guarantee, so the parent app should still say
+"Applies the next time {device} checks in" once its wait times out. Nothing is woken when the server has no
+`FCM_SERVICE_ACCOUNT`, or before the app has sent a `pushToken`.
 
 ### Retries and offline
 
@@ -368,7 +394,8 @@ the last threshold crossed and no `apps`, and change the listing copy.
   rest, one fix every 15 minutes is enough to count as "live" in the parent app (it reads "Last seen" after 20).
 - At most 240 fixes an hour: past that the server answers `429`. Keep only the newest unsent fix and send it after a
   few minutes.
-- Use balanced accuracy (not GPS-always). Send `accuracyM`.
+- Use balanced accuracy (not GPS-always). Send `accuracyM`, and `at`, the fix's own time: a last-known position or
+  one queued offline is older than the request, and the parent must see when it was really taken.
 - `placeLabel` is optional. Don't reverse-geocode on the device in v1: the server names a fix from the places the
   parents saved (Home, School), and that name wins over a device label.
 - Each fix replaces the previous one whole: a field you leave out (`placeLabel`, `accuracyM`) is cleared, not kept from the last fix.
@@ -378,11 +405,13 @@ the last threshold crossed and no `apps`, and change the listing copy.
 
 | Event | Send when | Server throttles |
 |---|---|---|
-| `APP_INSTALLED` `{ app, ageRating? }` | A new app appears and App Approval is off | Only the first time the name is seen for the child. `ageRating` is 0–21; app names are trimmed, and a blank one is a `400` |
-| `APP_REQUESTED` `{ app }` | The child taps Ask, or a new app is installed with App Approval on | One open request per app; asking again for a blocked app alerts once a day |
+| `APP_INSTALLED` `{ app, ageRating? }` | A new app appears and App Approval is off | Only the first time the name is seen for the child. Sent with approval on, the server treats it as `APP_REQUESTED` (the app is added as `PENDING`); send only `APP_REQUESTED` then. `ageRating` is 0–21; app names are trimmed, and a blank one is a `400` |
+| `APP_REQUESTED` `{ app }` | The child taps Ask for an app, or a new app is installed with App Approval on | One open request per app; asking again for a blocked app alerts once a day |
 | `APP_BLOCKED` `{ app }` | The child opens a `BLOCKED` app | One alert per app per hour |
 | `LIMIT_REACHED` `{ minutes }` | The daily screen-time limit is hit (`minutes` is the limit) | One alert per 12 hours |
 | `LIMIT_REACHED` `{ minutes, category }` | A category limit is used up (`category` from `categoryLimits`, `minutes` its limit) | One alert per category per 12 hours ("Gaming time used up") |
+| `USER_LEFT` `{}` / `USER_RETURNED` `{ awayMinutes }` | Android: the phone switched to another user or guest profile (`ACTION_USER_BACKGROUND`, registered at runtime) and back (`ACTION_USER_FOREGROUND`). Queue them with an `eventId`: the network may not be reachable from a background user | Parents see "Switched to another user" while away and "Used on another user for N min" after |
+| `TIME_REQUESTED` `{ app?, reason? }` | The child taps Ask for more time on a limit or bedtime block screen (`reason`: `DAILY_LIMIT`, `APP_LIMIT`, `CATEGORY_LIMIT`, `BEDTIME`) | One open request per child; the parent answers with extra time (`extraTimeUntil` on the next sync: limits and bedtime stop blocking until then) or not now |
 
 Give each event an `eventId` (8–64 characters; a UUID made once per event) and send the same one on every retry.
 The server answers a repeat from the same device within 7 days with `{ "ok": true, "duplicate": true }` and does
@@ -449,11 +478,11 @@ Found while writing this spec. Each needs a server change or a written decision 
 
 | # | Gap | Why it matters | Suggested fix |
 |---|---|---|---|
-| G1 | No way to wake the device. Changes arrive only on the next poll | iOS devices may poll hours apart; "Run a check" times out after 12 s | Store an FCM/APNs token per device on `/sync`; send a silent push on new requests and check runs. Make the check timeout longer for iOS |
+| G1 | No way to wake the device. Changes arrive only on the next poll | iOS devices may poll hours apart; "Run a check" times out after 12 s | **Done (2026-10-14):** `/sync` takes `pushToken` (`Device.pushToken`); `wakeDevices` ([push.ts](../src/lib/push.ts)) sends a silent FCM message on new requests, guided "verify now", checks, app rules, extra time and device moves, and forgets dead tokens. Checks with an iOS device wait 30 s. Also fixed: `policy` in `/sync` now includes waiting changes, so an app that enforces `policy` (Android) no longer reverts and fails them |
 | G2 | `SCHOOL_NIGHTS` isn't defined on the server; the family time zone isn't sent to the device | Parent and device may disagree about which nights count, and about "today" when the device's zone differs from the family's | **Done:** `bedtimeActive` / `isSchoolNight` in `protections.ts` define it (section 6); `/sync` returns `timezone` |
 | G3 | Guided and verify-only protections assume the device can read the setting back. On iOS, settings the parent makes in the Settings app aren't readable by the Screen Time API, and usage totals can't leave the report extension | Web, Downloads and iOS screen-time charts may be unverifiable | Prototype. If unreadable, change the iOS capability to one the server can honestly check, or report a "can't verify" status (new `CheckStatus`) |
 | G4 | Apps are keyed by display name only | Two apps with the same name collide; renamed apps lose their rules; iOS has no names | Add an optional `bundleId` / `packageName` to `/events`, `/usage` and the `apps` list |
-| G5 | `ALWAYS_ALLOWED` and `FILTERED` have no written meaning | The device can't enforce them consistently | Define them in the schema comments and here |
+| G5 | Done 2026-10-13: `ALWAYS_ALLOWED` and `FILTERED` are defined in section 7, as Android 1.0.9 enforces them | — | — |
 | G6 | No device rename or unpair from the device | Name must be chosen before pairing; the child can't leave cleanly even with a parent present | `PATCH /device/v1/me { name }`; `DELETE /device/v1/me` with a parent approval |
 | G7 | No website access requests on the phone | The browser extension has them; phones only block | Reuse `browser-access` for devices later |
 | G8 | Events have no idempotency key | A retried event after a timeout can create a duplicate request | **Done:** optional `eventId`; a repeat within 7 days returns `duplicate: true` (section 9) |
@@ -516,7 +545,7 @@ against a local server (`npm run dev`, with `APP_URL` reachable from the phone) 
 |---|---|---|---|
 | D1 | Android enforcement stack | On-device APIs (this spec) · Google Family Link · Android Enterprise / device owner | **Decided 2026-10-08: on-device APIs.** Family Link has no public API for a third-party app to set or read its rules, so eGuard couldn't verify them. The help article `android-family-link` says Family Link isn't needed |
 | D2 | How Android shows the block screen | Overlay (`SYSTEM_ALERT_WINDOW`) · AccessibilityService | Overlay, with usage-stats polling. Accessibility only if overlay proves unreliable, since Play scrutinizes it |
-| D3 | Age ratings for Android apps | Play parental controls (no read API) · a bundled rating list · parent decides per app | A server-side rating lookup by package name (needs G4); until then, App Restrictions on Android relies on App Approval |
+| D3 | Age ratings for Android apps | Play parental controls (no read API) · a bundled rating list · parent decides per app | **Decided 2026-10-14:** Play parental controls, as capability `PARENT_SET` ("Set by you"): guided steps, confirmed by the parent, never shown as verified and not counted in health. Applies to `CONTENT` too. A server-side rating lookup (G4) could make it verifiable later |
 | D4 | iOS app identity and usage data | `FamilyActivityPicker` tokens chosen by the parent · threshold-only reporting | Prototype first (G3). This decides what the iOS listing can promise |
 | D5 | Always-allowed apps during bedtime and limits | Fixed list · parent picks | Fixed (phone, messages, eGuard) in v1; parent-chosen via `ALWAYS_ALLOWED` later |
 | D6 | Certificate pinning | Pin CA · none | Pin the CA with a backup pin |

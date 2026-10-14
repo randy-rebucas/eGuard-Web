@@ -1,4 +1,4 @@
-import { generateKeyPairSync, sign } from "node:crypto";
+import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { verifyIdToken } from "../social-auth";
 
@@ -51,6 +51,24 @@ describe("verifyIdToken", () => {
   it("rejects a tampered payload", async () => {
     const [h, , s] = token(apple()).split(".");
     await expect(verifyIdToken("apple", `${h}.${b64(apple({ sub: "attacker" }))}.${s}`, opts)).rejects.toMatchObject({ status: 401 });
+  });
+
+  describe("nonce", () => {
+    const raw = "a".repeat(64);
+    const hashed = createHash("sha256").update(raw).digest("hex");
+
+    it("accepts Apple's hashed nonce and Google's raw one when the app sends the raw value", async () => {
+      await expect(verifyIdToken("apple", token(apple({ nonce: hashed })), { ...opts, nonce: raw })).resolves.toMatchObject({ subject: "001234.abc" });
+      await expect(verifyIdToken("google", token(apple({ iss: "accounts.google.com", nonce: raw })), { ...opts, nonce: raw })).resolves.toMatchObject({ subject: "001234.abc" });
+    });
+
+    it.each([
+      ["a nonce-bound token sent without its nonce", hashed, undefined],
+      ["a token bound to another nonce", hashed, "b".repeat(64)],
+      ["a nonce sent with a token that has none", undefined, raw],
+    ])("rejects %s", async (_, claim, sent) => {
+      await expect(verifyIdToken("apple", token(apple({ nonce: claim })), { ...opts, nonce: sent })).rejects.toMatchObject({ status: 401, code: "invalid_token" });
+    });
   });
 
   it("reports 501 when the provider isn't configured", async () => {

@@ -83,7 +83,11 @@ export async function currentPurchase(familyId: string) {
   return bestPurchase(rows);
 }
 
-/** "Renews on …" for an auto-renewing purchase, "Ends on …" for one that won't (a pass, or auto-renew turned off). */
-export function renewalWord(purchase: { autoRenewing: boolean } | null) {
+/**
+ * "Renews on …" for an auto-renewing purchase, "Ends on …" for one that won't (a pass, or auto-renew turned off),
+ * "Renewal failed on …" while a failed renewal is retried (the date has passed; the plan runs on in grace).
+ */
+export function renewalWord(purchase: { autoRenewing: boolean; state?: string } | null) {
+  if (purchase?.state === "past_due") return "Renewal failed";
   return purchase && !purchase.autoRenewing ? "Ends" : "Renews";
 }

@@ -8,11 +8,12 @@ import { photoUrl } from "./mobile-api";
 import { ensureOfflineAlerts } from "./engine";
 import { touchSimulated } from "./simulator";
 import { notFound } from "./errors";
-import { healthLabel, isDismissible, systemAction, type DeviceState } from "./health";
+import { healthLabel, isDismissible, reportedLabel, statusOn, systemAction, type DeviceState } from "./health";
 import { capAppUsage, nameableApps } from "./plan-access";
 import { childLocation, locationPolicy, stayed, visitSpan } from "./location";
 import type { Entitlements } from "./plans";
 import { requestedApps } from "./family-service";
+import { forClient } from "./store-neutral";
 
 /**
  * JSON shapes for the parent mobile app. Values are raw (ISO dates, minutes) with a
@@ -64,18 +65,25 @@ export async function deviceDetailJson(familyId: string, deviceId: string) {
     protections: PROTECTIONS.map((p) => {
       const row = d.protections.find((x) => x.key === p.key);
       const cap = p.caps[d.platform];
+      const status = statusOn(d, p.key);
       return {
         key: p.key, name: p.name, icon: p.icon, capability: cap, capabilityLabel: CAPABILITY_META[cap].label,
         // Same wording as the web device page
-        status: row?.status ?? "NOT_CONFIGURED",
-        reportedLabel: !row ? "Not reported" : row.status === "UNSUPPORTED" ? "Not supported" : row.status === "NOT_CONFIGURED" ? "Not configured" : describeConfig(row.reported),
-        message: row?.message ?? null, lastVerifiedAt: row?.lastVerifiedAt ?? null,
+        status,
+        reportedLabel: reportedLabel(cap, status, row),
+        message: cap === "PARENT_SET" && status !== "UNSUPPORTED" ? null : row?.message ?? null, lastVerifiedAt: row?.lastVerifiedAt ?? null,
       };
     }),
   };
 }
 
-export function childJson(c: ChildView, extra: { photo?: Date; todayMinutes?: number; tz: string }) {
+/** Connected browser extensions per child (one disconnected for security doesn't count, as for device slots). */
+export async function browserCounts(childIds: string[]) {
+  const rows = await db.browserInstallation.groupBy({ by: ["childId"], where: { childId: { in: childIds }, revokedAt: null }, _count: { _all: true } });
+  return new Map(rows.map((r) => [r.childId, r._count._all]));
+}
+
+export function childJson(c: ChildView, extra: { photo?: Date; todayMinutes?: number; browserCount?: number; tz: string }) {
   const today = dayKey(new Date(), extra.tz);
   return {
     id: c.id, name: c.name, age: c.age, birthYear: c.birthYear, hue: c.hue,
@@ -86,14 +94,16 @@ export function childJson(c: ChildView, extra: { photo?: Date; todayMinutes?: nu
     todayLimitMinutes: limitOn(c, today),
     todayMinutes: extra.todayMinutes ?? 0,
     deviceCount: c.devices.length,
+    // Connected browser extensions, so a browser-only child reads "Browser only" (as on the web), not "No device"
+    browserCount: extra.browserCount ?? 0,
     primaryDevice: c.primary ? { id: c.primary.id, name: c.primary.name, platform: c.primary.platform } : null,
   };
 }
 
 export async function childrenJson(graph: FamilyGraph, tz: string) {
   const ids = graph.children.map((c) => c.id);
-  const [photos, minutes] = await Promise.all([photoVersions(ids), todayMinutes(ids, tz)]);
-  return graph.children.map((c) => childJson(c, { photo: photos.get(c.id), todayMinutes: minutes.get(c.id), tz }));
+  const [photos, minutes, browsers] = await Promise.all([photoVersions(ids), todayMinutes(ids, tz), browserCounts(ids)]);
+  return graph.children.map((c) => childJson(c, { photo: photos.get(c.id), todayMinutes: minutes.get(c.id), browserCount: browsers.get(c.id), tz }));
 }
 
 export function childFromGraph(graph: FamilyGraph, childId: string) {
@@ -126,6 +136,8 @@ export function mobileAlertAction(a: Pick<Alert, "resolveKey" | "category" | "ch
   }
   if (k === "OFFLINE" && a.deviceId) return { type: "VIEW_DEVICE", label: "View device", deviceId: a.deviceId };
   if (k === "APPREQ" && a.childId) return { type: "REVIEW_APPS", label: "Review request", childId: a.childId };
+  // The Screen Time screen answers it (GET/POST/DELETE …/extra-time)
+  if (k === "TIMEREQ" && a.childId) return { type: "VIEW_SCREEN_TIME", label: "Review request", childId: a.childId };
   if (k === "PLACE" && a.childId) return { type: "VIEW_LOCATION", label: "View places", childId: a.childId };
   if (k === "WEBREQ" && a.childId && id) return { type: "REVIEW_SITE_REQUEST", label: "Review request", childId: a.childId, requestId: id };
   if (k === "BROWSER_REVOKED") return { type: "VIEW_BROWSERS", label: "View browsers", childId: null };
@@ -156,11 +168,12 @@ export function dayGroup(d: Date, tz: string, now = new Date()) {
   return { key, label };
 }
 
-export function alertJson(a: Alert & { read: boolean }, tz: string) {
+/** `ios`: the iPhone app, which gets the body without sentences about buying a plan (storeNeutral) */
+export function alertJson(a: Alert & { read: boolean }, tz: string, ios = false) {
   return {
     id: a.id, childId: a.childId, deviceId: a.deviceId,
     severity: a.severity, category: a.category, icon: a.icon,
-    title: a.title, body: a.body, subject: a.subject, fromValue: a.fromValue, toValue: a.toValue,
+    title: a.title, body: forClient(a.body, ios), subject: a.subject, fromValue: a.fromValue, toValue: a.toValue,
     read: a.read, resolved: !!a.resolvedAt, dismissible: isDismissible(a),
     createdAt: a.createdAt, timeLabel: dayTime(a.createdAt, tz), day: dayGroup(a.createdAt, tz),
     action: mobileAlertAction(a),
@@ -182,6 +195,23 @@ export const ALERT_FILTERS: Record<string, AlertCategory[] | null> = {
 
 export type Period = "today" | "7d" | "30d";
 
+/**
+ * Averages over complete days only, as the web's reports do. `cur` ends today, which is still in progress:
+ * counting it as a full day made every period look lower than the one before. Today alone has no complete day
+ * to compare (`previousAverageMinutes` null); otherwise the period before is as many days, just before `cur`.
+ * `prev` is the days before `cur`, oldest first.
+ */
+export function completeDayAverages(cur: number[], prev: number[]) {
+  const complete = cur.length - 1;
+  const sum = (xs: number[]) => xs.reduce((s, m) => s + m, 0);
+  if (!complete) return { averageMinutes: sum(cur), previousAverageMinutes: null, completeDays: 0 };
+  return {
+    averageMinutes: Math.round(sum(cur.slice(0, complete)) / complete),
+    previousAverageMinutes: Math.round(sum(prev.slice(-complete)) / complete),
+    completeDays: complete,
+  };
+}
+
 export async function screenTime(child: ChildView, tz: string, period: Period, appLimit: number | null = null) {
   const n = period === "today" ? 1 : period === "7d" ? 7 : 30;
   const days = lastNDays(n * 2, tz); // current period plus the one before, for comparison
@@ -200,7 +230,7 @@ export async function screenTime(child: ChildView, tz: string, period: Period, a
   }
   const series = cur.map((date) => ({ date, minutes: perDay.get(date) ?? 0, limitMinutes: limitOn(child, date) }));
   const total = series.reduce((s, d) => s + d.minutes, 0);
-  const prevTotal = prev.reduce((s, d) => s + (perDay.get(d) ?? 0), 0);
+  const averages = completeDayAverages(series.map((d) => d.minutes), prev.map((d) => perDay.get(d) ?? 0));
 
   // Hourly breakdown for today, summed over the child's devices (only devices that sent hourly data)
   let hourly: number[] | null = null;
@@ -221,9 +251,10 @@ export async function screenTime(child: ChildView, tz: string, period: Period, a
   return {
     period, from: cur[0], to: cur[cur.length - 1],
     totalMinutes: total,
-    averageMinutes: Math.round(total / n),
-    previousAverageMinutes: Math.round(prevTotal / n),
+    ...averages,
     limitMinutes: period === "today" ? limitOn(child, cur[0]) : child.dailyLimitMinutes,
+    // Phones and tablets send screen time (browsers don't): with none, show "pair a device", not an empty report
+    deviceCount: child.devices.length,
     days: series,
     hourly,
     apps: appRows.map((a) => {
@@ -286,9 +317,10 @@ const OVERVIEW_APPS = 5;
 export async function childOverview(graph: FamilyGraph, childId: string, tz: string, plan: Entitlements) {
   const c = childFromGraph(graph, childId);
   const todayKey = dayKey(new Date(), tz);
-  const [photos, minutes, appsToday, pending, changes] = await Promise.all([
+  const [photos, minutes, browsers, appsToday, pending, changes] = await Promise.all([
     photoVersions([c.id]),
     todayMinutes([c.id], tz),
+    browserCounts([c.id]),
     appMinutesOn([c.id], dateFromKey(todayKey)).then((rows) => rows.filter((r) => r.minutes > 0)),
     Promise.all([db.childApp.findMany({ where: { childId: c.id, approval: "PENDING" }, select: { name: true } }), requestedApps(c.id)])
       .then(([apps, requested]) => new Set([...apps.map((a) => a.name), ...requested]).size),
@@ -301,7 +333,7 @@ export async function childOverview(graph: FamilyGraph, childId: string, tz: str
   const named = capAppUsage(appsToday.filter((a) => nameable(a.app)), Math.min(OVERVIEW_APPS, plan.appMonitoringLimit ?? OVERVIEW_APPS)).named;
 
   return {
-    child: childJson(c, { photo: photos.get(c.id), todayMinutes: minutes.get(c.id), tz }),
+    child: childJson(c, { photo: photos.get(c.id), todayMinutes: minutes.get(c.id), browserCount: browsers.get(c.id), tz }),
     health: {
       score: c.health.score, total: c.health.total, offline: c.health.offline, verified: c.health.verified,
       label: healthLabel(c.health.score, c.health.total, c.health.offline, c.devices.length), checks: c.health.checks,

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Icon } from "./icon";
 import { Avatar } from "./ui";
 import { fmtMinutes, fmtMinutesPadded } from "@/lib/protections";
@@ -57,7 +57,15 @@ export function WeeklyChart({ series, days, title = "Weekly Screen Time Trend", 
 function Multiple({ s, days, wide }: { s: Series; days: DayLabel[]; wide?: boolean }) {
   const [tip, setTip] = useState<{ x: number; y: number; lines: string[] } | null>(null);
   const wrap = useRef<HTMLElement>(null);
-  const W = wide ? 560 : 220, H = wide ? 170 : 140, pl = 2, pr = 2, pt = 10, pb = 20;
+  // The wide chart draws at its real width, so labels stay legible from a phone to a desktop column
+  const [fit, setFit] = useState(560);
+  useEffect(() => {
+    if (!wide || !wrap.current) return;
+    const ro = new ResizeObserver(([e]) => setFit(Math.max(240, Math.round(e.contentRect.width))));
+    ro.observe(wrap.current);
+    return () => ro.disconnect();
+  }, [wide]);
+  const W = wide ? fit : 220, H = wide ? 170 : 140, pl = 2, pr = 2, pt = 10, pb = 20;
   const max = Math.max(240, Math.ceil(Math.max(...s.week, ...s.last, ...s.limits) / 60) * 60);
   const iw = W - pl - pr, ih = H - pt - pb, bw = iw / 7;
   const y = (v: number) => pt + ih - (v / max) * ih;
@@ -149,7 +157,7 @@ export function ActivityPanel({ kids, dateLabel }: { kids: ActivityChild[]; date
         <div><h2 id="act-title">Today&apos;s Activity</h2><div className="sub">Usage so far today, against each child&apos;s daily limit</div></div>
         <span className="date-chip"><Icon name="calendar" />{dateLabel}</span>
       </div>
-      <div className="tabs" role="tablist" aria-label="Activity view" style={{ marginBottom: 16 }}>
+      <div className="tabs fit" role="tablist" aria-label="Activity view" style={{ marginBottom: 16 }}>
         {TABS.map(([k, l], i) => (
           <button
             key={k} ref={(el) => { tabs.current[i] = el; }} type="button" className="tab" role="tab" id={`act-tab-${k}`} aria-controls="act-panel"
@@ -157,7 +165,7 @@ export function ActivityPanel({ kids, dateLabel }: { kids: ActivityChild[]; date
           >{l}</button>
         ))}
       </div>
-      <div className="activity-grid" role="tabpanel" id="act-panel" aria-labelledby={`act-tab-${tab}`}>
+      <div className={`activity-grid${kids.length === 1 ? " solo" : ""}`} role="tabpanel" id="act-panel" aria-labelledby={`act-tab-${tab}`}>
         {kids.map((c) => {
           const head = (
             <div className="row">
@@ -171,12 +179,17 @@ export function ActivityPanel({ kids, dateLabel }: { kids: ActivityChild[]; date
             const over = c.limit > 0 && c.used > c.limit, reached = c.limit > 0 && c.used === c.limit;
             return (
               <div className="act" key={c.id}>{head}
-                <div className="usage-big num">{fmtMinutesPadded(c.used)} <small>/ {fmtMinutes(c.limit)}</small></div>
-                <div className={`bar ${over ? "over" : pct >= 85 ? "warn" : ""}`} role="progressbar" aria-label={`${c.name} screen time`} aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}
-                  aria-valuetext={over ? `Over the limit by ${fmtMinutes(c.used - c.limit)}` : `${pct}% of the daily limit`}><span style={{ width: `${pct}%` }} /></div>
-                {over ? <div className="limit-note crit"><Icon name="octagon-alert" size={14} />Over by {fmtMinutes(c.used - c.limit)}</div>
-                  : reached ? <div className="limit-note warn"><Icon name="hourglass" size={14} />Limit reached</div> : null}
-                <div className="app-rows">{c.apps.length ? c.apps.map(([a, m]) => <div key={a}><span>{a}</span><span>{fmtMinutes(m)}</span></div>) : <div><span>No usage reported yet today</span><span /></div>}</div>
+                {/* Total beside the top apps when one child has the whole row (.activity-grid.solo) */}
+                <div className="act-split">
+                  <div>
+                    <div className="usage-big num">{fmtMinutesPadded(c.used)} <small>/ {fmtMinutes(c.limit)}</small></div>
+                    <div className={`bar ${over ? "over" : pct >= 85 ? "warn" : ""}`} role="progressbar" aria-label={`${c.name} screen time`} aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}
+                      aria-valuetext={over ? `Over the limit by ${fmtMinutes(c.used - c.limit)}` : `${pct}% of the daily limit`}><span style={{ width: `${pct}%` }} /></div>
+                    {over ? <div className="limit-note crit"><Icon name="octagon-alert" size={14} />Over by {fmtMinutes(c.used - c.limit)}</div>
+                      : reached ? <div className="limit-note warn"><Icon name="hourglass" size={14} />Limit reached</div> : null}
+                  </div>
+                  <div className="app-rows">{c.apps.length ? c.apps.map(([a, m]) => <div key={a}><span>{a}</span><span>{fmtMinutes(m)}</span></div>) : <div><span>No usage reported yet today</span><span /></div>}</div>
+                </div>
               </div>
             );
           }

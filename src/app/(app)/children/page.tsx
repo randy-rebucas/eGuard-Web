@@ -40,11 +40,12 @@ export default async function ChildrenPage() {
       {limitNote ? <UpgradeNote compact title="Child limit" text={limitNote} plans={upgrade} /> : null}
       {children.length ? (
         <>
-          <div className="children-grid">{children.map((c) => <ChildCard key={c.id} c={c} browsers={browsersOf(c.id)} />)}</div>
+          {/* One child fills the row as a wide card instead of a third of it (as on the dashboard) */}
+          <div className={`children-grid${children.length === 1 ? " solo" : ""}`}>{children.map((c) => <ChildCard key={c.id} c={c} browsers={browsersOf(c.id)} />)}</div>
           <section className="card card-pad">
             <div className="card-head"><h2>At a glance</h2></div>
             <div className="table-scroll">
-              <table className="data-table">
+              <table className="data-table text">
                 <thead><tr><th scope="col">Child</th><th scope="col">Protection health</th><th scope="col">Devices</th><th scope="col">Screen time today</th><th scope="col">Location</th></tr></thead>
                 <tbody>
                   {children.map((c) => {

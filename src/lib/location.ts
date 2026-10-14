@@ -1,3 +1,4 @@
+import type { Platform } from "@prisma/client";
 import { db } from "./db";
 import { isOffline } from "./health";
 import { isConfigured } from "./protections";
@@ -32,6 +33,8 @@ const OPEN_VISIT_MS = 30 * 60_000;
 type LocationRow = { sharing: boolean; lat: number | null; lng: number | null; accuracyM: number | null; placeLabel: string | null; placeId?: string | null; locatedAt: Date | null; updatedAt: Date };
 type LocationDevice = {
   id: string; name: string; lastSeenAt: Date | null;
+  /** Optional for callers that don't load it; without it `iphoneNote` is never set */
+  platform?: Platform;
   location: LocationRow | null;
   protections: { key: string; status: string; reported: unknown }[];
 };
@@ -85,8 +88,15 @@ export function childLocation<D extends LocationDevice>(devices: D[], now = Date
     offDevice,
     /** When waiting only because no device has reported yet: the device to name in "Waiting for … to report" */
     unreported,
+    /**
+     * The iPhone app sends a location only while eGuard is open on it (it asks for "While Using" access), so an iPhone's
+     * location is often a while old. Shown under the location so "Last seen" doesn't read as a fault.
+     */
+    iphoneNote: (device ?? sharing[0])?.platform === "IOS" && !(at && now - at.getTime() < FRESH_MS) ? IPHONE_LOCATION_NOTE : null,
   };
 }
+
+export const IPHONE_LOCATION_NOTE = "iPhone shares its location while eGuard is open on it, so this updates when your child opens eGuard.";
 
 /** The "waiting" line for a child: a first fix, or a first report of whether sharing is on. */
 export const waitingText = (l: { sharing: boolean; unreported: { name: string } | null }) =>
@@ -218,7 +228,23 @@ export async function recentVisits(childIds: string[], perChild: number, now = D
   return rows.flat();
 }
 
-type Fix = { lat: number; lng: number; accuracyM?: number; placeLabel?: string };
+type Fix = { lat: number; lng: number; accuracyM?: number; placeLabel?: string; at?: Date };
+
+/** A fix taken longer ago than this isn't kept: it says nothing about where the child is, and history has moved on. */
+export const MAX_FIX_AGE_MS = 24 * 3600_000;
+
+/**
+ * When a fix was taken: the device's `at` (a last-known position or one queued offline can be hours old, and
+ * stamping it on arrival showed parents "Live" at a place the child had left), never later than now (a fast
+ * clock), and null to drop it when older than MAX_FIX_AGE_MS or not newer than the location already stored
+ * (fixes that arrive out of order). No `at` (older apps): now.
+ */
+export function fixTime(at: Date | undefined, now: Date, last: Date | null | undefined): Date | null {
+  const t = at && at < now ? at : now;
+  if (now.getTime() - t.getTime() > MAX_FIX_AGE_MS) return null;
+  if (last && t <= last) return null;
+  return t;
+}
 type NoticePlace = { id: string; name: string; notifyArrive: boolean; notifyLeave: boolean };
 
 /**
@@ -256,7 +282,7 @@ type VisitRow = { id: string; deviceId: string | null; lat: number; lng: number;
  * A fix inside one of the family's saved places is labelled with its name (it wins over a label from the device).
  * Arriving at or leaving a place the parents asked to hear about raises a notice (placeMove).
  */
-export async function recordLocation(device: { id: string; childId: string; familyId: string }, fix: Fix, now = new Date()) {
+export async function recordLocation(device: { id: string; childId: string; familyId: string }, fix: Fix, received = new Date()) {
   // Whether sharing is on comes from the device's LOCATION protection report (engine.processReport), never
   // from a fix arriving. A fix sent while sharing is off isn't stored at all: the parent was told it's off.
   const [current, family, places] = await Promise.all([
@@ -267,6 +293,9 @@ export async function recordLocation(device: { id: string; childId: string; fami
   if (current && !current.sharing) return;
   // Location sharing is a paid feature: on Free, fixes aren't kept at all
   if (!entitlementsFor(family.plan).locationSharing) return;
+  // From here on, "now" is when the fix was taken: its location, visits and place notices all carry that time
+  const now = fixTime(fix.at, received, current?.locatedAt);
+  if (!now) return;
   const move = placeMove(places, current?.placeId, fix);
   const place = move.place;
   // The device's first fix isn't a move: there's no "before" to have arrived from

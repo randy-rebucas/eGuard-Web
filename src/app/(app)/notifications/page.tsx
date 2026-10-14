@@ -37,7 +37,7 @@ export default async function NotificationsPage(props: PageProps<"/notifications
         <Link className="btn btn-ghost" href={q(filter, !showResolved)}>{showResolved ? "Hide resolved" : "Show resolved"}</Link>
         <MarkAllRead />
       </PageHead>
-      <nav className="tabs" aria-label="Filter notifications" style={{ alignSelf: "flex-start", maxWidth: "100%" }}>
+      <nav className="tabs wrap" aria-label="Filter notifications" style={{ alignSelf: "flex-start", maxWidth: "100%" }}>
         {FILTERS.map(([k, l]) => (
           <Link key={k} className="tab" href={q(k)} aria-current={filter === k ? "page" : undefined} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
             {l} <span className="muted num">{k === "ALL" ? total : counts.find((c) => c.category === k)?._count ?? 0}</span>

@@ -1,0 +1,612 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-14T08:23:48.936Z",
+  "title": "Design System: eGuard",
+  "extensions": {
+    "colorMeta": {
+      "navy-ink": {
+        "role": "neutral",
+        "displayName": "Navy Ink",
+        "canonical": "oklch(26.1% 0.075 259.0)",
+        "tonalRamp": [
+          "#000923",
+          "#0B2348",
+          "#264067",
+          "#435E88",
+          "#6581AD",
+          "#88A6D4",
+          "#ADCCFC",
+          "#E5EFFF"
+        ]
+      },
+      "slate-ink": {
+        "role": "neutral",
+        "displayName": "Slate Ink",
+        "canonical": "oklch(40.3% 0.062 259.2)",
+        "tonalRamp": [
+          "#000924",
+          "#102442",
+          "#2B4060",
+          "#485E81",
+          "#6A81A6",
+          "#8EA6CC",
+          "#B3CCF4",
+          "#E6EFFE"
+        ]
+      },
+      "mist-ink": {
+        "role": "neutral",
+        "displayName": "Mist Ink",
+        "canonical": "oklch(53.6% 0.060 261.4)",
+        "tonalRamp": [
+          "#010924",
+          "#132341",
+          "#2E4060",
+          "#4B5E80",
+          "#6C81A5",
+          "#90A5CB",
+          "#B5CCF3",
+          "#E6EFFE"
+        ]
+      },
+      "sky-accent": {
+        "role": "primary",
+        "displayName": "Sky Accent",
+        "canonical": "oklch(66.3% 0.166 248.3)",
+        "tonalRamp": [
+          "#000C1B",
+          "#002544",
+          "#004272",
+          "#0461A2",
+          "#0084DB",
+          "#4BAAFF",
+          "#A0D0FE",
+          "#E2F0FF"
+        ]
+      },
+      "deep-sky-ink": {
+        "role": "primary",
+        "displayName": "Deep Sky Ink",
+        "canonical": "oklch(53.8% 0.148 251.2)",
+        "tonalRamp": [
+          "#000B1D",
+          "#002547",
+          "#004176",
+          "#015FA9",
+          "#2E83D5",
+          "#57A9FD",
+          "#A3CFFF",
+          "#E3F0FE"
+        ]
+      },
+      "button-blue": {
+        "role": "primary",
+        "displayName": "Button Blue",
+        "canonical": "oklch(54.8% 0.149 250.9)",
+        "tonalRamp": [
+          "#000B1D",
+          "#002547",
+          "#004176",
+          "#005FA8",
+          "#2C83D5",
+          "#55A9FE",
+          "#A3CFFF",
+          "#E3F0FE"
+        ]
+      },
+      "button-blue-hover": {
+        "role": "primary",
+        "displayName": "Button Blue Hover",
+        "canonical": "oklch(49.4% 0.137 251.3)",
+        "tonalRamp": [
+          "#000B1D",
+          "#002547",
+          "#014176",
+          "#065FA7",
+          "#3883CF",
+          "#5EA9F7",
+          "#A3CFFF",
+          "#E3F0FE"
+        ]
+      },
+      "sky-wash": {
+        "role": "primary",
+        "displayName": "Sky Wash",
+        "canonical": "oklch(96.1% 0.020 243.4)",
+        "tonalRamp": [
+          "#050C13",
+          "#1C252D",
+          "#37414A",
+          "#545F68",
+          "#76828C",
+          "#9AA6B1",
+          "#C0CCD7",
+          "#E3F0FB"
+        ]
+      },
+      "morning-bg": {
+        "role": "neutral",
+        "displayName": "Morning Background",
+        "canonical": "oklch(98.3% 0.009 247.9)",
+        "tonalRamp": [
+          "#080C0F",
+          "#212428",
+          "#3C4044",
+          "#5A5E62",
+          "#7C8185",
+          "#A0A5AA",
+          "#C6CBD0",
+          "#EAEFF4"
+        ]
+      },
+      "paper-surface": {
+        "role": "neutral",
+        "displayName": "Paper Surface",
+        "canonical": "oklch(100.0% 0.000 89.9)",
+        "tonalRamp": [
+          "#0B0B0B",
+          "#242424",
+          "#404040",
+          "#5D5D5D",
+          "#808080",
+          "#A4A4A4",
+          "#CACACA",
+          "#EEEEEE"
+        ]
+      },
+      "cloud-surface": {
+        "role": "neutral",
+        "displayName": "Cloud Surface",
+        "canonical": "oklch(97.7% 0.010 252.8)",
+        "tonalRamp": [
+          "#080B0F",
+          "#212429",
+          "#3C4045",
+          "#5A5E63",
+          "#7C8186",
+          "#A0A5AB",
+          "#C6CBD1",
+          "#EAEFF5"
+        ]
+      },
+      "haze-surface": {
+        "role": "neutral",
+        "displayName": "Haze Surface",
+        "canonical": "oklch(96.0% 0.017 248.0)",
+        "tonalRamp": [
+          "#060C12",
+          "#1E252C",
+          "#394149",
+          "#565F67",
+          "#78818A",
+          "#9CA6AF",
+          "#C2CCD5",
+          "#E6F0FA"
+        ]
+      },
+      "hairline": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "oklch(93.9% 0.018 250.6)",
+        "tonalRamp": [
+          "#060C13",
+          "#1D252D",
+          "#394149",
+          "#565F68",
+          "#78818B",
+          "#9CA6B0",
+          "#C2CCD6",
+          "#E6F0FB"
+        ]
+      },
+      "hairline-strong": {
+        "role": "neutral",
+        "displayName": "Strong Hairline",
+        "canonical": "oklch(89.0% 0.031 249.7)",
+        "tonalRamp": [
+          "#030C18",
+          "#182532",
+          "#334150",
+          "#515F6F",
+          "#738292",
+          "#96A7B8",
+          "#BCCDDE",
+          "#E3F0FE"
+        ]
+      },
+      "verified-green": {
+        "role": "status",
+        "displayName": "Verified Green",
+        "canonical": "oklch(64.6% 0.165 151.5)",
+        "tonalRamp": [
+          "#001004",
+          "#002D11",
+          "#014E23",
+          "#007136",
+          "#009A4C",
+          "#3EC16D",
+          "#6BE992",
+          "#C7FFD3"
+        ]
+      },
+      "verified-green-ink": {
+        "role": "status",
+        "displayName": "Verified Green Ink",
+        "canonical": "oklch(52.5% 0.131 152.7)",
+        "tonalRamp": [
+          "#001004",
+          "#002D13",
+          "#014D25",
+          "#037139",
+          "#329658",
+          "#5CBC7C",
+          "#83E3A1",
+          "#C7FFD5"
+        ]
+      },
+      "verified-green-soft": {
+        "role": "status",
+        "displayName": "Verified Green Soft",
+        "canonical": "oklch(95.7% 0.023 161.7)",
+        "tonalRamp": [
+          "#030E08",
+          "#1A2821",
+          "#35443C",
+          "#52625A",
+          "#75857C",
+          "#99A9A0",
+          "#BECFC6",
+          "#E2F4EA"
+        ]
+      },
+      "amber-attention": {
+        "role": "status",
+        "displayName": "Amber Attention",
+        "canonical": "oklch(78.3% 0.156 72.7)",
+        "tonalRamp": [
+          "#130900",
+          "#341F00",
+          "#583802",
+          "#805302",
+          "#AE7201",
+          "#DD930A",
+          "#FFBC62",
+          "#FFEBD3"
+        ]
+      },
+      "amber-attention-ink": {
+        "role": "status",
+        "displayName": "Amber Attention Ink",
+        "canonical": "oklch(51.8% 0.113 64.5)",
+        "tonalRamp": [
+          "#150800",
+          "#371D00",
+          "#5D3501",
+          "#864E03",
+          "#AE702D",
+          "#D69554",
+          "#FEBB7A",
+          "#FFEAD8"
+        ]
+      },
+      "amber-attention-soft": {
+        "role": "status",
+        "displayName": "Amber Attention Soft",
+        "canonical": "oklch(96.8% 0.028 81.5)",
+        "tonalRamp": [
+          "#110A01",
+          "#2B2314",
+          "#473E2F",
+          "#665C4C",
+          "#897F6E",
+          "#ADA392",
+          "#D4C9B7",
+          "#F8EDDA"
+        ]
+      },
+      "coral-critical": {
+        "role": "status",
+        "displayName": "Coral Critical",
+        "canonical": "oklch(65.4% 0.193 25.1)",
+        "tonalRamp": [
+          "#1F0001",
+          "#4B0106",
+          "#7C0210",
+          "#B1051B",
+          "#DC4040",
+          "#FE726B",
+          "#FEB5AE",
+          "#FFE9E6"
+        ]
+      },
+      "coral-critical-ink": {
+        "role": "status",
+        "displayName": "Coral Critical Ink",
+        "canonical": "oklch(52.0% 0.176 27.1)",
+        "tonalRamp": [
+          "#1F0000",
+          "#4B0003",
+          "#7C0008",
+          "#AB1E1D",
+          "#D54A42",
+          "#FE7367",
+          "#FEB5AC",
+          "#FFE9E6"
+        ]
+      },
+      "coral-critical-soft": {
+        "role": "status",
+        "displayName": "Coral Critical Soft",
+        "canonical": "oklch(95.4% 0.020 21.4)",
+        "tonalRamp": [
+          "#130808",
+          "#2D2020",
+          "#4A3C3B",
+          "#685959",
+          "#8C7C7B",
+          "#B1A09F",
+          "#D7C6C5",
+          "#FCEAE9"
+        ]
+      },
+      "muted-soft": {
+        "role": "neutral",
+        "displayName": "Muted Soft",
+        "canonical": "oklch(96.0% 0.008 253.9)",
+        "tonalRamp": [
+          "#090B0E",
+          "#212428",
+          "#3D4044",
+          "#5B5E62",
+          "#7D8185",
+          "#A1A5AA",
+          "#C7CBD0",
+          "#EBEFF4"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Dashboard hero first name only (44 → 40 → 34px)."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Page titles (34px, 28px on phones)."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Card headings (18px); section titles outside cards use 21px."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Default reading text, 15px."
+      },
+      "label": {
+        "displayName": "Label / Meta",
+        "purpose": "Field labels (600) and metadata (400, Mist Ink); pills use 12.5px."
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "Codes a parent types or copies exactly (pairing, join, sponsor codes) and site lists."
+      },
+      "metric": {
+        "displayName": "Metric",
+        "purpose": "Metric card values with tabular figures (32px, 26px on phones)."
+      }
+    },
+    "shadows": [
+      {
+        "name": "rest",
+        "value": "0 1px 2px rgba(11,35,72,.05)",
+        "purpose": "Every card at rest; selected tab and segment."
+      },
+      {
+        "name": "lift",
+        "value": "0 1px 2px rgba(11,35,72,.04), 0 8px 24px -12px rgba(11,35,72,.12)",
+        "purpose": "Interactive cards on hover, with a 2px rise."
+      },
+      {
+        "name": "float",
+        "value": "0 24px 60px -20px rgba(11,35,72,.35)",
+        "purpose": "Menus, search results, dialogs, toasts, tooltips."
+      },
+      {
+        "name": "glass",
+        "value": "0 8px 24px rgba(11,35,72,.12)",
+        "purpose": "Hero status card only, with backdrop blur."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease",
+        "value": "cubic-bezier(.2,.7,.2,1)",
+        "purpose": "Card lift, dialog rise, switch knob."
+      },
+      {
+        "name": "state",
+        "value": "150ms",
+        "purpose": "Hover fills and color changes."
+      },
+      {
+        "name": "lift",
+        "value": "200ms",
+        "purpose": "Interactive card rise and shadow."
+      },
+      {
+        "name": "enter",
+        "value": "250ms rise / 200ms fade",
+        "purpose": "Dialogs and toasts entering; reduced motion collapses all durations."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "phone-narrow",
+        "value": "340px"
+      },
+      {
+        "name": "phone-sm",
+        "value": "420px"
+      },
+      {
+        "name": "phone",
+        "value": "767px"
+      },
+      {
+        "name": "tablet-portrait",
+        "value": "900px"
+      },
+      {
+        "name": "rail",
+        "value": "1180px"
+      },
+      {
+        "name": "compact-desktop",
+        "value": "1320px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one main action on a card or dialog.",
+      "html": "<button class=\"ds-btn ds-btn-primary\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M5 12h14\"/><path d=\"M12 5v14\"/></svg>Add child</button>",
+      "css": ".ds-btn{font-family:'Hanken Grotesk',ui-sans-serif,system-ui,sans-serif;display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 18px;border-radius:12px;font-weight:600;font-size:14.5px;border:0;cursor:pointer;transition:background .15s,border-color .15s}.ds-btn svg{flex:none}.ds-btn:focus-visible{outline:2px solid #2498F3;outline-offset:2px}.ds-btn-primary{background:#1673C4;color:#fff}.ds-btn-primary:hover{background:#0F63AC}.ds-btn-primary:active{transform:translateY(1px)}"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Alternative actions next to a primary, and toggles like Table/Chart.",
+      "html": "<button class=\"ds-btn2\">Cancel</button>",
+      "css": ".ds-btn2{font-family:'Hanken Grotesk',ui-sans-serif,system-ui,sans-serif;display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 18px;border-radius:12px;font-weight:600;font-size:14.5px;background:#fff;border:1px solid #CCDDEF;color:#0B2348;cursor:pointer;transition:background .15s}.ds-btn2:hover{background:#F3F8FE}.ds-btn2:focus-visible{outline:2px solid #2498F3;outline-offset:2px}"
+    },
+    {
+      "name": "Link Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "\"View all\" and inline navigation in card heads.",
+      "html": "<a class=\"ds-link\" href=\"#\">View all <svg xmlns=\"http://www.w3.org/2000/svg\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M5 12h14\"/><path d=\"m12 5 7 7-7 7\"/></svg></a>",
+      "css": ".ds-link{font-family:'Hanken Grotesk',ui-sans-serif,system-ui,sans-serif;display:inline-flex;align-items:center;gap:4px;color:#1570C0;font-weight:600;font-size:14px;min-height:32px;text-decoration:none;border-radius:8px}.ds-link svg{width:16px;height:16px}.ds-link:hover{text-decoration:underline;text-underline-offset:3px}.ds-link:focus-visible{outline:2px solid #2498F3;outline-offset:2px}"
+    },
+    {
+      "name": "Status Pills",
+      "kind": "chip",
+      "refersTo": "pill-ok",
+      "description": "Soft fill plus ink, with an icon: the only way status is shown.",
+      "html": "<div class=\"ds-pills\"><span class=\"ds-pill ds-ok\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z\"/><path d=\"m9 12 2 2 4-4\"/></svg>Protected</span><span class=\"ds-pill ds-warn\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3\"/><path d=\"M12 9v4\"/><path d=\"M12 17h.01\"/></svg>Needs attention</span><span class=\"ds-pill ds-crit\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3\"/><path d=\"M12 9v4\"/><path d=\"M12 17h.01\"/></svg>Action required</span><span class=\"ds-pill ds-muted\">Offline</span></div>",
+      "css": ".ds-pills{display:flex;gap:8px;flex-wrap:wrap}.ds-pill{font-family:'Hanken Grotesk',ui-sans-serif,system-ui,sans-serif;display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:13px;font-size:12.5px;font-weight:600;white-space:nowrap}.ds-pill svg{width:14px;height:14px}.ds-ok{background:#E4F6EC;color:#0F7F43}.ds-warn{background:#FEF3E0;color:#94580A}.ds-crit{background:#FDEBEA;color:#B92E2A}.ds-muted{background:#EEF2F7;color:#5A6E91}"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Labeled field; focus turns the border sky blue with a soft halo.",
+      "html": "<label class=\"ds-field\"><span>Child's name</span><input class=\"ds-input\" placeholder=\"e.g. Lucas\"></label>",
+      "css": ".ds-field{font-family:'Hanken Grotesk',ui-sans-serif,system-ui,sans-serif;display:flex;flex-direction:column;gap:6px;max-width:320px}.ds-field span{font-size:13px;font-weight:600;color:#34496A}.ds-input{font-family:'Hanken Grotesk',ui-sans-serif,system-ui,sans-serif;height:44px;padding:0 12px;border-radius:10px;border:1px solid #CCDDEF;background:#fff;color:#0B2348;font-size:15px;outline:none;transition:border-color .15s,box-shadow .15s}.ds-input::placeholder{color:#5A6E91}.ds-input:focus{border-color:#2498F3;box-shadow:0 0 0 4px #E7F4FF}"
+    },
+    {
+      "name": "Sidebar Navigation",
+      "kind": "nav",
+      "refersTo": "nav-item-active",
+      "description": "44px items; active is a sky wash with a 3px accent bar on the left edge.",
+      "html": "<nav class=\"ds-nav\"><a class=\"ds-nav-item\" aria-current=\"page\" href=\"#\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8\"/><path d=\"M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z\"/></svg>Dashboard</a><a class=\"ds-nav-item\" href=\"#\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z\"/><path d=\"m9 12 2 2 4-4\"/></svg>Protection<span class=\"ds-count\">1</span></a></nav>",
+      "css": ".ds-nav{font-family:'Hanken Grotesk',ui-sans-serif,system-ui,sans-serif;display:flex;flex-direction:column;gap:2px;width:220px;padding-left:16px}.ds-nav-item{position:relative;display:flex;align-items:center;gap:12px;min-height:44px;padding:0 14px;border-radius:12px;color:#34496A;font-weight:500;text-decoration:none;transition:background .15s,color .15s}.ds-nav-item:hover{background:#F3F8FE;color:#0B2348}.ds-nav-item:focus-visible{outline:2px solid #2498F3;outline-offset:2px}.ds-nav-item[aria-current=page]{background:#E7F4FF;color:#1570C0;font-weight:600}.ds-nav-item[aria-current=page]::before{content:\"\";position:absolute;left:-16px;top:10px;bottom:10px;width:3px;border-radius:0 3px 3px 0;background:#2498F3}.ds-count{margin-left:auto;font-size:12px;font-weight:600;min-width:22px;height:22px;border-radius:11px;display:grid;place-items:center;background:#FEF3E0;color:#94580A}"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Paper surface on the morning background; interactive cards lift on hover.",
+      "html": "<a class=\"ds-card\" href=\"#\"><div class=\"ds-card-head\"><div><h3>Device Protection Status</h3><p>Configuration state reported by each device</p></div><span class=\"ds-link2\">View all</span></div><div class=\"ds-inset\">An inset region uses the cloud surface, never another card.</div></a>",
+      "css": ".ds-card{font-family:'Hanken Grotesk',ui-sans-serif,system-ui,sans-serif;display:block;max-width:440px;background:#fff;border:1px solid #E2ECF7;border-radius:20px;padding:22px 24px;box-shadow:0 1px 2px rgba(11,35,72,.05);color:#0B2348;text-decoration:none;transition:transform .2s cubic-bezier(.2,.7,.2,1),box-shadow .2s cubic-bezier(.2,.7,.2,1),border-color .2s}.ds-card:hover{transform:translateY(-2px);box-shadow:0 1px 2px rgba(11,35,72,.04),0 8px 24px -12px rgba(11,35,72,.12);border-color:#CCDDEF}.ds-card:focus-visible{outline:2px solid #2498F3;outline-offset:2px}.ds-card-head{display:flex;justify-content:space-between;gap:12px;margin-bottom:16px}.ds-card h3{font-family:Sora,'Hanken Grotesk',ui-sans-serif,system-ui,sans-serif;margin:0;font-size:18px;font-weight:600;letter-spacing:-.015em}.ds-card p{margin:2px 0 0;font-size:13px;color:#5A6E91}.ds-link2{color:#1570C0;font-weight:600;font-size:14px;white-space:nowrap}.ds-inset{padding:16px;border-radius:14px;background:#F3F8FE;border:1px solid #E2ECF7;font-size:13.5px;color:#34496A}"
+    },
+    {
+      "name": "Quick Action Row",
+      "kind": "custom",
+      "refersTo": "ico-tile",
+      "description": "Icon tile, title and chevron; the chevron nudges right on hover.",
+      "html": "<button class=\"ds-row\"><span class=\"ds-tile\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M5 22h14\"/><path d=\"M5 2h14\"/><path d=\"M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22\"/><path d=\"M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2\"/></svg></span><span class=\"ds-row-t\">Set Screen Time Limits</span><span class=\"ds-chev\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m9 18 6-6-6-6\"/></svg></span></button>",
+      "css": ".ds-row{font-family:'Hanken Grotesk',ui-sans-serif,system-ui,sans-serif;display:flex;align-items:center;gap:14px;width:340px;min-height:56px;padding:10px 12px;border-radius:12px;border:0;background:none;text-align:left;cursor:pointer;color:#0B2348;transition:background .15s}.ds-row:hover{background:#F3F8FE}.ds-row:focus-visible{outline:2px solid #2498F3;outline-offset:2px}.ds-tile{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;flex:none;background:#E7F4FF;color:#1570C0}.ds-row-t{flex:1;font-weight:600;font-size:14.5px}.ds-chev{color:#5A6E91;display:grid;transition:transform .15s,color .15s}.ds-row:hover .ds-chev{transform:translateX(2px);color:#1570C0}"
+    },
+    {
+      "name": "Family Protection Metric",
+      "kind": "custom",
+      "refersTo": "card",
+      "description": "Signature metric: Sora tabular score with a 10-segment meter and a status pill.",
+      "html": "<div class=\"ds-metric\"><div class=\"ds-m-top\"><span>Family Protection</span><span class=\"ds-tile2\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z\"/><path d=\"m9 12 2 2 4-4\"/></svg></span></div><div class=\"ds-m-val\">7<small> / 10</small></div><div class=\"ds-seg\"><span class=\"on\"></span><span class=\"on\"></span><span class=\"on\"></span><span class=\"on\"></span><span class=\"on\"></span><span class=\"on\"></span><span class=\"on\"></span><span class=\"warn\"></span><span class=\"warn\"></span><span class=\"warn\"></span></div><span class=\"ds-pill2\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3\"/><path d=\"M12 9v4\"/><path d=\"M12 17h.01\"/></svg>Needs attention</span></div>",
+      "css": ".ds-metric{font-family:'Hanken Grotesk',ui-sans-serif,system-ui,sans-serif;width:240px;display:flex;flex-direction:column;gap:12px;padding:20px 22px;background:#fff;border:1px solid #E2ECF7;border-radius:20px;box-shadow:0 1px 2px rgba(11,35,72,.05)}.ds-m-top{display:flex;justify-content:space-between;align-items:center;font-size:14px;font-weight:600;color:#34496A}.ds-tile2{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;background:#E7F4FF;color:#1570C0}.ds-m-val{font-family:Sora,'Hanken Grotesk',ui-sans-serif,system-ui,sans-serif;font-size:32px;font-weight:600;letter-spacing:-.02em;line-height:1;color:#0B2348;font-variant-numeric:tabular-nums}.ds-m-val small{font-size:18px;color:#5A6E91;font-weight:500}.ds-seg{display:grid;grid-template-columns:repeat(10,1fr);gap:3px}.ds-seg span{height:6px;border-radius:3px;background:#E2ECF7}.ds-seg .on{background:#2498F3}.ds-seg .warn{background:#F4A62A}.ds-pill2{align-self:flex-start;display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:13px;font-size:12.5px;font-weight:600;background:#FEF3E0;color:#94580A}.ds-pill2 svg{width:14px;height:14px}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Clear-Sky Checkup",
+    "overview": "Every screen is a reassuring checkup under an open sky. The parent arrives asking \"is my family protected?\", and the page answers in calm daylight blues: soft morning backgrounds, white paper surfaces layered on top, deep navy ink for what matters. When something needs them, it shows up as a warm amber or coral note with the fix right beside it. It's clear and specific, and never alarming. The system is about verified facts on devices, so it reads like a well-kept checklist, not a security console.\n\nDensity is moderate and friendly. Targets are a generous 44px, corners are rounded but not bubbly, and type pairs a geometric display face (Sora) for headings and numbers with a warm grotesque (Hanken Grotesk) for everything people read. The one photographic moment is the dashboard hero: a sunlit family scene behind a pale wash, with the greeting and status chips in fixed navy so they stay legible in both themes. Everywhere else, color carries meaning rather than decoration.\n\nThe app supports light, dark and system themes from the same tokens. Dark mode is a deep night-navy version of the same sky, not an inversion. The public landing page (`src/app/landing.css`) is a separate, light-only marketing variant that shares the ink, fonts and blue family but has its own bigger buttons and gradients. This document covers the signed-in app.",
+    "keyCharacteristics": [
+      "Soft, layered daylight surfaces: morning background → paper cards → cloud and haze insets.",
+      "Navy ink hierarchy in three steps; sky blue for action and selection only.",
+      "Status is spoken in three tones (verified green, attention amber, critical coral), each with a soft fill and a darker ink.",
+      "Sora for headings and figures, Hanken Grotesk for reading, tabular numerals for every count and time.",
+      "Friendly and precise: rounded 10–20px corners, 44px targets, labels that name the action."
+    ],
+    "rules": [
+      {
+        "name": "The Ink-for-Text Rule",
+        "section": "colors",
+        "body": "Text is always an `-ink` token (`--ink`, `--ink-2`, `--ink-3`, `--accent-ink`, `--ok-ink`, `--warn-ink`, `--crit-ink`), never the bright fill (`--accent`, `--ok`, `--warn`, `--crit`). Bright fills are for bars, dots, icons and meters."
+      },
+      {
+        "name": "The Soft-Fill Pairing Rule",
+        "section": "colors",
+        "body": "Every status shows as its soft fill with its ink on top (pill, icon tile, callout), so a state reads the same anywhere it appears."
+      },
+      {
+        "name": "The Sky Is Not Decoration Rule",
+        "section": "colors",
+        "body": "Blue means \"you can act here\" or \"this is selected\". Don't use it to color headings, borders or empty space."
+      },
+      {
+        "name": "The Tabular Figures Rule",
+        "section": "typography",
+        "body": "Every count, score, duration and time gets `.num` (`font-variant-numeric: tabular-nums`) so numbers don't jitter as they update."
+      },
+      {
+        "name": "The Two-Face Rule",
+        "section": "typography",
+        "body": "Sora is for headings, the brand name, avatars' initials and large figures. Everything a parent reads in sentences is Hanken Grotesk."
+      },
+      {
+        "name": "The No Empty Thirds Rule",
+        "section": "layout",
+        "body": "A grid of one or two items must not leave a blank two-thirds of a row: switch to a wide row layout."
+      },
+      {
+        "name": "The Three Layers Rule",
+        "section": "elevation",
+        "body": "Background, paper, inset. A card never sits inside another card. Use a Cloud Surface inset (`.act`, `.device-visual`) for a sub-region."
+      },
+      {
+        "name": "The Lift-Means-Clickable Rule",
+        "section": "elevation",
+        "body": "Only `.interactive` cards rise and gain the Lift shadow on hover. Static cards stay at Rest."
+      }
+    ],
+    "dos": [
+      "Do pair every status with its soft fill and ink (`tone-ok`, `tone-warn`, `tone-crit`, `tone-muted`) and an icon, so status never relies on color alone.",
+      "Do keep touch targets at least 44px (buttons, nav items, list rows, icon buttons).",
+      "Do use `.num` tabular figures for every number and time.",
+      "Do give every surface its light and dark value from the tokens. Never hard-code a color outside the hero.",
+      "Do put the fix next to the problem: a warn or crit state in a card links to the action that resolves it.",
+      "Do let lone items fill the row (the No Empty Thirds Rule)."
+    ],
+    "donts": [
+      "Don't darken a surface behind Mist Ink beyond Haze Surface. Mist Ink was tuned to clear 4.5:1 (WCAG AA) on every light surface up to Haze and on muted pills; anything darker needs Slate Ink.",
+      "Don't use the bright status fills or Sky Accent for text. Use the `-ink` variant.",
+      "Don't nest a card inside a card. Use a Cloud Surface inset.",
+      "Don't add new shadow recipes or neutral-black shadows in light mode. Use Rest, Lift or Float.",
+      "Don't use blue for decoration. It marks actions and selection.",
+      "Don't add glass or blur outside the hero."
+    ]
+  }
+}

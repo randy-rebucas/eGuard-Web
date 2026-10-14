@@ -2,10 +2,29 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("../db", () => ({ db: {} }));
 
-import { FRESH_MS, LEAVE_MARGIN_M, childLocation, durationLabel, isDayKey, locationPolicy, placeFor, placeMove, shiftDay, stayed, thinRoute, visitSpan, waitingText } from "../location";
+import { FRESH_MS, LEAVE_MARGIN_M, childLocation, durationLabel, fixTime, isDayKey, locationPolicy, placeFor, placeMove, shiftDay, stayed, thinRoute, visitSpan, waitingText } from "../location";
 
 const now = Date.parse("2026-10-04T10:00:00Z");
 const min = 60_000;
+
+describe("fixTime", () => {
+  const at = (msAgo: number) => new Date(now - msAgo);
+
+  it("keeps when the fix was taken, so an old one isn't shown as live", () => {
+    expect(fixTime(at(3 * 60 * min), new Date(now), at(5 * 60 * min))).toEqual(at(3 * 60 * min));
+  });
+
+  it("uses arrival without a time, and never a time in the future", () => {
+    expect(fixTime(undefined, new Date(now), null)).toEqual(new Date(now));
+    expect(fixTime(new Date(now + 10 * min), new Date(now), null)).toEqual(new Date(now));
+  });
+
+  it("drops fixes older than a day, or not newer than the one stored", () => {
+    expect(fixTime(at(25 * 60 * min), new Date(now), null)).toBeNull();
+    expect(fixTime(at(10 * min), new Date(now), at(5 * min))).toBeNull();
+    expect(fixTime(at(5 * min), new Date(now), at(5 * min))).toBeNull();
+  });
+});
 
 describe("placeMove", () => {
   const home = { id: "home", lat: 14.6, lng: 121.0, radiusM: 150 };

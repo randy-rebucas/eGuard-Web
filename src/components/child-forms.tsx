@@ -10,7 +10,8 @@ import { Feedback } from "./feedback";
 import { ConfirmField, confirmHint } from "./confirm-field";
 import { FAILED, useAction, useFlow } from "./flow";
 import { PROFILES, recommendedProfile, type ProfileId } from "@/lib/profiles";
-import { createChild, deleteChildData, setAppApproval, setAppCategory, setAppLimit, setCategoryLimit, updateChild } from "@/app/actions/family";
+import { EXTRA_TIME_MINUTES } from "@/lib/protections";
+import { createChild, deleteChildData, endExtraTime, grantExtraTime, setAppApproval, setAppCategory, setAppLimit, setCategoryLimit, updateChild } from "@/app/actions/family";
 
 export function ChildForm({ child }: { child?: { id: string; name: string; birthYear: number } }) {
   const [state, action, pending] = useActionState(child ? updateChild.bind(null, child.id) : createChild, undefined);
@@ -51,7 +52,7 @@ export function ChildForm({ child }: { child?: { id: string; name: string; birth
               <label key={p.id} className="check">
                 <input type="radio" name="profile" value={p.id} checked={profile === p.id} onChange={() => setPicked(p.id)} />
                 <span>
-                  <span className="t-title" style={{ fontSize: 14 }}>{p.name}{p.id === recommended ? " (recommended)" : ""}</span>
+                  <span className="t-title bp-name" style={{ fontSize: 14 }}>{p.name}{p.id === recommended ? <span className="pill tone-accent">Recommended</span> : null}</span>
                   <span className="t-meta" style={{ display: "block" }}>{p.description}</span>
                 </span>
               </label>
@@ -141,7 +142,9 @@ export function DeleteChildForm({ childId, name, hasPassword }: { childId: strin
   );
 }
 
-const APPROVALS: [AppApproval, string][] = [["ALLOWED", "Allowed"], ["ALWAYS_ALLOWED", "Always allowed"], ["FILTERED", "Filtered"], ["BLOCKED", "Blocked"], ["PENDING", "Pending"]];
+// Always allowed: not paused by the daily screen-time or category limits (bedtime and the app's own limit still apply).
+// Filtered isn't offered: devices block it like Blocked, so it's only shown on an app that already has it.
+const APPROVALS: [AppApproval, string][] = [["ALLOWED", "Allowed"], ["ALWAYS_ALLOWED", "Always allowed"], ["FILTERED", "Filtered (blocked)"], ["BLOCKED", "Blocked"], ["PENDING", "Pending"]];
 
 /**
  * `category`: the parent's choice, or null while it's eGuard's guess (`guess`).
@@ -183,7 +186,7 @@ export function AppControls({ app }: { app: { id: string; name: string; approval
     });
   };
   return (
-    <div className="row" style={{ gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }} aria-busy={pending}>
+    <div className="row app-controls" style={{ gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }} aria-busy={pending}>
       {app.approval === "PENDING" || app.requested ? (
         <>
           <button className="btn btn-primary btn-sm" disabled={pending} onClick={() => approve("ALLOWED", `${app.name} approved. It applies on the device's next sync.`)}>
@@ -198,7 +201,7 @@ export function AppControls({ app }: { app: { id: string; name: string; approval
           <label className="sr-only" htmlFor={`ap-${app.id}`}>Access for {app.name}</label>
           <select id={`ap-${app.id}`} className="input" style={{ height: 36 }} value={approval ?? app.approval} disabled={pending}
             onChange={(e) => approve(e.target.value as AppApproval, `${app.name} updated. It applies on the device's next sync.`)}>
-            {APPROVALS.filter(([k]) => k !== "PENDING").map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+            {APPROVALS.filter(([k]) => k !== "PENDING" && (k !== "FILTERED" || app.approval === "FILTERED")).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
           </select>
           <label className="sr-only" htmlFor={`cat-${app.id}`}>Category for {app.name}</label>
           <select id={`cat-${app.id}`} className="input" style={{ height: 36 }} value={category ?? app.category ?? ""} disabled={pending}
@@ -213,6 +216,49 @@ export function AppControls({ app }: { app: { id: string; name: string; approval
             onBlur={saveLimit} />
         </>
       )}
+    </div>
+  );
+}
+
+/**
+ * Give extra time (limits and bedtime don't pause the child's apps until it ends), end it early, or say not now
+ * to the child's request. `running`: extra time hasn't ended yet.
+ */
+export function ExtraTimeControl({ childId, childName, running, requested }: { childId: string; childName: string; running: boolean; requested: boolean }) {
+  const [pending, run] = useAction();
+  const [minutes, setMinutes] = useState<number>(30);
+  const [doing, setDoing] = useState<"give" | "end" | null>(null);
+  const give = () => {
+    setDoing("give");
+    run(() => grantExtraTime(childId, minutes), {
+      // Extra time never runs more than 4 hours ahead, so adding to a long stretch can give less than chosen
+      ok: (r) => {
+        const added = "addedMinutes" in r ? r.addedMinutes : minutes;
+        if (!added) return `${childName}'s extra time already runs 4 hours ahead, the most eGuard gives at once.`;
+        return added < minutes
+          ? `${childName} has ${added} more minutes: extra time can run at most 4 hours ahead. Their device picks it up within a few minutes.`
+          : `${childName} has ${added} more minutes. Their device picks it up within a few minutes.`;
+      },
+      onOk: () => setDoing(null), onError: () => setDoing(null) });
+  };
+  const end = () => {
+    setDoing("end");
+    run(() => endExtraTime(childId), { ok: requested && !running ? `${childName} was told not now.` : "Extra time ended.", onOk: () => setDoing(null), onError: () => setDoing(null) });
+  };
+  return (
+    <div className="row" style={{ gap: 8, flexWrap: "wrap" }} aria-busy={pending}>
+      <label className="sr-only" htmlFor={`extra-${childId}`}>Extra time for {childName}</label>
+      <select id={`extra-${childId}`} className="input" style={{ height: 36, width: "auto" }} value={minutes} disabled={pending} onChange={(e) => setMinutes(Number(e.target.value))}>
+        {EXTRA_TIME_MINUTES.map((m) => <option key={m} value={m}>{m} minutes</option>)}
+      </select>
+      <button type="button" className="btn btn-primary btn-sm" disabled={pending} onClick={give}>
+        {pending && doing === "give" ? <><Icon name="loader-circle" className="spin" />Giving…</> : running ? "Add time" : "Give time"}
+      </button>
+      {running || requested ? (
+        <button type="button" className="btn btn-secondary btn-sm" disabled={pending} onClick={end}>
+          {pending && doing === "end" ? <><Icon name="loader-circle" className="spin" />Saving…</> : running ? "End now" : "Not now"}
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -250,7 +296,7 @@ export function CategoryLimitControl({ childId, category, minutes, paused = fals
     });
   };
   return (
-    <span aria-busy={pending}>
+    <span className="app-controls" aria-busy={pending}>
       <label className="sr-only" htmlFor={`catlim-${category}`}>{name}: daily limit in minutes</label>
       <input id={`catlim-${category}`} className="input" style={{ height: 36, width: 110 }} type="number" min={0} max={1440} step={15} placeholder="No limit" value={limit}
         onChange={(e) => setLimit(e.target.value)}

@@ -44,8 +44,8 @@ see [mobile-api.md](../mobile-api.md).
 │ Protection                                                [Run Configuration Check]      │
 │ Configuration Health tells you whether each protection is set up and verified …          │
 ├──────────────────────────────────────────────────────────────────────────────────────────┤
-│ (8/10)  CONFIGURATION HEALTH                                                             │
-│  ring   2 protections need review                                                        │
+│ (8/10)  2 protections need review                                                        │
+│  ring                                                                                    │
 │         3 devices, last checked Today, 9:12 AM. Mia's Tablet is offline …  Pair a device →│
 │         [Pass] [Warning] [Action required] [Unsupported] [Not configured]   (legend)     │
 │ ──────────────────────────────────────────────────────────────────────────────────────── │
@@ -55,13 +55,17 @@ see [mobile-api.md](../mobile-api.md).
 │ …                                                                                        │
 ├──────────────────────────────────────────────────────────────────────────────────────────┤
 │ Protection settings                                                                      │
-│ ┌────────────────┐ ┌────────────────┐ ┌────────────────┐ ┌────────────────┐              │
-│ │ Screen Time    │ │ Bedtime        │ │ Apps           │ │ …  (10 cards)  │              │
-│ │ 2h / day …     │ │ Varies by child│ │                │ │                │              │
-│ │ Android · iOS  │ │ Mia: … · Leo: …│ │                │ │                │              │
-│ │ Last checked   │ │ 1 device to    │ │                │ │                │              │
-│ │      [Manage]  │ │ review [Review]│ │                │ │                │              │
-│ └────────────────┘ └────────────────┘ └────────────────┘ └────────────────┘              │
+│ ┌──────────────────────────┐ ┌──────────────────────────┐ ┌──────────────────────────┐   │
+│ │ Screen Time              │ │ Bedtime                  │ │ Apps         (3 across,  │   │
+│ │ 2h / day …               │ │ Varies by child          │ │               3 rows)    │   │
+│ │ [Android] [iOS]          │ │ [Android] [iOS]          │ │                          │   │
+│ │ Last checked    [Manage] │ │ Last checked    [Review] │ │                          │   │
+│ └──────────────────────────┘ └──────────────────────────┘ └──────────────────────────┘   │
+│ ┌──────────────────────────────────────────────────────────────────────────────────────┐ │
+│ │ Uninstall Protection  [Verified]                              [Android] [iOS]         │ │
+│ │ On                                                                                    │ │
+│ │ Last checked                                                               [Manage]   │ │
+│ └──────────────────────────────────────────────────────────────────────────────────────┘ │
 ├──────────────────────────────────────────────────────────────────────────────────────────┤
 │ How platform support works: Available · Guided setup · Verification only · Unsupported   │
 └──────────────────────────────────────────────────────────────────────────────────────────┘
@@ -121,18 +125,32 @@ One card per protection, in catalogue order, with anchor `id={slug}`:
 | Waiting change | per child with a change no device has confirmed yet (`getOpenChanges`): "*Mia*: changing to **9:00 PM – 6:30 AM**, waiting for Galaxy A54 to confirm" ("to come online" when every target is offline; "waiting for you to finish the setup steps" for guided setup), with **Check progress** (opens the flow, which offers to resume it). The value above only changes once a device confirms |
 | Browsers | Web card only, when the family has any: "Browsers follow their own rules and aren't counted here", then each one ("Chrome on Mia's MacBook", with the child's name when there are several children) with its status pill (`browserStatus`, as on Devices), linking to the child's Browser tab |
 | Plan note | Location on Free: "Location sharing isn't on your plan…" (the device may share, but the server drops it) |
-| Capabilities | Android and iOS chips: Available, Guided setup, Verification only, Unsupported |
+| Capabilities | Android and iOS chips: Available, Guided setup, Verification only, Set by you, Unsupported |
 | Last checked | newest report of this protection from any device, "Never" when none |
 | Button | **Review** when a device isn't passing (opens the flow for the failing child), else **Manage** (the flow asks which child) |
 
-The last card explains the four capabilities (`CAPABILITY_META`):
+**Layout:** three across on desktop; the tenth card would sit alone, so it takes the whole row (`.prot.wide`: name and
+setting on the left, platform chips on the right, footer across). On the icon rail and tablets (≤ 1180px) it's two
+across (five even rows); on phones one card per row with the Android and iOS chips side by side. Within a row, the
+platform chips and footer line up at the bottom, so a card with a waiting change doesn't leave its neighbours' chips
+floating. On phones the health card puts a smaller ring beside the headline, with the line, legend and checks
+beneath.
+
+The last card explains the five capabilities (`CAPABILITY_META`), all five on one row down to tablet width:
 
 | Capability | Meaning | Where it applies |
 |---|---|---|
-| Available | eGuard applies the setting and verifies it | everything on Android; most on iOS |
-| Guided setup | the parent follows steps on the device, then eGuard verifies | iOS: Web, Location |
-| Verification only | the parent sets it on the device; eGuard confirms it's on | iOS: Downloads |
-| Unsupported | the platform doesn't allow it; not counted in health | iOS: Notifications |
+| Available | eGuard applies the setting and verifies it | most on both platforms |
+| Guided setup | the parent follows steps on the device, then eGuard verifies | Android: Web (Private DNS); iOS: Location |
+| Verification only | the parent sets it on the device; eGuard confirms it's on | none today |
+| Set by you | the parent sets it in Google Play's parental controls and confirms; the device can't read it, so it's recorded as "Set by you", never "Verified", and not counted in health. Until confirmed it's "Not set up yet" and counts | Android: App Restrictions, Content |
+| Unsupported | the platform doesn't allow it; not counted in health, whether or not the device reports it | iOS: Notifications |
+
+A device's status for a protection comes from `statusOn` (health.ts): the platform's capability first, then the
+device's report. Anything an Android device reports for a "Set by you" protection is ignored (older builds echoed
+the policy back as a Pass), and a protection the device can apply but leaves out of a full report is stored as not
+in force ("eGuard isn't applying it. A permission it needs may be turned off."), so turning off a permission can't
+leave an old Pass behind.
 
 ## 4. The setup flow
 
@@ -143,10 +161,10 @@ focus. Six steps, shown as a stepper ("Step *n* of 6 · *name*"):
 | # | Step | What happens |
 |---|---|---|
 | 0 | Select protection / child | Only when not given. A child without a device reads "No device yet · applied once one is paired"; with no children, **Add a child** |
-| 1 | Review current configuration | Each of the child's devices: name, platform, capability, what it reported (`currentLabel`, "Not reported" before its first report) and its badge; then "Your setting for *Mia*: …". With no device: "You can change the setting now; eGuard applies and verifies it once a device is paired" + **Pair a device** (preselecting the child). Blocks only with "*Protection* isn't supported on *Mia*'s devices". If a change is already open: "A change is already waiting for verification. **Check progress**" (resumes it) |
+| 1 | Review current configuration | Each of the child's devices: name, platform, capability, what it reported (`currentLabel`, "Not reported" before its first report) and its badge; then "Your setting for *Mia*: …". With no device: "You can change the setting now; eGuard applies and verifies it once a device is paired" + **Pair a device** (preselecting the child). Blocks only with "*Protection* isn't supported on *Mia*'s devices". If a change is already open: "A change is already waiting for verification. **Check progress**" (resumes it). **Change setting** opens the form |
 | 2 | Choose new configuration | The form for that protection (below). Problems are explained inline (`draftProblem`, mirroring `ConfigSchema`) and disable the button. The button reads **Save** with no device, **Continue to setup** when any device needs guided setup, else **Apply to device** |
 | – | Confirm | "Change Protection Settings" alert dialog: which devices, "Once it's applied, the change shows in eGuard on *Mia*'s device", Now → New, **Continue**. With no device: "This is saved as *Mia*'s setting and applied when a device is paired", **Save** → toast "Saved. It applies once *Mia*'s device is paired." and the dialog closes |
-| 3 | Apply to device | `submitConfig` → a batch of requests ([§6](#6-how-a-change-is-verified)). Guided devices show their steps, "I've done these steps on the device", **Verify now** (`confirmGuided`) or **Cancel change** (`cancelBatch`: "Change cancelled. Nothing was changed on the device.") |
+| 3 | Apply to device | `submitConfig` → a batch of requests ([§6](#6-how-a-change-is-verified)). Guided devices show their steps, "I've done these steps on the device", **Verify now** (`confirmGuided`) or **Cancel change** (`cancelBatch`: "Change cancelled. Nothing was changed on the device."). For "Set by you" steps the button is **Save** and the hint says eGuard can't check it; confirming records it at once (history: "*Apps* set by you", "set in Google Play on *Pixel*, not verified") and the result reads "Set by you on *Pixel*, not verified" |
 | 4 | Verify | Polls `/api/flow/{batchId}` every 1.2 s; one row per device ([§7](#7-status-reference)). After 20 s: "Some devices haven't answered yet. eGuard keeps the change waiting…"; after 4 failed polls: "Can't reach eGuard right now". **Continue in background** closes it with a toast |
 | 5 | Configuration Health updated | "Verified on *devices*", "*n* device(s) didn't confirm" (with each reason), or "Not applied"; the child's score; Before → After; **View history** (`/children/{id}?tab=history`) and **Done**; the page refreshes |
 
@@ -154,10 +172,10 @@ focus. Six steps, shown as a stepper ("Step *n* of 6 · *name*"):
 
 | Protection | Fields | Rules |
 |---|---|---|
-| Screen Time | school days and weekend minutes | whole minutes, 15–1440 |
+| Screen Time | school days and weekends, each as hours + minutes (`DurationField`, stored as total minutes) | whole minutes, 15–1440 |
 | Bedtime | on/off, start, end, Every day / School nights | start ≠ end when on |
 | Apps, Content | maximum age rating: 4, 9, 12, 13, 16, 17, 18 (a value set elsewhere is kept in the list) | 4–18 |
-| Web | Filter adult and unsafe sites / Allowed sites only / Off | only the mode counts: `blockedSites` is optional (default 0), not shown and not compared, since a device reports the size of its own list |
+| Web | Filter adult and unsafe sites / Allowed sites only / Off | only the mode counts: `blockedSites` is optional (default 0), not shown and not compared, since a device reports the size of its own list. **Android: guided**, through a family-filter Private DNS (the steps are in `protections.ts`). **iOS: applied by eGuard** (Screen Time's adult-website filter, read back from the store). Neither can do Allowed sites only, which then shows as not matching; that mode works in the browser extension |
 | App Approval, Downloads, Location, Notifications, Uninstall Protection | one switch each | — |
 
 Server actions validate everything again: an unknown protection or a malformed id is a 404, the config must pass
@@ -171,9 +189,11 @@ Server actions validate everything again: an unknown protection or a malformed i
    `check.started`. With no devices: "Pair a child's device before running a check." At most 30 checks per parent
    per hour (`LIMITS.checkUser`, web and mobile): "You've run several checks. Wait a few minutes; devices keep
    reporting on their own."
-2. Each device's next `/sync` says a full report is wanted; its full report fills its result (`reachable`, `issues`).
+2. Each device is woken with a silent push (`wakeDevices`, when it has sent a `pushToken` and `FCM_SERVICE_ACCOUNT`
+   is set); its next `/sync` says a full report is wanted, and that report fills its result (`reachable`, `issues`).
 3. The dialog polls `/api/checks/{runId}` every 0.9 s. A poll finalizes the run once every device answered or
-   **12 s** passed (`CHECK_TIMEOUT_MS`); silent devices become "Couldn't reach".
+   **12 s** passed (`CHECK_TIMEOUT_MS`; **30 s** while an iOS device hasn't answered, `CHECK_TIMEOUT_IOS_MS`); silent
+   devices become "Couldn't reach".
 4. Result: per device **All verified** / ***n* to review** / **Couldn't reach**, then "Configuration Health: *s* / 10"
    for **the devices this run covered**, with the same wording as the page ("Every protection is verified", "…set,
    as last reported", "*n* protections still need review", and "Devices that didn't answer keep their last known
@@ -193,10 +213,12 @@ policy. Only a device report can.
    same child and protection are **cancelled**. Audit `config.requested` ("Bedtime for Mia: 9:00 PM – 6:30 AM").
    A child with **no device** gets the config saved straight into their policy (no batch), applied when a device
    pairs. In the single-setting flow (`strict`), a child whose devices all lack support is a 409; the mobile `setup`
-   endpoint instead saves such protections straight into the policy.
+   endpoint instead saves such protections straight into the policy. The `APPLY` devices are then woken with a
+   silent push (`wakeDevices` in [push.ts](../../src/lib/push.ts)), so they sync now instead of at their next poll.
 2. **Deliver** (`deviceSync`): each sync returns the open `APPLY` requests (new and already-delivered ones, in case a
-   response was lost) and marks new ones `DELIVERED`. Guided requests become `DELIVERED` when the parent taps
-   **Verify now**, which also asks the device for a report.
+   response was lost) and marks new ones `DELIVERED`. Its `policy` has those changes laid over the verified one, so
+   a device enforcing `policy` applies them too. Guided requests become `DELIVERED` when the parent taps
+   **Verify now**, which also asks the device for a report (and wakes it).
 3. **Report** (`processReport`): for each protection the device reports:
    - an open request whose desired config **matches** (key order ignored) → `VERIFIED`; the child's policy becomes
      that config (and the screen-time mirror on `Child`); a history entry "*Protection* updated" (or "verified" when
@@ -252,7 +274,7 @@ Comparison ignores key order, and Web filtering compares `mode` only.
 | Child with no device | saved as the setting; toast | `200 { batchId: null, saved: [key] }` |
 | Whole profile at once | at child creation (children.md) | `POST /children/{id}/setup` with overrides; protections no device can verify are saved directly |
 | Progress | `/api/flow/{batchId}` | `GET /batches/{id}`, `POST /batches/{id}/confirm` |
-| Configuration check | dialog | `POST /checks`, `GET /checks/{id}` (same 12 s rule, same 30 per hour, health of the covered devices) |
+| Configuration check | dialog | `POST /checks`, `GET /checks/{id}` (same 12 s / 30 s iOS rule, same 30 per hour, health of the covered devices) |
 | Unreported protection | "Not reported" | "Not reported" everywhere |
 | Pending changes | on each card and in the health line | `openBatchId` per protection in `/children/{id}/protections` |
 

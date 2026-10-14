@@ -15,7 +15,7 @@ vi.mock("../push", () => ({}));
 vi.mock("../weekly-digest", () => ({}));
 
 type Fn = ReturnType<typeof vi.fn>;
-const { isChildRequest, worthEmail, closeStaleWork, OPEN_CHANGE_DAYS } = await import("../maintenance");
+const { isChildRequest, worthEmail, closeStaleWork, OPEN_CHANGE_DAYS, groupProtectionAlerts, combineAlerts } = await import("../maintenance");
 const { isDismissible } = await import("../health");
 const { db } = (await import("../db")) as unknown as { db: { checkRun: { findMany: Fn }; configRequest: { findMany: Fn; updateMany: Fn }; alert: { create: Fn } } };
 const { finalizeCheckRun } = (await import("../engine")) as unknown as { finalizeCheckRun: Fn };
@@ -104,5 +104,29 @@ describe("closeStaleWork", () => {
     expect(await closeStaleWork(now)).toEqual({ checks: 0, requests: 0, notices: 0 });
     expect(db.configRequest.updateMany).not.toHaveBeenCalled();
     expect(db.alert.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("notifying protection alerts raised together", () => {
+  const t0 = new Date("2026-10-14T05:00:00Z");
+  const alert = (key: string, deviceId: string, secs = 0, severity = "ATTENTION") => ({
+    id: `${key}-${deviceId}-${secs}`, familyId: "f1", childId: "c1", deviceId, severity, category: "PROTECTION", icon: "shield-alert",
+    title: "Protection couldn't be applied", body: `${key} couldn't be applied`, subject: "Mia's Pixel",
+    fromValue: "x", toValue: "y", resolveKey: `${key}:${deviceId}`, createdAt: new Date(t0.getTime() + secs * 1000),
+  }) as never;
+
+  it("sends one message for one device's report, and keeps other devices and later reports apart", () => {
+    const groups = groupProtectionAlerts([alert("SCREEN_TIME", "d1"), alert("BEDTIME", "d1", 1), alert("BEDTIME", "d2", 1), alert("APP_APPROVAL", "d1", 2), alert("DOWNLOADS", "d1", 600)] as never[]);
+    expect(groups.map((g: { id: string }[]) => g.map((a) => a.id))).toEqual([
+      ["SCREEN_TIME-d1-0", "BEDTIME-d1-1", "APP_APPROVAL-d1-2"], ["BEDTIME-d2-1"], ["DOWNLOADS-d1-600"],
+    ]);
+  });
+
+  it("names every protection and takes the most serious severity", () => {
+    const a = combineAlerts([alert("SCREEN_TIME", "d1"), alert("BEDTIME", "d1"), alert("APP_APPROVAL", "d1", 0, "ACTION_REQUIRED")] as never[]);
+    expect(a).toMatchObject({ title: "3 protections changed", severity: "ACTION_REQUIRED", fromValue: null });
+    expect(a.body).toMatch(/^Screen Time, Bedtime and App Approval changed/);
+    const one = alert("SCREEN_TIME", "d1");
+    expect(combineAlerts([one])).toBe(one);
   });
 });

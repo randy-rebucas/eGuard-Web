@@ -5,6 +5,7 @@ import {
   Smartphone, Users, Wifi, X, type LucideIcon,
 } from "lucide-react";
 import { LogoMark } from "@/components/logo";
+import type { Capability } from "@/lib/protections";
 import { AndroidMark, AppleMark, ChromeMark, EdgeMark, FirefoxMark } from "@/components/brand-marks";
 import avatar1 from "../../public/landing/avatar-1.png";
 import avatar2 from "../../public/landing/avatar-2.png";
@@ -227,10 +228,11 @@ export function ScreenPairingCode() {
 }
 
 /** Parent app: one protection for one child, with its status on an Android phone and an iPad. */
-export function ScreenProtection({ icon, name, value, ios }: {
-  icon: React.ReactNode; name: string; value: string; ios: "AVAILABLE" | "GUIDED" | "VERIFY_ONLY" | "UNSUPPORTED";
+export function ScreenProtection({ icon, name, value, ios, android = "AVAILABLE" }: {
+  icon: React.ReactNode; name: string; value: string; ios: Capability; android?: Capability;
 }) {
-  const iosStatus: Status = ios === "AVAILABLE" ? "ok" : ios === "UNSUPPORTED" ? "off" : "guide";
+  const status = (cap: Capability): Status => cap === "AVAILABLE" ? "ok" : cap === "UNSUPPORTED" ? "off" : "guide";
+  const iosStatus = status(ios);
   return (
     <>
       <div className="sc-top"><ChevronLeft /><b>Protection</b><i /></div>
@@ -242,7 +244,7 @@ export function ScreenProtection({ icon, name, value, ios }: {
       <div className="sc-card sc-left"><small>Current setting</small><b className="sc-value">{value}</b></div>
       <p className="sc-h">On Mia&apos;s devices</p>
       <ul className="sc-list">
-        <li className="sc-row"><i className="sc-ico"><Smartphone /></i><div><b>Galaxy A15</b><span>Android</span></div><Chip status="ok" /></li>
+        <li className="sc-row"><i className="sc-ico"><Smartphone /></i><div><b>Galaxy A15</b><span>Android</span></div><Chip status={status(android)} text={android === "PARENT_SET" ? "Set by you" : undefined} /></li>
         <li className="sc-row"><i className="sc-ico"><Smartphone /></i><div><b>iPad</b><span>iPadOS</span></div><Chip status={iosStatus} text={ios === "UNSUPPORTED" ? "Not on iPad" : undefined} /></li>
       </ul>
       <span className="sc-btn wide">Change setting</span>

@@ -5,7 +5,8 @@ import { ZodError } from "zod";
  * the mobile API maps `status` to the HTTP status code.
  */
 export class ServiceError extends Error {
-  constructor(public status: number, message: string, public code?: string) {
+  /** `extra`: more fields for the error body, where an API documents them (e.g. a browser's signed revocation). */
+  constructor(public status: number, message: string, public code?: string, public extra?: Record<string, unknown>) {
     super(message);
     this.name = "ServiceError";
   }

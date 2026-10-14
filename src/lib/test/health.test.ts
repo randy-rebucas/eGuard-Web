@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { browserNeedsAttention, computeHealth, deviceState, evaluate, familySummary, healthBadge, healthLabel, isDismissible, worst } from "../health";
-import { PROTECTIONS, configMatches, describeConfig, defaultConfig } from "../protections";
+import { PROTECTIONS, PROTECTION_BY_KEY, configMatches, describeConfig, defaultConfig } from "../protections";
 
 const now = new Date();
 const allPass = (overrides: Record<string, string> = {}) =>
@@ -42,8 +42,12 @@ describe("evaluate", () => {
   });
 });
 
+/** A fully set-up device: on Android, the protections the parent sets in Google Play are stored as confirmed (UNSUPPORTED) */
+const setUp = (protections: ReturnType<typeof allPass>, platform: "ANDROID" | "IOS") =>
+  protections.map((p) => (PROTECTION_BY_KEY[p.key].caps[platform] === "PARENT_SET" && p.status === "PASS" ? { ...p, status: "UNSUPPORTED" as never } : p));
+
 describe("computeHealth", () => {
-  const dev = (id: string, protections = allPass(), platform: "ANDROID" | "IOS" = "ANDROID") => ({ id, name: id, platform, lastSeenAt: now, protections });
+  const dev = (id: string, protections = allPass(), platform: "ANDROID" | "IOS" = "ANDROID") => ({ id, name: id, platform, lastSeenAt: now, protections: setUp(protections, platform) });
 
   it("scores 10/10 when everything passes", () => {
     expect(computeHealth([dev("a"), dev("b")]).score).toBe(10);
@@ -97,6 +101,33 @@ describe("computeHealth", () => {
       expect(computeHealth([d], { now: seen.getTime() + 2 * 864e5 }).verified).toBe(false);
     });
   });
+
+  describe("platform capabilities", () => {
+    const raw = (id: string, platform: "ANDROID" | "IOS", protections = allPass()) => ({ id, name: id, platform, lastSeenAt: now, protections });
+    const check = (h: ReturnType<typeof computeHealth>, key: string) => h.checks.find((c) => c.key === key)!;
+
+    it("counts a protection the platform can't do as unsupported even when it was never reported", () => {
+      const h = computeHealth([raw("iphone", "IOS", allPass().filter((p) => p.key !== "NOTIFICATIONS"))]);
+      expect(check(h, "NOTIFICATIONS").status).toBe("UNSUPPORTED");
+      expect(h).toMatchObject({ score: 10, verified: true });
+    });
+    it("never takes an Android report of a Google Play setting as verified", () => {
+      // Older Android builds echoed the policy back as PASS
+      const h = computeHealth([raw("phone", "ANDROID")]);
+      expect(check(h, "APP_RESTRICTIONS")).toMatchObject({ status: "NOT_CONFIGURED", detail: "Not set up yet on phone: select to see the steps", parentSet: false });
+      expect(h.score).toBe(8);
+    });
+    it("shows a Google Play setting the parent confirmed as set by them, not verified, and doesn't count it", () => {
+      const h = computeHealth([dev("phone")]);
+      expect(check(h, "CONTENT")).toMatchObject({ status: "UNSUPPORTED", parentSet: true, detail: "Set by you on phone, not verified" });
+      expect(h.score).toBe(10);
+    });
+    it("names both kinds when an iPhone verifies what an Android phone has set by the parent", () => {
+      const h = computeHealth([dev("phone"), dev("ipad", allPass({ NOTIFICATIONS: "UNSUPPORTED" }), "IOS")]);
+      expect(check(h, "APP_RESTRICTIONS")).toMatchObject({ status: "PASS", parentSet: false, detail: "Verified on 1 of 1 device. Set by you on phone, not verified" });
+      expect(check(h, "NOTIFICATIONS").detail).toBe("Verified on 1 of 1 device. Unsupported on iOS");
+    });
+  });
 });
 
 describe("deviceState", () => {
@@ -113,12 +144,12 @@ describe("deviceState", () => {
     expect(computeHealth([fresh]).score).toBe(0);
   });
   it("counts a protection the device left out of its report", () => {
-    expect(deviceState({ id: "x", name: "x", platform: "ANDROID", lastSeenAt: now, protections: allPass().filter((p) => p.key !== "BEDTIME") })).toEqual({ key: "issues", issues: 1, firstCheck: false });
+    expect(deviceState({ id: "x", name: "x", platform: "ANDROID", lastSeenAt: now, protections: setUp(allPass(), "ANDROID").filter((p) => p.key !== "BEDTIME") })).toEqual({ key: "issues", issues: 1, firstCheck: false });
   });
 });
 
 describe("familySummary", () => {
-  const dev = (id: string, protections = allPass(), lastSeenAt: Date | null = now) => ({ id, name: id, platform: "ANDROID" as const, lastSeenAt, protections });
+  const dev = (id: string, protections = allPass(), lastSeenAt: Date | null = now) => ({ id, name: id, platform: "ANDROID" as const, lastSeenAt, protections: setUp(protections, "ANDROID") });
   const stale = new Date(Date.now() - 3 * 864e5);
   const kid = (name: string, devices: unknown[] = [{}]) => ({ id: name, name, devices });
   const summary = (devices: ReturnType<typeof dev>[], kids = [kid("Mia")]) => familySummary(computeHealth(devices), kids, devices.length);

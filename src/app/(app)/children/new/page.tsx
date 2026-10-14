@@ -16,7 +16,8 @@ export default async function NewChildPage() {
     <>
       <PageHead title="Add a child" crumbs={[{ href: "/children", label: "Children" }]}
         text={full ? undefined : "Add their name and age. Next, you'll pair their phone or tablet with the eGuard app."} />
-      <section className="card card-pad">
+      {/* Sized to the form: a full-width card left two-thirds of it empty */}
+      <section className="card card-pad" style={{ maxWidth: 568 }}>
         {full ? <UpgradeNote icon="users" title="Your plan is full" text={full} plans={!!nextPlan(family.plan)} /> : <ChildForm />}
       </section>
     </>

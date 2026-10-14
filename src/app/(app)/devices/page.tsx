@@ -35,12 +35,19 @@ export default async function DevicesPage(props: PageProps<"/devices">) {
           <section key={c.id}>
             <div className="section-title"><h2 className="row" style={{ gap: 10 }}><Avatar name={c.name} hue={c.hue} photo={c.photo} />{c.name}&apos;s devices</h2></div>
             {c.devices.length || own.length ? (
-              <div className="devices-grid">
+              // One or two read better as full-width rows than as small tiles beside empty space
+              <div className={`devices-grid${c.devices.length + own.length <= 2 ? " rows" : ""}`}>
                 {c.devices.map((d) => <DeviceCard key={d.id} d={d} state={deviceStates[d.id]} tz={family.timezone} />)}
                 {own.map((b) => <BrowserCard key={b.id} b={b} tz={family.timezone} hasPassword={u.hasPassword} />)}
               </div>
             ) : (
-              <div className="card"><EmptyState icon="smartphone" title={`No devices for ${c.name}`} text="Get a pairing code below and enter it in the eGuard app on their device, or in the eGuard browser extension." /></div>
+              // A short row with the next step, not a tall empty card per child
+              <div className="card card-pad row" style={{ flexWrap: "wrap" }}>
+                <span className="ico-tile muted"><Icon name="smartphone" /></span>
+                <div className="grow" style={{ minWidth: 200 }}><div className="t-title">No devices for {c.name} yet</div>
+                  <div className="t-meta">Get a pairing code below and enter it in the eGuard app on their device, or in the eGuard browser extension.</div></div>
+                <Link className="link-btn" href={`/devices?child=${c.id}#pair`}>Pair for {c.name} <Icon name="arrow-down" /></Link>
+              </div>
             )}
           </section>
         );
@@ -57,11 +64,11 @@ export default async function DevicesPage(props: PageProps<"/devices">) {
           <section className="card card-pad" id="pair">
             {/* Only Android is out: the landing page and help say the iPhone and iPad app is coming soon */}
             <div className="card-head"><div><h2>Pair a device</h2><div className="sub">Install eGuard from Google Play on your child&apos;s Android phone or tablet, then enter a pairing code. The iPhone and iPad app is coming soon.</div></div></div>
-            <PairDevice kids={kids} used={used} limit={family.deviceLimit} upgrade={upgrade} initialChildId={preselect} />
+            <PairDevice key={preselect ?? "pair"} kids={kids} used={used} limit={family.deviceLimit} upgrade={upgrade} initialChildId={preselect} />
           </section>
           <section className="card card-pad" id="add-browser">
             <div className="card-head"><div><h2>Add a browser</h2><div className="sub">For your child&apos;s computer: the eGuard extension for Chrome, Edge or Firefox. Name the computer, then enter the code in the extension.</div></div></div>
-            <PairDevice kids={kids} used={used} limit={family.deviceLimit} upgrade={upgrade} kind="BROWSER" initialChildId={preselect} />
+            <PairDevice key={preselect ?? "browser"} kids={kids} used={used} limit={family.deviceLimit} upgrade={upgrade} kind="BROWSER" initialChildId={preselect} />
           </section>
         </>
       )}

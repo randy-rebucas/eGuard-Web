@@ -112,6 +112,27 @@ export default async function LocationHistoryPage(props: PageProps<"/location/[c
 
 type RowFn = (v: Visit, n?: number) => React.ComponentProps<typeof Timeline>["items"][number];
 
+/**
+ * Timeline rows, with each run of spots passed on the way folded into one "On the move" row: a busy day can have
+ * hundreds, and every one of them is still on the map. Stays keep their own rows (and numbers).
+ */
+function foldPassing(list: { v: Visit; n?: number }[], tz: string, row: RowFn) {
+  const out: ReturnType<RowFn>[] = [];
+  for (let i = 0; i < list.length; ) {
+    let j = i;
+    while (j < list.length && !stayed(list[j].v)) j++;
+    if (j - i >= 2) {
+      const first = list[i].v, last = list[j - 1].v;
+      out.push({ id: `run-${first.id}`, icon: "route", title: `On the move · ${j - i} spots`, by: first.device?.name ?? "Removed device", time: `${visitSpan(first, tz)} – ${visitSpan(last, tz)}` });
+      i = j;
+    } else {
+      out.push(row(list[i].v, list[i].n));
+      i++;
+    }
+  }
+  return out;
+}
+
 /** One day: the route on a map, then each visit in order. Stays are numbered as on the map. */
 async function DayView({ childId, childName, familyId, day, today, earliest, focus, tz, base, row }: {
   childId: string; childName: string; familyId: string; day: string; today: string; earliest: string; focus?: string; tz: string; base: string; row: RowFn;
@@ -147,7 +168,7 @@ async function DayView({ childId, childName, familyId, day, today, earliest, foc
             <LazyMap people={[]} places={places} trail={trail} focus={focus} attribution={tileAttribution()} label={`${childName}'s route, ${label}`} />
           </div>
           {thinned ? <p className="t-meta" role="note" style={{ marginBottom: 8 }}>A busy day: some spots {childName} passed on the way are left out so the route stays readable. Every place {childName} stayed is shown.</p> : null}
-          <Timeline items={numbered.map(({ v, n }) => row(v, n))} />
+          <Timeline items={foldPassing(numbered, tz, row)} />
         </>
       ) : (
         <EmptyState icon="map-pin" title="No places this day" text={day === today ? `Places appear here once ${childName}'s device shares its location today.` : `eGuard has no location for ${childName} on this day.`} />
@@ -176,7 +197,7 @@ async function AllView({ childId, childName, before, tz, base, row }: { childId:
               <h2 style={{ fontSize: 16, margin: 0 }}>{d.label}</h2>
               <Link className="link-btn" href={`${base}?day=${d.key}`}>Map of the day</Link>
             </div>
-            <Timeline items={d.visits.map((v) => row(v))} />
+            <Timeline items={foldPassing(d.visits.map((v) => ({ v })), tz, row)} />
           </div>
         ))
       )}

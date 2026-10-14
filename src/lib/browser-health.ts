@@ -15,7 +15,7 @@ import { ServiceError } from "./errors";
  * is raised once and resolved when the browser reports it fixed.
  */
 
-export const HEALTH_CHECK_IDS = ["policy_signature", "rules_installed", "private_windows", "sync_fresh", "safe_browsing", "force_installed"] as const;
+export const HEALTH_CHECK_IDS = ["policy_signature", "rules_installed", "private_windows", "site_access", "sync_fresh", "safe_browsing", "force_installed"] as const;
 export const PROTECTION_STATES = ["PROTECTED", "NEEDS_ATTENTION", "ACTION_REQUIRED", "SYNC_PAUSED", "UNSUPPORTED"] as const;
 const CHECK_STATUSES = ["PASS", "WARNING", "ACTION_REQUIRED", "UNSUPPORTED", "NOT_CONFIGURED"] as const satisfies readonly CheckStatus[];
 
@@ -24,6 +24,9 @@ export const HealthReport = z.object({
   policyVersion: z.number().int().positive().nullable(),
   // Unknown check ids are dropped rather than refused, so a newer extension can report checks this server doesn't know yet
   checks: z.array(z.object({ id: z.string().max(40), status: z.enum(CHECK_STATUSES) })).max(20),
+  // Optional (older extensions send them only at pairing): keeps the version parents see current after updates
+  extensionVersion: z.string().trim().min(1).max(20).optional(),
+  browserVersion: z.string().trim().max(40).nullable().optional(),
 });
 export type HealthReport = z.infer<typeof HealthReport>;
 
@@ -41,6 +44,7 @@ const label = (inst: Inst) => `${inst.child.name}'s ${browserLabel(inst)}`;
 export const driftKey = (id: string) => `BROWSER_DRIFT:${id}`;
 export const privateKey = (id: string) => `BROWSER_PRIVATE:${id}`;
 export const safeBrowsingKey = (id: string) => `BROWSER_SAFE_BROWSING:${id}`;
+export const siteAccessKey = (id: string) => `BROWSER_SITE_ACCESS:${id}`;
 
 /** Checks that count toward the score: UNSUPPORTED and NOT_CONFIGURED don't apply to this browser or family. */
 export function scoreChecks(checks: { status: CheckStatus }[]) {
@@ -66,7 +70,11 @@ export async function recordHealth(inst: Inst, report: HealthReport, now = new D
     db.browserHealthCheck.create({ data: { installationId: inst.id, policyVersion: report.policyVersion, state: report.state, checks, score, total, createdAt: now } }),
     db.browserInstallation.update({
       where: { id: inst.id },
-      data: { protectionState: report.state, appliedPolicyVersion: report.policyVersion, lastHealthAt: now, lastSeenAt: now },
+      data: {
+        protectionState: report.state, appliedPolicyVersion: report.policyVersion, lastHealthAt: now, lastSeenAt: now,
+        ...(report.extensionVersion !== undefined && { extensionVersion: report.extensionVersion }),
+        ...(report.browserVersion !== undefined && { browserVersion: report.browserVersion }),
+      },
     }),
   ]);
 
@@ -99,6 +107,19 @@ export async function recordHealth(inst: Inst, report: HealthReport, now = new D
     await resolveAlerts(inst.familyId, privateKey(inst.id));
   }
 
+  // Site access withdrawn in the browser's settings: blocking goes on, SafeSearch doesn't. If eGuard's own address
+  // went with it, this report never arrives and the offline alert says so a day later.
+  const access = status("site_access");
+  if (access === "ACTION_REQUIRED") {
+    await raiseOnce(inst, siteAccessKey(inst.id), {
+      icon: "shield-off",
+      title: "SafeSearch is off in this browser",
+      body: `eGuard's site access was turned off in ${inst.browser}'s extension settings on ${inst.deviceLabel}. Sites are still blocked, but SafeSearch is off and eGuard may stop getting your changes. Turn site access back on for eGuard in ${inst.browser}'s extension settings.`,
+    });
+  } else if (access !== null) {
+    await resolveAlerts(inst.familyId, siteAccessKey(inst.id));
+  }
+
   const sb = status("safe_browsing");
   if (sb === "ACTION_REQUIRED") {
     await raiseOnce(inst, safeBrowsingKey(inst.id), {
@@ -114,7 +135,9 @@ export async function recordHealth(inst: Inst, report: HealthReport, now = new D
 }
 
 /**
- * Browsers silent for a day: settings stay in force in the browser, but eGuard can't verify them. Once per
+ * Browsers silent for a day. Usually the browser is just closed (its settings stay in force), but a turned-off or
+ * removed extension (not force-installed), or one waiting for a permission after an update, looks the same from
+ * here, so the alert says protection may be off. A shorter wait would alert every night a laptop sleeps. Once per
  * silence. Run by the maintenance job.
  */
 export async function raiseBrowserOfflineAlerts(now = Date.now()) {
@@ -128,8 +151,8 @@ export async function raiseBrowserOfflineAlerts(now = Date.now()) {
     // Two overlapping maintenance runs must not both raise it
     const created = await createAlertUnless(rk, { familyId: inst.familyId, resolveKey: rk, resolvedAt: null }, {
       familyId: inst.familyId, childId: inst.childId, severity: "ATTENTION", category: "DEVICES", icon: "wifi-off",
-      title: "eGuard can't verify this browser", subject: label(inst), resolveKey: rk,
-      body: `${browserLabel(inst)} hasn't checked in for over a day. Its last settings stay active, but eGuard can't confirm them until the browser is opened again. If eGuard was removed or turned off, it stops protecting that browser.`,
+      title: "eGuard may be off in this browser", subject: label(inst), resolveKey: rk,
+      body: `${browserLabel(inst)} hasn't checked in for over a day. If it's just been closed, its settings are still on and this clears when it's opened. If eGuard was turned off or removed there, nothing is filtered: open the browser's extensions page and check that eGuard is on. After an update, the browser may also be waiting for someone to accept eGuard's new permissions.`,
     });
     if (created) raised++;
   }

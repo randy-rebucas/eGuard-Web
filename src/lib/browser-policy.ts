@@ -16,7 +16,7 @@ import { categoryDomains } from "./category-lists";
 
 export const WEB_CATEGORIES = [
   "ADULT", "GAMBLING", "MALWARE", "PHISHING", "VIOLENCE", "DRUGS", "WEAPONS", "HATE",
-  "DATING", "SOCIAL_MEDIA", "GAMING", "STREAMING", "SHOPPING", "DOWNLOADS",
+  "DATING", "SOCIAL_MEDIA", "GAMING", "STREAMING", "SHOPPING", "DOWNLOADS", "PROXY",
 ] as const;
 export type WebCategory = (typeof WEB_CATEGORIES)[number];
 
@@ -35,14 +35,27 @@ export const CATEGORY_META: Record<WebCategory, { label: string; hint: string }>
   STREAMING: { label: "Streaming", hint: "Video and music streaming" },
   SHOPPING: { label: "Shopping", hint: "Online stores" },
   DOWNLOADS: { label: "Downloads", hint: "File-sharing and download sites" },
+  PROXY: { label: "Proxies & translators", hint: "Web proxies, page translators and archives that open blocked sites" },
 };
 
 export const UNKNOWN_SITES = ["ALLOW", "WARN", "BLOCK"] as const;
 export const MAX_DOMAINS = 500;
 
-/** Protected by default, by age, like the phone profiles. Security categories are always on. */
+/** YouTube Restricted Mode, which the extension sets with YouTube's own request header. */
+export const YOUTUBE_RESTRICT = ["OFF", "MODERATE", "STRICT"] as const;
+export type YoutubeRestrict = (typeof YOUTUBE_RESTRICT)[number];
+export const YOUTUBE_RESTRICT_META: Record<YoutubeRestrict, { label: string; text: string }> = {
+  OFF: { label: "Off", text: "YouTube works as usual." },
+  MODERATE: { label: "Moderate", text: "Hides videos that may be mature, and all comments." },
+  STRICT: { label: "Strict", text: "Hides more videos than Moderate, including some that are fine. Best for young children." },
+};
+
+/**
+ * Protected by default, by age, like the phone profiles. Security categories are always on, and so are proxies:
+ * a translator or web proxy would open every other blocked site.
+ */
 export function defaultCategories(age: number): WebCategory[] {
-  const base: WebCategory[] = ["ADULT", "GAMBLING", "MALWARE", "PHISHING", "HATE", "DRUGS", "WEAPONS"];
+  const base: WebCategory[] = ["ADULT", "GAMBLING", "MALWARE", "PHISHING", "HATE", "DRUGS", "WEAPONS", "PROXY"];
   if (age < 13) base.push("VIOLENCE", "DATING");
   if (age < 9) base.push("SOCIAL_MEDIA");
   return base.sort();
@@ -84,6 +97,8 @@ export const BrowserPolicyInput = z
   .object({
     safeBrowsing: z.boolean(),
     safeSearch: z.boolean(),
+    /** Optional so apps that don't show it yet keep the saved level (updateBrowserPolicy) */
+    youtubeRestrict: z.enum(YOUTUBE_RESTRICT).optional(),
     blockedCategories: z.array(z.enum(WEB_CATEGORIES)).max(WEB_CATEGORIES.length),
     blockedDomains: z.array(z.string()).max(MAX_DOMAINS, `Up to ${MAX_DOMAINS} blocked sites.`),
     allowedDomains: z.array(z.string()).max(MAX_DOMAINS, `Up to ${MAX_DOMAINS} allowed sites.`),
@@ -117,7 +132,7 @@ const ageOf = (birthYear: number) => new Date().getFullYear() - birthYear;
 
 function snapshot(p: BrowserPolicy) {
   return {
-    version: p.version, safeBrowsing: p.safeBrowsing, safeSearch: p.safeSearch, blockedCategories: p.blockedCategories,
+    version: p.version, safeBrowsing: p.safeBrowsing, safeSearch: p.safeSearch, youtubeRestrict: p.youtubeRestrict, blockedCategories: p.blockedCategories,
     blockedDomains: p.blockedDomains, allowedDomains: p.allowedDomains, unknownSitesPolicy: p.unknownSitesPolicy, schedule: p.schedule,
     temporaryAllows: p.temporaryAllows,
   };
@@ -207,6 +222,7 @@ export async function updateBrowserPolicy(actor: Actor, childId: string, input: 
   const child = await db.child.findFirst({ where: { id: childId, familyId: actor.familyId } });
   if (!child) throw notFound("Child");
   const current = await getOrCreateBrowserPolicy(childId);
+  input = { ...input, youtubeRestrict: input.youtubeRestrict ?? (current.youtubeRestrict as YoutubeRestrict) };
   if (sameSettings(current, input)) return current;
   if (baseVersion != null && baseVersion !== current.version) {
     throw new ServiceError(409, "These settings changed since you opened them, for example an approved request or another parent's edit. Load the latest settings, then make your change again.", "stale_version");
@@ -225,13 +241,14 @@ export async function updateBrowserPolicy(actor: Actor, childId: string, input: 
   return next;
 }
 
-export function describeBrowserPolicy(p: Pick<BrowserPolicy, "blockedCategories" | "blockedDomains" | "allowedDomains" | "safeSearch">) {
+export function describeBrowserPolicy(p: Pick<BrowserPolicy, "blockedCategories" | "blockedDomains" | "allowedDomains" | "safeSearch" | "youtubeRestrict">) {
   const n = (k: number, one: string, many: string) => `${k} ${k === 1 ? one : many}`;
   return [
     n(p.blockedCategories.length, "category", "categories"),
     n(p.blockedDomains.length, "blocked site", "blocked sites"),
     n(p.allowedDomains.length, "allowed site", "allowed sites"),
     p.safeSearch ? "SafeSearch on" : "SafeSearch off",
+    `YouTube Restricted Mode ${(YOUTUBE_RESTRICT_META[p.youtubeRestrict as YoutubeRestrict]?.label ?? p.youtubeRestrict).toLowerCase()}`,
   ].join(", ");
 }
 
@@ -270,16 +287,33 @@ export function signPolicy(policy: object) {
   return { signature, keyId: k.keyId };
 }
 
+/**
+ * eGuard's signed word that an installation is gone (removed by a parent, or disconnected for a copied key). The
+ * extension forgets its connection and lifts its rules only with this: an unsigned 401 could come from anyone
+ * between the browser and eGuard (a proxy with its own root certificate), and must never switch protection off.
+ * Its shape can't parse as a policy, and the extension checks `type`, so neither can stand in for the other.
+ * Null when signing isn't configured: the browser then stays connected and protected.
+ */
+export function signRevocation(installationId: string) {
+  try {
+    const revocation = { type: "eguard.browser.revoked", installationId, at: new Date().toISOString() };
+    return { revocation, ...signPolicy(revocation) };
+  } catch (e) {
+    console.error("[browser] can't sign a revocation", e);
+    return null;
+  }
+}
+
 /** The policy for one installation, as the extension receives it. */
-export async function policyForInstallation(inst: Pick<BrowserInstallation, "id" | "childId" | "familyId">) {
+export async function policyForInstallation(inst: Pick<BrowserInstallation, "id" | "childId" | "familyId" | "deviceLabel"> & { child: { name: string } }) {
   const [p, family] = await Promise.all([
     getOrCreateBrowserPolicy(inst.childId),
-    db.family.findUniqueOrThrow({ where: { id: inst.familyId }, select: { timezone: true } }),
+    db.family.findUniqueOrThrow({ where: { id: inst.familyId }, select: { timezone: true, name: true } }),
   ]);
   const schedule = p.schedule as { enabled: boolean; startTime: string; endTime: string } | null;
   const policy = {
     id: p.id, childId: p.childId, installationId: inst.id, version: p.version,
-    safeBrowsing: p.safeBrowsing, safeSearch: p.safeSearch,
+    safeBrowsing: p.safeBrowsing, safeSearch: p.safeSearch, youtubeRestrict: p.youtubeRestrict,
     blockedCategories: p.blockedCategories, blockedDomains: p.blockedDomains, allowedDomains: p.allowedDomains,
     unknownSitesPolicy: p.unknownSitesPolicy,
     schedule: schedule ? { enabled: schedule.enabled, startTime: schedule.startTime, endTime: schedule.endTime, timezone: family.timezone } : null,
@@ -292,5 +326,8 @@ export async function policyForInstallation(inst: Pick<BrowserInstallation, "id"
     ),
     updatedAt: p.updatedAt.toISOString(),
   };
-  return { policy, ...signPolicy(policy) };
+  // Names as /pair returns them, current: a parent can rename the child or family later. Outside the signed policy,
+  // so they're display text only and never change what's enforced.
+  const names = { familyName: family.name, childName: inst.child.name, deviceName: inst.deviceLabel };
+  return { policy, ...signPolicy(policy), names };
 }

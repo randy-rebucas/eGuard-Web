@@ -64,11 +64,12 @@ export const PROTECTION_PAGES: Record<ProtectionKey, ProtectionPage> = {
     title: "Age ratings for apps",
     summary: "Allow only apps rated for your child's age, and block the rest automatically.",
     what: [
-      "Pick the highest app age rating you're comfortable with. Apps rated above it are blocked on the device.",
+      "Pick the highest app age rating you're comfortable with. Apps rated above it can't be installed or opened on the device.",
       "It works alongside App Approval: ratings handle the obvious cases, and approval lets you look at each new app yourself.",
     ],
-    childSees: "A block screen on apps above their rating, explaining why and how to ask you about it.",
-    check: "The device reports the rating it's applying. If it changes, you're told, and Configuration Health shows the difference until it's fixed.",
+    childSees: "Apps above their rating are hidden or can't be opened.",
+    check: "On iPhone and iPad, the device reports the rating it's applying. If it changes, you're told, and Configuration Health shows the difference until it's fixed.",
+    android: "Android doesn't let apps read an app's age rating, so eGuard shows you how to set it in Google Play's parental controls, protected by a PIN. eGuard can't check that setting, so it's marked as set by you rather than verified. App Approval still holds every new app until you say yes.",
     byAge: true,
     faqs: [
       ["Can I see which apps are blocked?", "Yes. The Apps tab lists installed, blocked and pending apps for each child."],
@@ -97,7 +98,8 @@ export const PROTECTION_PAGES: Record<ProtectionKey, ProtectionPage> = {
       "Use it with App age ratings, so both apps and what's inside them fit your child's age.",
     ],
     childSees: "Content above the rating simply isn't offered, or shows as restricted.",
-    check: "The device reports the rating it's applying, and eGuard shows it as Verified only when it matches yours.",
+    check: "On iPhone and iPad, the device reports the rating it's applying, and eGuard shows it as Verified only when it matches yours.",
+    android: "Android doesn't let apps set media ratings, so eGuard shows you how to set them for movies and TV in Google Play's parental controls. eGuard can't check that setting, so it's marked as set by you rather than verified.",
     byAge: true,
     faqs: [
       ["Does this filter YouTube or streaming apps?", "It applies the device's own media ratings. For apps like YouTube, use App age ratings, App Approval and per-app time limits."],
@@ -112,8 +114,8 @@ export const PROTECTION_PAGES: Record<ProtectionKey, ProtectionPage> = {
     ],
     childSees: "A clear “This site is blocked” page with an Ask a parent button, instead of a broken page.",
     check: "Phones report the filter mode they're using. The browser extension keeps checking itself and alerts you if private windows aren't covered or protection was changed.",
-    android: "On Android, eGuard filters the web on the phone itself, in every browser.",
-    ios: "Apple doesn't let apps filter the web directly, so eGuard walks you through turning on Apple's own Limit Adult Websites, then checks it.",
+    android: "On Android, eGuard walks you through setting the phone's Private DNS to a family filter, which blocks adult and unsafe sites in every browser and app, then checks it's still set. Allowed sites only works in the browser extension on computers.",
+    ios: "On iPhone and iPad, eGuard turns on Apple's adult-website filter through Screen Time and checks it's still on. Allowed sites only works in the browser extension on computers.",
     faqs: [
       ["Does eGuard see which websites my child visits?", "No. The browser extension sends only a count of blocked pages per day, by category. The one address eGuard receives is a blocked site your child asks you to open, with the reason they type."],
       ["What happens when my child asks for a site?", "You get the request and can allow it for 15 minutes, an hour, the rest of today or always. The site opens right away, and the rule returns when the time's up."],
@@ -124,12 +126,13 @@ export const PROTECTION_PAGES: Record<ProtectionKey, ProtectionPage> = {
     title: "Approval for downloads",
     summary: "Make app store installs wait for a parent's OK.",
     what: [
-      "When this is on, your child can't install from the app store without your approval.",
+      "When this is on, a new app from the app store can't be used until you approve it. On iPhone and iPad it can't be installed at all.",
       "Together with App Approval, it means new apps reach the phone only with your say-so.",
     ],
     childSees: "The install waits for approval, and they can ask you from eGuard.",
     check: "The device reports whether installs need approval. If that changes, eGuard tells you.",
-    ios: "On iPhone and iPad, you set this in Screen Time or turn on Ask to Buy in Family Sharing. eGuard shows you where, then confirms it's on.",
+    android: "Android doesn't let apps stop the Play Store from downloading, so a newly installed app stays locked until you approve it, the same way App Approval works.",
+    ios: "On iPhone and iPad, eGuard turns off installing apps through Screen Time and checks it's still off. Your child asks for an app from eGuard.",
     faqs: [
       ["What's the difference from App Approval?", "Downloads stops installs at the app store. App Approval blocks any new app that does get installed until you allow it. Using both covers both paths."],
     ],

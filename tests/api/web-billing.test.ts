@@ -2,8 +2,9 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { PrismaClient } from "@prisma/client";
 import { refreshPurchases } from "@/lib/billing";
 import {
-  addInterval, buyPass, cancelAutoRenew, confirmReturn, handlePaymongoEvent, sendPassReminders, startAutoRenew,
+  addInterval, buyPass, cancelAutoRenew, confirmReturn, handlePaymongoEvent, paidTimeName, sendPassReminders, startAutoRenew,
 } from "@/lib/web-billing";
+import { renewalWord } from "@/lib/entitlement";
 import { endOfBillingDay, parseWebhookEvent, paymongoConfig, verifyWebhookSignature } from "@/lib/paymongo";
 import { webPrice } from "@/lib/plans";
 import type { Actor } from "@/lib/config-service";
@@ -182,6 +183,19 @@ describe("passes (pay once)", () => {
     expect((await row(cs)).state).toBe("EXPIRED");
   });
 
+  it("a checkout for another plan, paid after a plan was bought, waits for that plan's time instead of overlapping it", async () => {
+    const [cruz] = await family("Cruz");
+    const plus = (await buyPass(cruz, "PLUS", opts)).checkoutUrl.split("/").pop()!;
+    const pro = (await buyPass(cruz, "PRO", opts)).checkoutUrl.split("/").pop()!; // both open before either is paid
+    pm.pay(pro);
+    await handlePaymongoEvent(event("checkout_session.payment.paid", { id: pro, type: "checkout_session" }), opts);
+    pm.pay(plus);
+    await handlePaymongoEvent(event("checkout_session.payment.paid", { id: plus, type: "checkout_session" }), opts);
+    const [a, b] = [await row(pro), await row(plus)];
+    expect(b.expiresAt!.getTime()).toBe(addInterval(a.expiresAt!, "month").getTime());
+    expect((await fam(cruz)).plan).toBe("Family Pro");
+  });
+
   it("doesn't sell over a Google Play plan", async () => {
     await db.storePurchase.create({
       data: { familyId: played.familyId, store: "GOOGLE_PLAY", productId: "eguard_family", purchaseToken: `play-${RUN}`, state: "SUBSCRIPTION_STATE_ACTIVE", autoRenewing: true, expiresAt: new Date(Date.now() + 20 * DAY) },
@@ -214,6 +228,27 @@ describe("auto-renew", () => {
     expect(again.purchaseId).toBe(purchaseId);
     expect(pm.subs.size).toBe(before);
     expect(pm.plans).toHaveLength(1);
+  });
+
+  it("paid at PayMongo before eGuard heard of it: starting again records it instead of cancelling it", async () => {
+    pm.activate(sub, "2099-01-15"); // no webhook, no return from the payment page
+    await expect(startAutoRenew(admin, "PLUS", opts)).rejects.toMatchObject({ status: 409, message: expect.stringContaining("Auto-renew is already on") });
+    expect(pm.subs.get(sub)!.status).toBe("active");
+    expect(await row(sub)).toMatchObject({ state: "active", autoRenewing: true });
+    expect((await fam()).plan).toBe("Family Pro");
+    await expect(startAutoRenew(admin, "PRO", opts)).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("two windows starting auto-renew at once create one subscription", async () => {
+    const [ang] = await family("Ang");
+    const before = pm.subs.size;
+    const r = await Promise.allSettled([startAutoRenew(ang, "PLUS", opts), startAutoRenew(ang, "PLUS", opts), startAutoRenew(ang, "PLUS", opts)]);
+    expect(pm.subs.size - before).toBe(1);
+    expect(await db.storePurchase.count({ where: { familyId: ang.familyId } })).toBe(1);
+    for (const x of r) if (x.status === "rejected") expect(x.reason).toMatchObject({ status: 429 });
+    // Afterwards a retry resumes it
+    expect(await startAutoRenew(ang, "PLUS", opts)).toMatchObject({ amount: 14900 });
+    expect(pm.subs.size - before).toBe(1);
   });
 
   it("activates when the first invoice is paid", async () => {
@@ -292,5 +327,28 @@ describe("pass reminders", () => {
     expect(await alerts()).toBe(1);
     await sendPassReminders();
     expect(await alerts()).toBe(1);
+  });
+
+  it("reminds about auto-renew that was turned off, as it ends the same way", async () => {
+    const [go] = await family("Go");
+    const off = await db.storePurchase.create({
+      data: { familyId: go.familyId, store: "PAYMONGO", productId: "plus_monthly", purchaseToken: `subs_off_${RUN}`, state: "cancelled", expiresAt: new Date(Date.now() + 2 * DAY) },
+    });
+    await sendPassReminders();
+    expect((await db.storePurchase.findUniqueOrThrow({ where: { id: off.id } })).remindedAt).not.toBeNull();
+  });
+});
+
+describe("renewal wording", () => {
+  it("says a failed renewal failed, not that it renews on a date that has passed", () => {
+    expect(renewalWord({ autoRenewing: true, state: "past_due" })).toBe("Renewal failed");
+    expect(renewalWord({ autoRenewing: true, state: "active" })).toBe("Renews");
+    expect(renewalWord({ autoRenewing: false, state: "PAID" })).toBe("Ends");
+    expect(renewalWord(null)).toBe("Renews");
+  });
+  it("names paid time by what it is", () => {
+    expect(paidTimeName({ store: "PAYMONGO", productId: "plus_pass_month" })).toBe("eGuard Plus pass");
+    expect(paidTimeName({ store: "PAYMONGO", productId: "plus_monthly" })).toBe("eGuard Plus");
+    expect(paidTimeName({ store: "VOUCHER", productId: "pro_pass_month" })).toBe("sponsored Family Pro");
   });
 });

@@ -6,11 +6,14 @@ import { entitlementsFor } from "@/lib/plans";
 import { minChildAppVersion } from "@/lib/child-app";
 import { categoryOf } from "@/lib/app-categories";
 import { authDevice, readJson, unauthorized } from "@/lib/device-auth";
+import { activeExtraTime } from "@/lib/family-service";
 
 const Body = z.object({
   battery: z.number().int().min(0).max(100).nullable().optional(),
   osVersion: z.string().max(40).optional(),
   appVersion: z.string().max(20).optional(),
+  // FCM registration token for silent "sync now" wakes; null when the device can't receive push any more
+  pushToken: z.string().min(1).max(4096).nullable().optional(),
 }).default({});
 
 /**
@@ -30,6 +33,7 @@ export async function POST(req: Request) {
     db.childCategoryLimit.findMany({ where: { childId: device.childId }, select: { category: true, dailyLimitMinutes: true } }),
   ]);
   const ent = entitlementsFor(family.plan);
+  const extraTime = activeExtraTime(device.child);
   return NextResponse.json({
     deviceId: device.id,
     // Whose device this is now: a parent can move it to another child, so don't rely on the name from pairing
@@ -40,8 +44,11 @@ export async function POST(req: Request) {
     apps: apps.map((a) => ({ name: a.name, approval: a.approval, dailyLimitMinutes: a.dailyLimitMinutes, category: categoryOf(a).category })),
     // Kept, not deleted, when a plan without them ends; only not sent (nor enforced) until the family upgrades again
     categoryLimits: ent.categoryLimits ? categoryLimits : [],
+    // Extra time a parent gave: until then, limits and bedtime don't pause apps (blocked apps stay blocked). null when none
+    extraTimeUntil: extraTime?.toISOString() ?? null,
     fullReportRequested: sync.checkRequested,
-    nextSyncSeconds: 300,
+    // While extra time runs, a parent's "End now" should reach the device within a minute, not five
+    nextSyncSeconds: extraTime ? 60 : 300,
     // Days ("today", weekends, school nights) as the parent sees them; the device's own zone may differ
     timezone: family.timezone,
     // Location fixes are dropped on plans without location sharing, so the device shouldn't collect or send them

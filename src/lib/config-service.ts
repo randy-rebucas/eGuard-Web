@@ -3,9 +3,10 @@ import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { Prisma, ProtectionKey, RequestStatus, Role } from "@prisma/client";
 import { db } from "./db";
-import { PROTECTIONS, PROTECTION_BY_KEY, describeConfig, defaultConfig, type ProtectionConfig } from "./protections";
-import { computeHealth, isOffline, worst } from "./health";
+import { PROTECTIONS, PROTECTION_BY_KEY, describeConfig, defaultConfig, isGuided, type ProtectionConfig } from "./protections";
+import { computeHealth, isOffline, reportedLabel, statusOn, worst } from "./health";
 import { syncChildLimits } from "./engine";
+import { wakeDevices } from "./push";
 import { ServiceError, notFound } from "./errors";
 
 /**
@@ -115,8 +116,7 @@ export async function requestConfigs(actor: Actor, childId: string, configs: Pro
       continue;
     }
     for (const d of targets) {
-      const cap = def.caps[d.platform];
-      const guided = cap === "GUIDED" || cap === "VERIFY_ONLY";
+      const guided = isGuided(def.caps[d.platform]);
       rows.push({
         batchId, childId: child.id, deviceId: d.id, key: cfg.key,
         mode: guided ? "GUIDED" : "APPLY",
@@ -135,7 +135,7 @@ export async function requestConfigs(actor: Actor, childId: string, configs: Pro
     for (const k of [...keys].sort()) await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`config:${child.id}:${k}`}))`;
     // The change dialog saves the whole setting: refuse one made from what another parent has since changed or queued
     if (opts.baseVersion !== undefined && configs.length === 1 && opts.baseVersion !== await configVersion(child.id, configs[0].key, tx)) {
-      throw new ServiceError(409, `${PROTECTION_BY_KEY[configs[0].key].name} for ${child.name} was changed by someone else since you opened this. Close it and open it again to see the change.`, "stale");
+      throw new ServiceError(409, `${PROTECTION_BY_KEY[configs[0].key].name} for ${child.name} was changed by someone else since you opened this. Check the current setting, then make your change again.`, "stale");
     }
     await tx.configRequest.updateMany({ where: { childId: child.id, key: { in: keys }, status: { in: OPEN } }, data: { status: "CANCELLED" } });
     if (rows.length) await tx.configRequest.createMany({ data: rows });
@@ -145,6 +145,8 @@ export async function requestConfigs(actor: Actor, childId: string, configs: Pro
     ? `${PROTECTION_BY_KEY[configs[0].key].name} for ${child.name}: ${describeConfig(configs[0])}`
     : `${configs.length} protections for ${child.name}`;
   await db.auditLog.create({ data: { familyId: actor.familyId, actor: actor.name, action: "config.requested", detail } });
+  // Guided steps wait for the parent (confirmGuided wakes those devices)
+  await wakeDevices(rows.filter((r) => r.mode === "APPLY").map((r) => r.deviceId), "config");
   return {
     batchId: rows.length ? batchId : null,
     requested: [...new Set(rows.map((r) => r.key as ProtectionKey))],
@@ -152,18 +154,69 @@ export async function requestConfigs(actor: Actor, childId: string, configs: Pro
   };
 }
 
-/** Guided setup: parent says the steps are done; ask the devices to report. */
-export async function confirmGuided(familyId: string, batchId: string) {
-  const reqs = await db.configRequest.findMany({ where: { batchId, status: "AWAITING_PARENT", child: { familyId } } });
-  if (!reqs.length) return { confirmed: 0 };
+/**
+ * Guided setup: parent says the steps are done; ask the devices to report. [key] confirms only that protection
+ * (the app's guide is one protection at a time); without it, every guided step in the batch (the web's dialog).
+ */
+export async function confirmGuided(familyId: string, batchId: string, key?: ProtectionKey) {
+  const all = await db.configRequest.findMany({
+    where: { batchId, status: "AWAITING_PARENT", child: { familyId }, ...(key ? { key } : {}) },
+    include: { device: { select: { platform: true, name: true } } },
+  });
+  if (!all.length) return { confirmed: 0 };
   const now = new Date();
-  await db.configRequest.updateMany({ where: { id: { in: reqs.map((r) => r.id) } }, data: { status: "DELIVERED", deliveredAt: now } });
-  await db.device.updateMany({ where: { id: { in: reqs.map((r) => r.deviceId) } }, data: { checkRequestedAt: now } });
-  return { confirmed: reqs.length };
+  // Set by the parent in another app: nothing the device could check, so it's recorded as the parent's word
+  const parentSet = all.filter((r) => PROTECTION_BY_KEY[r.key].caps[r.device.platform] === "PARENT_SET");
+  for (const r of parentSet) await recordParentSet(r, now);
+  const reqs = all.filter((r) => !parentSet.includes(r));
+  if (reqs.length) {
+    await db.configRequest.updateMany({ where: { id: { in: reqs.map((r) => r.id) } }, data: { status: "DELIVERED", deliveredAt: now } });
+    await db.device.updateMany({ where: { id: { in: reqs.map((r) => r.deviceId) } }, data: { checkRequestedAt: now } });
+    await wakeDevices(reqs.map((r) => r.deviceId), "check");
+  }
+  return { confirmed: all.length };
 }
 
-export async function cancelBatch(familyId: string, batchId: string) {
-  const r = await db.configRequest.updateMany({ where: { batchId, child: { familyId }, status: { in: OPEN } }, data: { status: "CANCELLED" } });
+/**
+ * The parent says they set a PARENT_SET protection on the device. It becomes the child's setting and the device's
+ * row is stored as UNSUPPORTED (statusOn: set, not counted in health), with history that says it wasn't verified.
+ * Under the same lock as requestConfigs, and only while the request is still waiting, so a newer change wins.
+ */
+async function recordParentSet(r: { id: string; childId: string; deviceId: string; key: ProtectionKey; desired: Prisma.JsonValue; previous: Prisma.JsonValue; createdBy: string; device: { name: string } }, now: Date) {
+  const def = PROTECTION_BY_KEY[r.key];
+  await db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`config:${r.childId}:${r.key}`}))`;
+    const done = await tx.configRequest.updateMany({ where: { id: r.id, status: "AWAITING_PARENT" }, data: { status: "VERIFIED", deliveredAt: now, verifiedAt: now } });
+    if (!done.count) return;
+    const desired = r.desired as Prisma.InputJsonValue;
+    await tx.childPolicy.upsert({
+      where: { childId_key: { childId: r.childId, key: r.key } },
+      create: { childId: r.childId, key: r.key, config: desired },
+      update: { config: desired },
+    });
+    await tx.deviceProtection.upsert({
+      where: { deviceId_key: { deviceId: r.deviceId, key: r.key } },
+      create: { deviceId: r.deviceId, key: r.key, status: "UNSUPPORTED", reported: desired, message: PARENT_SET_MESSAGE, lastVerifiedAt: null },
+      update: { status: "UNSUPPORTED", reported: desired, message: PARENT_SET_MESSAGE, lastVerifiedAt: null },
+    });
+    const child = await tx.child.findUniqueOrThrow({ where: { id: r.childId }, select: { familyId: true } });
+    const from = describeConfig(r.previous), to = describeConfig(r.desired);
+    await tx.configChange.create({
+      data: {
+        familyId: child.familyId, childId: r.childId, key: r.key,
+        title: `${def.name} set by you`,
+        actor: `${r.createdBy} · set in Google Play on ${r.device.name}, not verified`,
+        fromValue: from === to ? null : from, toValue: to,
+      },
+    });
+  });
+}
+
+const PARENT_SET_MESSAGE = "Set by you in Google Play. eGuard can't check it on Android.";
+
+/** `key`: only that protection's change (the rest of a setup batch keeps going) */
+export async function cancelBatch(familyId: string, batchId: string, key?: ProtectionKey) {
+  const r = await db.configRequest.updateMany({ where: { batchId, child: { familyId }, status: { in: OPEN }, ...(key ? { key } : {}) }, data: { status: "CANCELLED" } });
   return { cancelled: r.count };
 }
 
@@ -192,6 +245,8 @@ export async function batchStatus(familyId: string, batchId: string) {
       devices: rs.map((r) => ({
         requestId: r.id, deviceId: r.deviceId, deviceName: r.device.name, platform: r.device.platform,
         mode: r.mode, status: r.status, failureReason: r.failureReason, offline: isOffline(r.device),
+        /** VERIFIED here means the parent said they set it (PARENT_SET): say "Set by you", not "Verified" */
+        parentSet: PROTECTION_BY_KEY[r.key].caps[r.device.platform] === "PARENT_SET",
         from: describeConfig(r.previous),
         guide: r.mode === "GUIDED" ? PROTECTION_BY_KEY[r.key].guide?.[r.device.platform] ?? null : null,
       })),
@@ -204,6 +259,8 @@ export async function batchStatus(familyId: string, batchId: string) {
     done: !open,
     summary: {
       total: items.length, verified: count("VERIFIED"), failed: count("FAILED"),
+      /** Of `verified`, the ones the parent set in Google Play (PARENT_SET): done, but not checked by a device */
+      setByYou: items.filter((i) => i.status === "VERIFIED" && i.devices.every((d) => d.parentSet)).length,
       awaitingParent: count("AWAITING_PARENT"), inProgress: count("PENDING") + count("DELIVERED"), cancelled: count("CANCELLED"),
     },
     items,
@@ -225,14 +282,15 @@ export async function childProtections(familyId: string, childId: string) {
     const devs = devices.map((d) => {
       const p = d.protections.find((x) => x.key === def.key);
       const cap = def.caps[d.platform];
+      const status = statusOn(d, def.key);
       return {
         deviceId: d.id, deviceName: d.name, platform: d.platform, capability: cap,
-        status: p?.status ?? "NOT_CONFIGURED",
+        status,
         reported: p?.reported ?? null,
-        reportedLabel: p ? (p.status === "NOT_CONFIGURED" ? "Not configured" : describeConfig(p.reported)) : "Not reported",
-        message: p?.message ?? null,
+        reportedLabel: reportedLabel(cap, status, p),
+        message: cap === "PARENT_SET" && status !== "UNSUPPORTED" ? null : p?.message ?? null,
         lastVerifiedAt: p?.lastVerifiedAt ?? null,
-        guide: cap === "GUIDED" || cap === "VERIFY_ONLY" ? def.guide?.[d.platform] ?? null : null,
+        guide: isGuided(cap) ? def.guide?.[d.platform] ?? null : null,
       };
     });
     const openBatchId = open.find((r) => r.key === def.key)?.batchId ?? null;

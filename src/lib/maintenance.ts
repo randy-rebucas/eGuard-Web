@@ -1,5 +1,5 @@
 import "server-only";
-import type { Alert } from "@prisma/client";
+import type { Alert, ProtectionKey } from "@prisma/client";
 import { db } from "./db";
 import { ensureOfflineAlerts, finalizeCheckRun, offlineDeviceWhere } from "./engine";
 import { PROTECTION_BY_KEY, describeConfig } from "./protections";
@@ -12,6 +12,7 @@ import { appUrl } from "./email-verification";
 import { escapeHtml, sendMail } from "./mail";
 import { familyEntitlements } from "./plan-access";
 import { alertPush, pushAvailable, pushToUsers } from "./push";
+import { mobileAlertAction } from "./mobile-views";
 import { sendWeeklyDigests } from "./weekly-digest";
 import { deliverBroadcasts } from "./broadcasts";
 import { STAFF_IDLE_MS } from "./console-host";
@@ -137,6 +138,69 @@ export async function purgeExpiredData(now = new Date()) {
   return counts;
 }
 
+/**
+ * A browser pairing the server saved but the extension never heard back from (the answer was lost, the setup page was
+ * closed): no health report, no token refresh and nothing after the pairing itself. A real extension does all of
+ * those within minutes. After a day it's removed, which frees the device slot, and the parents are told.
+ */
+export async function removeUnfinishedBrowserPairings(now = new Date()) {
+  const stale = await db.browserInstallation.findMany({
+    where: { lastHealthAt: null, refreshRotatedAt: null, revokedAt: null, createdAt: { lt: new Date(now.getTime() - 864e5) } },
+    select: { id: true, familyId: true, childId: true, deviceLabel: true, browser: true, createdAt: true, lastSeenAt: true, child: { select: { name: true } } },
+  });
+  // Seen again after pairing (a policy read) means it did start; leave that one to the offline alert
+  const unfinished = stale.filter((b) => !b.lastSeenAt || b.lastSeenAt.getTime() - b.createdAt.getTime() < 60_000);
+  for (const b of unfinished) {
+    const { count } = await db.browserInstallation.deleteMany({ where: { id: b.id, lastHealthAt: null, refreshRotatedAt: null } });
+    if (!count) continue;
+    await db.alert.create({
+      data: {
+        familyId: b.familyId, childId: b.childId, severity: "INFO", category: "DEVICES", icon: "globe",
+        title: "Browser setup didn't finish",
+        body: `${b.browser} on ${b.deviceLabel} was paired but never connected, so eGuard removed it and freed the device slot. Make a new browser code for ${b.child.name} and enter it in the extension to try again.`,
+        subject: `${b.child.name}'s ${b.deviceLabel}`,
+      },
+    });
+  }
+  return unfinished.length;
+}
+
+/** Protection alerts one device raised within this long of each other came from one report */
+const SAME_REPORT_MS = 2 * 60_000;
+
+/**
+ * Groups alerts (oldest first) so the protection alerts one device report raised together, typically a permission
+ * turned off that stops several protections at once, are emailed and pushed once. Each alert stays on its own in the
+ * app, since each one resolves when its protection is back.
+ */
+export function groupProtectionAlerts<T extends Pick<Alert, "category" | "deviceId" | "resolveKey" | "createdAt">>(alerts: T[]): T[][] {
+  const groups: T[][] = [];
+  const byDevice = new Map<string, T[]>();
+  for (const a of alerts) {
+    const device = a.category === "PROTECTION" && a.deviceId && a.resolveKey?.endsWith(`:${a.deviceId}`) ? a.deviceId : null;
+    const g = device ? byDevice.get(device) : undefined;
+    if (g && a.createdAt.getTime() - g[0].createdAt.getTime() < SAME_REPORT_MS) { g.push(a); continue; }
+    const fresh = [a];
+    groups.push(fresh);
+    if (device) byDevice.set(device, fresh);
+  }
+  return groups;
+}
+
+/** One message for alerts raised together: the alert itself when there's one, else a summary naming each protection */
+export function combineAlerts(alerts: Alert[]): Alert {
+  if (alerts.length === 1) return alerts[0];
+  const names = alerts.map((a) => PROTECTION_BY_KEY[a.resolveKey!.split(":")[0] as ProtectionKey]?.name ?? a.title);
+  const list = `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+  return {
+    ...alerts[0],
+    severity: alerts.some((a) => a.severity === "ACTION_REQUIRED") ? "ACTION_REQUIRED" : alerts[0].severity,
+    title: `${alerts.length} protections changed`,
+    body: `${list} changed on the device or stopped being applied. A permission eGuard needs may have been turned off. Open eGuard to see each one.`,
+    fromValue: null, toValue: null,
+  };
+}
+
 function alertEmail(a: Alert, name: string) {
   const link = `${appUrl()}/notifications`;
   const lines = [a.body, a.fromValue && a.toValue ? `Was: ${a.fromValue}\nNow: ${a.toValue}` : null].filter(Boolean).join("\n\n");
@@ -162,10 +226,15 @@ export async function notifyNewAlerts() {
   const alerts = await db.alert.findMany({ where: { notifiedAt: null }, orderBy: { createdAt: "asc" }, take: 500 });
   const push = pushAvailable();
   let sent = 0, pushed = 0;
-  for (const a of alerts) {
-    // Claim it first so two overlapping runs never send the same alert twice
-    const claimed = await db.alert.updateMany({ where: { id: a.id, notifiedAt: null }, data: { notifiedAt: new Date() } });
-    if (!claimed.count || a.resolvedAt || !worthEmail(a)) continue;
+  for (const group of groupProtectionAlerts(alerts)) {
+    // Claim each first so two overlapping runs never send the same alert twice
+    const due: Alert[] = [];
+    for (const x of group) {
+      const claimed = await db.alert.updateMany({ where: { id: x.id, notifiedAt: null }, data: { notifiedAt: new Date() } });
+      if (claimed.count && !x.resolvedAt && worthEmail(x)) due.push(x);
+    }
+    if (!due.length) continue;
+    const a = combineAlerts(due);
     const parents = await db.user.findMany({
       where: { familyId: a.familyId, ...(isChildRequest(a) ? { notifyApproval: true } : {}) },
       select: { id: true, email: true, name: true, notifyEmail: true, notifyPush: true, emailVerifiedAt: true },
@@ -181,7 +250,7 @@ export async function notifyNewAlerts() {
     const pushTo = parents.filter((p) => p.notifyPush).map((p) => p.id);
     if (push && pushTo.length && (await familyEntitlements(a.familyId)).realtimeAlerts) {
       try {
-        pushed += await pushToUsers(pushTo, alertPush(a));
+        pushed += await pushToUsers(pushTo, alertPush(a, mobileAlertAction(a)));
       } catch (e) {
         console.error("[maintenance] alert push failed", a.id, e);
       }
@@ -200,6 +269,8 @@ export async function runMaintenance() {
     try { return await fn(); } catch (e) { failed.push(name); console.error(`[maintenance] ${name} failed`, e); return null; }
   };
   const offlineFamilies = await step("offline alerts", raiseOfflineAlerts);
+  // Before the offline alerts: a pairing that never finished isn't a browser that went quiet
+  const unfinishedPairings = await step("unfinished browser pairings", () => removeUnfinishedBrowserPairings());
   const offlineBrowsers = await step("browser offline alerts", raiseBrowserOfflineAlerts);
   const purchases = await step("purchase refresh", refreshAllPurchases);
   const passReminders = await step("pass reminders", () => sendPassReminders());
@@ -211,5 +282,5 @@ export async function runMaintenance() {
   const broadcasts = await step("broadcast emails", () => deliverBroadcasts());
   const stale = await step("stale checks and changes", () => closeStaleWork());
   const purged = await step("data retention", () => purgeExpiredData());
-  return { offlineFamilies, offlineBrowsers, purchases, passReminders, codeBatches, codeReminders, orgDigests, emails, weeklyDigests, broadcasts, stale, purged, failed };
+  return { offlineFamilies, unfinishedPairings, offlineBrowsers, purchases, passReminders, codeBatches, codeReminders, orgDigests, emails, weeklyDigests, broadcasts, stale, purged, failed };
 }

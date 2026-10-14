@@ -27,7 +27,7 @@ export async function exportFamily(user: { familyId: string; name: string }) {
           changes: { select: { key: true, title: true, actor: true, fromValue: true, toValue: true, createdAt: true } },
           browserPolicy: {
             select: {
-              version: true, safeBrowsing: true, safeSearch: true, blockedCategories: true, blockedDomains: true, allowedDomains: true,
+              version: true, safeBrowsing: true, safeSearch: true, youtubeRestrict: true, blockedCategories: true, blockedDomains: true, allowedDomains: true,
               unknownSitesPolicy: true, schedule: true, temporaryAllows: true, updatedBy: true, updatedAt: true,
             },
           },

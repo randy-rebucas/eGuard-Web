@@ -358,7 +358,7 @@ Every endpoint except `pair` needs `Authorization: Bearer <device token>`. Only 
 | `POST /report` | `{ protections: [{ key, config }], full?: boolean }` | The config the device actually has. Send `full: true` with all protections when `fullReportRequested` |
 | `POST /usage` | `{ date: "YYYY-MM-DD", totalMinutes, apps: [{ name, minutes }], hourly?: number[24] }` | Daily totals, optionally per local hour. Idempotent: the latest total wins |
 | `POST /location` | `{ lat, lng, accuracyM?, placeLabel? }` | Current location, overwriting the last one. Visits are recorded only when the family turns on location history |
-| `POST /events` | `{ type: "APP_INSTALLED", app }` \| `{ type: "APP_REQUESTED", app }` \| `{ type: "LIMIT_REACHED", minutes }` \| `{ type: "APP_BLOCKED", app }` | Raise alerts or approval requests. `APP_BLOCKED` alerts at most once per app per hour. Optional `eventId` (8–64 chars, e.g. a UUID) on any event: a repeat from the same device within 7 days returns `{ ok: true, duplicate: true }` and does nothing |
+| `POST /events` | `{ type: "APP_INSTALLED", app }` \| `{ type: "APP_REQUESTED", app }` \| `{ type: "LIMIT_REACHED", minutes }` \| `{ type: "APP_BLOCKED", app }` \| `{ type: "TIME_REQUESTED", app?, reason? }` | Raise alerts or approval requests. `APP_BLOCKED` alerts at most once per app per hour; `TIME_REQUESTED` keeps one open request per child, which a parent answers with extra time (`/sync` `extraTimeUntil`). Optional `eventId` (8–64 chars, e.g. a UUID) on any event: a repeat from the same device within 7 days returns `{ ok: true, duplicate: true }` and does nothing |
 
 Config objects match `ProtectionConfig` in [src/lib/protections.ts](src/lib/protections.ts), for example:
 

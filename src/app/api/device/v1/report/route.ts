@@ -8,7 +8,8 @@ import { LIMITS, hit } from "@/lib/rate-limit";
 const KEYS = ["SCREEN_TIME", "BEDTIME", "APP_RESTRICTIONS", "APP_APPROVAL", "CONTENT", "WEB", "DOWNLOADS", "LOCATION", "NOTIFICATIONS", "UNINSTALL_PROTECTION"] as const;
 
 const Body = z.object({
-  protections: z.array(z.object({ key: z.enum(KEYS), config: z.record(z.string(), z.unknown()) })).max(20),
+  // `error`: why the device couldn't apply it (in the device's words), shown to parents instead of a bare mismatch
+  protections: z.array(z.object({ key: z.enum(KEYS), config: z.record(z.string(), z.unknown()), error: z.string().trim().min(1).max(200).optional() })).max(20),
   full: z.boolean().optional(),
   battery: z.number().int().min(0).max(100).nullable().optional(),
   osVersion: z.string().max(40).optional(),
@@ -33,7 +34,7 @@ export async function POST(req: Request) {
   const ignored: { key: string; error: string }[] = [];
   for (const p of parsed.data.protections) {
     const config = ReportedConfigSchema.safeParse({ ...p.config, key: p.key });
-    if (config.success) protections.push({ key: p.key, config: config.data });
+    if (config.success) protections.push({ key: p.key, config: config.data, ...(p.error ? { error: p.error } : {}) });
     else ignored.push({ key: p.key, error: `${config.error.issues[0].path.join(".") || "config"}: ${config.error.issues[0].message}` });
   }
   if (ignored.length) console.warn("[device] report entries ignored", device.id, device.appVersion, ignored);

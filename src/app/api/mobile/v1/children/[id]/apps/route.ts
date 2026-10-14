@@ -9,6 +9,7 @@ import { appMinutesOn, dateFromKey, dayKey, getFamily } from "@/lib/queries";
 import { authed, body, clientLabel, query } from "@/lib/mobile-api";
 import { APPS_UPGRADE, familyEntitlements, visibleApps } from "@/lib/plan-access";
 import { CATEGORY_BY_KEY, categoryOf } from "@/lib/app-categories";
+import { wakeChildDevices } from "@/lib/push";
 
 const APPROVALS = ["ALLOWED", "ALWAYS_ALLOWED", "FILTERED", "BLOCKED", "PENDING"] as const;
 const Query = z.object({ filter: z.enum(["all", "installed", "blocked", "pending"]).default("all") });
@@ -44,13 +45,14 @@ export const GET = authed<{ id: string }>(async ({ req, user, params }) => {
       id: a.id, name: a.name, approval: a.approval, approvalLabel: APPROVAL_LABEL[a.approval],
       /** true while the child's request waits for the parent (approve with ALLOWED, decline with BLOCKED) */
       requested: a.approval === "PENDING" || requested.has(a.name),
-      /** convenience for the on/off switch */
-      allowed: a.approval !== "BLOCKED" && a.approval !== "PENDING",
+      /** convenience for the on/off switch; devices block FILTERED apps, so they show as off */
+      allowed: a.approval !== "BLOCKED" && a.approval !== "FILTERED" && a.approval !== "PENDING",
       dailyLimitMinutes: a.dailyLimitMinutes, todayMinutes: usage.find((u) => u.app === a.name)?.minutes ?? 0,
       installedAt: a.installedAt,
       ...categoryJson(a),
     })),
-    limited: hidden ? { hidden, message: APPS_UPGRADE } : null,
+    // The iPhone app gets a message without the plan to buy (App Store guideline 3.1.1)
+    limited: hidden ? { hidden, message: clientLabel(req) === "iOS app" ? "Your plan shows apps waiting for approval and the most used." : APPS_UPGRADE } : null,
   });
 });
 
@@ -79,6 +81,7 @@ export const POST = authed<{ id: string }>(async ({ req, user, params }) => {
     },
   });
   await audit(user.familyId, user.name, "app.added", `${app.name} for ${child.name}`);
+  await wakeChildDevices([child.id], "apps");
   return NextResponse.json({ id: app.id, name: app.name, approval: app.approval, approvalLabel: APPROVAL_LABEL[app.approval], dailyLimitMinutes: app.dailyLimitMinutes, ...categoryJson(app) }, { status: 201 });
 });
 

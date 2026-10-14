@@ -18,6 +18,7 @@ import * as browserAccess from "@/lib/browser-access";
 import { LOCATION_UPGRADE, familyEntitlements, planWith } from "@/lib/plan-access";
 import { PROFILE_IDS, ageReview } from "@/lib/profiles";
 import { isDismissible } from "@/lib/health";
+import { signOutSession } from "@/lib/sessions";
 import type { FormState } from "./auth";
 
 const { audit, ChildSchema } = family;
@@ -170,6 +171,29 @@ export async function setCategoryLimit(childId: string, category: AppCategory, m
   });
 }
 
+const ExtraMinutes = z.number().refine((m) => (family.EXTRA_TIME_MINUTES as readonly number[]).includes(m), "Choose how much extra time to give.");
+
+/** `addedMinutes`: what was given, less than asked when extra time would run more than 4 hours ahead. */
+export async function grantExtraTime(childId: string, minutes: number): Promise<Result<{ addedMinutes: number }>> {
+  const u = await requireUser();
+  return toResult(async () => {
+    const id = Id.parse(childId);
+    const r = await family.grantExtraTime(u, id, ExtraMinutes.parse(minutes), "web");
+    revalidatePath("/", "layout");
+    return { addedMinutes: r.addedMinutes };
+  });
+}
+
+/** Ends running extra time, and answers an open request with "not now". */
+export async function endExtraTime(childId: string): Promise<Result> {
+  const u = await requireUser();
+  return toResult(async () => {
+    await family.endExtraTime(u, Id.parse(childId), "web");
+    revalidatePath("/", "layout");
+    return {};
+  });
+}
+
 /* ---------- Devices ---------- */
 
 export async function createPairingCode(childId: string, opts: family.PairingOptions = { kind: "DEVICE" }): Promise<{ code: string; expiresInSeconds: number; childName: string } | { error: string }> {
@@ -310,7 +334,7 @@ export async function updateAccount(_: FormState, form: FormData): Promise<FormS
   await db.user.update({ where: { id: u.id }, data: { name: parsed.data.name } });
   if (emailChanged) await sendVerificationEmailLater(u.id);
   if (u.role === "FAMILY_ADMIN") {
-    await db.family.update({ where: { id: u.familyId }, data: { timezone: parsed.data.timezone } });
+    await family.setFamilyTimeZone(u, parsed.data.timezone);
     if (parsed.data.familyName) await family.renameFamily(u, parsed.data.familyName);
   }
   revalidatePath("/", "layout");
@@ -409,6 +433,16 @@ export async function signOutOthers() {
   const u = await requireUser();
   await db.session.deleteMany({ where: { userId: u.id, id: { not: u.sessionId } } });
   revalidatePath("/settings/security");
+}
+
+/** One other session (a lost phone, a shared computer); its push alerts stop with it. */
+export async function signOutOneSession(sessionId: string): Promise<Result> {
+  const u = await requireUser();
+  return toResult(async () => {
+    await signOutSession(u, sessionId);
+    revalidatePath("/settings/security");
+    return {};
+  });
 }
 
 export async function setTheme(theme: "system" | "light" | "dark") {

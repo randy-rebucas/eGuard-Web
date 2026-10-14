@@ -6,6 +6,8 @@ import { dateFromKey, dayKey, getFamily, getFamilyGraph, limitOn } from "@/lib/q
 import { dayTime, shortDate } from "@/lib/format";
 import { entitlementsFor } from "@/lib/plans";
 import { CAPABILITY_META, PROTECTIONS, PROTECTION_BY_KEY, describeConfig, fmtMinutes, fmtMinutesPadded, isConfigured } from "@/lib/protections";
+import { reportedLabel, statusOn } from "@/lib/health";
+import type { ProtectionKey } from "@prisma/client";
 import { Icon } from "@/components/icon";
 import { CheckBadge, DeviceIcon, StatusBadge, Timeline, platformName } from "@/components/ui";
 import { CheckButton, FlowButton } from "@/components/flow";
@@ -41,13 +43,7 @@ export default async function DevicePage(props: PageProps<"/devices/[id]">) {
   const used = childUsage._sum.minutes ?? 0, limit = limitOn(child, todayKey);
   const prot = (key: string) => d.protections.find((p) => p.key === key);
   /** What the device last reported for a protection, or why there's nothing to show */
-  const reported = (key: string) => {
-    const row = prot(key);
-    if (!row) return "Not reported";
-    if (row.status === "UNSUPPORTED") return "Not supported";
-    if (row.status === "NOT_CONFIGURED") return "Not configured";
-    return describeConfig(row.reported);
-  };
+  const reported = (key: ProtectionKey) => reportedLabel(PROTECTION_BY_KEY[key].caps[d.platform], statusOn(d, key), prot(key));
   const approval = prot("APP_APPROVAL");
   const approvalOn = !!approval && approval.status !== "UNSUPPORTED" && isConfigured(approval.reported);
   const loc = d.location;
@@ -108,18 +104,19 @@ export default async function DevicePage(props: PageProps<"/devices/[id]">) {
           {PROTECTIONS.map((p) => {
             const row = prot(p.key);
             const cap = p.caps[d.platform];
-            const status = row?.status ?? "NOT_CONFIGURED";
-            const tone = status === "PASS" ? "" : status === "UNSUPPORTED" || status === "NOT_CONFIGURED" ? "muted" : "warn";
+            const status = statusOn(d, p.key);
+            const parentSet = cap === "PARENT_SET" && status === "UNSUPPORTED";
+            const tone = status === "PASS" || parentSet ? "" : status === "UNSUPPORTED" || status === "NOT_CONFIGURED" ? "muted" : "warn";
             return (
-              <div className="setting-row" key={p.key} style={{ flexWrap: "wrap" }}>
+              <div className="setting-row prot-row" key={p.key} style={{ flexWrap: "wrap" }}>
                 <span className={`ico-tile ${tone}`}><Icon name={p.icon} /></span>
-                <div className="grow" style={{ minWidth: 180 }}>
+                <div className="grow" style={{ minWidth: 0, flexBasis: 180 }}>
                   <div className="t-title">{p.name}</div>
                   <div className="t-meta"><Icon name={CAPABILITY_META[cap].icon} size={13} style={{ verticalAlign: -2 }} /> {CAPABILITY_META[cap].label} · {reported(p.key)}{row?.lastVerifiedAt ? ` · checked ${dayTime(row.lastVerifiedAt, tz)}` : ""}</div>
                   {/* Why it isn't passing, in the device's words (the same message the mobile app shows) */}
                   {row?.message && tone === "warn" ?<div className="t-meta" style={{ color: "var(--warn-ink)", marginTop: 2 }}>{row.message}</div> : null}
                 </div>
-                <CheckBadge status={status} />
+                <CheckBadge status={status} parentSet={parentSet} />
                 {cap !== "UNSUPPORTED" ? <FlowButton protection={p.key} childId={child.id} className="btn btn-ghost btn-sm">Manage</FlowButton> : null}
               </div>
             );
@@ -131,7 +128,8 @@ export default async function DevicePage(props: PageProps<"/devices/[id]">) {
             {requests.length ? <Timeline items={requests.map((r) => ({
               id: r.id, icon: reqIcon[r.status] ?? "loader-circle",
               // A failure says why ("Device reported …"), not just that it didn't match
-              title: `${PROTECTION_BY_KEY[r.key].name}: ${r.status === "FAILED" && r.failureReason ? r.failureReason : reqLabel[r.status]}`,
+              title: `${PROTECTION_BY_KEY[r.key].name}: ${r.status === "FAILED" && r.failureReason ? r.failureReason
+                : r.status === "VERIFIED" && PROTECTION_BY_KEY[r.key].caps[d.platform] === "PARENT_SET" ? "Set by you, not verified" : reqLabel[r.status]}`,
               by: `${r.createdBy} · ${r.mode === "GUIDED" ? "Guided setup" : "Applied remotely"}`,
               time: dayTime(r.verifiedAt ?? r.createdAt, tz), to: describeConfig(r.desired),
             }))} /> : <p className="t-meta">No configuration requests yet.</p>}

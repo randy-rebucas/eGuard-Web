@@ -8,8 +8,9 @@ import { Feedback } from "./feedback";
 import { ConfirmField } from "./confirm-field";
 import { useAction } from "./flow";
 import {
-  addParent, changePassword, deleteAccount, removeParent, resendInvitation, setToggle, signOutOthers, unlinkIdentity, updateAccount,
+  addParent, changePassword, deleteAccount, removeParent, resendInvitation, setToggle, signOutOneSession, signOutOthers, unlinkIdentity, updateAccount,
 } from "@/app/actions/family";
+import { submitTicket } from "@/app/actions/support";
 
 /** `confirmOff`: turning it off can't be undone, so it asks first with this text. */
 export function SettingSwitch({ setting, title, desc, checked, disabled, confirmOff }: { setting: string; title: string; desc: string; checked: boolean; disabled?: boolean; confirmOff?: string }) {
@@ -105,7 +106,7 @@ export function PasswordForm() {
 export function DeleteAccountForm({ isAdmin, hasPassword }: { isAdmin: boolean; hasPassword: boolean }) {
   const [open, setOpen] = useState(false);
   const [state, action, pending] = useActionState(deleteAccount, undefined);
-  if (!open) return <button className="btn btn-secondary btn-sm" style={{ color: "var(--crit-ink)" }} onClick={() => setOpen(true)}><Icon name="trash" />Delete account…</button>;
+  if (!open) return <button className="btn btn-secondary btn-sm" style={{ color: "var(--crit-ink)", alignSelf: "flex-start" }} onClick={() => setOpen(true)}><Icon name="trash" />Delete account…</button>;
   return (
     <form action={action} className="dash-col" style={{ gap: 12, maxWidth: 440 }}>
       <p className="t-meta" style={{ color: "var(--ink-2)" }}>
@@ -131,6 +132,35 @@ export function AddParentForm() {
       </div>
       <p className="t-meta">We email them an invitation. They see your family&apos;s name, choose their own password, and join once they accept.</p>
       <div><button className="btn btn-secondary" disabled={pending}>{pending ? "Sending…" : <><Icon name="user-plus" />Send invitation</>}</button></div>
+    </form>
+  );
+}
+
+/** Settings › Support. `categories`: [value, label], from lib/support. Cleared once it's sent; kept on an error. */
+export function SupportTicketForm({ categories, email }: { categories: [string, string][]; email: string }) {
+  const [state, action, pending] = useActionState(submitTicket, undefined);
+  const [subject, setSubject] = useState("");
+  const [message, setMessage] = useState("");
+  const [seen, setSeen] = useState(state);
+  if (seen !== state) { setSeen(state); if (state?.ok) { setSubject(""); setMessage(""); } }
+  return (
+    <form action={action} className="dash-col" style={{ gap: 14 }}>
+      <Feedback state={state} />
+      <div className="form-grid">
+        <div className="field">
+          <label htmlFor="st-c">What it&apos;s about</label>
+          <select className="input" id="st-c" name="category" defaultValue="SETUP">
+            {categories.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+        </div>
+        <div className="field"><label htmlFor="st-s">Subject</label><input className="input" id="st-s" name="subject" value={subject} onChange={(e) => setSubject(e.target.value)} minLength={3} maxLength={120} required autoComplete="off" /></div>
+      </div>
+      <div className="field">
+        <label htmlFor="st-m">How can we help?</label>
+        <textarea className="input" id="st-m" name="message" rows={6} value={message} onChange={(e) => setMessage(e.target.value)} minLength={10} maxLength={5000} required aria-describedby="st-m-hint" />
+        <span className="field-hint" id="st-m-hint">Say which child or device it&apos;s about and what you see. We reply to {email}.</span>
+      </div>
+      <div><button className="btn btn-primary" disabled={pending}>{pending ? "Sending…" : <><Icon name="mail" />Send request</>}</button></div>
     </form>
   );
 }
@@ -161,10 +191,19 @@ export function RemoveParentButton({ userId, name, invite = false }: { userId: s
   ) : <button className="btn btn-secondary btn-sm" onClick={() => setConfirm(true)}>{invite ? "Withdraw" : "Remove"}</button>;
 }
 
+export function SignOutSessionButton({ sessionId, label }: { sessionId: string; label: string }) {
+  const [pending, run] = useAction();
+  return (
+    <button className="link-btn" disabled={pending} aria-label={`Sign out ${label}`} onClick={() => run(() => signOutOneSession(sessionId), { ok: `${label} was signed out.` })}>
+      {pending ? <><Icon name="loader-circle" className="spin" />Signing out…</> : "Sign out"}
+    </button>
+  );
+}
+
 export function SignOutOthersButton() {
   const [pending, run] = useAction();
   return (
-    <button className="btn btn-secondary btn-sm" disabled={pending} onClick={() => run(signOutOthers, { ok: "Other sessions were signed out." })}>
+    <button className="btn btn-secondary btn-sm" style={{ alignSelf: "flex-start", marginTop: 4 }} disabled={pending} onClick={() => run(signOutOthers, { ok: "Other sessions were signed out." })}>
       {pending ? <><Icon name="loader-circle" className="spin" />Signing out…</> : "Sign out other sessions"}
     </button>
   );

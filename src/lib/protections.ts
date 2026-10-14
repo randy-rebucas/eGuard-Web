@@ -1,6 +1,18 @@
 import type { CheckStatus, Platform, ProtectionKey } from "@prisma/client";
 
-export type Capability = "AVAILABLE" | "GUIDED" | "VERIFY_ONLY" | "UNSUPPORTED";
+/**
+ * PARENT_SET: the parent sets it in another app on the device (Google Play's parental controls) and confirms; the
+ * device can't read it back, so it's recorded as set by the parent, never verified, and isn't counted in health.
+ */
+export type Capability = "AVAILABLE" | "GUIDED" | "VERIFY_ONLY" | "PARENT_SET" | "UNSUPPORTED";
+
+/** Capabilities where the parent does the steps on the device (the request waits for them) */
+export const isGuided = (cap: Capability) => cap === "GUIDED" || cap === "VERIFY_ONLY" || cap === "PARENT_SET";
+
+const PLAY_PARENTAL_CONTROLS = [
+  "On your child's phone, open the Play Store, tap the profile picture, then Settings.",
+  "Tap Family, then Parental controls. Turn them on and choose a PIN your child doesn't know.",
+];
 
 export type ProtectionDef = {
   key: ProtectionKey;
@@ -19,26 +31,36 @@ export const PROTECTIONS: ProtectionDef[] = [
     caps: { ANDROID: "AVAILABLE", IOS: "AVAILABLE" } },
   { key: "BEDTIME", slug: "bedtime", name: "Bedtime", checkName: "Bedtime", icon: "moon",
     caps: { ANDROID: "AVAILABLE", IOS: "AVAILABLE" } },
+  // Android has no way to read an app's or a film's age rating, so the rating is Google Play's parental controls
   { key: "APP_RESTRICTIONS", slug: "apps", name: "Apps", checkName: "App Restrictions", icon: "layout-grid",
-    caps: { ANDROID: "AVAILABLE", IOS: "AVAILABLE" } },
+    caps: { ANDROID: "PARENT_SET", IOS: "AVAILABLE" },
+    guide: { ANDROID: [
+      ...PLAY_PARENTAL_CONTROLS,
+      "Tap Apps & games and choose the highest rating that isn't above your setting, then Save.",
+    ] } },
   { key: "APP_APPROVAL", slug: "app-approval", name: "App Approval", checkName: "App Approval", icon: "badge-check",
     caps: { ANDROID: "AVAILABLE", IOS: "AVAILABLE" } },
   { key: "CONTENT", slug: "content", name: "Content", checkName: "Content Restrictions", icon: "film",
-    caps: { ANDROID: "AVAILABLE", IOS: "AVAILABLE" } },
+    caps: { ANDROID: "PARENT_SET", IOS: "AVAILABLE" },
+    guide: { ANDROID: [
+      ...PLAY_PARENTAL_CONTROLS,
+      "Tap Movies (and TV, where it's listed) and choose the highest rating that isn't above your setting, then Save.",
+    ] } },
   { key: "WEB", slug: "web", name: "Web", checkName: "Web Filtering", icon: "globe",
-    caps: { ANDROID: "AVAILABLE", IOS: "GUIDED" },
-    guide: { IOS: [
-      "Open Settings, tap Screen Time, then Content & Privacy Restrictions.",
-      "Tap App Store, Media, Web & Games, then Web Content.",
-      "Choose Limit Adult Websites.",
-    ] } },
+    // Android: a family-filter Private DNS, which covers every browser and app; eGuard reads it back to verify.
+    // iOS: eGuard turns on the Screen Time adult-website filter itself and reads it back.
+    // The browser extension covers computers only (Chrome on Android has no extensions).
+    caps: { ANDROID: "GUIDED", IOS: "AVAILABLE" },
+    guide: {
+      ANDROID: [
+        "Open Settings, tap Network & internet, then Private DNS. On Samsung: Connections, More connection settings, Private DNS.",
+        "Choose Private DNS provider hostname.",
+        "Type family.cloudflare-dns.com and tap Save.",
+      ],
+    } },
+  // iOS: eGuard blocks installing apps through Screen Time (the same switch as App Approval) and reads it back
   { key: "DOWNLOADS", slug: "downloads", name: "Downloads", checkName: "Downloads", icon: "download",
-    caps: { ANDROID: "AVAILABLE", IOS: "VERIFY_ONLY" },
-    guide: { IOS: [
-      "Open Settings, tap Screen Time, then Content & Privacy Restrictions.",
-      "Tap iTunes & App Store Purchases.",
-      "Set Installing Apps to Don't Allow, or turn on Ask to Buy in Family Sharing.",
-    ] } },
+    caps: { ANDROID: "AVAILABLE", IOS: "AVAILABLE" } },
   { key: "LOCATION", slug: "location", name: "Location", checkName: "Location", icon: "map-pin",
     caps: { ANDROID: "AVAILABLE", IOS: "GUIDED" },
     guide: { IOS: [
@@ -59,6 +81,7 @@ export const CAPABILITY_META: Record<Capability, { label: string; icon: string; 
   AVAILABLE: { label: "Available", icon: "check", description: "eGuard applies the setting directly and verifies it." },
   GUIDED: { label: "Guided setup", icon: "list-checks", description: "eGuard walks you through the steps on the device, then verifies." },
   VERIFY_ONLY: { label: "Verification only", icon: "eye", description: "You set it on the device. eGuard confirms it's on." },
+  PARENT_SET: { label: "Set by you", icon: "user-check", description: "You set it in Google Play on the device. eGuard can't read it back, so it's recorded as set by you, not verified, and isn't counted in health." },
   UNSUPPORTED: { label: "Unsupported", icon: "circle-slash", description: "The platform doesn't allow this. It isn't counted in health." },
 };
 
@@ -125,6 +148,9 @@ export function to12h(t: string) {
   const h = hRaw % 12 || 12;
   return `${h}:${String(m).padStart(2, "0")} ${ap}`;
 }
+
+/** Extra time a parent can give at once (web, app and API all offer these). */
+export const EXTRA_TIME_MINUTES = [15, 30, 60] as const;
 
 export function fmtMinutes(m: number) {
   const h = Math.floor(m / 60), mm = m % 60;

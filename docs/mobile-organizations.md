@@ -9,9 +9,14 @@ The spec for two things in the eGuard Android and iOS app:
    admins manage their organization from their phone. Phase 1 of [organizations.md](organizations.md), brought to
    the app.
 
-**Status:** draft, 2026-10-01. The organization service is built on the server (`src/lib/organizations.ts`); the
-mobile endpoints for it are not (section 7). The native app isn't built yet. Prompts to build this with Claude Code
-are in [mobile-organizations-prompts.md](mobile-organizations-prompts.md).
+**Status:** draft, 2026-10-01; updated 2026-10-13. **The family side is built** on the server and in both apps (list,
+preview, join, leave), at the paths in [mobile-api.md › P4.13](mobile-api.md): `GET /organizations`,
+`POST /organizations/preview`, `POST /organizations` (join, `{ code }`, `201`) and `DELETE /organizations/{id}`
+(leave). Those paths replace this draft's `/organizations/join…` and `/{id}/membership`; where section 7 differs, the
+built contract wins, and the organization-admin endpoints below need other paths (`POST /organizations` already
+means join). `GET /subscription` sends `store.sponsor` (gap S2). **The organization-admin side** (create, join code,
+sponsor codes, admins, invitations) isn't built in the API or the apps; organization admins use the website.
+Prompts to build this with Claude Code are in [mobile-organizations-prompts.md](mobile-organizations-prompts.md).
 
 **Related:** [organizations.md](organizations.md) (the feature and its privacy rule),
 [mobile-api.md](mobile-api.md) (one app with both modes, the parent API and the child device API),
@@ -191,6 +196,10 @@ use the response, then reload the list behind it.
 ## 7. API
 
 ### 7.1 New parent API endpoints
+
+> **Superseded for the family side.** List, preview, join and leave were built with other paths and shapes; see the
+> status note at the top and [mobile-api.md › P4.13](mobile-api.md). The rest of this table is still the plan for
+> organization admins, and its paths must change so they don't collide with the built ones.
 
 Base `https://www.eguard.family/api/mobile/v1`, the conventions in [mobile-api.md](mobile-api.md#part-b-parent-api) §P1 (bearer token,
 error shape, IDs, ISO timestamps). Each endpoint is a thin route over `src/lib/organizations.ts`, using `authed()`

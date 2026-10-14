@@ -56,7 +56,7 @@ const TRACK: { time: string; title: string; body: string; chip: [string, string]
 
 const WHAT_IF: [LucideIcon, string, string][] = [
   [WifiOff, "The phone or laptop goes offline",
-    "Protection stays on. Devices keep following the last rules they received and pick up changes when they reconnect. If a browser hasn't checked in for a day, you'll see “eGuard can't verify this browser”."],
+    "Protection stays on. Devices keep following the last rules they received and pick up changes when they reconnect. If a browser hasn't checked in for a day, you'll see “eGuard may be off in this browser”, since a closed browser and a turned-off extension look the same from outside."],
   [ToggleLeft, "Someone switches a setting off",
     "The device reports what it really has, so eGuard notices the difference and alerts you: “Protection setting changed”, with the device and the setting."],
   [KeyRound, "Someone tries to copy the connection",

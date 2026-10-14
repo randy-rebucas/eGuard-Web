@@ -80,7 +80,11 @@ limit uses (`usedDeviceSlots`).
 - then each browser as a `BrowserCard` (computer name, child, browser and major version, extension version, status
   pill, last check-in, a note, **Browser settings** → the child's Browser tab, and **Remove**). A browser disconnected for security still shows, with
   "Disconnected for security";
-- or, with neither, "No devices for *Name*": get a code below and enter it in the app or the browser extension.
+- or, with neither, a short row "No devices for *Name* yet" with **Pair for *Name*** (`/devices?child=…#pair`), which
+  selects that child in both pairing forms and scrolls to them.
+
+**Layout:** a child with one or two devices or browsers gets full-width rows instead of tiles; on phones every card
+is a compact row (small device tile, no platform chip). The pairing forms are capped at 720px wide.
 
 **No children:** both pairing forms are replaced by one card, "Add a child first", with **Add child**.
 
@@ -215,8 +219,8 @@ Rename form, eGuard app version, date added, then (see [§5](#5-renaming-primary
 4. Unticked, its recorded history stays with the child (the rows' device becomes empty) until the family's
    retention period.
 5. Writes an audit entry (`device.removed` or `device.removed_with_history`) and raises an Attention alert "Device
-   removed" (emailed), saying who removed it, that its protections stay on the device unverified, and what happened
-   to its history.
+   removed" (emailed), saying who removed it, that the eGuard app there stops applying the family's settings (both
+   child apps sign out and lift enforcement once the token is refused), and what happened to its history.
 6. Another parent removing it at the same moment, or a second tab, gets "This device was already removed." with a
    link back to Devices.
 
@@ -383,7 +387,8 @@ the move form, the skeletons, the **Browser settings** link and the countdown ar
 **Manual checklist**
 
 - [ ] No children: only "Add a child first" shows, no pairing forms.
-- [ ] Child without devices: "No devices for *Name*"; from their profile, **Pair a device** preselects them.
+- [ ] Child without devices: "No devices for *Name* yet"; **Pair for *Name*** and their profile's **Pair a device**
+  both preselect them.
 - [ ] Get a phone code: code, Copy, countdown; enter it in the app → "paired", **View device**, card appears.
 - [ ] Get a second code for the same child: the first one's screen says "replaced".
 - [ ] Wait 15 minutes: "This code expired".

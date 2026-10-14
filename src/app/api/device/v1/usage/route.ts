@@ -28,6 +28,8 @@ const Body = z.object({
 
 /** Different apps one device can report for one day; a phone uses far fewer. Past it, new names are ignored. */
 const MAX_APPS_PER_DAY = 300;
+/** Apps on one child's list. Past it, apps seen in usage aren't added (events still add them). */
+const MAX_CHILD_APPS = 1000;
 
 /** Daily screen-time totals. Idempotent per device and day (the latest total wins). */
 export async function POST(req: Request) {
@@ -57,6 +59,19 @@ export async function POST(req: Request) {
       create: { childId: device.childId, deviceId: device.id, date, app: a.name, minutes: a.minutes },
       update: { minutes: a.minutes },
     });
+  }
+  // The device reports only apps installed after pairing (APP_INSTALLED): an app that was already on the phone
+  // first shows up here. Put it on the child's list, allowed as it is today, so the parent can block or limit it.
+  // No alert: it isn't new. "Others" is the device's bucket for unnamed apps, not an app.
+  const named = apps.filter((a) => a.name !== "Others").map((a) => a.name);
+  if (named.length) {
+    const listed = await db.childApp.findMany({ where: { childId: device.childId, name: { in: named } }, select: { name: true } });
+    const have = new Set(listed.map((l) => l.name));
+    const fresh = named.filter((n) => !have.has(n));
+    const room = fresh.length ? MAX_CHILD_APPS - await db.childApp.count({ where: { childId: device.childId } }) : 0;
+    if (room > 0) {
+      await db.childApp.createMany({ data: fresh.slice(0, room).map((name) => ({ childId: device.childId, name })), skipDuplicates: true });
+    }
   }
   await db.device.update({ where: { id: device.id }, data: { lastSeenAt: new Date() } });
   return NextResponse.json({ ok: true });

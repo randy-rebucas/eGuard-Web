@@ -3,7 +3,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { getFamily, unreadCount } from "@/lib/queries";
 import { pageByTime } from "@/lib/paging";
-import { authed, query } from "@/lib/mobile-api";
+import { authed, clientLabel, query } from "@/lib/mobile-api";
 import { ALERT_FILTERS, alertJson, refreshFamily } from "@/lib/mobile-views";
 
 const Query = z.object({
@@ -36,7 +36,7 @@ export const GET = authed(async ({ req, user }) => {
     unreadCount(user.familyId, user.id),
   ]);
   return NextResponse.json({
-    alerts: page.rows.map((a) => alertJson({ ...a, read: a.reads.length > 0 }, family.timezone)),
+    alerts: page.rows.map((a) => alertJson({ ...a, read: a.reads.length > 0 }, family.timezone, clientLabel(req) === "iOS app")),
     unread,
     nextBefore: page.nextBefore,
   });

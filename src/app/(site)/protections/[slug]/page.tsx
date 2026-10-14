@@ -77,7 +77,7 @@ export default async function ProtectionPage({ params }: PageProps<"/protections
           </div>
           <div className="pr-art">
             <Phone os="android" caption="Parent app" className="pr-phone" label={`The eGuard parent app showing ${page.title}: ${example}`}>
-              <ScreenProtection icon={<Icon name={def.icon} />} name={def.checkName} value={example} ios={def.caps.IOS} />
+              <ScreenProtection icon={<Icon name={def.icon} />} name={def.checkName} value={example} ios={def.caps.IOS} android={def.caps.ANDROID} />
             </Phone>
           </div>
         </div>

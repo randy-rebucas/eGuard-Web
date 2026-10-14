@@ -252,7 +252,7 @@ webhooks (`subscription.invoice.paid`, `subscription.updated`, …) make eGuard 
 |---|---|
 | `active`, latest invoice `paid` | Moves `expiresAt` to the end of the new `next_billing_schedule` |
 | `past_due` | Keeps `expiresAt` and gives 3 days of grace while PayMongo retries |
-| `unpaid` | No access once the grace period is over. The family drops to eGuard Plus. |
+| `unpaid` | No access once the grace period is over. The family drops to Free. |
 | `cancelled` | Keeps access until `expiresAt` |
 
 **The paid-through date only moves when the latest invoice is paid.** A renewal that's drafted but unpaid, or that
@@ -266,8 +266,19 @@ then shows "Ends on …".
 
 ### Retries
 
-Opening the form again within 23 hours reuses the unfinished `incomplete` subscription for the same period, so no
-duplicate is created. An unfinished one for the *other* period is cancelled first.
+Opening the form again within 23 hours reuses the unfinished `incomplete` subscription for the same plan, so no
+duplicate is created. An unfinished one for the *other* plan is cancelled first.
+
+Each unfinished row is re-read from PayMongo before anything is cancelled. If its first payment already went through
+(PayMongo says `active` but neither the webhook nor the return page has reached eGuard yet), the row is recorded as
+paid and starting again is refused with "Auto-renew is already on". A paid subscription is never cancelled here. One
+PayMongo no longer has (`404`) is closed.
+
+Creating a new subscription is held to one at a time per family (`LIMITS.autoRenewCreate`, released once the row
+exists), so two windows starting auto-renew together create one; the other gets `429` or resumes it.
+
+Starting a checkout or auto-renew is limited to 20 an hour per family (`LIMITS.billingStart`): each one creates
+objects on PayMongo with eGuard's shared key.
 
 ---
 
@@ -305,10 +316,15 @@ This is the only function that changes a family's plan after sign-up.
 | Auto-renew on | ✗ (turn it off first) | ✗ |
 | Google Play | ✗ | ✗ |
 
+These checks run when checkout opens. A checkout opened earlier can still be paid after another plan was bought,
+so a pass starts when **all** the family's paid time ends (any plan), not only time on its own plan. That way no
+paid day is spent under another plan. A new Google Play token is refused (`409 billed_elsewhere`, left
+unacknowledged so Google refunds it) while web auto-renew is on.
+
 ### Display
 
-- `renewalWord(purchase)` returns "Renews" for a purchase that will renew, and "Ends" for a pass or when auto-renew
-  is off.
+- `renewalWord(purchase)` returns "Renews" for a purchase that will renew, "Ends" for a pass or when auto-renew
+  is off, and "Renewal failed" while a failed renewal is retried (`past_due`, still in its grace period).
 - The settings page shows how the plan is paid: Auto-renew, Auto-renew off, Prepaid pass, or Google Play.
 
 ---
@@ -361,7 +377,8 @@ It re-reads only the purchases that are due:
 
 | Purchase | Re-read |
 |---|---|
-| Pending pass, unfinished auto-renew, or a purchase past its paid period | At most every 10 minutes |
+| Pending pass or unfinished auto-renew (the parent may be waiting on the page) | At most every minute |
+| A purchase past its paid period | At most every 10 minutes |
 | Auto-renew within its paid period | Once a day |
 | Paid pass | Never (refunds come by webhook) |
 | Closed, or more than 30 days past its paid period | Never |
@@ -374,8 +391,8 @@ PayMongo errors keep the last known state.
 
 - `refreshAllPurchases()`: runs the lazy refresh for every family with open purchases, which also downgrades
   families whose pass just ran out
-- `sendPassReminders()`: sends a reminder once per pass, **3 days before it ends**, unless the family has already
-  extended or subscribed. The reminder is:
+- `sendPassReminders()`: sends a reminder once per pass, sponsored plan or auto-renew that was turned off,
+  **3 days before it ends**, unless the family has already extended or subscribed. The reminder is:
   - an INFO alert: "<plan> ends on …"
   - an email to family admins with a verified email address, with a "Keep <plan>" button
 
@@ -545,7 +562,7 @@ Use test keys. Useful card numbers (any future expiry, any CVC):
 | Page says online payment isn't available | Keys missing, or a test key paired with a live key |
 | "PayMongo refused the request" when buying a pass | A method in `PAYMONGO_PASS_METHODS` isn't activated, or the account isn't live yet |
 | "PayMongo refused the request" when starting auto-renew | Subscriptions aren't enabled on the account (ask PayMongo support) |
-| Paid, but the page keeps saying "waiting" | Webhook not registered or failing (check delivery attempts in the dashboard). Reload; the lazy refresh re-checks every 10 minutes. |
+| Paid, but the page keeps saying "waiting" | Webhook not registered or failing (check delivery attempts in the dashboard). Reload; the lazy refresh re-checks an unfinished payment every minute. |
 | Webhook returns `401` | Wrong `PAYMONGO_WEBHOOK_SECRET` (each endpoint and mode has its own), or a proxy altered the body |
 | Webhook returns `501` | `PAYMONGO_WEBHOOK_SECRET` or the keys aren't set |
 | Card attach error in the browser | PayMongo's own message is shown (for example an invalid card number, or a declined card) |

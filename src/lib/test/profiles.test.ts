@@ -102,6 +102,11 @@ describe("help search", () => {
   it("matches every term, case-insensitively", () => {
     expect(searchHelp("OFFLINE device").map((a) => a.slug)).toContain("device-offline");
     expect(searchHelp("zzzz")).toEqual([]);
+    // The iPhone app's copy names no price and no place to buy; the web's does
+    const plans = (ios: boolean) => searchHelp("", "FAQ", ios).find((a) => a.slug === "upgrade-plan")!;
+    expect(plans(false).body.join(" ")).toMatch(/₱.*on the web/);
+    expect(plans(true).body.join(" ")).not.toMatch(/₱|on the web|card|GCash|upgrade/i);
+    expect(plans(true)).not.toHaveProperty("iosApp");
   });
 });
 

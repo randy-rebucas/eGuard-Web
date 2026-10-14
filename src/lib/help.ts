@@ -7,6 +7,12 @@ function planLine(id: PaidPlanId) {
   return `${planById(id).name} (₱${c % 100 ? (c / 100).toFixed(2) : c / 100} a month) covers up to ${e.childLimit} children and ${e.deviceLimit} devices`;
 }
 
+/** planLine without the price, for the iPhone app */
+function planLimits(id: PaidPlanId) {
+  const e = planById(id).entitlements;
+  return `${planById(id).name} covers up to ${e.childLimit} children and ${e.deviceLimit} devices`;
+}
+
 export type HelpCategory = "SETUP" | "TROUBLESHOOTING" | "PRIVACY" | "FAQ";
 
 export const HELP_CATEGORIES: { id: HelpCategory; name: string; description: string; icon: string }[] = [
@@ -16,7 +22,11 @@ export const HELP_CATEGORIES: { id: HelpCategory; name: string; description: str
   { id: "FAQ", name: "FAQs", description: "Frequently asked questions", icon: "circle-help" },
 ];
 
-export type HelpArticle = { slug: string; category: HelpCategory; title: string; summary: string; body: string[] };
+/**
+ * `iosApp`: the summary and body the iPhone app gets instead, for an article that prices plans or says where to buy
+ * them. Apps on the App Store may not point to buying outside the app (guideline 3.1.1).
+ */
+export type HelpArticle = { slug: string; category: HelpCategory; title: string; summary: string; body: string[]; iosApp?: { summary: string; body: string[] } };
 
 export const HELP_ARTICLES: HelpArticle[] = [
   {
@@ -42,7 +52,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
     summary: "eGuard supervises your child's Android phone or tablet itself. You don't need Google Family Link.",
     body: [
       "Install eGuard from Google Play on your child's phone or tablet, choose I'm setting up my child's device, and enter the pairing code from your eGuard app or the web.",
-      "eGuard then asks for a few permissions: usage access for screen time and app limits, a local web filter, location if you turn it on, and device admin for uninstall protection. Each one is explained before Android asks for it.",
+      "eGuard then asks for a few permissions: usage access for screen time and app limits, location if you turn it on, and device admin for uninstall protection. Each one is explained before Android asks for it.",
+      "Web filtering is one guided step: eGuard shows you how to set the phone's Private DNS to a family filter, then checks it's set.",
       "You don't need Google Family Link. eGuard applies and verifies every protection directly on Android.",
       "eGuard shows a notification on your child's device whenever it's active, so it's never hidden. Tell your child what it does before you set it up.",
     ],
@@ -74,6 +85,15 @@ export const HELP_ARTICLES: HelpArticle[] = [
       "You can cancel any time. Your plan stays active until the end of the paid period.",
       "Only the family admin can change the plan.",
     ],
+    iosApp: {
+      summary: "What each plan includes.",
+      body: [
+        `Free covers ${childCount(planById("FREE").entitlements.childLimit, { digits: true })} with basic protection setup, screen time management, limited app monitoring and email support.`,
+        `${planLimits("PLUS")}, and adds location sharing, full app monitoring, push alerts, category limits like gaming time, and priority support. ${planLimits("PRO")}, and adds advanced reports, API access for schools and organizations, and dedicated support.`,
+        "If your family moves to a smaller plan, children and devices you already added stay protected; you just can't add more.",
+        "Only the family admin can change the plan.",
+      ],
+    },
   },
   {
     slug: "setting-not-verified", category: "TROUBLESHOOTING", title: "A setting says \"Waiting for device\"",
@@ -110,9 +130,15 @@ export const HELP_ARTICLES: HelpArticle[] = [
   },
 ];
 
-export function searchHelp(q: string, category?: HelpCategory) {
+/** The article as a client may show it: the iPhone app gets `iosApp`'s text where there is one. */
+export function helpForClient(a: HelpArticle, ios: boolean): Omit<HelpArticle, "iosApp"> {
+  const { iosApp, ...rest } = a;
+  return ios && iosApp ? { ...rest, ...iosApp } : rest;
+}
+
+export function searchHelp(q: string, category?: HelpCategory, ios = false) {
   const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
-  return HELP_ARTICLES.filter((a) => {
+  return HELP_ARTICLES.map((a) => helpForClient(a, ios)).filter((a) => {
     if (category && a.category !== category) return false;
     const hay = `${a.title} ${a.summary} ${a.body.join(" ")}`.toLowerCase();
     return terms.every((t) => hay.includes(t));

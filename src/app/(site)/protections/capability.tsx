@@ -8,6 +8,8 @@ export const CAPABILITY_COPY: Record<Capability, { label: string; body: string; 
     body: "The platform doesn't let apps change this directly, so eGuard walks you through the steps on the device, then checks the result." },
   VERIFY_ONLY: { label: "You set it, eGuard checks", tone: "wait",
     body: "You turn it on in the device's own settings. eGuard shows you where, then confirms it's on." },
+  PARENT_SET: { label: "You set it in Google Play", tone: "wait",
+    body: "Android doesn't let apps set or read age ratings, so eGuard shows you how to set them in Google Play's parental controls. eGuard can't check them, so they're marked as set by you and don't count toward your Configuration Health." },
   UNSUPPORTED: { label: "Not available", tone: "muted",
     body: "The platform doesn't allow it. It never counts against your Configuration Health." },
 };

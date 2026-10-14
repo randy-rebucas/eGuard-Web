@@ -129,11 +129,14 @@ last day", and **View all** (`/location/{childId}`). The time is when the child 
 
 **History card** (always): "Location history is on: places your children visit are kept for *90* days, then
 deleted", or "off: only each device's latest location is kept, and it's deleted when sharing is turned off", with a
-**Privacy** link (`/settings/privacy`).
+**Privacy** link (`/settings/privacy`). Its icon follows the setting (history on, eye-off when off).
+
+**Layout:** on wide screens (over 1180px) the map fills the viewport height (up to 780px) and stays in place while
+the side column scrolls.
 
 ## 5. A child's places
 
-`/location/[childId]`: title "*Mia*'s places", breadcrumb back to Location, the child's avatar. A child of another
+`/location/[childId]`: title "*Mia*'s places", breadcrumb "Location › *Mia*'s places", the child's avatar. A child of another
 family is a 404; the tab title uses the child's name only for a parent of that family.
 
 | Situation | Shows |
@@ -142,7 +145,7 @@ family is a 404; the tab title uses the child's name only for a parent of that f
 | History off | "Location history is off. Turn it on in Privacy settings to see where *Mia* has been." (+ "Only the family admin can change it." for other parents), **Privacy settings** |
 | No visits | "No places yet: places appear here once *Mia*'s device shares its location" |
 | Visits | grouped by day in the family's time zone (Today, Yesterday, then dates); each row: place (or "Unnamed place"), "*device* · 14.6507, 121.0494" ("Removed device" once the device is gone), and "9:10 AM – 3:40 PM · 6 h 30 min" ("11:00 PM – 7:00 AM next day · 8 h" across midnight). A place they stayed at with no saved name offers **Name this place** |
-| Passing by | a visit of a single fix (under `STAY_MS`, 4 minutes): route icon, "Passing by" (or "Passed by *School*"), one time |
+| Passing by | a visit of a single fix (under `STAY_MS`, 4 minutes): route icon, "Passing by" (or "Passed by *School*"), one time. Two or more in a row fold into one "On the move · *n* spots" row with the first and last times (every spot is still on the day's map), so a drive doesn't fill the page |
 | Paging | 50 at a time, newest first; **Show older places** (`?before=` the last row's `arrivedAt`), **Back to newest**; past the end "No older places: that's everything eGuard has kept" |
 
 Two views, as tabs: **By day** (the default) and **All places** (`?view=all`, the list above).
@@ -349,7 +352,10 @@ checked by type and tests only.
       circle appears on the map; the button is gone while she's there.
 - [ ] Saved places: **Edit** to "Our house" → every label changes; **Remove** → confirm text, labels go back to
       "Unnamed place".
-- [ ] History on: a drive with several fixes shows "Passing by" rows with one time, and Recent places skips them.
+- [ ] History on: a drive with several fixes shows one "On the move · *n* spots" row (a single fix still reads
+  "Passing by"), every spot is on the day's map, and Recent places skips them.
+- [ ] The map's credit line ("Leaflet | © …") is one short line in the bottom-right corner, not a pale box over the
+  map (an old `.map svg` rule once stretched its flag icon to 420px).
 - [ ] A visit across midnight: "11:00 PM – 7:00 AM next day · 8 h".
 - [ ] Phone and tablet both at home: one visit, not two.
 - [ ] **Name this place** on a visit in a child's places: the visit and others there take the name.

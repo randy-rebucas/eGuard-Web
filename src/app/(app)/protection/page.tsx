@@ -7,9 +7,9 @@ import { entitlementsFor } from "@/lib/plans";
 import { LOCATION_UPGRADE } from "@/lib/plan-access";
 import { dayTime } from "@/lib/format";
 import { CAPABILITY_META, CHECK_META, PROTECTIONS, describeConfig, type Capability } from "@/lib/protections";
-import { isOffline, isPassing } from "@/lib/health";
+import { isOffline, isPassing, statusOn } from "@/lib/health";
 import { Icon } from "@/components/icon";
-import { CapabilityChip, CheckBadge, HealthRing, PageHead, UpgradeNote } from "@/components/ui";
+import { CAPABILITY_CLASS, CapabilityChip, CheckBadge, HealthRing, PageHead, UpgradeNote } from "@/components/ui";
 import { CheckButton, FlowButton } from "@/components/flow";
 
 export const metadata = { title: "Protection" };
@@ -27,8 +27,6 @@ export default async function ProtectionPage() {
   const open = h.checks.filter((c) => !isPassing(c.status));
   const isOff = (d: (typeof devices)[number]) => deviceStates[d.id].key === "offline";
   const offline = devices.filter(isOff);
-  // Same rule as computeHealth: a device with no row for a protection counts as NOT_CONFIGURED
-  const statusOn = (d: (typeof devices)[number], key: string) => d.protections.find((x) => x.key === key)?.status ?? "NOT_CONFIGURED";
   // Health only covers paired devices: a child without one has nothing checked, so "every protection" mustn't include them
   const unpaired = children.filter((c) => !c.devices.length);
   const unpairedText = unpaired.length > 3 ? `${unpaired.slice(0, 3).map((c) => c.name).join(", ")} and ${unpaired.length - 3} more` : unpaired.map((c) => c.name).join(" and ");
@@ -52,11 +50,10 @@ export default async function ProtectionPage() {
       </PageHead>
 
       <section className="card card-pad" aria-labelledby="ch-title">
-        <div className="health" style={{ flexWrap: "wrap" }}>
+        <div className="health health-wide">
           <HealthRing score={h.score} total={h.total} empty={!devices.length} />
-          <div className="grow" style={{ minWidth: 240 }}>
-            <div className="eyebrow">Configuration Health</div>
-            <h2 id="ch-title" style={{ fontSize: 26, marginTop: 4 }}>{headline}</h2>
+          <div className="grow">
+            <h2 id="ch-title">{headline}</h2>
             {devices.length ? (
               <p className="muted" style={{ marginTop: 6 }}>
                 {devices.length} device{devices.length === 1 ? "" : "s"}, {lastVerified ? `last checked ${dayTime(lastVerified, tz)}` : "not checked yet"}.
@@ -82,7 +79,7 @@ export default async function ProtectionPage() {
               <>
                 <span className={`ico-tile ${CHECK_META[ch.status].tone === "ok" ? "ok" : CHECK_META[ch.status].tone}`}><Icon name={ch.icon} /></span>
                 <span className="grow">
-                  <span className="row" style={{ justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}><span className="t-title">{ch.name}</span><CheckBadge status={ch.status} /></span>
+                  <span className="row" style={{ justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}><span className="t-title">{ch.name}</span><CheckBadge status={ch.status} parentSet={ch.parentSet} /></span>
                   <span className="t-meta" style={{ display: "block", marginTop: 4 }}>{ch.detail}</span>
                   {ch.fixChildId ? <span className="link-btn" style={{ marginTop: 4 }}>Fix this <Icon name="arrow-right" /></span> : null}
                 </span>
@@ -98,19 +95,22 @@ export default async function ProtectionPage() {
       <section>
         <div className="section-title"><h2>Protection settings</h2></div>
         <div className="prot-grid">
-          {PROTECTIONS.map((p) => {
+          {PROTECTIONS.map((p, i) => {
             const ch = h.checks.find((c) => c.key === p.key)!;
             const failing = devices.filter((d) => !isPassing(statusOn(d, p.key)));
-            const lastKnown = devices.some((d) => isOff(d) && statusOn(d, p.key) !== "UNSUPPORTED");
+            const lastKnown = devices.some((d) => isOff(d) && statusOn(d, p.key) === "PASS");
             const values = [...new Set(children.map((c) => describeConfig(c.policies.find((x) => x.key === p.key)?.config)))];
             const checked = devices.flatMap((d) => d.protections.filter((x) => x.key === p.key)).reduce<Date | null>((m, x) => (x.lastVerifiedAt && (!m || x.lastVerifiedAt > m) ? x.lastVerifiedAt : m), null);
             return (
-              <article className="card prot" key={p.key} id={p.slug}>
+              // A lone card on the last row of three takes the whole row (No Empty Thirds)
+              <article className={`card prot${i === PROTECTIONS.length - 1 && PROTECTIONS.length % 3 === 1 ? " wide" : ""}`} key={p.key} id={p.slug}>
                 <div className="row prot-head">
                   <span className="ico-tile"><Icon name={p.icon} /></span>
                   <div className="grow"><h3 style={{ fontSize: 16 }}>{p.name}</h3></div>
                   {!devices.length
                     ? <span className="pill">No devices</span>
+                    : ch.parentSet
+                    ? <span className="pill tone-accent"><Icon name="user-check" />Set by you</span>
                     : isPassing(ch.status)
                     ? <span className="pill tone-ok"><Icon name="circle-check" />{ch.status === "UNSUPPORTED" ? "Not applicable" : lastKnown ? "Last known: verified" : "Verified"}</span>
                     : <span className="pill tone-warn"><Icon name="triangle-alert" />{failing.length} device{failing.length === 1 ? "" : "s"} to review</span>}
@@ -165,10 +165,10 @@ export default async function ProtectionPage() {
 
       <section className="card card-pad">
         <div className="card-head"><div><h2>How platform support works</h2><div className="sub">Android and iOS give eGuard different levels of control. The setup always tells you which applies.</div></div></div>
-        <div className="check-list" style={{ gridTemplateColumns: "repeat(auto-fill,minmax(220px,1fr))" }}>
+        <div className="check-list cap-guide">
           {(Object.keys(CAPABILITY_META) as Capability[]).map((k) => {
             const m = CAPABILITY_META[k];
-            const cls = { AVAILABLE: "available", GUIDED: "guided", VERIFY_ONLY: "verify", UNSUPPORTED: "unsupported" }[k];
+            const cls = CAPABILITY_CLASS[k];
             return <div key={k} className={`cap ${cls}`} style={{ padding: 14 }}><b><Icon name={m.icon} />{m.label}</b><span className="t-meta">{m.description}</span></div>;
           })}
         </div>

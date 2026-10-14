@@ -16,7 +16,7 @@ export const metadata: Metadata = pageMetadata({
   description: "Screen time, bedtime, app and content ratings, web filtering, location and more: the 10 eGuard protections, and how each works on Android and iPhone.",
 });
 
-const LEVELS: Capability[] = ["AVAILABLE", "GUIDED", "VERIFY_ONLY", "UNSUPPORTED"];
+const LEVELS: Capability[] = ["AVAILABLE", "GUIDED", "VERIFY_ONLY", "PARENT_SET", "UNSUPPORTED"];
 
 export default function ProtectionsPage() {
   return (

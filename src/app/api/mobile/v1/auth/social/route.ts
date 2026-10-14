@@ -12,6 +12,8 @@ const Body = z.object({
   name: z.string().trim().min(1).max(80).optional(),
   /** Required only when this creates a new account: the parent's "I'm a parent or guardian, 18+" confirmation */
   guardian: z.boolean().optional(),
+  /** The raw one-time nonce whose SHA-256 the app put in the Apple request (or the nonce given to Google) */
+  nonce: z.string().min(16).max(128).optional(),
 });
 
 /**
@@ -21,7 +23,7 @@ const Body = z.object({
 export const POST = open(async ({ req }) => {
   await enforce(ipKey("social", clientIp(req)), LIMITS.socialIp);
   const b = await body(req, Body);
-  const id = await verifyIdToken(b.provider, b.idToken);
+  const id = await verifyIdToken(b.provider, b.idToken, { nonce: b.nonce });
   const r = await signInWithIdentity(id, { name: b.name, guardian: b.guardian });
   return signInResponse(req, r.userId, r.isNew ? 201 : 200, { isNew: r.isNew });
 });

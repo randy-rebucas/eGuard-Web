@@ -13,10 +13,10 @@ import { BrowserCard } from "@/components/browser-card";
 import { AlertRow, ViewAll } from "@/components/alerts";
 import { WeeklyChart } from "@/components/charts";
 import { FlowButton } from "@/components/flow";
-import { AppControls, CategoryLimitControl, ChildForm, ChildPhotoField, DeleteChildForm } from "@/components/child-forms";
-import { categoryLimits, categoryUsage, requestedApps } from "@/lib/family-service";
+import { AppControls, CategoryLimitControl, ChildForm, ChildPhotoField, DeleteChildForm, ExtraTimeControl } from "@/components/child-forms";
+import { categoryLimits, categoryUsage, extraTimeFor, requestedApps } from "@/lib/family-service";
 import { APP_CATEGORIES, CATEGORY_BY_KEY, CATEGORY_UPGRADE, categoryOf, guessCategory } from "@/lib/app-categories";
-import { CATEGORY_META, WEB_CATEGORIES, activeTemporaryAllows, describeBrowserPolicy, getOrCreateBrowserPolicy } from "@/lib/browser-policy";
+import { CATEGORY_META, WEB_CATEGORIES, YOUTUBE_RESTRICT, YOUTUBE_RESTRICT_META, activeTemporaryAllows, describeBrowserPolicy, getOrCreateBrowserPolicy, type YoutubeRestrict } from "@/lib/browser-policy";
 import { categoryCoverage } from "@/lib/category-lists";
 import { DURATION_LABEL, requestsForChild, type Duration } from "@/lib/browser-access";
 import { AccessRequestRow, BrowserPolicyForm } from "@/components/browser-policy";
@@ -85,7 +85,7 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
           <Link className="btn btn-primary btn-sm" href={`/devices?child=${c.id}#pair`}>Pair a device</Link>
         </div>
       ) : null}
-      <nav className="tabs underline" aria-label={`${c.name} sections`}>
+      <nav className="tabs tabs-line" aria-label={`${c.name} sections`}>
         {TABS.map(([k, l]) => <Link key={k} className="tab" href={`/children/${c.id}?tab=${k}`} aria-current={tab === k ? "page" : undefined}>{l}</Link>)}
       </nav>
       <div>
@@ -105,7 +105,8 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
   async function DevicesGrid() {
     const browsers = await db.browserInstallation.findMany({ where: { childId: c!.id }, orderBy: { createdAt: "asc" }, include: { child: { select: { name: true } } } });
     return c!.devices.length || browsers.length ? (
-      <div className="devices-grid">
+      // One or two read better as full-width rows than as small tiles beside empty space (as on the dashboard)
+      <div className={`devices-grid${c!.devices.length + browsers.length <= 2 ? " rows" : ""}`}>
         {c!.devices.map((x) => <DeviceCard key={x.id} d={x} state={graph.deviceStates[x.id]} tz={tz} />)}
         {browsers.map((b) => <BrowserCard key={b.id} b={b} tz={tz} hasPassword={u.hasPassword} />)}
       </div>
@@ -117,7 +118,12 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
   }
 
   function Devices() {
-    return <section className="card card-pad"><DevicesGrid /></section>;
+    return (
+      <section className="card card-pad">
+        <div className="card-head"><h2>Devices</h2><Link className="link-btn" href={`/devices?child=${c!.id}#pair`}>Pair a device <Icon name="arrow-right" /></Link></div>
+        <DevicesGrid />
+      </section>
+    );
   }
 
   async function Overview() {
@@ -143,6 +149,7 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
     const open = c!.health.checks.filter((x) => x.status !== "PASS" && x.status !== "UNSUPPORTED");
     const n = c!.devices.length, where = n === 1 ? "their device" : `all ${n} devices`;
     return (
+      <div className="dash-col">
       <div className="detail-grid">
         <div className="dash-col">
           <section className="card card-pad">
@@ -155,20 +162,12 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
                   <span className="t-meta" style={{ display: "block", marginTop: 4 }}>{ch.detail}</span><span className="link-btn" style={{ marginTop: 4 }}>Fix this <Icon name="arrow-right" /></span></span>
               </FlowButton>
             ))}</div>
-              : c!.health.verified ? <EmptyState icon="shield-check" title="Everything is configured" text={`All of ${c!.name}'s protections are verified on ${where}.`} />
+              : c!.health.verified ? <EmptyState icon="shield-check" title="Everything is configured" text={`All of ${c!.name}'s protections are verified on ${where}${c!.health.checks.some((x) => x.parentSet) ? ", apart from the ones you set in Google Play, which eGuard can't check" : ""}.`} />
               : <EmptyState icon="wifi-off" title="Nothing to fix right now" text={`Every protection matched when ${c!.name}'s devices last synced. ${c!.health.offline} ${c!.health.offline === 1 ? "is" : "are"} offline, so eGuard can't verify ${c!.health.offline === 1 ? "it" : "them"} now.`} />}
           </section>
           <section className="card card-pad">
             <div className="card-head"><h2>Devices</h2><Link className="link-btn" href={`/devices?child=${c!.id}#pair`}>Pair a device <Icon name="arrow-right" /></Link></div>
             <DevicesGrid />
-          </section>
-          <section className="card card-pad">
-            <div className="card-head"><h2>Profile</h2></div>
-            <ChildPhotoField childId={c!.id} name={c!.name} hue={c!.hue} photo={c!.photo} />
-            <hr className="divider" style={{ margin: "20px 0" }} />
-            <ChildForm child={{ id: c!.id, name: c!.name, birthYear: c!.birthYear }} />
-            <hr className="divider" style={{ margin: "20px 0" }} />
-            {u.role === "FAMILY_ADMIN" ? <DeleteChildForm childId={c!.id} name={c!.name} hasPassword={u.hasPassword} /> : <p className="t-meta">Only the family admin can remove {c!.name} from eGuard.</p>}
           </section>
         </div>
         <div className="dash-col">
@@ -187,6 +186,18 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
             <div style={{ margin: "0 -12px" }}>{mine.length ? mine.map((a) => <AlertRow key={a.id} a={toAlertItem(a, tz)} />) : <EmptyState icon="bell" title="No recent alerts" />}</div>
           </section>
         </div>
+      </div>
+      {/* Editing the profile is occasional, so it follows today's picture; on phones that keeps it below screen time and alerts */}
+      <div className="detail-grid">
+        <section className="card card-pad">
+          <div className="card-head"><h2>Profile</h2></div>
+          <ChildPhotoField childId={c!.id} name={c!.name} hue={c!.hue} photo={c!.photo} />
+          <hr className="divider" style={{ margin: "20px 0" }} />
+          <ChildForm child={{ id: c!.id, name: c!.name, birthYear: c!.birthYear }} />
+          <hr className="divider" style={{ margin: "20px 0" }} />
+          {u.role === "FAMILY_ADMIN" ? <DeleteChildForm childId={c!.id} name={c!.name} hasPassword={u.hasPassword} /> : <p className="t-meta">Only the family admin can remove {c!.name} from eGuard.</p>}
+        </section>
+      </div>
       </div>
     );
   }
@@ -210,8 +221,10 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
             <div className="card-head"><div><h2>Browser protection</h2><div className="sub">What the eGuard extension does in {c!.name}&apos;s Chrome, Edge and Firefox. It applies to every browser you add for {c!.name}.</div></div></div>
             <BrowserPolicyForm childId={c!.id} childName={c!.name}
               categories={WEB_CATEGORIES.map((key) => ({ key, ...CATEGORY_META[key], ...categoryCoverage(key) }))}
+              youtubeLevels={YOUTUBE_RESTRICT.map((key) => ({ key, ...YOUTUBE_RESTRICT_META[key] }))}
               initial={{
-                version: p.version, safeBrowsing: p.safeBrowsing, safeSearch: p.safeSearch, blockedCategories: p.blockedCategories,
+                version: p.version, safeBrowsing: p.safeBrowsing, safeSearch: p.safeSearch,
+                youtubeRestrict: p.youtubeRestrict as YoutubeRestrict, blockedCategories: p.blockedCategories,
                 blockedDomains: p.blockedDomains, allowedDomains: p.allowedDomains,
                 unknownSitesPolicy: p.unknownSitesPolicy as "ALLOW" | "WARN" | "BLOCK", schedule,
               }} />
@@ -269,7 +282,7 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
   }
 
   async function Activity() {
-    const w = await weeklySeries(u.familyId, tz, graph, [c!.id]);
+    const [w, extra] = await Promise.all([weeklySeries(u.familyId, tz, graph, [c!.id]), extraTimeFor(u, c!.id)]);
     const policy = c!.policies.find((p) => p.key === "SCREEN_TIME")?.config as ProtectionConfig | undefined;
     // Without a saved policy, the limits eGuard applies are the child's own (set when they were added)
     const st = policy?.key === "SCREEN_TIME" ? policy : { dailyMinutes: c!.dailyLimitMinutes, weekendMinutes: c!.weekendLimitMinutes };
@@ -277,6 +290,18 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
       <div className="detail-grid">
         <div className="dash-col"><WeeklyChart single series={w.series} days={w.days} title="Screen Time, Last 7 Days" subtitle={`Daily totals, ${w.range}. Today is still in progress.`} /></div>
         <div className="dash-col">
+          <section className="card card-pad" id="extra-time">
+            <div className="card-head"><div><h2 style={{ fontSize: 18 }}>Extra time</h2>
+              <div className="sub">Lets {c!.name} keep using apps past a limit or bedtime for a while. Blocked apps stay blocked.</div></div></div>
+            {extra.request ? (
+              <div className="form-warn" role="status" style={{ marginBottom: 12 }}>
+                <Icon name="hourglass" />
+                <span className="grow">{extra.request.body} <span className="t-meta">{ago(extra.request.askedAt, tz)}</span></span>
+              </div>
+            ) : null}
+            {extra.until ? <p className="t-meta" style={{ marginBottom: 12 }}>Extra time until {dayTime(extra.until, tz).replace("Today, ", "")}.</p> : null}
+            <ExtraTimeControl childId={c!.id} childName={c!.name} running={!!extra.until} requested={!!extra.request} />
+          </section>
           <section className="card card-pad">
             <div className="card-head"><h2 style={{ fontSize: 18 }}>Limits</h2></div>
             <dl className="kv" style={{ gridTemplateColumns: "minmax(0,1fr)" }}>
@@ -285,7 +310,7 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
               <div><dt>Weekends</dt><dd className="num">{fmtMinutes(st.weekendMinutes)} / day</dd></div>
               <div><dt>Bedtime</dt><dd>{describeConfig(c!.policies.find((p) => p.key === "BEDTIME")?.config)}</dd></div>
             </dl>
-            <FlowButton protection="SCREEN_TIME" childId={c!.id} className="btn btn-secondary" ><Icon name="sliders-horizontal" />Change limits</FlowButton>
+            <div style={{ marginTop: 16 }}><FlowButton protection="SCREEN_TIME" childId={c!.id} className="btn btn-secondary"><Icon name="sliders-horizontal" />Change limits</FlowButton></div>
           </section>
         </div>
       </div>
@@ -304,14 +329,14 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
     // Games always (it's what parents ask for), then any category the child has apps in or a limit for
     const shownCategories = APP_CATEGORIES.filter((k) => k.key === "GAMES" || limits.some((l) => l.category === k.key) || all.some((a) => categoryOf(a).category === k.key));
     const approval = c!.policies.find((p) => p.key === "APP_APPROVAL")?.config as { enabled?: boolean } | undefined;
-    const label = { ALLOWED: "Allowed", ALWAYS_ALLOWED: "Always allowed", FILTERED: "Filtered", BLOCKED: "Blocked", PENDING: "Waiting for your approval" };
+    const label = { ALLOWED: "Allowed", ALWAYS_ALLOWED: "Always allowed", FILTERED: "Filtered (blocked)", BLOCKED: "Blocked", PENDING: "Waiting for your approval" };
     const pending = all.filter((a) => a.approval === "PENDING" || requested.has(a.name));
     const { apps, hidden } = visibleApps(all, entitlementsFor(family.plan).appMonitoringLimit, { requested, minutes: (n) => usage.find((x) => x.app === n)?.minutes ?? 0 });
     return (
       <div className="dash-col">
       <section className="card card-pad">
         <div className="card-head">
-          <div><h2>Category limits</h2><div className="sub">One daily limit for every app of a kind together, like gaming time. Each app counts toward its category; change it on the app below. Applies on the device&apos;s next sync.</div></div>
+          <div><h2>Category limits</h2><div className="sub">One daily limit for every app of a kind together, like gaming time. Each app counts toward its category; change it on the app below. Always-allowed apps count but aren&apos;t paused. Applies on the device&apos;s next sync.</div></div>
         </div>
         {canLimit ? null : <div style={{ marginBottom: 12 }}><UpgradeNote compact icon="hourglass" title="Category limits" text={CATEGORY_UPGRADE} /></div>}
         {shownCategories.map((k) => {
@@ -357,7 +382,7 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
     return (
       <section className="card card-pad">
         <div className="card-head">
-          <div><h2>Protection health</h2><div className="sub">Whether each protection is set up and verified on {c!.name}&apos;s devices. This measures configuration, not behavior.</div></div>
+          <div><h2>Protection health</h2><div className="sub">Whether each protection is set up and verified on {c!.name}&apos;s devices. This measures configuration, not behavior. Select a protection to change its settings.</div></div>
         </div>
         {/* Nothing can be verified yet: say what to do, rather than ten warnings that read as problems */}
         {!c!.devices.length ? (
@@ -372,14 +397,15 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
             const policy = describeConfig(c!.policies.find((p) => p.key === ch.key)?.config);
             return (
               <FlowButton key={ch.key} protection={ch.key} childId={c!.id} className="check-item">
-                <span className={`ico-tile ${ch.status === "PASS" ? "" : ch.status === "UNSUPPORTED" || !c!.devices.length ? "muted" : "warn"}`}><Icon name={def.icon} /></span>
+                <span className={`ico-tile ${ch.status === "PASS" || ch.parentSet ? "" : ch.status === "UNSUPPORTED" || !c!.devices.length ? "muted" : "warn"}`}><Icon name={def.icon} /></span>
                 <span className="grow">
-                  <span className="row" style={{ justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}><span className="t-title">{ch.name}</span><CheckBadge status={ch.status} /></span>
+                  <span className="row" style={{ justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}><span className="t-title">{ch.name}</span><CheckBadge status={ch.status} parentSet={ch.parentSet} /></span>
                   <span className="t-meta" style={{ display: "block", marginTop: 4 }}>{policy} · {ch.detail}</span>
                   <span className="row" style={{ gap: 6, marginTop: 6, flexWrap: "wrap" }}>
                     {[...new Set(c!.devices.map((x) => x.platform))].map((pl) => <span key={pl} className="t-meta">{platformName(pl)}: {CAPABILITY_META[def.caps[pl]].label}</span>)}
                   </span>
                 </span>
+                <span className="link-btn" style={{ alignSelf: "center", flexShrink: 0 }}>Change <Icon name="arrow-right" /></span>
               </FlowButton>
             );
           })}
@@ -417,6 +443,7 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
             <FlowButton protection="LOCATION" childId={c!.id} className="btn btn-primary"><Icon name="list-checks" />Turn on location sharing</FlowButton>
           </EmptyState>
         )}
+        {l.iphoneNote ? <p className="t-meta" style={{ marginTop: 12 }}><Icon name="info" size={14} style={{ verticalAlign: -2 }} /> {l.iphoneNote}</p> : null}
         {family.keepLocationHistory ? (
           <p className="t-meta" style={{ marginTop: 16 }}><Icon name="history" size={14} style={{ verticalAlign: -2 }} /> Location history is on: places {c!.name} visits are kept for {family.retentionDays} days. <Link className="link-btn" href={`/location/${c!.id}`}>See {c!.name}&apos;s places</Link></p>
         ) : (

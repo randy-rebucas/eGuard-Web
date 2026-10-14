@@ -7,7 +7,9 @@ import { audit } from "./audit";
 import type { Actor } from "./config-service";
 import { appUrl, requireVerifiedEmail } from "./email-verification";
 import { escapeHtml, sendMail } from "./mail";
+import { LIMITS, clearLimit, enforce } from "./rate-limit";
 import { shortDate } from "./format";
+import { KEEP_PLAN, KEEP_SPONSORED } from "./store-neutral";
 import { BASE_PLAN, type Interval, type PaidPlanId, planById, planByName, planByProduct, webPrice, webProduct, webProductFor } from "./plans";
 import { applyEntitlement, currentPurchase, isEntitled } from "./entitlement";
 import {
@@ -87,7 +89,14 @@ async function assertCanBuy(familyId: string, plan: PaidPlanId, autoRenew: boole
   const until = shortDate(current.expiresAt!, family.timezone);
   if (autoRenew) throw conflict(`Your plan is paid until ${until}. Turn on auto-renew after that, or buy a pass to extend it.`);
   const now = planByProduct(current.productId);
-  if (now && now.id !== plan) throw conflict(`Your ${now.name} pass runs until ${until}. Switch to ${planById(plan).name} after that, or buy another ${now.name} month to extend it.`);
+  if (now && now.id !== plan) throw conflict(`Your ${paidTimeName(current)} runs until ${until}. Switch to ${planById(plan).name} after that, or buy another ${now.name} month to extend it.`);
+}
+
+/** What the family's paid time is called: "eGuard Plus pass", "sponsored eGuard Plus", or the plan alone (auto-renew turned off). */
+export function paidTimeName(p: { store: string; productId: string }) {
+  const name = planByProduct(p.productId)?.name ?? "plan";
+  if (p.store === "VOUCHER") return `sponsored ${name}`;
+  return webProduct(p.productId)?.autoRenew ? name : `${name} pass`;
 }
 
 /**
@@ -105,6 +114,7 @@ export async function buyPass(actor: Actor, planId: PaidPlanId, o: WebBillingOpt
   // PayMongo sends the receipt to this address: a mistyped, unverified one would lose it
   await requireVerifiedEmail(actor.id, "pay for a plan");
   await assertCanBuy(actor.familyId, planId, false);
+  await enforce(`billing:family:${actor.familyId}`, LIMITS.billingStart, "You've started several payments. Wait a few minutes and try again.");
   const product = webProductFor(planId, false);
   const plan = planById(planId);
   const user = await db.user.findUniqueOrThrow({ where: { id: actor.id } });
@@ -135,10 +145,10 @@ async function syncPass(p: StorePurchase, cfg: PaymongoConfig, f: Fetch | undefi
       // Under the family's purchase lock (shared with sponsor codes): two passes confirmed at once would
       // otherwise both start from the same paid-until date and overlap, losing a paid month
       await lockPaidTime(tx, p.familyId);
-      // Starts when the family's current paid time ends, so an early renewal loses nothing
-      // Only time on the same plan counts; another plan over paid time is refused (assertCanBuy)
-      const plan = planByProduct(p.productId);
-      const others = (await tx.storePurchase.findMany({ where: { familyId: p.familyId, id: { not: p.id } } })).filter((x) => planByProduct(x.productId) === plan);
+      // Starts when the family's current paid time ends, so an early renewal loses nothing. Any plan's time counts:
+      // assertCanBuy refuses another plan over paid time, but only when checkout opens, and a checkout opened before
+      // another plan was bought can still be paid. Queued after it, those days aren't spent under the other plan.
+      const others = await tx.storePurchase.findMany({ where: { familyId: p.familyId, id: { not: p.id }, state: { not: "REPLACED" } } });
       const paidUntil = Math.max(now.getTime(), ...others.filter((x) => isEntitled(x, now.getTime())).map((x) => x.expiresAt!.getTime()));
       const expiresAt = addInterval(new Date(paidUntil), webProduct(p.productId)!.interval);
       // Conditional, so the webhook and the parent's return from checkout can't both extend the plan
@@ -183,28 +193,58 @@ export async function startAutoRenew(actor: Actor, planId: PaidPlanId, o: WebBil
     await db.storePurchase.update({ where: { id: p.id }, data: { state: "cancelled", autoRenewing: false, checkedAt: now } });
   }
   const unfinished = await db.storePurchase.findMany({ where: { familyId: actor.familyId, store: STORE, state: "incomplete" } });
+  let paidMeanwhile = false;
   for (const p of unfinished) {
-    if (p.productId === product.id && now.getTime() - p.createdAt.getTime() < RESUMABLE_MS) {
-      const s = (await getSubscription(cfg, p.purchaseToken, o.fetch)).attributes;
-      const pi = s.latest_invoice?.payment_intent;
-      if (s.status === "incomplete" && pi) return firstPayment(cfg, p, pi.id, o.fetch);
+    const s = await getSubscription(cfg, p.purchaseToken, o.fetch).then((r) => r.attributes, (e) => {
+      if (e instanceof ServiceError && e.code === "payment_not_found") return null; // gone at PayMongo: nothing to pay or cancel
+      throw e;
+    });
+    if (!s) {
+      await db.storePurchase.update({ where: { id: p.id }, data: { state: "incomplete_cancelled", checkedAt: now } });
+      continue;
     }
+    if (s.status !== "incomplete") {
+      // Paid (or ended) on PayMongo before eGuard heard of it: record that, never cancel a subscription that was paid
+      await syncSubscription(p, cfg, o.fetch, now);
+      paidMeanwhile = true;
+      continue;
+    }
+    const pi = s.latest_invoice?.payment_intent;
+    if (p.productId === product.id && now.getTime() - p.createdAt.getTime() < RESUMABLE_MS && pi) return firstPayment(cfg, p, pi.id, o.fetch);
     await cancelSubscription(cfg, p.purchaseToken, o.fetch).catch(() => {});
     await db.storePurchase.update({ where: { id: p.id }, data: { state: "incomplete_cancelled", checkedAt: now } });
   }
-
-  const family = await db.family.findUniqueOrThrow({ where: { id: actor.familyId } });
-  let customerId = family.paymongoCustomerId;
-  if (!customerId) {
-    const user = await db.user.findUniqueOrThrow({ where: { id: actor.id } });
-    customerId = await customerFor(cfg, { name: user.name, email: user.email }, o.fetch);
-    await db.family.update({ where: { id: family.id }, data: { paymongoCustomerId: customerId } });
+  if (paidMeanwhile) {
+    await applyEntitlement(actor.familyId);
+    await assertCanBuy(actor.familyId, planId, true); // "Auto-renew is already on" when that payment went through
   }
-  const paymongoPlan = await planFor(cfg, planById(planId).name, webPrice(planId), o.fetch);
-  const sub = await createSubscription(cfg, customerId, paymongoPlan, o.fetch);
-  const p = await db.storePurchase.create({
-    data: { familyId: actor.familyId, store: STORE, productId: product.id, purchaseToken: sub.id, state: sub.attributes.status, checkedAt: now },
-  });
+
+  await enforce(`billing:family:${actor.familyId}`, LIMITS.billingStart, "You've started several payments. Wait a few minutes and try again.");
+  // Two windows at once would each create a subscription. Held only while creating: afterwards a retry finds the
+  // unfinished row above and resumes it
+  const creating = `autorenew:create:${actor.familyId}`;
+  await enforce(creating, LIMITS.autoRenewCreate, "Auto-renew is being set up in another window. Finish it there, or try again in a minute.");
+  let p: StorePurchase, sub: Awaited<ReturnType<typeof createSubscription>>;
+  try {
+    // One created by another window since the check above: resume it
+    const fresh = await db.storePurchase.findFirst({ where: { familyId: actor.familyId, store: STORE, state: "incomplete", productId: product.id, createdAt: { gt: new Date(now.getTime() - RESUMABLE_MS) } } });
+    const freshPi = fresh && (await getSubscription(cfg, fresh.purchaseToken, o.fetch)).attributes.latest_invoice?.payment_intent;
+    if (fresh && freshPi) return await firstPayment(cfg, fresh, freshPi.id, o.fetch);
+    const family = await db.family.findUniqueOrThrow({ where: { id: actor.familyId } });
+    let customerId = family.paymongoCustomerId;
+    if (!customerId) {
+      const user = await db.user.findUniqueOrThrow({ where: { id: actor.id } });
+      customerId = await customerFor(cfg, { name: user.name, email: user.email }, o.fetch);
+      await db.family.update({ where: { id: family.id }, data: { paymongoCustomerId: customerId } });
+    }
+    const paymongoPlan = await planFor(cfg, planById(planId).name, webPrice(planId), o.fetch);
+    sub = await createSubscription(cfg, customerId, paymongoPlan, o.fetch);
+    p = await db.storePurchase.create({
+      data: { familyId: actor.familyId, store: STORE, productId: product.id, purchaseToken: sub.id, state: sub.attributes.status, checkedAt: now },
+    });
+  } finally {
+    await clearLimit(creating);
+  }
   const pi = sub.attributes.latest_invoice?.payment_intent;
   if (!pi) throw new ServiceError(502, "PayMongo didn't create the first payment. Try again.", "payment_unavailable");
   return firstPayment(cfg, p, pi.id, o.fetch);
@@ -352,8 +392,11 @@ export async function handlePaymongoEvent(e: WebhookEvent, o: WebBillingOpts = {
  */
 export async function sendPassReminders(now = new Date()) {
   const due = await db.storePurchase.findMany({
-    // Passes, and plans from sponsor codes (store VOUCHER), which end the same way
-    where: { store: { in: [STORE, "VOUCHER"] }, state: "PAID", remindedAt: null, expiresAt: { gt: now, lte: new Date(now.getTime() + REMIND_BEFORE_MS) } },
+    // Passes, plans from sponsor codes (store VOUCHER) and auto-renew turned off, which all end the same way
+    where: {
+      OR: [{ store: { in: [STORE, "VOUCHER"] }, state: "PAID" }, { store: STORE, state: "cancelled" }],
+      remindedAt: null, expiresAt: { gt: now, lte: new Date(now.getTime() + REMIND_BEFORE_MS) },
+    },
   });
   let sent = 0;
   for (const p of due) {
@@ -364,12 +407,14 @@ export async function sendPassReminders(now = new Date()) {
     const family = await db.family.findUniqueOrThrow({ where: { id: p.familyId }, include: { users: { where: { role: "FAMILY_ADMIN", emailVerifiedAt: { not: null } } } } });
     const ends = shortDate(p.expiresAt!, family.timezone);
     const plan = planByProduct(p.productId)?.name ?? family.plan;
-    const what = p.store === "VOUCHER" ? "sponsored plan" : "pass";
+    const what = p.store === "VOUCHER" ? "sponsored plan" : webProduct(p.productId)?.autoRenew ? "plan" : "pass";
     const link = `${appUrl()}/settings/subscription`;
     await db.alert.create({
       data: {
         familyId: p.familyId, severity: "INFO", category: "SYSTEM", icon: "crown", subject: "Subscription",
-        title: `${plan} ends on ${ends}`, body: "Buy another pass or turn on auto-renew in Settings › Subscription to keep it.",
+        title: `${plan} ends on ${ends}`,
+        // The last sentence is dropped for the iPhone app (storeNeutral); the first must stand on its own
+        body: `After that your family goes back to ${BASE_PLAN}. Children and devices already added stay protected. ${p.store === "VOUCHER" ? KEEP_SPONSORED : KEEP_PLAN}`,
       },
     });
     for (const u of family.users) {

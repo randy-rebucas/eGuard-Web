@@ -6,7 +6,8 @@
   --bg:#F5FAFF; --surface:#FFFFFF; --surface-2:#F3F8FE; --surface-3:#E9F3FD;
   --page-art:url("/web/page-bg.jpg");
   --line:#E2ECF7; --line-strong:#CCDDEF;
-  --ink:#0B2348; --ink-2:#34496A; --ink-3:#62769A;
+  /* --ink-3 clears 4.5:1 (WCAG AA) on every light surface, the haze inset and muted pills included */
+  --ink:#0B2348; --ink-2:#34496A; --ink-3:#5A6E91;
   --accent:#2498F3; --accent-ink:#1570C0; --accent-btn:#1673C4; --accent-btn-hover:#0F63AC;
   --accent-soft:#E7F4FF; --accent-soft-2:#DCEEFF;
   --ok:#18A957; --ok-ink:#0F7F43; --ok-soft:#E4F6EC;
@@ -139,6 +140,8 @@ p{margin:0}
 .card{background:var(--surface); border:1px solid var(--line); border-radius:var(--r-lg); box-shadow:var(--shadow-sm)}
 .card-pad{padding:22px 24px}
 .card-head{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px; flex-wrap:wrap}
+/* The heading block takes the room, so a short "View all" stays beside it on phones instead of wrapping under */
+.card-head > :first-child{flex:1 1 200px; min-width:0}
 .card-head h2,.card-head h3{font-size:18px; font-weight:600}
 .card-head .sub{font-size:13px; color:var(--ink-3); margin-top:2px; font-family:var(--font); letter-spacing:0}
 .section-title{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px}
@@ -146,6 +149,8 @@ p{margin:0}
 .link-btn{display:inline-flex; align-items:center; gap:4px; color:var(--accent-ink); font-weight:600; font-size:14px; min-height:32px; border-radius:8px}
 .link-btn:hover{text-decoration:underline; text-underline-offset:3px}
 .link-btn .lucide{width:16px; height:16px}
+/* A link that wraps reads from the left edge, not centred like a button label */
+.link-btn{text-align:left}
 .btn{display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:44px; padding:0 18px; border-radius:12px; font-weight:600; font-size:14.5px; transition:background .15s, border-color .15s, transform .15s; white-space:nowrap}
 .btn-primary{background:var(--accent-btn); color:#fff}
 .btn-primary:hover{background:var(--accent-btn-hover)}
@@ -186,13 +191,17 @@ label.btn.disabled{opacity:.5; cursor:not-allowed}
 
 .tabs{display:flex; gap:4px; padding:4px; background:var(--surface-2); border:1px solid var(--line); border-radius:12px; overflow-x:auto; scrollbar-width:none}
 .tabs::-webkit-scrollbar{display:none}
+/* A short tab set that must stay fully visible: two rows of two on phones instead of hidden horizontal scroll */
+@media (max-width:520px){.tabs.fit{display:grid; grid-template-columns:repeat(2,minmax(0,1fr))}}
 .tab{min-height:36px; padding:0 14px; border-radius:9px; font-weight:600; font-size:13.5px; color:var(--ink-3); white-space:nowrap; transition:background .15s, color .15s}
 .tab:hover{color:var(--ink)}
 .tab[aria-selected="true"]{background:var(--surface); color:var(--ink); box-shadow:var(--shadow-sm)}
-.tabs.underline{background:none; border:0; border-bottom:1px solid var(--line); border-radius:0; padding:0; gap:20px}
-.tabs.underline .tab{border-radius:0; padding:0 2px; min-height:44px; box-shadow:none; background:none; position:relative}
-.tabs.underline .tab[aria-selected="true"]{color:var(--accent-ink)}
-.tabs.underline .tab[aria-selected="true"]::after{content:""; position:absolute; left:0; right:0; bottom:-1px; height:2px; background:var(--accent); border-radius:2px}
+.tabs.tabs-line{background:none; border:0; border-bottom:1px solid var(--line); border-radius:0; padding:0; gap:20px}
+.tabs.tabs-line .tab{border-radius:0; padding:0 2px; min-height:44px; box-shadow:none; background:none; position:relative}
+.tabs.tabs-line .tab[aria-selected="true"]{color:var(--accent-ink)}
+.tabs.tabs-line .tab[aria-selected="true"]::after{content:""; position:absolute; left:0; right:0; bottom:-1px; height:2px; background:var(--accent); border-radius:2px}
+/* Phones: the sections wrap onto a second line rather than scroll, so the current one is never off-screen */
+@media (max-width:767px){.tabs.tabs-line{flex-wrap:wrap; column-gap:18px; row-gap:0; overflow:visible}}
 .seg{display:inline-flex; padding:3px; background:var(--surface-2); border:1px solid var(--line); border-radius:10px}
 .seg button{min-height:32px; padding:0 12px; border-radius:7px; font-size:13px; font-weight:600; color:var(--ink-3)}
 .seg button[aria-pressed="true"]{background:var(--surface); color:var(--ink); box-shadow:var(--shadow-sm)}
@@ -238,7 +247,7 @@ button.hero-stat:hover{background:rgba(255,255,255,.9)}
 .hero-side{align-self:center; justify-self:end; width:100%; max-width:340px; display:flex; flex-direction:column; gap:10px}
 .glass{background:rgba(255,255,255,.78); border:1px solid rgba(255,255,255,.9); border-radius:16px; padding:14px 16px; box-shadow:0 8px 24px rgba(11,35,72,.12); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px)}
 .glass .row{gap:10px}
-.glass .t-meta{color:#62769A}
+.glass .t-meta{color:#5A6E91}
 .glass .t-title{color:#0B2348}
 .glass-child{display:flex; align-items:center; gap:10px; width:100%; text-align:left; color:#0B2348; padding:6px 4px; border-radius:10px}
 .glass-child:hover{background:rgba(11,35,72,.06)}
@@ -253,6 +262,7 @@ button.hero-stat:hover{background:rgba(255,255,255,.9)}
 .metric .m-top{display:flex; align-items:center; justify-content:space-between; gap:8px}
 .metric .m-label{font-size:14px; font-weight:600; color:var(--ink-2)}
 .metric .m-value{font-family:var(--display); font-size:32px; font-weight:600; letter-spacing:-.02em; line-height:1}
+.metric .m-plan{font-size:26px}
 .metric .m-value small{font-size:18px; color:var(--ink-3); font-weight:500}
 .metric .m-foot{margin-top:auto; display:flex; align-items:center; justify-content:space-between; gap:8px; font-size:13.5px}
 .seg-meter{display:grid; grid-template-columns:repeat(10,1fr); gap:3px}
@@ -261,9 +271,17 @@ button.hero-stat:hover{background:rgba(255,255,255,.9)}
 .seg-meter span.warn{background:var(--warn)}
 
 /* ---------- Dashboard grid ---------- */
-.dash-grid{display:grid; grid-template-columns:minmax(0,1fr) 360px; gap:24px; align-items:start}
+/* Main column spans both rows; alerts top the side column (first in source, so a single column shows them right after the summary) */
+.dash-grid{display:grid; grid-template-columns:minmax(0,1fr) 360px; grid-template-rows:auto 1fr; gap:24px; align-items:start}
+.dash-main{grid-column:1; grid-row:1 / span 2}
+.dash-alerts{grid-column:2; grid-row:1}
+.dash-grid > .dash-aside{grid-column:2; grid-row:2}
 .dash-col{display:flex; flex-direction:column; gap:24px; min-width:0}
 .children-grid{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px}
+/* A lone child: one wide row (name, status, device) instead of a third-width tile */
+.children-grid.solo{grid-template-columns:minmax(0,1fr) !important}
+.children-grid.solo .child-card{display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); align-items:center; gap:20px}
+.children-grid.solo .cc-dev{padding:0 0 0 20px; border-top:0; border-left:1px solid var(--line); align-self:stretch}
 .child-card{display:flex; flex-direction:column; gap:14px; padding:20px; text-align:left; width:100%}
 .child-card .cc-head{display:flex; align-items:center; gap:14px}
 .child-card .cc-name{font-family:var(--display); font-weight:600; font-size:18px}
@@ -276,6 +294,9 @@ button.hero-stat:hover{background:rgba(255,255,255,.9)}
 .act{padding:16px; border-radius:var(--r); background:var(--surface-2); border:1px solid var(--line)}
 .act .row{gap:10px}
 .act .avatar{width:32px; height:32px; font-size:13px}
+.activity-grid.solo{grid-template-columns:minmax(0,1fr) !important}
+.activity-grid.solo .act-split{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:32px; align-items:end}
+.activity-grid.solo .act-split .app-rows{padding-left:32px; border-left:1px solid var(--line)}
 .usage-big{font-family:var(--display); font-size:22px; font-weight:600; letter-spacing:-.01em; margin-top:12px}
 .usage-big small{font-size:14px; color:var(--ink-3); font-weight:500}
 .bar{height:8px; border-radius:6px; background:var(--line); overflow:hidden; margin:8px 0 12px}
@@ -297,14 +318,42 @@ button.alert-row:hover{background:var(--surface-2)}
 /* Actions wrap under the message on narrow screens instead of squeezing it */
 .notif-item{flex-wrap:wrap}
 .notif-item > .grow{flex:1 1 200px}
-.sev{display:inline-flex; align-items:center; gap:4px; font-size:11.5px; font-weight:700; letter-spacing:.04em; text-transform:uppercase}
-.sev .lucide{width:13px; height:13px}
+/* Title first, then its status pills (severity, Resolved, New); the message keeps a readable measure */
+.notif-title{gap:6px 10px; flex-wrap:wrap}
+.notif-title .t-title{font-size:15.5px}
+.notif-body{color:var(--ink-2); margin-top:4px; max-width:75ch}
+/* Filter tabs wrap on phones instead of hiding categories off the edge */
+@media (max-width:767px){
+  .tabs.wrap{flex-wrap:wrap; overflow:visible}
+  .tabs.wrap .tab{flex:1 1 auto; justify-content:center}
+  /* An action button takes its own line, under the text rather than the icon */
+  .notif-actions:has(.btn){flex-basis:100%; justify-content:flex-start !important; padding-left:50px}
+}
 
 .devices-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:14px}
 .device-card{display:flex; flex-direction:column; gap:12px; padding:18px; text-align:left; width:100%}
 .device-visual{height:88px; border-radius:12px; background:linear-gradient(160deg, var(--surface-3), var(--surface-2)); display:grid; place-items:center; color:var(--accent-ink); position:relative; overflow:hidden}
 .device-visual .lucide{width:40px; height:40px; stroke-width:1.4}
 .device-visual .plat-chip{position:absolute; top:8px; right:8px}
+/* "Offline" plus "Waiting for first check" is wider than a narrow card */
+.device-card .row .row{flex-wrap:wrap}
+/* The sync icon and its time wrap together */
+.device-card .t-meta.num{white-space:nowrap}
+.device-card .t-meta.num .lucide{display:inline-block}
+/* One or two devices: full-width rows with a small device tile, platform named beside the model */
+.devices-grid.rows{grid-template-columns:minmax(0,1fr)}
+.devices-grid.rows .device-card{display:grid; grid-template-columns:64px minmax(0,1fr) auto; align-items:center; gap:16px; padding:14px 18px 14px 14px}
+.devices-grid.rows .device-visual{height:64px}
+.devices-grid.rows .device-visual .lucide{width:28px; height:28px}
+.devices-grid.rows .plat-chip{display:none}
+.devices-grid.rows .device-card > .row{gap:16px !important}
+/* A browser card's note and settings link run under the row */
+.devices-grid.rows .device-card{row-gap:8px}
+/* Remove sits at the start like the card's other actions, its icon on the text edge */
+.device-card > button.btn-ghost{align-self:flex-start; margin-left:-12px}
+.devices-grid.rows .device-card > :nth-child(n+4){grid-column:2 / -1; justify-self:start}
+/* Icons inside running text sit on the line (Tailwind's base makes every svg a block) */
+p .lucide,.t-meta .lucide{display:inline-block}
 
 .chart-wrap{position:relative}
 .chart-legend{display:flex; gap:16px; flex-wrap:wrap; font-size:12.5px; color:var(--ink-2)}
@@ -326,6 +375,8 @@ button.alert-row:hover{background:var(--surface-2)}
 .data-table th:first-child,.data-table td:first-child{text-align:left}
 .data-table th{font-size:12px; color:var(--ink-3); font-weight:600}
 .data-table tbody th{font-size:inherit; color:inherit; font-weight:inherit}
+/* A table of descriptions rather than figures reads left to right */
+.data-table.text th,.data-table.text td{text-align:left}
 .table-scroll{overflow-x:auto}
 
 .promo{position:relative; overflow:hidden; border-radius:var(--r-lg); padding:26px 24px; color:#fff; min-height:220px; display:flex; flex-direction:column; justify-content:flex-end; gap:12px; isolation:isolate;
@@ -359,7 +410,22 @@ button.check-item:hover{border-color:var(--line-strong); background:var(--surfac
 .check-item .ico-tile .lucide{width:17px; height:17px}
 .code{font-family:ui-monospace, "SF Mono", Consolas, monospace; font-size:11px; letter-spacing:.02em; font-weight:600}
 
-.prot-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:16px}
+/* Family health card: ring beside the headline; phones put the ring and headline side by side, the rest beneath */
+.health-wide{flex-wrap:wrap}
+.health-wide > .grow{min-width:240px}
+.health-wide h2{font-size:26px}
+/* Three across, two on the rail and tablets: 10 protections never leave one card alone on a row */
+.prot-grid{display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px}
+/* Platform chips line up across a row; spare height goes above them, not inside the footer */
+.prot > .caps{margin-top:auto}
+.prot > .caps + .prot-foot{margin-top:0}
+/* The lone last card: name and setting left, platforms right, footer across */
+.prot.wide{grid-column:1 / -1; display:grid; grid-template-columns:minmax(0,1fr) minmax(280px,420px); column-gap:24px}
+.prot.wide > *{grid-column:1}
+.prot.wide > .caps{grid-column:2; grid-row:1 / span 2; margin:0; align-self:center}
+.prot.wide > .prot-foot{grid-column:1 / -1}
+.cap-guide{grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
+.cap-guide > .cap{padding:14px}
 .prot{display:flex; flex-direction:column; gap:14px; padding:20px}
 /* The status pill drops below the title when the card is too narrow for both */
 .prot-head{flex-wrap:wrap}
@@ -385,6 +451,9 @@ button.check-item:hover{border-color:var(--line-strong); background:var(--surfac
 .tl-item:last-child::before{display:none}
 .tl-dot{width:24px; height:24px; border-radius:50%; display:grid; place-items:center; background:var(--accent-soft); color:var(--accent-ink)}
 .tl-dot .lucide{width:13px; height:13px}
+/* In a narrow column the time moves under the entry, so titles keep the width (as on phones) */
+.timeline{container-type:inline-size}
+@container (max-width:440px){.tl-item{grid-template-columns:24px minmax(0,1fr); row-gap:2px} .tl-item > time{grid-column:2}}
 .change{display:inline-flex; flex-wrap:wrap; align-items:center; gap:6px; font-size:13px; margin-top:6px}
 .change s{color:var(--ink-3)}
 .change b{color:var(--ink)}
@@ -394,13 +463,6 @@ button.check-item:hover{border-color:var(--line-strong); background:var(--surfac
 .detail-grid{display:grid; grid-template-columns:minmax(0,1fr) 340px; gap:24px; align-items:start}
 
 .map{position:relative; border-radius:var(--r-lg); overflow:hidden; border:1px solid var(--line); background:var(--surface-2); min-height:420px}
-.map svg{display:block; width:100%; height:100%; min-height:420px}
-.map .road{stroke:var(--surface); fill:none; stroke-linecap:round}
-.map .road-edge{stroke:var(--line-strong); fill:none; stroke-linecap:round}
-.map .block{fill:var(--surface-3)}
-.map .park{fill:var(--ok-soft)}
-.map .water{fill:var(--accent-soft-2)}
-.map text{fill:var(--ink-3); font-size:11px; font-family:var(--font)}
 .pin{position:absolute; transform:translate(-50%,-100%); display:flex; flex-direction:column; align-items:center; gap:4px}
 .pin .avatar{width:44px; height:44px; box-shadow:0 0 0 3px var(--accent), var(--shadow)}
 .pin .pin-label{background:var(--surface); border:1px solid var(--line); border-radius:8px; padding:2px 8px; font-size:12px; font-weight:600; box-shadow:var(--shadow-sm); white-space:nowrap}
@@ -429,7 +491,10 @@ button.check-item:hover{border-color:var(--line-strong); background:var(--surfac
 .form-grid{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px}
 
 .report-metrics{display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px}
-.hbar{display:grid; grid-template-columns:110px minmax(0,1fr) 56px; align-items:center; gap:12px; font-size:13.5px; padding:5px 0}
+/* Custom range: From, To and Apply on one line, what's shown beneath */
+.range-form{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto; align-items:end; gap:12px 16px; max-width:720px}
+.range-form .range-note{grid-column:1 / -1}
+.hbar{display:grid; grid-template-columns:140px minmax(0,1fr) 56px; align-items:center; gap:12px; font-size:13.5px; padding:5px 0}
 .hbar .track{height:10px; border-radius:5px; background:var(--surface-3); overflow:hidden}
 .hbar .track span{display:block; height:100%; background:var(--bar); border-radius:5px}
 .hbar b{text-align:right; font-variant-numeric:tabular-nums}
@@ -437,6 +502,7 @@ button.check-item:hover{border-color:var(--line-strong); background:var(--surfac
 .empty{display:flex; flex-direction:column; align-items:center; text-align:center; gap:10px; padding:40px 20px; color:var(--ink-3)}
 .empty .ico-tile{width:52px; height:52px; border-radius:16px}
 .empty h3{font-size:16px; color:var(--ink)}
+.empty p{max-width:56ch}
 
 /* ---------- Dialog / Drawer / Toast ---------- */
 .scrim{position:fixed; inset:0; z-index:60; background:rgba(7,18,38,.45); display:flex; align-items:center; justify-content:center; padding:16px; animation:fade .2s var(--ease)}
@@ -512,6 +578,11 @@ button.check-item:hover{border-color:var(--line-strong); background:var(--surfac
   .nav-item{justify-content:center; padding:0; width:52px}
   .nav-item[aria-current="page"]::before{left:-12px}
   .dash-grid,.detail-grid{grid-template-columns:minmax(0,1fr)}
+  .dash-grid{grid-template-rows:none}
+  .prot-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .prot.wide{grid-column:auto; display:flex}
+  .prot.wide > .caps{margin-top:auto; align-self:stretch}
+  .dash-main,.dash-alerts,.dash-grid > .dash-aside{grid-column:1; grid-row:auto}
   .hero h1{font-size:40px}
   .hero .lede{font-size:20px}
   .dash-aside{display:grid !important; grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start}
@@ -549,12 +620,61 @@ button.check-item:hover{border-color:var(--line-strong); background:var(--surfac
   .hero::after{background:linear-gradient(180deg, rgba(236,245,255,.9) 0%, rgba(236,245,255,.7) 100%)}
   .hero h1{font-size:34px}
   .hero .lede{font-size:18px}
-  .hero-side{justify-self:stretch; max-width:none}
+  /* Each child's status is the first card below, so the hero keeps to the greeting and the headline numbers */
+  .hero-side{display:none}
+  .hero-stats{margin-top:12px; gap:8px}
   .metrics{grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px}
-  .metric{padding:16px; min-height:150px}
+  .metric{padding:16px; min-height:0; gap:10px}
+  .metric .m-label{font-size:13px}
+  .metric .ico-tile{width:30px; height:30px}
   .metric .m-value{font-size:26px}
+  .metric .m-plan{font-size:20px}
+  /* Brand card is decoration; on a phone it is only more scrolling */
+  .promo{display:none}
+  .children-grid.solo .child-card{display:flex; align-items:stretch}
+  .children-grid.solo .cc-dev{padding:14px 0 0; border-left:0; border-top:1px solid var(--line)}
+  .activity-grid.solo .act-split{grid-template-columns:minmax(0,1fr); gap:0}
+  .activity-grid.solo .act-split .app-rows{padding-left:0; border-left:0}
+  .devices-grid.rows .device-card{grid-template-columns:48px minmax(0,1fr); row-gap:10px}
+  .devices-grid.rows .device-visual{height:48px}
+  .devices-grid.rows .device-card > .row{grid-column:1 / -1}
+  /* Phones: every device card is a compact row, whatever the count; an 88px picture per card is a screen per two */
+  .devices-grid .device-card{display:grid; grid-template-columns:48px minmax(0,1fr); align-items:center; gap:10px 14px; padding:14px}
+  .devices-grid .device-visual{height:48px}
+  .devices-grid .device-visual .lucide{width:24px; height:24px}
+  .devices-grid .plat-chip{display:none}
+  .devices-grid .device-card > .row{grid-column:1 / -1; gap:8px !important}
+  .devices-grid .device-card > :nth-child(n+4),.devices-grid.rows .device-card > :nth-child(n+4){grid-column:1 / -1; justify-self:start}
+  .devices-grid .device-card > button.btn-ghost{margin-left:-12px}
+  /* Facts two across */
+  .kv{grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}
+  /* A protection: icon, name and status on top, Manage under the name */
+  .prot-row{display:grid; grid-template-columns:38px minmax(0,1fr) auto; column-gap:12px; row-gap:4px; align-items:start}
+  .prot-row > .btn{grid-column:2; justify-self:start; margin-left:-12px; min-height:36px}
+  /* An app's or category's controls take a full line under it, the selects sharing the width */
+  .setting-row > .app-controls{display:flex; flex:1 1 100%; justify-content:flex-start !important}
+  /* Access and limit share a line; the category, the longest label, gets the full width beneath */
+  .setting-row > .app-controls:has(select){display:grid; grid-template-columns:minmax(0,1fr) 110px; grid-auto-flow:row dense}
+  .setting-row > .app-controls select{min-width:0; width:100%}
+  .setting-row > .app-controls select[id^="cat-"]{grid-column:1 / -1}
+  .setting-row > .app-controls input{width:100% !important}
+  .setting-row > span.app-controls input{width:110px !important}
   .children-grid,.activity-grid,.dash-aside,.check-list,.form-grid,.multiples{grid-template-columns:minmax(0,1fr) !important}
-  .report-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .report-metrics{grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px}
+  .prot-grid{grid-template-columns:minmax(0,1fr)}
+  .health-wide{display:grid; grid-template-columns:88px minmax(0,1fr); gap:14px 16px; align-items:center}
+  .health-wide > .grow{display:contents}
+  .health-wide > .grow > :not(h2){grid-column:1 / -1}
+  .health-wide > .grow > p{margin-top:0 !important}
+  .health-wide > .grow > [role="group"]{margin-top:0 !important}
+  .health-wide h2{font-size:21px}
+  .health-wide .health-ring{width:88px; height:88px}
+  .health-wide .health-ring .ring-label b{font-size:24px}
+  .health-wide .health-ring .ring-label b small{font-size:13px}
+  .health-wide .health-ring .ring-label span{display:none}
+  .range-form{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .range-form > .btn{grid-column:1 / -1}
+  .hbar{grid-template-columns:116px minmax(0,1fr) 48px; gap:10px}
   .card-pad{padding:18px}
   .settings-layout{grid-template-columns:minmax(0,1fr)}
   .settings-nav{position:static; flex-direction:row; overflow-x:auto; gap:6px; padding-bottom:4px}
@@ -577,8 +697,12 @@ button.check-item:hover{border-color:var(--line-strong); background:var(--surfac
   .scrim .dialog{border-radius:20px 20px 0 0; max-width:none; padding-bottom:env(safe-area-inset-bottom,0px)}
 }
 @media (max-width:420px){
-  .metrics{grid-template-columns:minmax(0,1fr)}
-  .report-metrics{grid-template-columns:minmax(0,1fr)}
+  .metric .ico-tile{display:none}
+}
+@media (max-width:340px){
+  .metrics,.report-metrics{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:300px){
   .caps{grid-template-columns:minmax(0,1fr)}
 }
 .search-toggle{display:none !important}
@@ -594,6 +718,8 @@ button.check-item:hover{border-color:var(--line-strong); background:var(--surfac
 .field-error{font-size:12.5px; color:var(--crit-ink)}
 select.input{appearance:auto}
 .leaflet-host{position:absolute; inset:0; z-index:0}
+/* The family map is the page: on wide screens it fills the viewport and stays put while the side column scrolls */
+@media (min-width:1181px){.map-main{position:sticky; top:92px; height:calc(100dvh - 124px); max-height:780px}}
 .map-pin{position:relative; display:flex; flex-direction:column; align-items:center; gap:4px; transform:translate(-50%,-100%)}
 .map-pin .avatar{width:44px; height:44px; box-shadow:0 0 0 3px var(--accent), var(--shadow)}
 .map-pin .pin-label{background:var(--surface); color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:2px 8px; font-size:12px; font-weight:600; white-space:nowrap; text-align:center}
@@ -662,15 +788,19 @@ select.input{appearance:auto}
 
 /* link-based variants of prototype controls */
 .tab[aria-current="page"]{background:var(--surface); color:var(--ink); box-shadow:var(--shadow-sm)}
-.tabs.underline .tab{display:inline-flex; align-items:center}
-.tabs.underline .tab[aria-current="page"]{color:var(--accent-ink); background:none; box-shadow:none}
-.tabs.underline .tab[aria-current="page"]::after{content:""; position:absolute; left:0; right:0; bottom:-1px; height:2px; background:var(--accent); border-radius:2px}
+.tabs.tabs-line .tab{display:inline-flex; align-items:center}
+.tabs.tabs-line .tab[aria-current="page"]{color:var(--accent-ink); background:none; box-shadow:none}
+.tabs.tabs-line .tab[aria-current="page"]::after{content:""; position:absolute; left:0; right:0; bottom:-1px; height:2px; background:var(--accent); border-radius:2px}
 .tabs a.tab{display:inline-flex; align-items:center}
 .seg a{display:inline-flex; align-items:center; min-height:32px; padding:0 12px; border-radius:7px; font-size:13px; font-weight:600; color:var(--ink-3)}
 .seg a[aria-current="page"]{background:var(--surface); color:var(--ink); box-shadow:var(--shadow-sm)}
-.settings-nav a{display:flex; align-items:center; gap:10px; min-height:42px; padding:0 12px; border-radius:10px; color:var(--ink-2); font-weight:500; border:1px solid transparent}
+.settings-nav a{display:flex; align-items:center; gap:10px; min-height:44px; padding:0 12px; border-radius:12px; color:var(--ink-2); font-weight:500}
 .settings-nav a:hover{background:var(--surface)}
-.settings-nav a[aria-current="page"]{background:var(--surface); color:var(--ink); font-weight:600; box-shadow:var(--shadow-sm); border-color:var(--line)}
+/* Selected like the sidebar (Deep Sky Ink, 3px Sky Accent bar), on Paper Surface: Sky Wash vanishes on the sky-tinted page */
+.settings-nav a[aria-current="page"]{background:var(--surface); color:var(--accent-ink); font-weight:600; box-shadow:inset 3px 0 0 var(--accent), var(--shadow-sm)}
+.settings-pick{display:none}
+/* A row that runs into a divider doesn't draw its own line too */
+.setting-row:has(+ hr){border-bottom:0}
 .menu-item{font:inherit; background:none; border:0; cursor:pointer}
 .check-item{font:inherit; color:inherit; cursor:default}
 button.check-item{cursor:pointer}
@@ -681,13 +811,26 @@ code{font-family:ui-monospace,"SF Mono",Consolas,monospace; font-size:.92em; bac
   .bottom-nav a{display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; min-height:52px; border-radius:12px; font-size:11.5px; font-weight:600; color:var(--ink-3)}
   .bottom-nav a[aria-current="page"]{color:var(--accent-ink)}
   .bottom-nav a[aria-current="page"] .lucide{background:var(--accent-soft); border-radius:10px; width:44px; padding:3px 12px; height:26px}
-  .settings-nav a{white-space:nowrap}
+  .settings-nav{display:none}
+  .settings-pick{display:flex}
+  /* The privacy promise stays, in about half the height: icon beside the text, button its own size */
+  .privacy-hero{grid-template-columns:40px minmax(0,1fr) !important; gap:12px 14px; padding:16px; align-items:start}
+  .privacy-hero .ico-tile{width:40px; height:40px; border-radius:11px}
+  .privacy-hero .ico-tile .lucide{width:20px; height:20px}
+  .privacy-hero h2{font-size:17px !important}
+  .privacy-hero > .btn{grid-column:2; justify-self:start; min-height:40px}
 }
 }
 
 /* Browser protection editor (child page, Browser tab) */
 .bp-group{border:0; margin:0; padding:0; min-width:0; display:flex; flex-direction:column; gap:10px}
 .bp-group > legend{padding:0; margin-bottom:2px}
+/* The chosen starting profile reads as chosen, not just by its radio dot */
+.bp-group .check:hover{background:var(--surface-2)}
+.bp-group .check:has(input:checked){border-color:var(--accent); background:var(--accent-soft)}
+.bp-name{display:flex; align-items:center; flex-wrap:wrap; gap:4px 8px}
+.bp-name .pill{height:22px; font-size:11.5px; padding:0 8px}
+.bp-group .check:has(input:checked) .pill{background:var(--surface)}
 .bp-lists{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px}
 .bp-textarea{height:auto; min-height:140px; padding-top:10px; padding-bottom:10px; resize:vertical; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:13.5px; line-height:1.5}
 @media (max-width: 700px){ .bp-lists{grid-template-columns:minmax(0,1fr)} }

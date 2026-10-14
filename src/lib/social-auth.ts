@@ -1,4 +1,4 @@
-import { createPublicKey, verify, type JsonWebKey } from "node:crypto";
+import { createHash, createPublicKey, timingSafeEqual, verify, type JsonWebKey } from "node:crypto";
 import { ServiceError } from "./errors";
 
 /**
@@ -47,13 +47,29 @@ async function fetchJwks(url: string, { refresh = false } = {}): Promise<Jwk[]> 
 export const audiencesFor = (provider: Provider) =>
   (process.env[PROVIDERS[provider].audienceEnv] ?? "").split(",").map((s) => s.trim()).filter(Boolean);
 
+/**
+ * The app's one-time nonce binds the token to this sign-in, so a token taken from elsewhere can't be replayed. Apple
+ * carries the SHA-256 (hex) of the raw nonce the app sends; Google carries it as given. A token bound to a nonce
+ * needs it, and a nonce sent with a token that has none is refused (the app asked for a binding it didn't get).
+ * Neither side having one is an older app.
+ */
+function nonceMatches(claim: unknown, raw: string | undefined) {
+  if (claim === undefined && raw === undefined) return true;
+  if (typeof claim !== "string" || !raw) return false;
+  const a = Buffer.from(claim);
+  return [raw, createHash("sha256").update(raw).digest("hex")].some((v) => {
+    const b = Buffer.from(v);
+    return a.length === b.length && timingSafeEqual(a, b);
+  });
+}
+
 const b64json = (part: string) => JSON.parse(Buffer.from(part, "base64url").toString("utf8"));
 const bad = () => new ServiceError(401, "That sign-in didn't work. Try again.", "invalid_token");
 
 export async function verifyIdToken(
   provider: Provider,
   idToken: string,
-  opts: { audiences?: string[]; getKeys?: (url: string) => Promise<Jwk[]>; now?: number } = {},
+  opts: { audiences?: string[]; getKeys?: (url: string) => Promise<Jwk[]>; now?: number; nonce?: string } = {},
 ): Promise<Identity> {
   const cfg = PROVIDERS[provider];
   const audiences = opts.audiences ?? audiencesFor(provider);
@@ -84,6 +100,7 @@ export async function verifyIdToken(
   if (!aud.some((a) => audiences.includes(String(a)))) throw bad();
   if (typeof payload.exp !== "number" || payload.exp < now - 60) throw bad();
   if (typeof payload.sub !== "string" || !payload.sub) throw bad();
+  if (!nonceMatches(payload.nonce, opts.nonce)) throw bad();
 
   // Apple sends email_verified as a string, Google as a boolean
   const verified = payload.email_verified === true || payload.email_verified === "true";

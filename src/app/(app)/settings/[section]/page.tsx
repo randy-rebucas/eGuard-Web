@@ -9,19 +9,22 @@ import { ageLabel, dayTime, peso, shortDate } from "@/lib/format";
 import { Icon } from "@/components/icon";
 import { Avatar, DeviceIcon } from "@/components/ui";
 import {
-  AccountForm, AddParentForm, DeleteAccountForm, PasswordForm, PendingInviteActions, RemoveParentButton, SettingSwitch, SignOutOthersButton, UnlinkIdentityButton,
+  AccountForm, AddParentForm, DeleteAccountForm, PasswordForm, PendingInviteActions, RemoveParentButton, SettingSwitch, SignOutOthersButton, SignOutSessionButton, SupportTicketForm, UnlinkIdentityButton,
 } from "@/components/forms";
 import { pendingInvites } from "@/lib/invitations";
 import { BuyPlan, CancelAutoRenew } from "@/components/billing";
 import { CreateOrgForm, JoinOrgForm, LeaveOrgButton, OrgInvitationActions, RedeemCodeForm } from "@/components/organizations";
 import { ORG_KINDS, VOUCHER_STORE, familyOrganizations, invitationsFor, managedOrganizations, sponsorOf } from "@/lib/organizations";
 import { SECTIONS } from "../sections";
-import { supportEmail } from "@/lib/support";
+import { TICKET_CATEGORIES, listTickets, supportEmail } from "@/lib/support";
+import QRCode from "qrcode";
+import { shareMessage } from "@/lib/share";
+import { ShareEguard } from "@/components/share";
 import { currentPurchase, refreshPurchases } from "@/lib/billing";
 import { renewalWord } from "@/lib/entitlement";
 import { BASE_PLAN, PLANS, entitlementsFor, planByName, planByProduct, webPrice, webProduct, type Entitlements } from "@/lib/plans";
 import { LOCATION_UPGRADE, planWith } from "@/lib/plan-access";
-import { confirmReturn, passMethods, webBillingAvailable } from "@/lib/web-billing";
+import { confirmReturn, paidTimeName, passMethods, webBillingAvailable } from "@/lib/web-billing";
 import { status as twoFactorStatus } from "@/lib/two-factor";
 import { pushAvailable } from "@/lib/push";
 import { TwoStepSettings } from "@/components/two-step";
@@ -208,10 +211,13 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
               ? <TwoStepSettings enabled={twoStep.enabled} recoveryCodesLeft={twoStep.recoveryCodesLeft} />
               : <><div className="grow"><div className="t-title">Two-step verification</div><div className="t-meta">Not available yet. Sign-in currently uses your password only.</div></div><span className="pill tone-muted">Coming soon</span></>}
           </div>
-          <div className="setting-row" style={{ alignItems: "flex-start", flexDirection: "column" }}>
+          <div className="setting-row" style={{ alignItems: "stretch", flexDirection: "column", gap: 8 }}>
             <div className="t-title">Active sessions</div>
             {sessions.map((s) => (
-              <div key={s.id} className="t-meta">{s.id === u.sessionId ? "This browser" : summarizeAgent(s.userAgent)} · last active {dayTime(s.lastSeenAt, tz)}</div>
+              <div key={s.id} className="row" style={{ gap: 8, flexWrap: "wrap", justifyContent: "space-between", minHeight: 36 }}>
+                <span className="t-meta" style={{ flex: "1 1 0", minWidth: 0 }}>{s.id === u.sessionId ? "This browser" : summarizeAgent(s.userAgent)} · last active {dayTime(s.lastSeenAt, tz)}</span>
+                {s.id !== u.sessionId ? <SignOutSessionButton sessionId={s.id} label={summarizeAgent(s.userAgent)} /> : null}
+              </div>
             ))}
             {sessions.length > 1 ? <SignOutOthersButton /> : null}
           </div>
@@ -309,7 +315,7 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
           ) : purchase?.autoRenewing && nextCharge ? (
             <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
               <div><div className="t-title">Auto-renew is on</div><div className="t-meta">{purchase.state === "past_due" ? "The last renewal payment failed. PayMongo will try again; check your card or Maya balance." : `Next charge${nextAmount ? ` ${nextAmount}` : ""} on ${paidUntil ?? "your next billing date"}. To switch plans, turn auto-renew off; you keep ${fam.plan} until then.`}</div></div>
-              <CancelAutoRenew plan={fam.plan} endsOn={paidUntil ?? "the end of this period"} losing={freePlanLimits(current.entitlements)} />
+              <CancelAutoRenew plan={fam.plan} endsOn={purchase.state === "past_due" ? null : paidUntil ?? "the end of this period"} losing={freePlanLimits(current.entitlements)} />
             </div>
           ) : (
             <BuyPlan
@@ -318,7 +324,7 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
               methods={passMethodLabel()}
               payer={{ name: user.name, email: user.email }}
               autoRenewBlocked={purchase && paidUntil ? `available once your paid time ends on ${paidUntil}.` : null}
-              passOnly={runningPass && paidUntil ? { plan: runningPass.id, reason: `Your ${sponsored ? `sponsored ${runningPass.name}` : `${runningPass.name} pass`} runs until ${paidUntil}. You can add months to it now, or switch plans after it ends.` } : null}
+              passOnly={purchase && runningPass && paidUntil ? { plan: runningPass.id, reason: `Your ${paidTimeName(purchase)} runs until ${paidUntil}. You can add months to it now, or switch plans after it ends.` } : null}
             />
           )}
         </>
@@ -383,14 +389,41 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
         </>
       );
 
-    case "support":
+    case "support": {
+      const tickets = await listTickets(u);
       return (
         <>
           {head}
           <div className="setting-row"><span className="ico-tile"><Icon name="book-open" /></span><div className="grow"><div className="t-title">Setup guides</div><div className="t-meta">Step-by-step help is built into each guided setup, and the help center covers pairing, offline devices, plans and privacy</div></div><Link className="btn btn-secondary btn-sm" href="/help">Help center</Link></div>
-          <div className="setting-row"><span className="ico-tile"><Icon name="message-circle" /></span><div className="grow"><div className="t-title">Contact support</div><div className="t-meta"><a className="link-btn" href={`mailto:${supportEmail()}`}>{supportEmail()}</a> · replies within 1 business day</div></div></div>
+          <div className="setting-row" style={{ flexDirection: "column", alignItems: "stretch", gap: 12 }}>
+            <div><div className="t-title">Contact support</div><div className="t-meta">We reply by email within 1 business day. You can also write to <a className="link-btn" href={`mailto:${supportEmail()}`}>{supportEmail()}</a>.</div></div>
+            <SupportTicketForm categories={Object.entries(TICKET_CATEGORIES)} email={user.email} />
+          </div>
+          {tickets.length ? (
+            <>
+              <h3 className="org-sub">Your requests</h3>
+              {tickets.map((t) => (
+                <div className="setting-row" key={t.id}>
+                  <span className="ico-tile"><Icon name="message-circle" /></span>
+                  <div className="grow" style={{ minWidth: 0 }}>
+                    <div className="t-title">{t.subject}</div>
+                    <div className="t-meta">{TICKET_CATEGORIES[t.category as keyof typeof TICKET_CATEGORIES] ?? t.category} · sent {dayTime(t.createdAt, tz)}</div>
+                  </div>
+                  <span className={`pill ${t.status === "OPEN" ? "tone-accent" : "tone-muted"}`}>{t.status === "OPEN" ? "Open" : "Closed"}</span>
+                </div>
+              ))}
+            </>
+          ) : null}
         </>
       );
+    }
+
+    case "share": {
+      const share = shareMessage();
+      // Made here, like the coupon sheet's: no third-party QR service sees the request
+      const qr = await QRCode.toString(share.url, { type: "svg", margin: 1, errorCorrectionLevel: "M", color: { dark: "#0b2348", light: "#ffffff" } });
+      return (<>{head}<ShareEguard share={share} qr={qr} /></>);
+    }
   }
   notFound();
 }

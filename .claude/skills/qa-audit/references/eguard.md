@@ -79,6 +79,7 @@ npx tsx --env-file=.env .claude/skills/qa-audit/scripts/qa.mts device <fixtureFa
 npx tsx --env-file=.env .claude/skills/qa-audit/scripts/qa.mts staff                        # STAFF=… console session (QA staff account that can't sign in)
 npx tsx --env-file=.env .claude/skills/qa-audit/scripts/qa.mts ticket <fixtureFamilyId>     # TICKET=… support ticket, no email
 npx tsx --env-file=.env .claude/skills/qa-audit/scripts/qa.mts purchase <fixtureFamilyId> '{"autoRenewing":false}'  # a purchase + renewsAt
+npx tsx --env-file=.env .claude/skills/qa-audit/scripts/qa.mts social <fixtureFamilyId>     # admin without a password: moves and removals confirm with {"confirm":"DELETE"}
 npx tsx --env-file=.env .claude/skills/qa-audit/scripts/qa.mts cleanup                      # removes fixtures, their organizations, QA sessions and the QA staff account
 ```
 
@@ -96,5 +97,9 @@ plus the form fields) with `Origin: http://console.localhost:3000`; a plain `<fo
 - A streamed page that calls `notFound()` returns 200 with a `noindex` meta tag; that's expected.
 - Seed accounts (dev only): `randy@example.com` (admin) and `ana@example.com`, password shown on the dev login page.
 - Device API: get a code from `POST /api/mobile/v1/children/<id>/pairing-code` (verified parent), pair with
-  `POST /api/device/v1/pair`, then remove the device (and its alerts and usage rows) when done.
+  `POST /api/device/v1/pair`, then remove the device (and its alerts and usage rows) when done. A browser: the same
+  code call with `{"kind":"BROWSER","deviceLabel":"…"}`, then `POST /api/browser/v1/pair` gives an `accessToken` for
+  `/browser/v1/health` and `/policy`. Fixture parents have a password nobody knows (`passwordHash: "x"`), so a
+  password-confirmed action answers 403 until `qa.mts social` makes the admin passwordless.
+- Git Bash rewrites a `/…/` regex inside a `node -e` argument into a Windows path: use `.includes()` in inline checks.
 - Saving to the seed family changes real dev data (versions, history rows): say so in the report.

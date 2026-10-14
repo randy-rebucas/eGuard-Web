@@ -45,6 +45,15 @@ after the fixes in [§10](#10-issues-found).
 └───────────────────────────────────────────────────────────┴──────────────────────┘
 ```
 
+Recent Alerts come first in the source and are placed at the top of the side column on wide screens, so a single
+column (≤ 1180px) reads hero → metrics → **alerts** → children → activity → devices → trend → quick actions. On
+phones (≤ 767px) the hero drops its Current status card (the child cards repeat it just below), the metrics stay
+two across, and the promo is hidden.
+
+The grids fit the family's size: a lone child gets one wide child card and one wide activity tile (total beside the
+top apps), one or two devices/browsers show as full-width rows, and one child's weekly chart is drawn wide at its
+real width.
+
 The page sits inside the app shell (`src/app/(app)/layout.tsx`), which also renders the sidebar, the top header
 with the unread-alert badge, and the verify-email banner.
 
@@ -171,7 +180,7 @@ Dialog code is lazy-loaded and preloaded on hover/focus, so it doesn't weigh on 
 
 ### 3.9 Promo
 
-Static brand panel: "A Safer Digital World for Their Brighter Tomorrow". No interaction.
+Static brand panel: "A Safer Digital World for Their Brighter Tomorrow". No interaction. Hidden on phones.
 
 ## 4. How protection is measured
 
@@ -187,11 +196,11 @@ One check per protection in `PROTECTIONS` (`src/lib/protections.ts`):
 |---|---|---|---|
 | 1 | Screen Time | Available | Available |
 | 2 | Bedtime | Available | Available |
-| 3 | App Restrictions | Available | Available |
+| 3 | App Restrictions | **Set by you** (Google Play; not verified, not counted once set) | Available |
 | 4 | App Approval | Available | Available |
-| 5 | Content Restrictions | Available | Available |
-| 6 | Web Filtering | Available | Guided setup |
-| 7 | Downloads | Available | Verification only |
+| 5 | Content Restrictions | **Set by you** (Google Play; not verified, not counted once set) | Available |
+| 6 | Web Filtering | Guided setup | Available |
+| 7 | Downloads | Available | Available |
 | 8 | Location | Available | Guided setup |
 | 9 | Notification Controls | Available | **Unsupported** (not counted) |
 | 10 | Uninstall Protection | Available | Available |

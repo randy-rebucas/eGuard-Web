@@ -6,7 +6,23 @@ vi.mock("../engine", () => ({ ensureOfflineAlerts: async () => {} }));
 vi.mock("../simulator", () => ({ touchSimulated: async () => {} }));
 vi.mock("../family-service", () => ({ requestedApps: async () => new Set() }));
 
-const { overviewLocation, mobileAlertAction, deviceProtectionSummary } = await import("../mobile-views");
+const { overviewLocation, mobileAlertAction, deviceProtectionSummary, completeDayAverages } = await import("../mobile-views");
+
+describe("completeDayAverages", () => {
+  it("leaves today out, so a steady week doesn't read as going down", () => {
+    // Six days of 120, and 30 minutes so far today; the week before also 120 a day
+    expect(completeDayAverages([120, 120, 120, 120, 120, 120, 30], Array(7).fill(120)))
+      .toEqual({ averageMinutes: 120, previousAverageMinutes: 120, completeDays: 6 });
+  });
+
+  it("compares with as many days just before the period", () => {
+    expect(completeDayAverages([60, 60, 0], [999, 30, 30])).toEqual({ averageMinutes: 60, previousAverageMinutes: 30, completeDays: 2 });
+  });
+
+  it("has nothing to compare for today", () => {
+    expect(completeDayAverages([45], [200])).toEqual({ averageMinutes: 45, previousAverageMinutes: null, completeDays: 0 });
+  });
+});
 
 describe("deviceProtectionSummary", () => {
   const s = (key: "healthy" | "issues" | "offline", issues = 0, firstCheck = false) => ({ key, issues, firstCheck });

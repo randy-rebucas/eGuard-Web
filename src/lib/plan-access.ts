@@ -14,7 +14,9 @@ export async function familyEntitlements(familyId: string): Promise<Entitlements
 export { planWith };
 
 export const LOCATION_UPGRADE = `Location sharing is included with ${planWith((e) => e.locationSharing).name} and above.`;
-export const REPORTS_UPGRADE = `30-day reports, custom ranges longer than a week and CSV export are included with ${planWith((e) => e.advancedReports).name}.`;
+/** The apps have no custom ranges or CSV export, so their lock names only what they show */
+export const APP_REPORTS_UPGRADE = `30-day reports are included with ${planWith((e) => e.advancedReports).name}.`;
+export const REPORTS_UPGRADE =`30-day reports, custom ranges longer than a week and CSV export are included with ${planWith((e) => e.advancedReports).name}.`;
 
 export async function requireLocationSharing(familyId: string) {
   if (!(await familyEntitlements(familyId)).locationSharing) throw planRequired(LOCATION_UPGRADE);
@@ -86,7 +88,8 @@ export function capAppUsage<R extends { app: string; minutes: number }>(rows: R[
   return { named: shown, others: total - shown.reduce((s, r) => s + r.minutes, 0), hidden: named.length - shown.length };
 }
 
-export const APPS_UPGRADE = `See and manage every app with ${planWith((e) => e.appMonitoringLimit == null).name}.`;
+// Kept in store-neutral.ts, which drops it for the iPhone app
+export { APPS_UPGRADE } from "./store-neutral";
 
 /** Current locations stop being kept when a plan without location sharing takes over. History is kept, hidden. */
 export async function clearCurrentLocations(familyId: string) {

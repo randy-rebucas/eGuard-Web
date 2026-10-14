@@ -21,6 +21,7 @@ export const GET = authed(async ({ user }) => {
         sharing: l.sharing,
         state: l.state,
         waitingForReport: l.unreported ? { deviceId: l.unreported.id, deviceName: l.unreported.name } : null,
+        note: l.iphoneNote,
         location: l.device && l.location ? {
           deviceId: l.device.id, deviceName: l.device.name, lat: l.location.lat, lng: l.location.lng, accuracyM: l.location.accuracyM,
           placeLabel: l.location.placeLabel, placeId: l.location.placeId, locatedAt: l.locatedAt, updatedLabel: dayTime(l.locatedAt, family.timezone),

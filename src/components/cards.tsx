@@ -3,7 +3,8 @@ import type { Alert, BrowserInstallation, ProtectionKey } from "@prisma/client";
 import { Icon } from "./icon";
 import { Avatar, DeviceIcon, SEVERITY, StatusBadge, statusLabel, platformName } from "./ui";
 import type { ChildView, DeviceView } from "@/lib/queries";
-import { isOffline, systemAction, type DeviceState } from "@/lib/health";
+import { systemAction, type DeviceState } from "@/lib/health";
+import { BROWSER_STATE, browserStatus } from "@/lib/browser-status";
 import { ageLabel, dayTime } from "@/lib/format";
 import { PROTECTION_BY_KEY } from "@/lib/protections";
 
@@ -58,25 +59,9 @@ export function DeviceCard({ d, state, tz }: { d: DeviceView; state: DeviceState
   );
 }
 
-/** The extension's own answer from its latest health report (docs/browser-extension-api.md, POST /health). */
-export const BROWSER_STATE: Record<string, [tone: string, label: string, note: string]> = {
-  PROTECTED: ["tone-ok", "Protected", "Blocking sites with your browser settings."],
-  NEEDS_ATTENTION: ["tone-warn", "Needs attention", "Some of its checks need review. Your alerts say which, and so does eGuard's popup in the browser."],
-  ACTION_REQUIRED: ["tone-crit", "Action required", "Sites may not be blocked. Your alerts say what to fix, and so does eGuard's popup in the browser."],
-  SYNC_PAUSED: ["tone-warn", "Sync paused", "It keeps blocking with its last settings, but isn't getting your changes."],
-  UNSUPPORTED: ["tone-muted", "Not supported", "This browser can't run eGuard's protection. Update it, or use Chrome, Edge or Firefox."],
-};
-
+// Shared with GET /api/mobile/v1/browsers, so the apps say what the web cards say
+export { BROWSER_STATE, browserStatus };
 type BrowserLike = Pick<BrowserInstallation, "lastSeenAt" | "revokedAt" | "protectionState">;
-
-/** A browser's [tone, label, note]: disconnected and silent override what it last reported. */
-export function browserStatus(b: BrowserLike): [tone: string, label: string, note: string] {
-  if (b.revokedAt) return ["tone-crit", "Disconnected for security", "Remove it, then add it again with a new code."];
-  // Silent for a day: whatever it last reported can't be confirmed now
-  if (isOffline(b)) return ["tone-warn", "Not seen for a day", "Its last settings stay active, but eGuard can't confirm them until the browser is opened again."];
-  // A state this server doesn't know yet (a newer extension) reads as plain "Connected"
-  return (b.protectionState ? BROWSER_STATE[b.protectionState] : undefined) ?? ["tone-accent", "Connected", b.protectionState ? "" : "Waiting for its first health check."];
-}
 
 /** A browser at a glance, beside the device cards; links to its child's Browser tab (removing it stays on Devices). */
 export function BrowserStatusCard({ b, tz }: { b: BrowserLike & Pick<BrowserInstallation, "id" | "childId" | "browser" | "deviceLabel"> & { child: { name: string } }; tz: string }) {
@@ -107,6 +92,7 @@ export function alertAction(a: Pick<Alert, "resolveKey" | "category" | "childId"
   }
   if (k === "OFFLINE" && a.deviceId) return { label: "View device", href: `/devices/${a.deviceId}` };
   if (k === "APPREQ" && a.childId) return { label: "Review request", href: `/children/${a.childId}?tab=apps` };
+  if (k === "TIMEREQ" && a.childId) return { label: "Review request", href: `/children/${a.childId}?tab=screen#extra-time` };
   if (k === "WEBREQ" && a.childId) return { label: "Review request", href: `/children/${a.childId}?tab=browser#access-requests` };
   if (k === "PLACE" && a.childId) return { label: "View places", href: `/location/${a.childId}` };
   if (k === "BROWSER_REVOKED") return { label: "View browsers", href: "/devices#add-browser" };

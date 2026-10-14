@@ -49,16 +49,17 @@ export function NotificationItem({ a }: { a: AlertItem }) {
   const act = useAct(a);
   const [pending, run] = useAction();
   return (
-    <article className="alert-row notif-item" style={{ padding: 16, borderBottom: "1px solid var(--line)", borderRadius: 0, opacity: a.resolved ? 0.62 : 1 }}>
-      <span className={`ico-tile ${SEVERITY[a.severity].tile}`}><Icon name={a.icon} /></span>
+    <article className="alert-row notif-item" style={{ padding: 16, borderBottom: "1px solid var(--line)", borderRadius: 0 }}>
+      {/* Resolved: the Resolved pill says so and the tile goes neutral; fading the text would drop it below AA */}
+      <span className={`ico-tile ${a.resolved ? "muted" : SEVERITY[a.severity].tile}`}><Icon name={a.icon} /></span>
       <div className="grow">
-        <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+        <div className="row notif-title">
+          <span className="t-title">{a.title}</span>
           <SeverityLabel severity={a.severity} />
           {a.resolved ? <span className="pill tone-ok"><Icon name="circle-check" />Resolved</span> : null}
           {isUnread(a) ? <span className="pill tone-accent">New</span> : null}
         </div>
-        <div className="t-title" style={{ marginTop: 4, fontSize: 15.5 }}>{a.title}</div>
-        <div className="t-meta" style={{ color: "var(--ink-2)", marginTop: 2 }}>{a.body}</div>
+        <div className="t-meta notif-body">{a.body}</div>
         {a.fromValue || a.toValue ? (
           <div className="change">{a.fromValue ? <><s>{a.fromValue}</s><Icon name="arrow-right" size={14} /></> : null}<b>{a.toValue}</b></div>
         ) : null}

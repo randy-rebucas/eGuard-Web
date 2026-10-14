@@ -6,10 +6,12 @@ import { decideAccessRequest, saveBrowserPolicy } from "@/app/actions/family";
 import { Icon } from "./icon";
 
 type Unknown = "ALLOW" | "WARN" | "BLOCK";
+type Youtube = "OFF" | "MODERATE" | "STRICT";
 export type BrowserPolicyValues = {
   version: number;
   safeBrowsing: boolean;
   safeSearch: boolean;
+  youtubeRestrict: Youtube;
   blockedCategories: string[];
   blockedDomains: string[];
   allowedDomains: string[];
@@ -28,11 +30,12 @@ const lines = (list: string[]) => list.join("\n");
 const parse = (text: string) => text.split(/[\n,;]+/).map((s) => s.trim()).filter(Boolean);
 
 /** Browser protection editor. The server validates and normalises everything; this only collects it. */
-export function BrowserPolicyForm({ childId, childName, initial, categories }: {
+export function BrowserPolicyForm({ childId, childName, initial, categories, youtubeLevels }: {
   childId: string;
   childName: string;
   initial: BrowserPolicyValues;
   categories: { key: string; label: string; hint: string; note: string; count: number }[];
+  youtubeLevels: { key: Youtube; label: string; text: string }[];
 }) {
   const id = useId();
   const router = useRouter();
@@ -56,7 +59,7 @@ export function BrowserPolicyForm({ childId, childName, initial, categories }: {
 
   const save = () => start(async () => {
     const r = await saveBrowserPolicy(childId, {
-      safeBrowsing: v.safeBrowsing, safeSearch: v.safeSearch, blockedCategories: v.blockedCategories,
+      safeBrowsing: v.safeBrowsing, safeSearch: v.safeSearch, youtubeRestrict: v.youtubeRestrict, blockedCategories: v.blockedCategories,
       blockedDomains: parse(blocked), allowedDomains: parse(allowed), unknownSitesPolicy: v.unknownSitesPolicy,
       schedule: v.schedule,
     }, v.version);
@@ -90,12 +93,21 @@ export function BrowserPolicyForm({ childId, childName, initial, categories }: {
         <div className="check-list">
           <label className="check">
             <input type="checkbox" checked={v.safeSearch} onChange={(e) => set({ safeSearch: e.target.checked })} />
-            <span><span className="t-title" style={{ fontSize: 14 }}>SafeSearch</span><span className="t-meta" style={{ display: "block" }}>Filters explicit results on Google, Bing and DuckDuckGo</span></span>
+            <span><span className="t-title" style={{ fontSize: 14 }}>SafeSearch</span><span className="t-meta" style={{ display: "block" }}>Filters explicit results on Google, Bing and DuckDuckGo, and blocks searches on engines it can&apos;t filter</span></span>
           </label>
           <label className="check">
             <input type="checkbox" checked={v.safeBrowsing} onChange={(e) => set({ safeBrowsing: e.target.checked })} />
             <span><span className="t-title" style={{ fontSize: 14 }}>Browser safety warnings</span><span className="t-meta" style={{ display: "block" }}>Keeps the browser&apos;s own malware and phishing protection on (Chrome does this automatically; Edge and Firefox need a setting)</span></span>
           </label>
+        </div>
+        <div className="field" style={{ marginTop: 6 }}>
+          <span id={`${id}-yt`} className="t-title" style={{ fontSize: 14 }}>YouTube Restricted Mode</span>
+          <div className="seg" role="group" aria-labelledby={`${id}-yt`} aria-describedby={`${id}-yt-text`}>
+            {youtubeLevels.map((l) => (
+              <button key={l.key} type="button" aria-pressed={v.youtubeRestrict === l.key} onClick={() => set({ youtubeRestrict: l.key })}>{l.label}</button>
+            ))}
+          </div>
+          <p id={`${id}-yt-text`} className="t-meta">{youtubeLevels.find((l) => l.key === v.youtubeRestrict)?.text} On youtube.com in {childName}&apos;s browsers, signed in or not; the YouTube app has its own setting.</p>
         </div>
       </fieldset>
 

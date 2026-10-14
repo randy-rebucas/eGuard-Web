@@ -1,5 +1,5 @@
 import type { CheckStatus, DeviceProtection, Platform, ProtectionKey } from "@prisma/client";
-import { PROTECTIONS, configMatches, isConfigured, type Capability } from "./protections";
+import { PROTECTIONS, PROTECTION_BY_KEY, configMatches, describeConfig, isConfigured, type Capability } from "./protections";
 
 export const OFFLINE_AFTER_MS = 24 * 3600_000;
 
@@ -52,10 +52,39 @@ export type HealthCheck = {
   icon: string;
   status: CheckStatus;
   detail: string;
+  /** Not verified on any device, but the parent set it on the device (PARENT_SET): shown as "Set by you" */
+  parentSet?: boolean;
   /** device that needs fixing (first non-passing) */
   fixDeviceId?: string;
   fixChildId?: string;
 };
+
+const PLATFORM_NAME: Record<Platform, string> = { ANDROID: "Android", IOS: "iOS" };
+
+/** What one device has for a protection, in words (web dialogs, device page and the mobile API). */
+export function reportedLabel(cap: Capability, status: CheckStatus, row: { reported: unknown } | null | undefined) {
+  if (cap === "UNSUPPORTED") return "Not supported";
+  if (cap === "PARENT_SET") return status === "UNSUPPORTED" ? `Set by you: ${describeConfig(row?.reported)}` : "Not set up yet";
+  if (!row) return "Not reported";
+  if (status === "NOT_CONFIGURED") return "Not configured";
+  // Left out of a full report (engine.ts): the device isn't applying it
+  if (row.reported == null) return "Not applied";
+  return describeConfig(row.reported);
+}
+
+/**
+ * One device's status for one protection. A protection the platform can't do is UNSUPPORTED whether or not the device
+ * ever reports it (iOS never sends NOTIFICATIONS), so it isn't counted as "Not configured". A PARENT_SET protection
+ * counts as set only once the parent confirmed it (confirmGuided stores it as UNSUPPORTED, i.e. not counted);
+ * anything a device itself reported for it is ignored, since the device can't read it.
+ */
+export function statusOn(d: { platform: Platform; protections: Pick<DeviceProtection, "key" | "status">[] }, key: ProtectionKey): CheckStatus {
+  const cap = PROTECTION_BY_KEY[key].caps[d.platform];
+  if (cap === "UNSUPPORTED") return "UNSUPPORTED";
+  const status = d.protections.find((x) => x.key === key)?.status;
+  if (cap === "PARENT_SET") return status === "UNSUPPORTED" ? "UNSUPPORTED" : "NOT_CONFIGURED";
+  return status ?? "NOT_CONFIGURED";
+}
 
 export function isOffline(d: { lastSeenAt: Date | null }, now = Date.now()) {
   return !d.lastSeenAt || now - d.lastSeenAt.getTime() > OFFLINE_AFTER_MS;
@@ -83,29 +112,41 @@ export function computeHealth(
   const label = opts.ownerLabel ?? ((d: DeviceLike) => (d.child ? `${d.child.name}'s ${d.name}` : d.name));
   const now = opts.now ?? Date.now();
   const checks: HealthCheck[] = PROTECTIONS.map((p) => {
-    const rows = devices.map((d) => ({ d, row: d.protections.find((x) => x.key === p.key) }));
-    const statuses = rows.map(({ row }) => row?.status ?? "NOT_CONFIGURED");
-    const status = devices.length ? worst(statuses) : "NOT_CONFIGURED";
-    const failing = rows.filter(({ row }) => !isPassing(row?.status ?? "NOT_CONFIGURED"));
-    const supported = rows.filter(({ row }) => row?.status !== "UNSUPPORTED");
+    const rows = devices.map((d) => ({ d, row: d.protections.find((x) => x.key === p.key), status: statusOn(d, p.key), cap: p.caps[d.platform] }));
+    const status = devices.length ? worst(rows.map((r) => r.status)) : "NOT_CONFIGURED";
+    const failing = rows.filter((r) => !isPassing(r.status));
+    const verifiable = rows.filter((r) => r.status !== "UNSUPPORTED");
+    const parentSet = rows.filter((r) => r.cap === "PARENT_SET" && r.status === "UNSUPPORTED");
+    const unsupported = rows.filter((r) => r.status === "UNSUPPORTED" && r.cap !== "PARENT_SET");
     let detail: string;
     if (!devices.length) detail = "No devices yet";
     else if (failing.length) {
       const f = failing[0];
-      detail = f.row?.message ?? `${phrase[f.row?.status ?? "NOT_CONFIGURED"]} on ${label(f.d)}`;
+      detail = f.cap === "PARENT_SET" ? `Not set up yet on ${label(f.d)}: select to see the steps`
+        : f.row?.message ?? `${phrase[f.status]} on ${label(f.d)}`;
       if (failing.length > 1) detail += ` and ${failing.length - 1} more`;
-    } else if (status === "UNSUPPORTED") detail = "Not supported on these devices. Not counted.";
-    else {
-      const offline = supported.filter(({ d }) => isOffline(d, now));
-      const online = supported.length - offline.length;
-      detail = offline.length
-        ? `Verified on ${online} of ${supported.length} device${supported.length === 1 ? "" : "s"}; ${offline.length} offline, last known state`
-        : `Verified on ${supported.length} of ${supported.length} device${supported.length === 1 ? "" : "s"}`;
-      if (supported.length < rows.length) detail += ". Unsupported on iOS";
+    } else {
+      const parts: string[] = [];
+      if (verifiable.length) {
+        const offline = verifiable.filter(({ d }) => isOffline(d, now));
+        const online = verifiable.length - offline.length;
+        parts.push(offline.length
+          ? `Verified on ${online} of ${verifiable.length} device${verifiable.length === 1 ? "" : "s"}; ${offline.length} offline, last known state`
+          : `Verified on ${verifiable.length} of ${verifiable.length} device${verifiable.length === 1 ? "" : "s"}`);
+      }
+      if (parentSet.length) parts.push(`Set by you on ${parentSet.map((r) => label(r.d)).join(" and ")}, not verified`);
+      if (unsupported.length) {
+        parts.push(verifiable.length || parentSet.length
+          ? `Unsupported on ${[...new Set(unsupported.map((r) => PLATFORM_NAME[r.d.platform]))].join(" and ")}`
+          : "Not supported on these devices. Not counted.");
+      }
+      detail = parts.join(". ");
     }
     const fix = failing[0];
     return {
       key: p.key, name: p.checkName, icon: p.icon, status, detail,
+      // Every device that counts was set by the parent: show "Set by you", not "Unsupported"
+      parentSet: status === "UNSUPPORTED" && parentSet.length > 0,
       fixDeviceId: fix?.d.id, fixChildId: fix?.d.childId,
     };
   });
@@ -180,7 +221,7 @@ export type DeviceState = { key: "healthy" | "issues" | "offline"; issues: numbe
  * just paired (or never sends some keys) reads "Healthy" while its child's score says nothing is verified.
  */
 export function deviceState(d: DeviceLike, now = Date.now()): DeviceState {
-  const issues = PROTECTIONS.filter((p) => !isPassing(d.protections.find((x) => x.key === p.key)?.status ?? "NOT_CONFIGURED")).length;
+  const issues = PROTECTIONS.filter((p) => !isPassing(statusOn(d, p.key))).length;
   const firstCheck = !d.protections.length;
   if (isOffline(d, now)) return { key: "offline", issues, firstCheck };
   return issues ? { key: "issues", issues, firstCheck } : { key: "healthy", issues: 0, firstCheck };

@@ -12,6 +12,7 @@
  *   npx tsx --env-file=.env .claude/skills/qa-audit/scripts/qa.mts staff   (STAFF=… console session; cookie eg_staff on console.localhost)
  *   npx tsx --env-file=.env .claude/skills/qa-audit/scripts/qa.mts ticket <fixtureFamilyId>
  *   npx tsx --env-file=.env .claude/skills/qa-audit/scripts/qa.mts purchase <fixtureFamilyId> '{"autoRenewing":false}'
+ *   npx tsx --env-file=.env .claude/skills/qa-audit/scripts/qa.mts social <fixtureFamilyId>   (admin without a password: confirm with "DELETE")
  *   npx tsx --env-file=.env .claude/skills/qa-audit/scripts/qa.mts cleanup
  * Sessions last an hour and are marked userAgent "qa-audit"; fixture families are named "QA Audit Fixture".
  */
@@ -162,6 +163,11 @@ try {
     await db.storePurchase.create({ data: { familyId: f.id, store: "PAYMONGO", purchaseToken: `qa-${randomBytes(6).toString("hex")}`, expiresAt, ...o } });
     await db.family.update({ where: { id: f.id }, data: { renewsAt: expiresAt } });
     console.log(`renewsAt=${expiresAt.toISOString()}`);
+  } else if (cmd === "social") {
+    // A fixture family's admin without a password (as after Apple/Google sign-in): deletions and moves take `confirm: "DELETE"`
+    const f = await db.family.findFirstOrThrow({ where: { id: a, name: FIXTURE } });
+    const r = await db.user.updateMany({ where: { familyId: f.id, role: "FAMILY_ADMIN" }, data: { passwordSet: false } });
+    console.log(`passwordless=${r.count}`);
   } else if (cmd === "email") {
     // A fixture user's email, for invitations
     const u = await db.user.findFirstOrThrow({ where: { familyId: a, family: { name: FIXTURE } } });

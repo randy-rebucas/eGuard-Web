@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { sendVerificationEmailLater } from "@/lib/email-verification";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { NAME_MAX, NAME_TOO_LONG, TimeZoneSchema, changeEmail, deleteAccount } from "@/lib/family-service";
+import { NAME_MAX, NAME_TOO_LONG, TimeZoneSchema, changeEmail, deleteAccount, setFamilyTimeZone } from "@/lib/family-service";
 import { meJson } from "@/lib/mobile-account";
 import { ConfirmBody, authed, body } from "@/lib/mobile-api";
 import { ServiceError } from "@/lib/errors";
@@ -33,7 +33,7 @@ export const PATCH = authed(async ({ req, user }) => {
   const emailChanged = b.email ? await changeEmail(user, b.email, b.password ?? "") : false;
   if (b.name) await db.user.update({ where: { id: user.id }, data: { name: b.name } });
   if (emailChanged) await sendVerificationEmailLater(user.id);
-  if (b.timezone && user.role === "FAMILY_ADMIN") await db.family.update({ where: { id: user.familyId }, data: { timezone: b.timezone } });
+  if (b.timezone && user.role === "FAMILY_ADMIN") await setFamilyTimeZone(user, b.timezone);
   return NextResponse.json(await meJson(user.id));
 });
 

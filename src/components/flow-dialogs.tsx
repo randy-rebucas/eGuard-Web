@@ -53,7 +53,7 @@ function Dialog({ labelledBy, onClose, children, small, role = "dialog" }: { lab
 const STEPS = ["Select protection", "Review current configuration", "Choose new configuration", "Apply to device", "Verify", "Configuration Health updated"];
 
 type BatchState = {
-  requests: { id: string; deviceId: string; deviceName: string; mode: "APPLY" | "GUIDED"; status: string; failureReason: string | null; offline: boolean; from: string; to: string }[];
+  requests: { id: string; deviceId: string; deviceName: string; mode: "APPLY" | "GUIDED"; status: string; failureReason: string | null; offline: boolean; from: string; to: string; parentSet?: boolean }[];
   score: number;
 };
 const OPEN = ["PENDING", "DELIVERED", "AWAITING_PARENT"];
@@ -141,7 +141,12 @@ export function ConfigFlow({ initialKey, initialChild, onClose }: { initialKey?:
     setBusy(true); setNotice(null);
     try {
       const r = await fn();
-      if (r && typeof r === "object" && "error" in r && typeof r.error === "string") { setNotice(r.error); return null; }
+      if (r && typeof r === "object" && "error" in r && typeof r.error === "string") {
+        setNotice(r.error);
+        // Changed by someone else meanwhile: load the current setting (and version) so the next save starts from it
+        if ("code" in r && r.code === "stale") { setCtx(null); setAttempt((n) => n + 1); }
+        return null;
+      }
       return r as T;
     } catch {
       setNotice(FAILED);
@@ -161,7 +166,7 @@ export function ConfigFlow({ initialKey, initialChild, onClose }: { initialKey?:
 
   const cancelChange = async () => {
     if (!batchId) return onClose();
-    if (await act(() => cancelBatch(batchId))) { toast("Change cancelled. Nothing was changed on the device.", "ok"); onClose(); }
+    if (await act(() => cancelBatch(batchId, key))) { toast("Change cancelled. Nothing was changed on the device.", "ok"); onClose(); }
   };
 
   const verifyGuided = async () => {
@@ -255,7 +260,7 @@ export function ConfigFlow({ initialKey, initialChild, onClose }: { initialKey?:
           {ctx.devices.map((d) => (
             <div key={d.id}>
               <dt>{d.name} · {d.platformLabel} · {CAPABILITY_META[d.capability as Capability].label}</dt>
-              <dd style={{ justifyContent: "space-between", flexWrap: "wrap" }}><span>{d.currentLabel}</span><CheckBadge status={d.status as never} /></dd>
+              <dd style={{ justifyContent: "space-between", flexWrap: "wrap" }}><span>{d.currentLabel}</span><CheckBadge status={d.status as never} parentSet={d.capability === "PARENT_SET" && d.status === "UNSUPPORTED"} /></dd>
             </div>
           ))}
         </div>
@@ -266,7 +271,7 @@ export function ConfigFlow({ initialKey, initialChild, onClose }: { initialKey?:
         {ctx.openBatch ? <div className="form-ok" style={{ marginTop: 12 }}><Icon name="loader-circle" />A change is already waiting for verification. <button className="link-btn" onClick={() => resume(ctx.openBatch!)}>Check progress</button></div> : null}
       </>
     );
-    foot = <><button className="btn btn-ghost" onClick={close}>Cancel</button><button className="btn btn-primary" disabled={!!ctx.devices.length && !supported.length} onClick={() => setStep(2)}>Continue</button></>;
+    foot = <><button className="btn btn-ghost" onClick={close}>Cancel</button><button className="btn btn-primary" disabled={!!ctx.devices.length && !supported.length} onClick={() => setStep(2)} data-autofocus><Icon name="sliders-horizontal" />Change setting</button></>;
   } else if (step === 2) {
     const problem = draftProblem(draft);
     body = (
@@ -279,6 +284,8 @@ export function ConfigFlow({ initialKey, initialChild, onClose }: { initialKey?:
     foot = <><button className="btn btn-ghost" onClick={() => setStep(1)}>Back</button><button className="btn btn-primary" disabled={!!problem} onClick={() => setConfirming(true)}>{!supported.length ? "Save" : guided ? "Continue to setup" : "Apply to device"}</button></>;
   } else if (step === 3 || step === 4) {
     const guided = batch?.requests.filter((r) => r.status === "AWAITING_PARENT") ?? [];
+    // Set in Google Play: no device can check it, so it's recorded on the parent's word
+    const parentSetOnly = guided.length > 0 && guided.every((r) => r.parentSet);
     body = (
       <>
         {step === 3 && guided.length ? (
@@ -287,14 +294,18 @@ export function ConfigFlow({ initialKey, initialChild, onClose }: { initialKey?:
               const dev = ctx.devices.find((d) => d.id === r.deviceId);
               return (
                 <div key={r.id} style={{ marginBottom: 12 }}>
-                  <p className="muted" style={{ marginBottom: 10 }}>{dev?.platformLabel} doesn&apos;t let eGuard change this remotely. On {ctx.child.name}&apos;s {r.deviceName}:</p>
+                  <p className="muted" style={{ marginBottom: 10 }}>{r.parentSet
+                    ? <>{dev?.platformLabel} doesn&apos;t let eGuard set or read age ratings, so you set them in Google Play. On {ctx.child.name}&apos;s {r.deviceName}:</>
+                    : <>{dev?.platformLabel} doesn&apos;t let eGuard change this remotely. On {ctx.child.name}&apos;s {r.deviceName}:</>}</p>
                   <ol className="guide-steps">{(dev?.guide ?? ["Open Settings on the device and turn this protection on."]).map((s) => <li key={s}>{s}</li>)}</ol>
                 </div>
               );
             })}
             <label className="check">
               <input type="checkbox" id="guided-done" checked={guidedDone} onChange={(e) => setGuidedDone(e.target.checked)} />
-              <span><span className="t-title" style={{ display: "block" }}>I&apos;ve done these steps on the device</span><span className="t-meta">eGuard will check the device next. Nothing is marked done until it&apos;s verified.</span></span>
+              <span><span className="t-title" style={{ display: "block" }}>I&apos;ve done these steps on the device</span><span className="t-meta">{parentSetOnly
+                ? "eGuard can't check this setting, so it's saved as set by you, not verified, and isn't counted in health."
+                : "eGuard will check the device next. Nothing is marked done until it's verified."}</span></span>
             </label>
           </div>
         ) : null}
@@ -314,13 +325,14 @@ export function ConfigFlow({ initialKey, initialChild, onClose }: { initialKey?:
     foot = step === 3 && guided.length ? (
       <>
         <button className="btn btn-ghost" disabled={busy} onClick={cancelChange}>Cancel change</button>
-        <button className="btn btn-primary" disabled={!guidedDone || busy} onClick={verifyGuided}>{busy ? <><Icon name="loader-circle" className="spin" />Working…</> : "Verify now"}</button>
+        <button className="btn btn-primary" disabled={!guidedDone || busy} onClick={verifyGuided}>{busy ? <><Icon name="loader-circle" className="spin" />Working…</> : parentSetOnly ? "Save" : "Verify now"}</button>
       </>
     ) : (
       <><button className="btn btn-secondary" onClick={close}>{timedOut ? "Close" : "Continue in background"}</button><button className="btn btn-primary" disabled>Verifying…</button></>
     );
   } else if (step === 5 && batch) {
-    const verified = batch.requests.filter((r) => r.status === "VERIFIED");
+    const done = batch.requests.filter((r) => r.status === "VERIFIED");
+    const verified = done.filter((r) => !r.parentSet), setByYou = done.filter((r) => r.parentSet);
     const failed = batch.requests.filter((r) => r.status === "FAILED");
     const first = batch.requests[0];
     body = (
@@ -330,13 +342,16 @@ export function ConfigFlow({ initialKey, initialChild, onClose }: { initialKey?:
           <div>
             {failed.length ? (
               <span className="pill tone-warn"><Icon name="triangle-alert" />{failed.length} device{failed.length > 1 ? "s" : ""} didn&apos;t confirm</span>
-            ) : verified.length ? (
-              <span className="pill tone-ok"><Icon name="circle-check" />Verified on {verified.map((v) => v.deviceName).join(" and ")}</span>
+            ) : done.length ? (
+              <span className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                {verified.length ? <span className="pill tone-ok"><Icon name="circle-check" />Verified on {verified.map((v) => v.deviceName).join(" and ")}</span> : null}
+                {setByYou.length ? <span className="pill tone-accent"><Icon name="user-check" />Set by you on {setByYou.map((v) => v.deviceName).join(" and ")}, not verified</span> : null}
+              </span>
             ) : (
               // Every request ended without a device answer: cancelled here or by another parent
               <span className="pill tone-muted"><Icon name="circle-slash" />Not applied</span>
             )}
-            <p style={{ marginTop: 8 }}>{verified.length ? <>{def!.name} is set to <b>{first.to}</b>. </> : <>{def!.name} wasn&apos;t changed on any device. </>}{ctx.child.name}&apos;s protection health is now <b className="num">{batch.score} / {PROTECTIONS.length}</b>.</p>
+            <p style={{ marginTop: 8 }}>{done.length ? <>{def!.name} is set to <b>{first.to}</b>. </> : <>{def!.name} wasn&apos;t changed on any device. </>}{ctx.child.name}&apos;s protection health is now <b className="num">{batch.score} / {PROTECTIONS.length}</b>.</p>
           </div>
         </div>
         {first.from !== first.to ? (
@@ -369,7 +384,9 @@ function RequestRow({ r }: { r: BatchState["requests"][number] }) {
     PENDING: { icon: <Icon name="loader-circle" className="spin" />, text: r.offline ? "Waiting for the device to come online" : "Sending to device" },
     AWAITING_PARENT: { icon: <Icon name="list-checks" style={{ color: "var(--accent-ink)" }} />, text: "Waiting for you to finish the steps" },
     DELIVERED: { icon: <Icon name="loader-circle" className="spin" />, text: r.mode === "GUIDED" ? "Checking the device" : "Waiting for the device to confirm" },
-    VERIFIED: { icon: <Icon name="circle-check" style={{ color: "var(--ok)" }} />, text: "Verified" },
+    VERIFIED: r.parentSet
+      ? { icon: <Icon name="user-check" style={{ color: "var(--accent-ink)" }} />, text: "Set by you, not verified" }
+      : { icon: <Icon name="circle-check" style={{ color: "var(--ok)" }} />, text: "Verified" },
     FAILED: { icon: <Icon name="triangle-alert" style={{ color: "var(--warn)" }} />, text: r.failureReason ?? "Device reported a different setting" },
     CANCELLED: { icon: <Icon name="x" />, text: "Cancelled" },
   };
@@ -388,6 +405,31 @@ function Toggle({ id, label, hint, checked, onChange }: { id: string; label: str
   );
 }
 
+/**
+ * A limit entered as hours + minutes and reported as total minutes. Both boxes emptied gives NaN
+ * (draftProblem explains it) instead of a silent 0; one emptied box counts as 0.
+ */
+function DurationField({ id, label, value, onChange }: { id: string; label: string; value: number; onChange: (minutes: number) => void }) {
+  const split = (m: number) => (Number.isNaN(m) ? ["", ""] : [String(Math.floor(m / 60)), String(m % 60)]);
+  // Kept as typed so an emptied box stays empty rather than snapping back to 0
+  const [[h, m], setParts] = useState(() => split(value));
+  const update = (nh: string, nm: string) => {
+    setParts([nh, nm]);
+    onChange(nh === "" && nm === "" ? Number.NaN : Number(nh || 0) * 60 + Number(nm || 0));
+  };
+  return (
+    <div className="field" role="group" aria-labelledby={`${id}-l`}>
+      <label id={`${id}-l`} htmlFor={`${id}-h`}>{label}</label>
+      <div className="row" style={{ gap: 8, alignItems: "center" }}>
+        <input className="input" id={`${id}-h`} type="number" inputMode="numeric" min={0} max={24} step={1} value={h} onChange={(e) => update(e.target.value, m)} aria-label={`${label} hours`} aria-describedby="draft-problem" style={{ minWidth: 0 }} />
+        <span className="t-meta">h</span>
+        <input className="input" id={`${id}-m`} type="number" inputMode="numeric" min={0} max={59} step={5} value={m} onChange={(e) => update(h, e.target.value)} aria-label={`${label} minutes`} aria-describedby="draft-problem" style={{ minWidth: 0 }} />
+        <span className="t-meta">min</span>
+      </div>
+    </div>
+  );
+}
+
 /** Ratings the picker offers; a value set elsewhere (the mobile app allows any 4–18) is added so it isn't silently changed. */
 const RATINGS = [4, 9, 12, 13, 16, 17, 18];
 
@@ -395,7 +437,7 @@ const RATINGS = [4, 9, 12, 13, 16, 17, 18];
 function draftProblem(v: ProtectionConfig): string | null {
   if (v.key === "SCREEN_TIME") {
     const bad = (m: number) => !Number.isInteger(m) || m < 15 || m > 1440;
-    if (bad(v.dailyMinutes) || bad(v.weekendMinutes)) return "Set each limit between 15 minutes and 24 hours (1440 minutes), in whole minutes.";
+    if (bad(v.dailyMinutes) || bad(v.weekendMinutes)) return "Set each limit between 15 minutes and 24 hours, in whole minutes.";
   }
   if (v.key === "BEDTIME" && v.enabled) {
     if (!v.start || !v.end) return "Choose when bedtime starts and ends.";
@@ -406,15 +448,12 @@ function draftProblem(v: ProtectionConfig): string | null {
 
 function ConfigForm({ value, onChange, childName }: { value: ProtectionConfig; onChange: (v: ProtectionConfig) => void; childName: string }) {
   const set = (patch: Partial<ProtectionConfig>) => onChange({ ...value, ...patch } as ProtectionConfig);
-  // An emptied number field stays empty while typing instead of turning into 0
-  const minutes = (s: string) => (s === "" ? Number.NaN : Number(s));
-  const shown = (m: number) => (Number.isNaN(m) ? "" : m);
   switch (value.key) {
     case "SCREEN_TIME":
       return (
         <div className="form-grid">
-          <div className="field"><label htmlFor="st-d">School days (minutes)</label><input className="input" id="st-d" type="number" min={15} max={1440} step={15} value={shown(value.dailyMinutes)} onChange={(e) => set({ dailyMinutes: minutes(e.target.value) })} aria-describedby="draft-problem" /></div>
-          <div className="field"><label htmlFor="st-w">Weekends (minutes)</label><input className="input" id="st-w" type="number" min={15} max={1440} step={15} value={shown(value.weekendMinutes)} onChange={(e) => set({ weekendMinutes: minutes(e.target.value) })} aria-describedby="draft-problem" /></div>
+          <DurationField id="st-d" label="School days" value={value.dailyMinutes} onChange={(m) => set({ dailyMinutes: m })} />
+          <DurationField id="st-w" label="Weekends" value={value.weekendMinutes} onChange={(m) => set({ weekendMinutes: m })} />
         </div>
       );
     case "BEDTIME":

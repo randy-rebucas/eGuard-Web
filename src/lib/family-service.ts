@@ -8,8 +8,8 @@ import { refreshPurchases } from "./billing";
 import { cancelSubscriptionsBeforeDeletion } from "./web-billing";
 import { handOverOrganizations } from "./organizations";
 import { audit } from "./audit";
-import { profileConfigs, type ProfileId } from "./profiles";
-import { fmtMinutes, type ProtectionConfig } from "./protections";
+import { profileConfigs, recommendedProfile, type ProfileId } from "./profiles";
+import { EXTRA_TIME_MINUTES, fmtMinutes, type ProtectionConfig } from "./protections";
 import { canonicalTimeZone } from "./format";
 import type { Actor } from "./config-service";
 import { conflict, forbidden, invalid, isUniqueViolation, notFound, planLimit, planRequired } from "./errors";
@@ -17,6 +17,8 @@ import { requireVerifiedEmail } from "./email-verification";
 import { BASE_PLAN, entitlementsFor, nextPlan, planByName } from "./plans";
 import { CATEGORY_BY_KEY, CATEGORY_KEYS, CATEGORY_UPGRADE, categoryOf, guessCategory } from "./app-categories";
 import { LIMITS, enforce } from "./rate-limit";
+import { sendSecurityNotice } from "./security-notice";
+import { wakeChildDevices, wakeDevices } from "./push";
 import { ensurePrimary, makePrimary, promoteOldest, usedDeviceSlots, withDeviceLock } from "./device-slots";
 
 /** Family, children, apps and devices: shared by the web server actions and the mobile API. */
@@ -46,7 +48,19 @@ export async function renameFamily(actor: Actor, name: string) {
 }
 
 /** The family's time zone (Settings › Account, web and mobile), stored under its proper name. */
-export const TimeZoneSchema = z.string().max(64, "Choose a valid time zone.").transform((tz, ctx) => canonicalTimeZone(tz) ?? (ctx.addIssue({ code: "custom", message: "Choose a valid time zone." }), z.NEVER));
+/**
+ * Sets the family's time zone (admin only). Browsers read it from their signed policy and only take a policy with a
+ * higher version, so each child's browser policy goes up one: otherwise focus hours keep the old zone.
+ */
+export async function setFamilyTimeZone(actor: Actor, timezone: string) {
+  requireAdminActor(actor);
+  await db.$transaction(async (tx) => {
+    const changed = await tx.family.updateMany({ where: { id: actor.familyId, timezone: { not: timezone } }, data: { timezone } });
+    if (changed.count) await tx.browserPolicy.updateMany({ where: { child: { familyId: actor.familyId } }, data: { version: { increment: 1 } } });
+  });
+}
+
+export const TimeZoneSchema =z.string().max(64, "Choose a valid time zone.").transform((tz, ctx) => canonicalTimeZone(tz) ?? (ctx.addIssue({ code: "custom", message: "Choose a valid time zone." }), z.NEVER));
 
 /* ---------- Children ---------- */
 
@@ -71,12 +85,16 @@ export function childLimitReached(plan: string, count: number) {
   return `${plan} covers ${limit} ${limit === 1 ? "child" : "children"}.${up ? ` Upgrade to ${up.name} to add up to ${up.entitlements.childLimit}.` : ""}`;
 }
 
-/** Creates a child with a full policy from the chosen profile (Protected by default). */
+/**
+ * Creates a child with a full policy from the chosen profile. Without one, the profile recommended for their age (as
+ * the web form preselects), so an app that picks the profile later at /setup leaves the same policy if the parent
+ * stops in between.
+ */
 export async function createChild(actor: Actor, input: { name: string; birthYear: number; profile?: ProfileId }) {
   // The limit comes from the plan; make sure a lapsed or refunded subscription is reflected first
   await refreshPurchases(actor.familyId);
   const age = new Date().getFullYear() - input.birthYear;
-  const configs = profileConfigs(input.profile ?? "PROTECTED", age);
+  const configs = profileConfigs(input.profile ?? recommendedProfile(age), age);
   const screen = configs.find((c) => c.key === "SCREEN_TIME") as Extract<ProtectionConfig, { key: "SCREEN_TIME" }>;
   const child = await db.$transaction(async (tx) => {
     // One add at a time per family (two parents, or web and app at once): otherwise both pass the count below
@@ -151,7 +169,7 @@ export async function deleteChild(actor: Actor, childId: string, confirm: Confir
   await db.alert.create({
     data: {
       familyId: actor.familyId, severity: "ATTENTION", category: "PROTECTION", icon: "trash", title: "Child removed", subject: child.name,
-      body: `${actor.name} removed ${child.name} and their data from eGuard. Protections already on their devices stay, but eGuard no longer verifies them or tells you if they change.`,
+      body: `${actor.name} removed ${child.name} and their data from eGuard. The eGuard app and browser extension on their devices stop applying your settings, and eGuard no longer checks them.`,
     },
   });
   return child;
@@ -199,6 +217,7 @@ export async function setAppApproval(actor: Actor, appId: string, approval: AppA
     },
   });
   await resolveRequest();
+  await wakeChildDevices([app.childId], "apps");
   return updated;
 }
 
@@ -217,6 +236,7 @@ export async function setAppLimit(actor: Actor, appId: string, minutes: number |
       actor: `${actor.name} on ${via} · applies on next sync`, fromValue: label(app.dailyLimitMinutes), toValue: label(m),
     },
   });
+  await wakeChildDevices([app.childId], "apps");
   return updated;
 }
 
@@ -236,6 +256,7 @@ export async function setAppCategory(actor: Actor, appId: string, category: AppC
         actor: `${actor.name} on ${via} · applies on next sync`, fromValue: CATEGORY_BY_KEY[before.category].label, toValue: CATEGORY_BY_KEY[after.category].label,
       },
     });
+    await wakeChildDevices([app.childId], "apps");
   }
   return updated;
 }
@@ -285,7 +306,89 @@ export async function setCategoryLimit(actor: Actor, childId: string, category: 
       actor: `${actor.name} on ${via} · applies on next sync`, fromValue: label(current?.dailyLimitMinutes ?? null), toValue: label(m),
     },
   });
+  await wakeChildDevices([childId], "apps");
   return { category, dailyLimitMinutes: m };
+}
+
+/* ---------- Extra time ---------- */
+
+export { EXTRA_TIME_MINUTES };
+/** However often parents add to it, extra time never runs more than this far ahead. */
+const EXTRA_TIME_MAX_MS = 4 * 60 * 60_000;
+
+/** resolveKey of a child's "More time requested" alert: answered by giving extra time or saying not now. */
+export const timeRequestKey = (childId: string) => `TIMEREQ:${childId}`;
+
+/** When the extra time ends, or null when none is running. */
+export const activeExtraTime = (c: { extraTimeUntil: Date | null }, now = new Date()) =>
+  c.extraTimeUntil && c.extraTimeUntil > now ? c.extraTimeUntil : null;
+
+/** The child's running extra time, and their open request for more, if any. */
+export async function extraTimeFor(actor: Actor, childId: string) {
+  const child = await db.child.findFirst({ where: { id: childId, familyId: actor.familyId }, select: { extraTimeUntil: true } });
+  if (!child) throw notFound("Child");
+  const request = await db.alert.findFirst({
+    where: { familyId: actor.familyId, resolveKey: timeRequestKey(childId), resolvedAt: null },
+    orderBy: { createdAt: "desc" }, select: { body: true, createdAt: true },
+  });
+  return { until: activeExtraTime(child), request: request ? { body: request.body, askedAt: request.createdAt } : null };
+}
+
+/**
+ * Gives the child `minutes` more: limits and bedtime don't pause their apps until then (blocked apps stay blocked).
+ * Added to extra time that is still running, up to EXTRA_TIME_MAX_MS ahead. Answers an open request. Devices pick
+ * it up on their next sync; one waiting on its block screen checks every few seconds.
+ */
+/**
+ * Reads and changes a child's extra time under a per-child lock: two parents giving 30 minutes at once must add up
+ * to an hour, and an "End now" mustn't be undone by a give that read the old time.
+ */
+function withExtraTimeLock<T>(actor: Actor, childId: string, fn: (tx: Prisma.TransactionClient, child: { id: string; name: string; extraTimeUntil: Date | null }) => Promise<T>) {
+  return db.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`extra-time:${childId}`}))`;
+    const child = await tx.child.findFirst({ where: { id: childId, familyId: actor.familyId }, select: { id: true, name: true, extraTimeUntil: true } });
+    if (!child) throw notFound("Child");
+    return fn(tx, child);
+  });
+}
+
+/** `addedMinutes` can be less than `minutes` when the 4-hour cap applies; say what was actually given. */
+export async function grantExtraTime(actor: Actor, childId: string, minutes: number, via: string) {
+  const { child, until, added } = await withExtraTimeLock(actor, childId, async (tx, child) => {
+    const now = Date.now();
+    const from = activeExtraTime(child, new Date(now))?.getTime() ?? now;
+    const until = new Date(Math.min(from + minutes * 60_000, now + EXTRA_TIME_MAX_MS));
+    await tx.child.update({ where: { id: child.id }, data: { extraTimeUntil: until } });
+    await tx.alert.updateMany({ where: { familyId: actor.familyId, resolveKey: timeRequestKey(child.id), resolvedAt: null }, data: { resolvedAt: new Date() } });
+    return { child, until, added: Math.max(0, Math.round((until.getTime() - from) / 60_000)) };
+  });
+  // Already at the cap: nothing changed (beyond answering a request), so no "0m given" in the history
+  if (added) {
+    await db.configChange.create({
+      data: { familyId: actor.familyId, childId: child.id, key: "SCREEN_TIME", title: `${fmtMinutes(added)} of extra time given`, actor: `${actor.name} on ${via} · applies on next sync` },
+    });
+    await audit(actor.familyId, actor.name, "child.extra_time", `${child.name}: ${fmtMinutes(added)}`);
+    await wakeChildDevices([child.id], "extra_time");
+  }
+  return { extraTimeUntil: until, addedMinutes: added };
+}
+
+/** Ends running extra time and answers an open request with "not now". */
+export async function endExtraTime(actor: Actor, childId: string, via: string) {
+  const { child, ended } = await withExtraTimeLock(actor, childId, async (tx, child) => {
+    await tx.alert.updateMany({ where: { familyId: actor.familyId, resolveKey: timeRequestKey(child.id), resolvedAt: null }, data: { resolvedAt: new Date() } });
+    const ended = !!activeExtraTime(child);
+    if (ended) await tx.child.update({ where: { id: child.id }, data: { extraTimeUntil: null } });
+    return { child, ended };
+  });
+  if (ended) {
+    await db.configChange.create({
+      data: { familyId: actor.familyId, childId: child.id, key: "SCREEN_TIME", title: "Extra time ended early", actor: `${actor.name} on ${via} · applies on next sync` },
+    });
+    await audit(actor.familyId, actor.name, "child.extra_time_ended", child.name);
+    await wakeChildDevices([child.id], "extra_time");
+  }
+  return { extraTimeUntil: null };
 }
 
 /* ---------- Devices ---------- */
@@ -422,6 +525,7 @@ export async function moveDevice(actor: Actor, deviceId: string, childId: string
   });
   if (!moved) throw notFound("Device");
   await audit(actor.familyId, actor.name, "device.moved", `${d.name}: ${d.child.name} → ${to.name}`);
+  await wakeDevices([d.id], "check");
   await db.alert.create({
     data: {
       familyId: actor.familyId, childId: to.id, deviceId: d.id, severity: "ATTENTION", category: "DEVICES", icon: "tablet-smartphone",
@@ -461,7 +565,8 @@ export async function removeDevice(actor: Actor, deviceId: string, confirm: Conf
       familyId: actor.familyId, childId: d.childId, severity: "ATTENTION", category: "DEVICES", icon: "trash",
       title: "Device removed", subject: label,
       // Other parents are told what happened to the history too, since it can't be undone
-      body: `${actor.name} removed ${d.name} from eGuard. Its protections stay on the device, but eGuard no longer verifies them or tells you if they change. ${opts.deleteHistory
+      // The child app signs out and stops applying the family's settings once its token stops working
+      body: `${actor.name} removed ${d.name} from eGuard. The eGuard app on it stops applying your settings, and eGuard no longer checks it. ${opts.deleteHistory
         ? `The screen time, app usage and places it recorded were deleted.`
         : `The screen time, app usage and places it recorded stay in ${d.child.name}'s reports and history.`}`,
     },
@@ -475,9 +580,10 @@ export async function changePassword(actor: Actor & { sessionId: string }, curre
   if (next.length < 10) throw invalid("Use at least 10 characters for your new password.");
   if (passwordTooLong(next)) throw invalid(PASSWORD_TOO_LONG);
   await confirmPassword(actor.id, current);
-  await db.user.update({ where: { id: actor.id }, data: { passwordHash: await hashPassword(next), passwordChangedAt: new Date() } });
+  const u = await db.user.update({ where: { id: actor.id }, data: { passwordHash: await hashPassword(next), passwordChangedAt: new Date() }, select: { email: true, name: true } });
   await db.session.deleteMany({ where: { userId: actor.id, id: { not: actor.sessionId } } });
   await audit(actor.familyId, actor.name, "password.changed");
+  sendSecurityNotice(u.email, u.name, { kind: "password" });
 }
 
 /**
@@ -498,6 +604,8 @@ export async function changeEmail(actor: Actor, email: string, password: string)
     db.passwordReset.deleteMany({ where: { userId: actor.id } }),
   ]).catch((e) => { throw isUniqueViolation(e) ? taken() : e; });
   await audit(actor.familyId, actor.name, "email.changed", `${current.email} → ${email}`);
+  // To the old address: whoever changed it may not be its owner
+  sendSecurityNotice(current.email, current.name, { kind: "email", newEmail: email });
   return true;
 }
 

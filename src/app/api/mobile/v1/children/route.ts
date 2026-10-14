@@ -20,7 +20,7 @@ const Body = z.object({
   profile: z.enum(PROFILE_IDS).optional(),
 }).refine((b) => b.age != null || b.birthYear != null, { message: "Enter your child's age.", path: ["age"] });
 
-/** Add Child. Starts with the chosen profile's policy (Protected if none). Add a photo with PUT /children/{id}/photo. */
+/** Add Child. Starts with the chosen profile's policy (the one recommended for their age if none). Add a photo with PUT /children/{id}/photo. */
 export const POST = authed(async ({ req, user }) => {
   const b = await body(req, Body);
   const parsed = ChildSchema.parse({ name: b.name, birthYear: b.birthYear ?? new Date().getFullYear() - b.age! });

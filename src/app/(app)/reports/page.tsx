@@ -63,6 +63,12 @@ export default async function ReportsPage(props: PageProps<"/reports">) {
   const unpaired = !graph.devices.length;
   const today = dayKey(new Date(), tz);
   const exportHref = `/api/reports/export?period=${period}&from=${range.from}&to=${range.to}`;
+  const showing = (
+    <p className="t-meta range-note">
+      Showing {rangeLabel}{period === "today" ? " (so far)" : ""}
+      {adjusted ? `. Adjusted from the dates you chose: ranges can't end after today or run longer than ${maxDays} days${advanced ? "" : " on your plan"}, and the start must come before the end.` : ""}
+    </p>
+  );
 
   return (
     <>
@@ -79,19 +85,16 @@ export default async function ReportsPage(props: PageProps<"/reports">) {
 
       {locked || !advanced ? <UpgradeNote compact title="Advanced reports" text={locked ? `${REPORTS_UPGRADE} Showing the last 7 days.` : REPORTS_UPGRADE} /> : null}
 
+      {/* With a custom range, what's shown sits with the dates that chose it */}
       {period === "custom" ? (
-        <form className="card card-pad form-grid" style={{ maxWidth: 620, alignItems: "end" }} action="/reports">
+        <form className="card card-pad range-form" action="/reports">
           <input type="hidden" name="period" value="custom" />
           <div className="field"><label htmlFor="from">From</label><input className="input" id="from" name="from" type="date" max={today} defaultValue={range.from} /></div>
           <div className="field"><label htmlFor="to">To</label><input className="input" id="to" name="to" type="date" max={today} defaultValue={range.to} /></div>
-          <div><button className="btn btn-primary">Apply</button></div>
+          <button className="btn btn-primary">Apply</button>
+          {showing}
         </form>
-      ) : null}
-
-      <p className="t-meta">
-        Showing {rangeLabel}{period === "today" ? " (so far)" : ""}
-        {adjusted ? `. Adjusted from the dates you chose: ranges can't end after today or run longer than ${maxDays} days${advanced ? "" : " on your plan"}, and the start must come before the end.` : ""}
-      </p>
+      ) : showing}
 
       <section className="report-metrics">
         <div className="card metric" style={{ minHeight: 0 }}>
@@ -101,7 +104,7 @@ export default async function ReportsPage(props: PageProps<"/reports">) {
             {!unpaired && unpairedKids.length ? `. ${unpairedKids.length === 1 ? `${unpairedKids[0].name} has no paired device, so isn't counted` : `${unpairedKids.length} children have no paired device, so aren't counted`}` : ""}</div>
         </div>
         <div className="card metric" style={{ minHeight: 0 }}>
-          <div className="m-top"><span className="m-label">{period === "today" ? "Family screen time today" : "Avg. family screen time / day"}</span><span className="ico-tile"><Icon name="hourglass" /></span></div>
+          <div className="m-top"><span className="m-label">{period === "today" ? "Family screen time today" : "Avg. screen time / day"}</span><span className="ico-tile"><Icon name="hourglass" /></span></div>
           <div className="m-value num">{fmtMinutesPadded(avg)}</div>
           <div className="t-meta">
             {prevAvg == null ? "Day still in progress"
@@ -125,7 +128,7 @@ export default async function ReportsPage(props: PageProps<"/reports">) {
       </section>
 
       <div className="detail-grid">
-        {weekly.series.length ? <WeeklyChart series={weekly.series} days={weekly.days} subtitle={`Daily totals, ${weekly.range}. Today is still in progress.`} /> : (
+        {weekly.series.length ? <WeeklyChart series={weekly.series} days={weekly.days} single={weekly.series.length === 1}subtitle={`Daily totals, ${weekly.range}. Today is still in progress.`} /> : (
           <section className="card card-pad">
             <EmptyState icon="users" title="No children yet" text="Add a child and pair their device to see screen time here.">
               <Link className="btn btn-primary" href="/children/new"><Icon name="plus" />Add child</Link>

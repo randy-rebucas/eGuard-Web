@@ -74,7 +74,7 @@ export default async function LocationPage(props: PageProps<"/location">) {
       <LocationRefresh />
       <PageHead title="Family Location" text="Where your children are, or were last seen, when they share their location. Updates every 30 seconds while this page is open." />
       <div className="detail-grid">
-        <div className="map"><LazyMap people={people} missing={rows.filter(({ l }) => !l.location).map(({ c }) => c.name)} places={places} focus={typeof sp.child === "string" ? sp.child : undefined} attribution={tileAttribution()} /></div>
+        <div className="map map-main"><LazyMap people={people} missing={rows.filter(({ l }) => !l.location).map(({ c }) => c.name)} places={places} focus={typeof sp.child === "string" ? sp.child : undefined} attribution={tileAttribution()} /></div>
         <div className="dash-col">
           <section className="card card-pad">
             <div className="card-head"><h2 style={{ fontSize: 18 }}>Children</h2></div>
@@ -89,6 +89,7 @@ export default async function LocationPage(props: PageProps<"/location">) {
                       : l.state === "no_devices" ? "No device paired yet"
                       : l.offDevice ? `Sharing is off on ${l.offDevice.name}` : "Location sharing is off"}
                   </div>
+                  {l.iphoneNote ? <div className="t-meta">{l.iphoneNote}</div> : null}
                   {/* Not inside a saved place: offer to name where they are, so it reads "Home" from now on */}
                   {l.location && !l.location.placeId && places.length < MAX_PLACES ? <NamePlaceButton lat={l.location.lat!} lng={l.location.lng!} label={`Name ${c.name}'s place`} /> : null}
                 </div>
@@ -135,7 +136,7 @@ export default async function LocationPage(props: PageProps<"/location">) {
           ) : null}
           <section className="card card-pad">
             <div className="row">
-              <Icon name="eye-off" />
+              <span className={`ico-tile${family.keepLocationHistory ? "" : " muted"}`}><Icon name={family.keepLocationHistory ? "history" : "eye-off"} /></span>
               <div className="grow">
                 <div className="t-title">Location history is {family.keepLocationHistory ? "on" : "off"}</div>
                 <div className="t-meta">

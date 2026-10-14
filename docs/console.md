@@ -105,7 +105,7 @@ script uses the development key and warns, and those codes only work locally.
 | `/` | Totals: families (and new in 7 and 30 days), parents, children, devices, browsers, open tickets, organizations. Families by plan. |
 | `/families` | Search by parent email or name, family name or id. Newest first, 50 per page. |
 | `/families/[id]` | Account, parents, purchases, support tickets, organizations joined and sponsor codes redeemed. The plan says "renews" or "ends" as the parent's Settings does, and device slots count phones, tablets and connected browsers, as pairing does. |
-| `/tickets` | Support tickets, filtered by Open, Closed or All. |
+| `/tickets` | Support tickets, filtered by Open, Closed or All. Parents file them from the app's Contact Support or the web's Settings › Support (both through `createTicket` in `src/lib/support.ts`), and see each one's Open/Closed status there. |
 | `/tickets/[id]` | The message, who sent it, and a Close/Reopen button. Replies still go out from the support inbox, where tickets are forwarded with Reply-To set to the parent. |
 | `/organizations` | Organizations with counts of admins, families and code batches. |
 | `/organizations/[id]` | Admins, join code, and code batches with how many codes were redeemed. |

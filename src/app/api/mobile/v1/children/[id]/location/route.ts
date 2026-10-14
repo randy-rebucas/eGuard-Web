@@ -43,6 +43,8 @@ export const GET = authed<{ id: string }>(async ({ user, params }) => {
     childId: child.id,
     sharing: l.sharing,
     state: l.state,
+    // iPhones send a location only while eGuard is open: show it under the location, null otherwise
+    note: l.iphoneNote,
     waitingForReport: l.unreported ? { deviceId: l.unreported.id, deviceName: l.unreported.name } : null,
     current: latest ? {
       deviceId: latest.id, deviceName: latest.name,

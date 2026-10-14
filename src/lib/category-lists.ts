@@ -17,6 +17,24 @@ const LISTS: Partial<Record<WebCategory, readonly string[]>> = {
     "bet365.com", "pokerstars.com", "draftkings.com", "fanduel.com", "williamhill.com", "888casino.com", "stake.com",
     "betway.com", "bovada.lv", "unibet.com", "pinnacle.com", "betfair.com",
   ],
+  VIOLENCE: [
+    "kaotic.com", "theync.com", "goregrish.com", "crazyshit.com", "documentingreality.com", "seegore.com",
+    "gorecenter.com", "watchpeopledie.tv",
+  ],
+  DRUGS: [
+    "ilgm.com", "seedsman.com", "royalqueenseeds.com", "herbiesheadshop.com", "element-vape.com", "vaporfi.com",
+    "eightvape.com",
+  ],
+  WEAPONS: [
+    "gunbroker.com", "armslist.com", "budsgunshop.com", "cheaperthandirt.com", "palmettostatearmory.com", "brownells.com",
+    "grabagun.com", "ghostgunner.net",
+  ],
+  HATE: ["stormfront.org", "8kun.top", "kiwifarms.net", "kiwifarms.st"],
+  // File sharing: torrent indexes, file lockers and app stores outside Google Play (sideloaded apps skip App Approval)
+  DOWNLOADS: [
+    "thepiratebay.org", "1337x.to", "yts.mx", "nyaa.si", "torrentgalaxy.to", "fitgirl-repacks.site", "mega.nz",
+    "mediafire.com", "rapidgator.net", "apkpure.com", "apkmirror.com",
+  ],
   DATING: ["tinder.com", "bumble.com", "match.com", "okcupid.com", "hinge.co", "grindr.com", "badoo.com", "pof.com", "zoosk.com"],
   SOCIAL_MEDIA: [
     "facebook.com", "instagram.com", "tiktok.com", "twitter.com", "x.com", "snapchat.com", "threads.net", "pinterest.com",
@@ -33,6 +51,13 @@ const LISTS: Partial<Record<WebCategory, readonly string[]>> = {
   SHOPPING: [
     "amazon.com", "ebay.com", "shopee.ph", "lazada.com.ph", "aliexpress.com", "temu.com", "shein.com", "etsy.com",
     "walmart.com", "zalora.com.ph",
+  ],
+  // Hosts that load another site's pages under their own name, so a blocked site opens through them. translate.goog
+  // serves Google's page translator (translate.google.com itself, for typing text, stays open); web.archive.org and
+  // archive.today replay saved pages.
+  PROXY: [
+    "translate.goog", "web.archive.org", "archive.ph", "archive.today", "archive.is", "croxyproxy.com", "proxysite.com",
+    "kproxy.com", "hidester.com", "proxyium.com", "blockaway.net", "4everproxy.com", "hide.me", "hidemyass.com",
   ],
 };
 

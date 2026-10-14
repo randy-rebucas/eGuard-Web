@@ -67,7 +67,7 @@ the app runs in exactly one mode, against exactly one API, with exactly one cred
 | **"Today"** | Family time zone (`user.family.timezone`), pre-formatted `…Label` fields | Family time zone from `/sync` `timezone`. `/usage` dates use the device's local date |
 | **Keeping up to date** | Poll `GET /batches/{id}` / `GET /checks/{id}` every 1–2 s while a screen waits | `POST /sync` every `nextSyncSeconds` (300 s), at start, after boot and when the network returns |
 | **Version check** | `GET /app-info` `minimumAppVersion` | `/sync` `minAppVersion` |
-| **Push** | `POST /me/push-tokens` (FCM) | None yet: changes arrive on the next `/sync` ([C7](#c7-known-gaps) G1) |
+| **Push** | `POST /me/push-tokens` (FCM) | `pushToken` on `/sync`; a silent `{ type: "sync" }` FCM message means "sync now" |
 | **Sensitive permissions** | None (photo picker only) | Usage access, location, VPN, device admin, Screen Time (Family Controls)… |
 | **Screens** | Dashboard, children, protections, screen time, apps, location, alerts, devices, family, organizations, subscription, help ([P3](#p3-screen--endpoint-map)) | The child's own protections, block screens, "Ask a parent" for apps, setup and removal ([child-app-spec.md](child-app-spec.md)) |
 | **Payments** | Shows the plan; Android may buy through Google Play when `billingAvailable` | Never shown |
@@ -191,7 +191,10 @@ on `child` and `core-*`.
 - **Update screen:** one "Please update" screen, triggered by `minimumAppVersion` in parent mode and `minAppVersion`
   in child device mode.
 - **Push:** one FCM token per install. In parent mode register it with `POST /me/push-tokens`; unregister
-  (`logout?pushToken=`) before switching to child device mode.
+  (`logout?pushToken=`) before switching to child device mode. Tokens belong to the account, not the session, so
+  when a request answers `401` (session ended elsewhere, password changed) delete the FCM token too: FCM then
+  reports it gone and the server drops it, instead of this phone getting the family's alerts while signed out.
+  Android shows alerts on the `parent_alerts` channel, which the server names in each message.
 - **Accessibility and language** follow [child-app-spec.md](child-app-spec.md) in both modes.
 
 ### A6. Where the two sides meet
@@ -226,7 +229,7 @@ and app requests, reports in Configuration Health. The full mapping is in
 [C6. What the parent sees](#c6-what-the-parent-sees).
 
 **Same vocabulary on both sides.** Both APIs use the same 10 protection keys and config shapes, the same platform
-capabilities (`AVAILABLE`, `GUIDED`, `VERIFY_ONLY`, `UNSUPPORTED`) and the same app `approval` values. Parents may
+capabilities (`AVAILABLE`, `GUIDED`, `VERIFY_ONLY`, `PARENT_SET`, `UNSUPPORTED`) and the same app `approval` values. Parents may
 only set values within the "Parent range"; devices report the real value within the wider "Reported range"
 ([C5](#c5-enums-and-config-reference)).
 
@@ -378,6 +381,7 @@ Used in the children list, the dashboard and the family screen.
   "todayLimitMinutes": 240,
   "todayMinutes": 134,
   "deviceCount": 2,
+  "browserCount": 1,
   "primaryDevice": { "id": "cmujeom5j000wncgs0ylb00q4", "name": "Galaxy A54", "platform": "ANDROID" }
 }
 ```
@@ -387,6 +391,7 @@ Used in the children list, the dashboard and the family screen.
 | `status` | `protected` (all checks pass on devices that are all online), `attention` (something to fix, or a device offline), `notconfigured` (no devices yet). Design labels: "Protected" / "Attention" |
 | `photoUrl?` | Path relative to the host. Load it **with the bearer header**. The `?v=` query changes when the photo changes, so cache by URL |
 | `todayLimitMinutes` | The limit that applies today (weekday or weekend) |
+| `deviceCount` / `browserCount` | Phones and tablets paired / browser extensions connected (one disconnected for security isn't counted). A child with `deviceCount: 0` and a browser is `notconfigured` (no phone to verify) but not empty: show "Browser only" where you'd show "No device", as the web does. Older servers omit `browserCount`: treat it as 0 |
 
 #### Device
 
@@ -474,7 +479,7 @@ Returned by `PUT /children/{id}/protections/{KEY}`, `POST /children/{id}/setup` 
   "batchId": "c8ff86dd-2ab7-416b-9295-345280db658a",
   "childId": "cmujesv1y00tlnckonhe1ztou",
   "done": false,
-  "summary": { "total": 1, "verified": 0, "failed": 0, "awaitingParent": 1, "inProgress": 0, "cancelled": 0 },
+  "summary": { "total": 1, "verified": 0, "setByYou": 0, "failed": 0, "awaitingParent": 1, "inProgress": 0, "cancelled": 0 },
   "items": [
     {
       "key": "WEB",
@@ -486,17 +491,18 @@ Returned by `PUT /children/{id}/protections/{KEY}`, `POST /children/{id}/setup` 
         {
           "requestId": "cmujesvhf00vnncko3bmhqh76",
           "deviceId": "cmujesv7400unncko2j3n890p",
-          "deviceName": "iPhone 13",
-          "platform": "IOS",
+          "deviceName": "Galaxy A54",
+          "platform": "ANDROID",
           "mode": "GUIDED",
           "status": "AWAITING_PARENT",
           "failureReason": null,
           "offline": false,
+          "parentSet": false,
           "from": "Off",
           "guide": [
-            "Open Settings, tap Screen Time, then Content & Privacy Restrictions.",
-            "Tap App Store, Media, Web & Games, then Web Content.",
-            "Choose Limit Adult Websites."
+            "Open Settings, tap Network & internet, then Private DNS. On Samsung: Connections, More connection settings, Private DNS.",
+            "Choose Private DNS provider hostname.",
+            "Type family.cloudflare-dns.com and tap Save."
           ]
         }
       ]
@@ -508,6 +514,9 @@ Returned by `PUT /children/{id}/protections/{KEY}`, `POST /children/{id}/setup` 
 
 - One `item` per protection, and one entry in `devices` per device that supports it.
 - `item.status` is the least-finished status across its devices.
+- `summary.setByYou` counts the `verified` items that were set by the parent in Google Play (`parentSet` on every
+  device): done, but not checked by a device. It's part of `verified`, so a progress bar keeps working; say
+  "N verified, M set by you" where there's room.
 - Request status goes `PENDING` → `DELIVERED` → `VERIFIED` or `FAILED`. Guided setup starts at `AWAITING_PARENT`, and a
   batch can also be `CANCELLED`.
 - `failureReason?` explains a `FAILED` device, e.g. `"Device reported Rated 13+ and under"`.
@@ -540,7 +549,7 @@ Returned by `PUT /children/{id}/protections/{KEY}`, `POST /children/{id}/setup` 
 | 15 | Alerts | `GET /alerts?filter=`, `POST /alerts/{id}/read`, `/read-all`, `/dismiss`, `GET /alerts/unread-count` (includes "App blocked") |
 | 16 | Settings | `GET /family`, `PATCH /family`, `/me`, `/me/notifications`, `/family/privacy`, `/me/sessions`, `POST /me/password`, `/me/two-factor`, `/me/identities`, `POST /me/export`, `DELETE /me`, `GET /organizations`, `POST /auth/logout` |
 | 17 | Subscription | `GET /subscription`. Android upgrade: `GET /subscription/plans` → Play Billing → `POST /subscription/google-play` |
-| 18 | Help & Support | `GET /help?q=`, `GET /help/{slug}`, `POST /support/tickets` |
+| 18 | Help & Support | `GET /help?q=`, `GET /help/{slug}`, `POST /support/tickets`. Share eGuard needs no endpoint: the system share sheet with the app's own text and `https://www.eguard.family/`, worded as the web's (`src/lib/share.ts`) |
 | — | Tab-bar badge | `GET /alerts/unread-count` |
 | — | Push registration | `POST /me/push-tokens` after sign-in, `DELETE` / `logout?pushToken=` on sign-out |
 
@@ -690,6 +699,7 @@ address emails the invitation again rather than a reset link.
 | `idToken` | string | iOS: `ASAuthorizationAppleIDCredential.identityToken` (UTF-8). Google: `GIDGoogleUser.idToken.tokenString` / Android `GoogleIdTokenCredential.idToken` |
 | `name` | string, optional | Apple only gives the name on the **first** authorization. Forward `fullName` so the account gets a name |
 | `guardian` | boolean, optional | Needed only when this creates a new account. Without it, a new sign-up gets `400 guardian_required`: show the parent/guardian (18+) confirmation and retry the same `idToken` with `guardian: true` |
+| `nonce` | string (16–128), optional | The raw one-time nonce. Apple: put its SHA-256 (hex) in `ASAuthorizationAppleIDRequest.nonce`. Google: pass it as the request's nonce. When the token carries a nonce it must match, and a nonce sent with a token that has none is refused (`401 invalid_token`); retries with `guardian: true` reuse the same nonce |
 
 Response: `{ token, expiresAt, user, isNew }`, or `{ twoFactorRequired: true, challenge, expiresAt, isNew: false }`
 when the linked account has two-step verification on. Continue with onboarding when `isNew` is true.
@@ -736,13 +746,21 @@ Ends this session only. Pass the device's push token so this phone stops receivi
 | `POST /me/export` | none | The family's data as a JSON file (`Content-Disposition: attachment; filename="eguard-family-export.json"`): parents, children, settings, devices, app rules, screen time, location visits, history, alerts, browsers, support requests and purchases. Never includes passwords or tokens. Save it or hand it to the share sheet. Any parent can export; each export is recorded in the family's audit log. Same file as the website's export |
 | `GET /me/identities` | none | `{ identities: [{ id, provider, email, createdAt }] }`: linked Apple/Google sign-ins |
 | `DELETE /me/identities/{id}` | none | `{ ok }`. `409` if it's the only way to sign in (no password set) |
-| `POST /me/password` | `{ current, next }` | `{ ok, message }`. `403 wrong_password`, `400` if `next` < 10 chars. **Signs out every other session**; this one stays |
+| `POST /me/password` | `{ current, next }` | `{ ok, message }`. `403 wrong_password`, `400` if `next` < 10 chars. **Signs out every other session**; this one stays. The parent is emailed that it changed (as for an email change, to the old address, and for turning off two-step verification) |
 | `GET /me/notifications` | none | `{ notifyPush, notifyEmail, notifyApproval, weeklySummary, productUpdates }`. `notifyEmail` emails alerts that need attention; `notifyPush` pushes the same alerts to this parent's phones (plans with `realtimeAlerts`); `notifyApproval` also sends a child's requests for an app or a blocked website, by whichever of email and push is on; `productUpdates` is the eGuard team's emails about new features (notices about the account, privacy or security are sent regardless) |
-| `PATCH /me/notifications` | any subset of those booleans | Same object, updated |
+| `PATCH /me/notifications` | any subset of those booleans | Same object, updated. Send only what changed. `notifyPush: true` is `403 plan_required` only when it turns push on without `realtimeAlerts` |
+
+Both answers also carry `pushIncluded` (the plan's `realtimeAlerts`). When it's false, show the push switch off and locked
+("Push alerts aren't on your plan"), whatever `notifyPush` says: it's on by default, Free included.
 | `POST /me/push-tokens` | `{ token, platform: "IOS" \| "ANDROID" }` | `201 { ok }`. `token` is an **FCM registration token** on both platforms (iOS: from the Firebase Messaging SDK, not the raw APNs token). Call it after sign-in and whenever FCM rotates the token. Re-registering the same token under another parent moves it. Tokens FCM reports as uninstalled are removed |
 | `DELETE /me/push-tokens` | `{ token }` | `{ ok }` |
 | `GET /me/sessions` | none | `{ sessions: [{ id, userAgent, createdAt, lastSeenAt, current }] }` |
 | `DELETE /me/sessions` | none | `{ signedOut: n }`. Signs out everywhere except this session |
+| `DELETE /me/sessions/{id}` | none | `{ ok: true }`. Signs out one other session (a lost phone). `404` for an unknown id or another parent's; `400 current_session` for this one (use `POST /auth/logout`). Push alerts to the phone it registered stop at once |
+
+Push tokens (`POST /me/push-tokens`) are tied to the session that registered them: logging out, "sign out everywhere
+else", a single sign-out or the session expiring deletes the token, so the phone stops getting the family's alerts.
+Register the token again after signing in.
 | `GET /me/two-factor` | none | `{ available, enabled, recoveryCodesLeft }`. `available` false: the server isn't set up for it; hide the option |
 | `POST /me/two-factor/setup` | none | `{ secret, uri }`. Show `uri` (an `otpauth://` link) as a QR code, or open it to hand it to an authenticator app on this phone; show `secret` for typing in by hand. Calling again replaces the secret. `409` if already on |
 | `POST /me/two-factor/confirm` | `{ code }` | `{ recoveryCodes: [10 strings] }`. A code from the app turns it on. **Show the recovery codes once** with copy/save; they're never returned again. `400 wrong_code`, `400 setup_missing` |
@@ -780,7 +798,8 @@ pushes a critical alert off the Home tab.
 - "Add your first child to get started." when the family has no children yet (show the Add Child call to action)
 - "N children need attention." / "1 child needs attention."
 - "Pair Mia's device to start protecting them." or "N children have no paired device yet." when a child has no device
-  (show the pairing call to action)
+  (show the pairing call to action: the first child in `children` with `deviceCount: 0`, opening its pairing screen.
+  The web shows it whenever such a child exists, even when the summary leads with children needing attention)
 - "Your family's digital safety looks good today."
 
 ##### `GET /health[?childId=]`
@@ -918,7 +937,7 @@ Returns `{ "children": [ …ChildSummary ] }`, in the order the children were ad
 |---|---|---|
 | `name` | string | 1–40 chars |
 | `age` | int | 0–17 (or send `birthYear` instead) |
-| `profile` | `BALANCED` \| `PROTECTED` \| `CUSTOM`, optional | Initial settings. Default `PROTECTED` |
+| `profile` | `BALANCED` \| `PROTECTED` \| `CUSTOM`, optional | Initial settings. Default: the one recommended for their age (`BALANCED` for 13+, else `PROTECTED`), as on the web |
 
 Response: `ChildSummary`, with `status: "notconfigured"` and `health.score: 0` until a device is paired.
 
@@ -1053,8 +1072,10 @@ reports.
 - If `openBatchId` is set, a change is still in progress: resume polling it instead of starting a new one.
 - Send `version` back as `baseVersion` when you change the protection (below), so a change another parent made or
   queued since you loaded it isn't silently replaced.
-- `capability` says how eGuard can apply this protection on the device (`AVAILABLE`, `GUIDED`, `VERIFY_ONLY` or
-  `UNSUPPORTED`).
+- `capability` says how eGuard can apply this protection on the device (`AVAILABLE`, `GUIDED`, `VERIFY_ONLY`,
+  `PARENT_SET` or `UNSUPPORTED`; see "Platform capability per protection"). `reportedLabel` is `"Set by you: …"`
+  for a `PARENT_SET` protection the parent confirmed, `"Not set up yet"` before, and `"Not applied"` when the device
+  left it out of a full report.
 - A protection the parent turned off passes once the device confirms it's off (as above): it's the parent's choice,
   not something to fix. `NOT_CONFIGURED` means the child has no setting for it and the device has it off.
 - `reportedLabel` is `"Not reported"` for a device that hasn't reported this protection yet.
@@ -1092,11 +1113,14 @@ Poll until `done: true`. Returns a `Batch`.
 
 Guided setup: the parent taps "I've done this, verify now" after following `guide`. The request moves from
 `AWAITING_PARENT` to `DELIVERED`, and the device is asked for a full report. The response is a `Batch` plus
-`confirmed` (the number of requests moved).
+`confirmed` (the number of requests moved). Pass `?key=<protection key>` when the screen shows one protection's
+guide, so only its steps are confirmed; without it every guided step in the batch is (an unknown key is a `400`).
 
 ##### `DELETE /batches/{id}`
 
 Cancels everything in the batch that isn't verified yet. Response: `{ "cancelled": 8 }`. Verified items stay verified.
+`?key=SCREEN_TIME` cancels only that protection's change: use it for a protection screen's "Cancel change", so the
+rest of a setup batch keeps going. An unknown key is `400`.
 
 #### P4.8 Screen time
 
@@ -1104,6 +1128,7 @@ Cancels everything in the batch that isn't verified yet. Response: `{ "cancelled
 
 `period` defaults to `today`. Any other value returns `400`. `30d` is an advanced report: without
 `entitlements.advancedReports` (Family Pro) it returns `403 plan_required`, so lock the 30-day tab on other plans.
+Every response says which tabs are locked (`locked`), so the first Today load is enough to lock it before a tap.
 
 ```json
 {
@@ -1112,8 +1137,11 @@ Cancels everything in the batch that isn't verified yet. Response: `{ "cancelled
   "to": "2026-09-27",
   "totalMinutes": 134,
   "averageMinutes": 134,
-  "previousAverageMinutes": 187,
+  "previousAverageMinutes": null,
+  "completeDays": 0,
   "limitMinutes": 240,
+  "deviceCount": 1,
+  "locked": { "periods": ["30d"], "message": "30-day reports are included with Family Pro." },
   "days": [ { "date": "2026-09-27", "minutes": 134, "limitMinutes": 240 } ],
   "hourly": [0,0,0,0,0,0,0,7,7,7,7,7,3,3,3,3,12,12,12,27,12,12,0,0],
   "apps": [
@@ -1127,7 +1155,10 @@ Cancels everything in the batch that isn't verified yet. Response: `{ "cancelled
 | `totalMinutes` / `limitMinutes` | The "2h 14m of 3 hours" ring. For 7d/30d, `limitMinutes` is the weekday limit; per-day limits are in `days[].limitMinutes` |
 | `hourly` | 24 values (index 0 = midnight, family time zone) for `today` only. `null` for 7d/30d, **or when the child's devices don't send hourly data**. Hide the hourly chart then |
 | `days` | One entry per day, oldest first (1, 7 or 30 entries). Use for the 7/30-day bar charts |
-| `previousAverageMinutes` | Average for the same length of time just before (for "↓ 12% vs last week") |
+| `averageMinutes` / `previousAverageMinutes` / `completeDays` | Averages over complete days only, as the web's reports: today is still in progress, so for 7d/30d `averageMinutes` covers the `completeDays` (6 or 29) before today, and `previousAverageMinutes` as many days just before those (for "↓ 12% vs the previous period"). For `today`, `averageMinutes` is today's total and `previousAverageMinutes` is `null` (nothing complete to compare): hide the comparison. The chart's `days` still include today |
+| `deviceCount` | Phones and tablets paired to the child (browsers don't send screen time). `0`: say "Pair a phone or tablet to see screen time" instead of an empty ring and chart |
+| `locked` | `null`, or `{ periods, message }`: tabs the plan doesn't include (`["30d"]`). Show a lock on them and `message` when tapped, without requesting them |
+| `from` / `to` | The days covered, family time zone (`YYYY-MM-DD`). Show them ("Oct 7 – 13"); parse as calendar dates, not in the phone's zone |
 | `apps` | Most used first. `appId` / `approval` are `null` for apps without a rule (e.g. `Others`). With an `appMonitoringLimit`, only that many are named and the rest are summed into `Others`. For `today`, the named apps are also only ones the child's apps list (`GET /children/{id}/apps`) shows, which keeps apps waiting for approval first |
 | `hiddenApps` | How many apps were left unnamed because of the plan's `appMonitoringLimit` (0 otherwise). Show the upgrade note when above 0 |
 
@@ -1208,6 +1239,24 @@ One daily limit for all of a child's apps of a kind together ("Gaming time"). Ev
 `upgrade` is the message to show, and setting one is `403 plan_required` (removing one always works). A limit set
 before a downgrade is kept but not sent to devices until the family upgrades again.
 
+##### `GET /children/{id}/extra-time`, `POST` and `DELETE`
+
+Extra time lets the child keep using apps past a limit or bedtime for a while (blocked apps stay blocked). It also
+answers the child's "Ask for more time" (the ATTENTION alert "More time requested", whose button is
+`VIEW_SCREEN_TIME`, so show this on the Screen Time screen).
+
+```json
+{ "until": "2026-10-13T12:45:00.000Z", "request": { "body": "Lia asked for more time on YouTube, paused by the daily limit.", "askedAt": "2026-10-13T12:10:02.000Z" }, "choices": [15, 30, 60] }
+```
+
+`until` is `null` when none is running, `request` when the child isn't waiting. `POST { "minutes": 30 }` (one of
+`choices`) adds that much, to what's left if extra time is running, never more than 4 hours ahead, answers the
+request, and returns `{ until, addedMinutes }`. `addedMinutes` is what was actually given: less than `minutes` (0
+when already at the cap) when the 4-hour cap applies, so say "Mia has 10 more minutes", not the amount chosen.
+Two parents giving time at once both count. `DELETE` ends it, or answers the request with "not now", and returns
+`{ until: null }`. Devices pick it up on their next sync; one showing the block screen after asking checks every 20
+seconds.
+
 #### P4.10 Location
 
 ##### `GET /children/{id}/location`
@@ -1256,6 +1305,9 @@ before a downgrade is kept but not sent to devices until the family upgrades aga
 - `waitingForReport` names the device eGuard is waiting on when `state` is `waiting` only because no device has
   reported yet whether it shares ("Waiting for *Galaxy A54* to report whether location sharing is on"); otherwise
   `null`.
+- `note` (also on each child of `GET /locations`): when the location comes from an iPhone or iPad and isn't fresh,
+  "iPhone shares its location while eGuard is open on it, so this updates when your child opens eGuard." Show it
+  under the location; `null` otherwise. The iPhone app asks for While Using access only.
 - To turn sharing on or off, change the `LOCATION` protection (`PUT /children/{id}/protections/LOCATION
   { "sharing": true }`). On iOS this is guided setup.
 
@@ -1371,14 +1423,14 @@ a batch completes.
 
 | Method & path | Body | Response |
 |---|---|---|
-| `GET /devices` | none | `{ devices: [ …Device ], limit: 8 }` |
+| `GET /devices` | none | `{ devices: [ …Device ], limit: 8, used: 3 }`. `used` is what the plan's limit counts: these devices plus connected browsers (one disconnected for security doesn't count), as pairing counts them. Show "`used` of `limit`" |
 | `GET /devices/{id}` | none | `Device` + `protections: [{ key, name, icon, capability, capabilityLabel, status, reportedLabel, message, lastVerifiedAt }]` (all 10) |
 | `PATCH /devices/{id}` | `{ name?, isPrimary? }`: `name` 1–60 chars; `isPrimary: true` makes it its child's primary device (listed first, shown on the child's card; the previous primary stops being one). At least one field. Both are in the audit log | Same as GET |
 | `POST /devices/{id}/move` | `{ childId, password }` (or `confirm: "DELETE"` without a password) | Same as GET. Moves the device to another child without pairing again: it gets that child's protections and apps on its next sync. Its reported protections are cleared (`firstCheck: true` until it reports again) and a full report is requested; its last position is cleared; its open configuration requests are cancelled; what it recorded stays with the old child. Becomes the new child's primary only if they have none; the old child's oldest remaining device takes over as primary. The family gets a "Device moved" alert. `400` if it already belongs to that child, `404` for an unknown device or child, `403 wrong_password` |
 | `DELETE /devices/{id}` | `{ password }`, or `{ confirm: "DELETE" }` without one ([Confirming deletions](#confirming-deletions)), and optionally `deleteHistory: true` | `{ ok }`. The device is unpaired and its token stops working. `403 wrong_password` / `400 confirm_required` without the confirmation. The family gets a "Device removed" alert, emailed to parents, since eGuard stops verifying the device. By default the screen time, app usage and location visits recorded from the device are kept with the child (until the family's retention period, or the child is deleted); in location history their `deviceName` is `"Removed device"`. With `deleteHistory: true` they're deleted too. Offer this as an "Also delete what it recorded" option in the confirmation, unticked by default |
-| `GET /browsers` | none | `{ browsers: [{ id, childId, childName, deviceLabel, browser, browserVersion, extensionVersion, platform, lastSeenAt, connected, createdAt, protectionState, offline }] }`: the eGuard browser extension installs. `connected: false` means eGuard disconnected it for security (its sign-in key was used from two places); remove it and add it again. `protectionState` is the extension's own answer from its latest health check: `PROTECTED`, `NEEDS_ATTENTION`, `ACTION_REQUIRED`, `SYNC_PAUSED` or `UNSUPPORTED`, and `null` before its first check (show "Waiting for first health check"). `offline: true` means it hasn't checked in for a day: show "Not seen for a day" instead of its last state, which can't be confirmed |
-| `GET /children/{id}/browser-policy` | none | `{ version, safeBrowsing, safeSearch, blockedCategories[], blockedDomains[], allowedDomains[], unknownSitesPolicy, schedule, updatedBy, updatedAt, categories: [{ key, label, hint }] }`. Created with age-based defaults (`updatedBy: "eGuard defaults"`) the first time it's read. Applies to all of the child's browsers |
-| `PUT /children/{id}/browser-policy` | every field: `{ safeBrowsing, safeSearch, blockedCategories: ["ADULT", …], blockedDomains: ["example.com"], allowedDomains: [], unknownSitesPolicy: "ALLOW" \| "WARN" \| "BLOCK", schedule: { enabled, startTime: "21:00", endTime: "06:00" } \| null }` | Same as GET. Sites are normalised (`https://www.x.com/page` → `www.x.com`), sorted and de-duplicated, up to 500 per list. `400` with a parent-readable `error` for a site that isn't an address, a site in both lists, or equal focus-hour times. Saving identical settings keeps the version; any change adds one, which browsers pick up within 5 minutes. `409 conflict` if another parent saved at the same moment. Optional `baseVersion`: the `version` you showed the parent; if the policy changed since (an approved access request, another parent), the save is refused with `409 stale_version` instead of undoing that change. Reload and let the parent redo their edit. Send it from every editor. `unknownSitesPolicy` is for sites on neither list: `ALLOW`, `WARN` (notice first) or `BLOCK` (allowed list only); focus hours block everything not on the allowed list |
+| `GET /browsers` | none | `{ browsers: [{ id, childId, childName, deviceLabel, browser, browserVersion, extensionVersion, platform, lastSeenAt, lastSeenLabel, connected, createdAt, protectionState, offline, status: { tone, label, note } }] }`: the eGuard browser extension installs. **Show `status`**: the web card's words, with disconnected and silent already taken into account (`tone` is `ok`, `warn`, `crit`, `muted` or `accent`; `label` e.g. "Protected", "Action required", "Not seen for a day", "Disconnected for security"; `note` one sentence or `null`). `extensionVersion` and `browserVersion` are kept current by the extension's health checks. `connected: false` means eGuard disconnected it for security (its sign-in key was used from two places); remove it and add it again. `protectionState` is the extension's own answer from its latest health check: `PROTECTED`, `NEEDS_ATTENTION`, `ACTION_REQUIRED`, `SYNC_PAUSED` or `UNSUPPORTED`, and `null` before its first check (show "Waiting for first health check"). `offline: true` means it hasn't checked in for a day: show "Not seen for a day" instead of its last state, which can't be confirmed |
+| `GET /children/{id}/browser-policy` | none | `{ version, safeBrowsing, safeSearch, youtubeRestrict, blockedCategories[], blockedDomains[], allowedDomains[], unknownSitesPolicy, schedule, updatedBy, updatedAt, categories: [{ key, label, hint }], youtubeLevels: [{ key, label, text }] }`. `youtubeRestrict` is YouTube Restricted Mode in the child's browsers: `OFF`, `MODERATE` or `STRICT` (offer `youtubeLevels`, in order, with the web's words). `categories` now includes `PROXY` (proxies, page translators and web archives; on by default for new children). Created with age-based defaults (`updatedBy: "eGuard defaults"`) the first time it's read. Applies to all of the child's browsers |
+| `PUT /children/{id}/browser-policy` | every field except `youtubeRestrict`, which may be left out to keep the saved level: `{ safeBrowsing, safeSearch, youtubeRestrict?, blockedCategories: ["ADULT", …], blockedDomains: ["example.com"], allowedDomains: [], unknownSitesPolicy: "ALLOW" \| "WARN" \| "BLOCK", schedule: { enabled, startTime: "21:00", endTime: "06:00" } \| null }` | Same as GET. Sites are normalised (`https://www.x.com/page` → `www.x.com`), sorted and de-duplicated, up to 500 per list. `400` with a parent-readable `error` for a site that isn't an address, a site in both lists, or equal focus-hour times. Saving identical settings keeps the version; any change adds one, which browsers pick up within 5 minutes. `409 conflict` if another parent saved at the same moment. Optional `baseVersion`: the `version` you showed the parent; if the policy changed since (an approved access request, another parent), the save is refused with `409 stale_version` instead of undoing that change. Reload and let the parent redo their edit. Send it from every editor. `unknownSitesPolicy` is for sites on neither list: `ALLOW`, `WARN` (notice first) or `BLOCK` (allowed list only); focus hours block everything not on the allowed list |
 | `GET /children/{id}/browser-access-requests` | none | `{ pending: [Request], recent: [Request] }` where `Request` is `{ id, domain, reason, status: "PENDING" \| "APPROVED" \| "DENIED", duration, expiresAt, createdAt, decidedAt, decidedBy }`. Sites the child asked to open from the browser's block page; each new one also raises an `ATTENTION` alert "Website access request" (`resolveKey` `WEBREQ:<id>`) |
 | `POST /browser-access-requests/{id}` | `{ decision: "APPROVE", duration: "15M" \| "1H" \| "TODAY" \| "ALWAYS" }` or `{ decision: "DENY" }` | `{ request }`. Approval becomes a new browser policy version the browser picks up within 5 minutes (the child can also tap Check again): `ALWAYS` adds the site to the allowed list, the others allow it until then (`TODAY` = midnight in the family's time zone). Resolves the alert. `409 already_decided` if another parent answered first |
 | `DELETE /browsers/{id}` | `{ password }` or `{ confirm: "DELETE" }` | `{ ok }`. Same rules as removing a device; the extension forgets the connection on its next check and the family gets a "Browser removed" alert |
@@ -1492,7 +1544,8 @@ Sponsor codes, which pay for a plan, are redeemed on the website only (see [Know
 
 - Plans are **Free** (1 child), **eGuard Plus** (₱149/month, 5 children) and **Family Pro** (₱249/month, 10 children).
   `upgrade` is the next plan up, or `null` on Family Pro.
-- `status` is `ACTIVE` or `EXPIRED`.
+- `status` is `ACTIVE` or `EXPIRED`. A failed auto-renew payment that is being retried stays `ACTIVE` (the plan has a
+  grace period). `renewsLabel` then reads "Renewal failed on …".
 - Plan Usage "3 of 5 children" comes from `usage.children` / `usage.childLimit`; devices from `usage.devicesUsed` / `usage.deviceLimit`.
 - Use `entitlements` to hide or badge what the plan doesn't include (also on `GET /family`). The server enforces
   them either way:
@@ -1508,19 +1561,23 @@ Sponsor codes, which pay for a plan, are redeemed on the website only (see [Know
   plan and usage but **don't sell it and don't link to the website**: store policies forbid steering users to
   outside payment for digital subscriptions.
 - `billingAvailable` is `true` only when the request comes from the Android app (`X-eGuard-Client: android`) **and**
-  the server has Google Play configured. It is `false` while payments are web-only. Show an upgrade button only
+  the server has Google Play configured **and** the plan isn't already paid another way (a web pass or auto-renew,
+  or a sponsor code), so a Play subscription never charges on top of one. It is `false` while payments are web-only. Show an upgrade button only
   when all three hold:
   - `billingAvailable` is true
   - `upgrade` is non-null
   - `canManage` is true (only the family admin can buy)
 
-  Otherwise show no upgrade button.
+  Otherwise show no upgrade button. `upgrade` is always `null` for the iOS app (`X-eGuard-Client: ios`), which sells
+  nothing; its help articles also leave out prices and where to buy.
 - `store`, when set, says how the current plan is paid: `{ name, productId, autoRenewing, expiresAt }`.
-  - `name` is `PAYMONGO` for a web purchase (a pass, or auto-renew), `VOUCHER` for a sponsor code an organization gave the family (show it as "Sponsored plan"; codes are redeemed on the web), or `GOOGLE_PLAY`.
+  - `name` is `PAYMONGO` for a web purchase (a pass, or auto-renew), `VOUCHER` for a sponsor code an organization gave the family (show it as "Sponsored by {sponsor}", or "Sponsored plan" when `sponsor` is null; codes are redeemed on the web), or `GOOGLE_PLAY`.
+  - `sponsor` (optional, newer servers): the organization's name for a `VOUCHER` plan, otherwise null.
   - If `autoRenewing` is false (a pass, or auto-renew turned off), `renewsLabel` reads "Ends on …".
   - For a Google Play plan, "Manage Subscription" opens
     `https://play.google.com/store/account/subscriptions?sku={productId}&package={packageName}`.
-- The server re-checks purchases on each call: one whose paid period has ended at most every 10 minutes, and an
+- The server re-checks purchases on each call: an unfinished web payment at most every minute, one whose paid period
+  has ended at most every 10 minutes, and an
   active one once a day. It also learns about payments, renewals and refunds from PayMongo webhooks. When the plan
   lapses, the family goes back to Free. Children and devices already added stay, but no new ones can be added over
   the limits.
@@ -1579,6 +1636,7 @@ The call is idempotent: send it again for "Restore purchases" or after a network
 | `409 conflict` | The token is already linked to another eGuard family |
 | `409 purchase_pending` | Payment pending (e.g. cash at a store). Show "We'll upgrade you once payment clears" and retry later |
 | `409 not_active` | Expired, on hold or paused |
+| `409 billed_elsewhere` | The plan already auto-renews on the website. The purchase isn't acknowledged, so Google refunds it within 3 days. Show the message |
 | `501 billing_not_configured` | The server has no Google Play config |
 | `502 store_unavailable` | Google unreachable. Retry; the purchase is safe (unacknowledged purchases are refunded after 3 days, so retry soon) |
 
@@ -1693,8 +1751,9 @@ Age-rating tiers used by the profiles: 4, 9, 13, 16, 18.
 
 | KEY | Android | iOS |
 |---|---|---|
-| `WEB` | AVAILABLE | GUIDED |
-| `DOWNLOADS` | AVAILABLE | VERIFY_ONLY |
+| `APP_RESTRICTIONS` | PARENT_SET | AVAILABLE |
+| `CONTENT` | PARENT_SET | AVAILABLE |
+| `WEB` | GUIDED | AVAILABLE |
 | `LOCATION` | AVAILABLE | GUIDED |
 | `NOTIFICATIONS` | AVAILABLE | UNSUPPORTED |
 | All others | AVAILABLE | AVAILABLE |
@@ -1703,8 +1762,12 @@ Age-rating tiers used by the profiles: 4, 9, 13, 16, 18.
 |---|---|
 | `AVAILABLE` | eGuard applies it directly; just wait for verification |
 | `GUIDED` | Show `guide` steps, then "Verify now" (`/confirm`) |
-| `VERIFY_ONLY` | Same UI as GUIDED: the parent sets it on the device, eGuard confirms it |
+| `VERIFY_ONLY` | Same UI as GUIDED: the parent sets it on the device, eGuard confirms it (no protection uses it today) |
+| `PARENT_SET` | Show `guide` steps (Google Play's parental controls), then "Save" (`/confirm`). The device can't read it, so `/confirm` records it at once as the parent's word: the request becomes `VERIFIED` with `parentSet: true` on the batch device, and the device's protection status becomes `UNSUPPORTED` (not counted in health). Show it as "Set by you", never "Verified" or "Not supported". `NOT_CONFIGURED` until the parent confirms ("Not set up yet") |
 | `UNSUPPORTED` | Show "Not supported on iPhone". It never counts against health |
+
+Health checks (`GET /health` `checks[]`) carry `parentSet: true` when the check's `UNSUPPORTED` status comes from
+protections the parent set this way: show "Set by you" for it.
 
 #### Other enums
 
@@ -1731,7 +1794,7 @@ These parts of the design aren't backed by the API yet. Plan the UI accordingly.
 
 | Design element | Status | Suggested UI for now |
 |---|---|---|
-| Push notifications | Sent through Firebase Cloud Messaging once the server has `FCM_SERVICE_ACCOUNT`; alerts go out with the maintenance job (every few minutes), not instantly | Register FCM tokens; still refresh with `/alerts/unread-count` on foreground. A push's `data` has `type: "alert"`, `alertId`, `category` and `childId?`: open the alert |
+| Push notifications | Sent through Firebase Cloud Messaging once the server has `FCM_SERVICE_ACCOUNT`; alerts go out with the maintenance job (every few minutes), not instantly | Register FCM tokens; still refresh with `/alerts/unread-count` on foreground. A push's `data` has `type: "alert"`, `alertId`, `category` and `childId?`, plus the alert's `action` flattened when it has one: `actionType`, `deviceId?`, `key?`, `requestId?` (`childId` is then the action's). Open what `actionType` opens, as the alert's button does; without one, open the alert. `type` is always `"alert"`, never an action |
 | Upgrade / Manage Subscription in the apps | Plans are sold on the web only (PayMongo) for now; Google Play billing is turned off and App Store purchases aren't supported, so `billingAvailable` is `false` | Show the plan and usage without a buy button or a link to the website |
 | Password for Apple/Google accounts | Social accounts have no password until they set one, so they can't change one or change their email | Hide "Change password" while `hasPassword` is false and offer "Forgot password?" to set one. Deletions use "Type DELETE" instead ([Confirming deletions](#confirming-deletions)) |
 | Sponsor codes | Redeeming a code that pays for a plan happens on the website only: unlocking a paid plan with a code inside a store app can break App Store and Google Play payment rules. Joining an organization (free) works in the app | Show a sponsored plan (`store.name: "VOUCHER"`) as "Sponsored plan"; no in-app redeem and no link to the website |
@@ -1864,14 +1927,15 @@ appears here, but the device's next report verifies it the same way.
 | `approval` | Device behavior |
 |---|---|
 | `ALLOWED` | Usable, subject to screen time, bedtime and its own `dailyLimitMinutes` |
-| `ALWAYS_ALLOWED` | Usable even after the daily limit and during bedtime |
-| `FILTERED` | Treat as `ALLOWED` for now |
+| `ALWAYS_ALLOWED` | Not paused by the daily screen-time limit or a category limit; bedtime and its own `dailyLimitMinutes` still apply |
+| `FILTERED` | Blocked, like `BLOCKED` (reserved for content filtering). Asking for it reaches the parent as for a blocked app |
 | `BLOCKED` | Always shows the block screen. Opening it sends `APP_BLOCKED` |
 | `PENDING` | Blocked, with the "Waiting for your parent" screen |
 | Not in the list | New app. With App Approval on, block it and send `APP_REQUESTED`; otherwise allow it and send `APP_INSTALLED` |
 
-`ALWAYS_ALLOWED` and `FILTERED` aren't defined on the server yet (gap G5 in
-[child-app-spec.md › Server gaps](child-app-spec.md#13-server-gaps)), so these meanings may change.
+Each entry also has `category`, and `categoryLimits` caps a category's total: see
+[child-app-spec.md §7](child-app-spec.md#7-apps-approval-blocking-and-per-app-limits). Apps that were on the phone
+before pairing join the list from `/usage`.
 
 ---
 
@@ -1919,18 +1983,24 @@ Connected browsers count toward the same device limit as phones and tablets.
 The heartbeat. Call it every `nextSyncSeconds`, at app start, when the network returns and after boot.
 
 ```json
-{ "battery": 72, "osVersion": "14", "appVersion": "1.0.0" }
+{ "battery": 72, "osVersion": "14", "appVersion": "1.0.0", "pushToken": "fcm-registration-token…" }
 ```
 
-All fields are optional (`battery` 0–100 or `null`, `osVersion` ≤ 40, `appVersion` ≤ 20); an empty body is fine.
-An invalid body is ignored rather than refused.
+All fields are optional (`battery` 0–100 or `null`, `osVersion` ≤ 40, `appVersion` ≤ 20, `pushToken` ≤ 4096 or
+`null`); an empty body is fine. An invalid body is ignored rather than refused.
+
+`pushToken` is the app's FCM registration token (on iOS, from the Firebase Messaging SDK). With it, a parent's change
+wakes the device: a data-only FCM message `{ "type": "sync", "reason": "config" | "check" | "apps" | "extra_time" }`,
+high priority on Android and a background push on iOS. On receiving it, run one sync cycle. Send it on every
+`/sync`; leaving it out keeps the saved one, `null` clears it.
 
 ```json
 {
   "deviceId": "cmujeom5j000wncgs0ylb00q4",
+  "childName": "Mia",
   "policy": [
     { "key": "SCREEN_TIME", "config": { "key": "SCREEN_TIME", "dailyMinutes": 180, "weekendMinutes": 240 } },
-    { "key": "BEDTIME", "config": { "key": "BEDTIME", "enabled": true, "start": "21:30", "end": "06:00", "days": "EVERY_DAY" } }
+    { "key": "BEDTIME", "config": { "key": "BEDTIME", "enabled": true, "start": "21:00", "end": "06:30", "days": "SCHOOL_NIGHTS" } }
   ],
   "requests": [
     { "id": "cmujesvhf00vnncko3bmhqh76", "key": "BEDTIME",
@@ -1940,6 +2010,7 @@ An invalid body is ignored rather than refused.
     { "name": "YouTube", "approval": "ALLOWED", "dailyLimitMinutes": 60 },
     { "name": "Roblox", "approval": "BLOCKED", "dailyLimitMinutes": null }
   ],
+  "extraTimeUntil": null,
   "fullReportRequested": false,
   "nextSyncSeconds": 300,
   "timezone": "Asia/Manila",
@@ -1950,11 +2021,13 @@ An invalid body is ignored rather than refused.
 
 | Field | Notes |
 |---|---|
-| `policy` | `PolicyEntry[]`, one per protection. The source of truth for enforcement. Save it locally and reconcile: if the policy says a protection is on and the device doesn't have it, apply it again |
+| `childName` | Whose device this is now. A parent can rename the child or move the device to another child, so show this one and save it, not the name from `/pair` |
+| `policy` | `PolicyEntry[]`, one per protection. The source of truth for enforcement: the verified setting, or the change still waiting to be verified when there is one (as for `BEDTIME` above). Save it locally and reconcile: if the policy says a protection is on and the device doesn't have it, apply it again |
 | `requests` | `Request[]`, oldest first. Apply them in order. **A request is sent again in every `/sync` until the device reports that protection**, so a lost response never strands a change. Applying the same config twice must be harmless |
 | `apps` | `AppRule[]`: every app rule for the child, from all their devices |
-| `fullReportRequested` | A parent ran a check, or the device just paired. Send `POST /report { full: true }` with every supported protection right away: the parent's check waits only **12 seconds** |
-| `nextSyncSeconds` | When to call again. 300 today |
+| `extraTimeUntil` | ISO time, or `null`. Extra time a parent gave: until then, don't pause apps for bedtime, the daily limit, app limits or category limits. `BLOCKED`, `FILTERED` and pending apps stay blocked. After the child asks for more time, sync every ~20 seconds for a while so a "yes" reaches them quickly. While it runs, `nextSyncSeconds` is 60, so a parent ending it early reaches the device within a minute |
+| `fullReportRequested` | A parent ran a check, or the device just paired. Send `POST /report { full: true }` with every supported protection right away: the parent's check waits only **12 seconds** (30 when an iOS device hasn't answered) |
+| `nextSyncSeconds` | When to call again. 300, or 60 while extra time runs |
 | `timezone` | The family's zone. Use it for days, weekends and school nights |
 | `features.locationSharing` | `false` on plans without location: don't collect or send fixes, whatever `LOCATION` says. Still report the `LOCATION` protection |
 | `minAppVersion` | When set and above the app's version, show an update screen and stop syncing until updated. `null`: no minimum |
@@ -1969,7 +2042,7 @@ The configuration the device **actually has**, read back from the OS. This is th
 
 | Field | Type | Notes |
 |---|---|---|
-| `protections` | `[{ key, config }]`, ≤ 20 | `config` is the protection's fields, without `key` (the server adds it) |
+| `protections` | `[{ key, config, error? }]`, ≤ 20 | `config` is the protection's fields, without `key` (the server adds it). `error` (≤ 200 chars, optional): the device tried to apply it and couldn't, in words a parent can read ("Choose at least one app or category first."). Still send what the OS really has in `config`; the parent then sees "*Screen Time* couldn't be applied on *Mia's iPad*: …" instead of a bare mismatch, and a change that fails records the reason |
 | `full` | boolean, optional | `true` when this report covers every protection the device supports (answering `fullReportRequested`) |
 | `battery`, `osVersion`, `appVersion` | optional | As in `/sync` |
 
@@ -2032,7 +2105,9 @@ Response: `{ "ok": true }`. Send today's running totals every sync cycle, and a 
 midnight. Totals are kept per device, and a child's phone and tablet are added together for the parent. Sending
 `hourly` once and leaving it out later keeps the earlier hourly values. Up to 300 different apps are kept per device
 and day; names past that are ignored. `429` after 120 usage reports an hour from one device: keep the newest total
-per day and send it later (a backlog after a few days offline fits easily).
+per day and send it later (a backlog after a few days offline fits easily). Every app named here that isn't on the
+child's list yet is added as `ALLOWED`, without an alert (it was on the phone before eGuard; `"Others"` is skipped),
+so the parent can block or limit it and it comes back in `/sync` `apps`. A child's list keeps up to 1000 apps.
 
 #### `POST /location`
 
@@ -2044,9 +2119,10 @@ The device's current position.
 | `lng` | number | −180 to 180 |
 | `accuracyM` | number, optional | 0–100000 metres. Over 200 shows as "approximate" to the parent |
 | `placeLabel` | string, optional | ≤ 80 chars. Blank counts as none. Don't reverse-geocode on the device in v1. A saved place the fix falls inside overrides it |
+| `at` | ISO 8601 time, optional | When the OS took the fix (Android `Location.time`, iOS `CLLocation.timestamp`). **Send it**: a last-known or queued fix can be hours old, and without `at` it's shown to the parent as taken on arrival ("Live"). A time in the future counts as now. A fix older than 24 hours, or not newer than the one already stored, is dropped (still `{ ok: true }`). Without it: the time it arrives |
 
 ```json
-{ "lat": 14.6507, "lng": 121.0494, "accuracyM": 25 }
+{ "lat": 14.6507, "lng": 121.0494, "accuracyM": 25, "at": "2026-10-13T05:12:40Z" }
 ```
 
 Response: `{ "ok": true }`, including when the fix is dropped. `429` past 240 fixes an hour from one device: wait a
@@ -2070,10 +2146,13 @@ detected from `/report`.
 
 | `type` | Extra fields | Send when | Server effect |
 |---|---|---|---|
-| `APP_INSTALLED` | `app`, `ageRating?` (0–21) | A new app appears and App Approval is off | Adds the app to the child's list; INFO alert "New app installed" the first time the name is seen for this child (from any device). On a plan that limits apps (Free), the alert names the app only if the parent's Apps list shows it; otherwise it says "An app was installed" with the upgrade line |
+| `APP_INSTALLED` | `app`, `ageRating?` (0–21) | A new app appears and App Approval is off | Adds the app to the child's list; INFO alert "New app installed" the first time the name is seen for this child (from any device). If App Approval (or Downloads "parent approval") is on anyway, the new app is added as `PENDING` with an "App approval requested" alert, as `APP_REQUESTED` would (Android 1.0.9 and earlier send both events). On a plan that limits apps (Free), the alert names the app only if the parent's Apps list shows it; otherwise it says "An app was installed" with the upgrade line |
 | `APP_REQUESTED` | `app` | The child taps Ask, or a new app is installed with App Approval on | Marks the app `PENDING` and raises an ATTENTION "App approval requested". One open request per app |
 | `APP_BLOCKED` | `app` | The child opens a `BLOCKED` app | INFO "App blocked", at most once per app per device per hour. On Free, an app the Apps list hides isn't named ("tried to open a blocked app"), and those share one alert per hour |
 | `LIMIT_REACHED` | `minutes` (0–1440, the limit) | The daily screen-time limit is hit | INFO "Screen time limit reached", at most once per device per 12 hours |
+| `TIME_REQUESTED` | `app?`, `reason?` (`DAILY_LIMIT`, `APP_LIMIT`, `CATEGORY_LIMIT`, `BEDTIME`) | The child taps "Ask for more time" on a limit or bedtime block screen | ATTENTION "More time requested" (Screen time). One open request per child across devices; after a parent answers it (extra time, or not now), a new one only 10 minutes later. `app` is named only if the plan's Apps list shows it |
+| `USER_LEFT` | none | Android: the phone switched to another user or a guest profile (`ACTION_USER_BACKGROUND`), where eGuard doesn't run | ATTENTION "Switched to another user" (Devices), open until `USER_RETURNED` |
+| `USER_RETURNED` | `awayMinutes` (0–20160) | Android: back on the child's profile (`ACTION_USER_FOREGROUND`) | Resolves "Switched to another user"; from 1 minute away, a dismissible ATTENTION "Used on another user" saying for how long nothing was enforced |
 
 ```json
 { "type": "APP_REQUESTED", "app": "Minecraft", "eventId": "4f1c2a9e-6b0d-4c55-9a51-0d7f3f7e2b10" }
@@ -2081,13 +2160,16 @@ detected from `/report`.
 
 Response: `{ "ok": true }`.
 
-- `APP_REQUESTED` for an app the parent already allowed (`ALLOWED`, `ALWAYS_ALLOWED`, `FILTERED`) changes nothing
+- `APP_REQUESTED` for an app the parent already allowed (`ALLOWED`, `ALWAYS_ALLOWED`) changes nothing (a `FILTERED` app is asked for like a blocked one)
   and returns `{ ok: true, approval }`: unlock it locally. For a `BLOCKED` app it stays blocked, the parent is told
   at most once a day, and the response is `{ ok: true, approval: "BLOCKED" }`. Show "Your parent said no for now".
 - **`eventId`** (optional, 8–64 chars, e.g. a UUID): make one per event and send the same one on every retry. A repeat
   from the same device within 7 days returns `{ "ok": true, "duplicate": true }` and does nothing. Without it, a
   retried event counts as new.
 - `429` after 120 events an hour from one device. Keep the event queued and retry later.
+- Legacy names from Android 1.0.7 and earlier are still accepted: `NEW_APP` as `APP_INSTALLED`, and `APP_REQUEST` as
+  `APP_REQUESTED`, except that an `APP_REQUEST` for an app the parent already allowed is taken as `TIME_REQUESTED`
+  (those builds sent it from "Ask for more time"). New builds send the names above.
 
 ---
 
@@ -2181,12 +2263,14 @@ token, and show the removal screen. There is no way yet for the device to unpair
 #### Platform capability
 
 How each protection is applied. **Only report protections the platform supports**: iOS never sends
-`NOTIFICATIONS`. `UNSUPPORTED` never counts against the child's health.
+`NOTIFICATIONS`, Android never sends `APP_RESTRICTIONS` or `CONTENT`. `UNSUPPORTED` never counts against the child's
+health. In a `full` report, a protection the device can apply but leaves out is taken as not in force.
 
 | KEY | Android | iOS |
 |---|---|---|
-| `WEB` | AVAILABLE | GUIDED |
-| `DOWNLOADS` | AVAILABLE | VERIFY_ONLY |
+| `APP_RESTRICTIONS` | PARENT_SET | AVAILABLE |
+| `CONTENT` | PARENT_SET | AVAILABLE |
+| `WEB` | GUIDED | AVAILABLE |
 | `LOCATION` | AVAILABLE | GUIDED |
 | `NOTIFICATIONS` | AVAILABLE | UNSUPPORTED |
 | All others | AVAILABLE | AVAILABLE |
@@ -2195,6 +2279,7 @@ How each protection is applied. **Only report protections the platform supports*
 |---|---|
 | `AVAILABLE` | Applies requests itself, then reports |
 | `GUIDED` / `VERIFY_ONLY` | A parent sets it by hand on the device; the device only reads it back and reports |
+| `PARENT_SET` | Nothing: the parent sets it in another app (Google Play) and confirms. Leave it out of reports; the server ignores it |
 | `UNSUPPORTED` | Nothing, and leaves it out of reports |
 
 How each protection is enforced on each platform is in [child-app-spec.md › 6](child-app-spec.md#6-enforcing-the-10-protections).
@@ -2206,7 +2291,7 @@ How each protection is enforced on each platform is in [child-app-spec.md › 6]
 | `platform` | `ANDROID`, `IOS` |
 | `kind` | `PHONE`, `TABLET` |
 | app `approval` | `ALLOWED`, `ALWAYS_ALLOWED`, `FILTERED`, `BLOCKED`, `PENDING` |
-| event `type` | `APP_INSTALLED`, `APP_REQUESTED`, `APP_BLOCKED`, `LIMIT_REACHED` |
+| event `type` | `APP_INSTALLED`, `APP_REQUESTED`, `APP_BLOCKED`, `LIMIT_REACHED`, `TIME_REQUESTED`, `USER_LEFT`, `USER_RETURNED` |
 
 ---
 
@@ -2232,10 +2317,10 @@ Tracked in [child-app-spec.md › Server gaps](child-app-spec.md#13-server-gaps)
 
 | # | Gap | For now |
 |---|---|---|
-| G1 | No way to wake the device: changes and checks arrive on the next `/sync` | Poll every `nextSyncSeconds`. On iOS, changes can wait hours |
+| G1 | ~~No way to wake the device~~ **Done (2026-10-14):** send `pushToken` on `/sync`; changes, checks, app rules and extra time send a silent "sync now" | Keep polling every `nextSyncSeconds` too: iOS may hold a background push back, and nothing is sent before the device has a token |
 | G3 | iOS may not be able to read back settings made in the Settings app, or send usage from the report extension | Prototype before promising iOS verification and screen-time charts |
 | G4 | Apps are keyed by display name only | Send the exact display name everywhere; same-name apps share one rule |
-| G5 | `ALWAYS_ALLOWED` and `FILTERED` aren't defined on the server | Follow the spec's section 7 |
+| G5 | Done 2026-10-13: `ALWAYS_ALLOWED` and `FILTERED` defined as Android enforces them | The spec's section 7 |
 | G6 | No rename or unpair from the device | Choose the name before pairing. Only a parent can remove the device |
 | G7 | No website access requests from phones | Only the browser extension has them ([browser-extension-api.md](browser-extension-api.md)) |
 | G9 | "Offline" takes 24 hours | none |
