@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { dayIn } from "@/lib/browser-health";
-import { BASE, PASSWORD, call, cleanup, db, email, verifyInbox } from "./helpers";
+import { BASE, PASSWORD, call, cleanup, db, email, register, verifyInbox } from "./helpers";
 
 /**
  * Browser health (/api/browser/v1/health): the extension's self-checks, drift against the child's current policy,
@@ -28,7 +28,7 @@ const currentVersion = async () => (await ext("/policy", { token: access })).dat
 afterAll(cleanup);
 
 beforeAll(async () => {
-  const r = await call("POST", "/auth/register", { body: { name: "Nora Diaz", email: email("nora"), password: PASSWORD, guardian: true } });
+  const r = await register({ name: "Nora Diaz", email: email("nora"), password: PASSWORD, guardian: true });
   token = r.data.token;
   familyId = r.data.user.family.id;
   await verifyInbox(email("nora"));

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { PASSWORD, applyAndReport, call, cleanup, db, email, pairDevice } from "./helpers";
+import { PASSWORD, applyAndReport, call, cleanup, db, email, pairDevice, register } from "./helpers";
 
 /**
  * A child's primary device and moving a device between children, against the real database: the lock-held
@@ -20,7 +20,7 @@ const primaries = async (childId: string) =>
 afterAll(cleanup);
 
 beforeAll(async () => {
-  const r = await call("POST", "/auth/register", { body: { name: "Dina Reyes", email: email("dina"), password: PASSWORD, guardian: true } });
+  const r = await register({ name: "Dina Reyes", email: email("dina"), password: PASSWORD, guardian: true });
   token = r.data.token;
   familyId = r.data.user.family.id;
   // Pairing needs a verified email; two children and three devices need more than Free
@@ -30,7 +30,7 @@ beforeAll(async () => {
   leoId = (await call("POST", "/children", { token, body: { name: "Leo", age: 15 } })).data.id;
   phone = await pairDevice(token, miaId, "ANDROID", "Mia's Phone");
   tablet = await pairDevice(token, miaId, "ANDROID", "Mia's Tablet");
-  const o = await call("POST", "/auth/register", { body: { name: "Other Parent", email: email("other"), password: PASSWORD, guardian: true } });
+  const o = await register({ name: "Other Parent", email: email("other"), password: PASSWORD, guardian: true });
   other = o.data.token;
 });
 

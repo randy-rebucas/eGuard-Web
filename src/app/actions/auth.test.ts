@@ -16,7 +16,7 @@ vi.mock("next/server", () => later);
 vi.mock("@/lib/db", () => ({ db: {} }));
 const user = { id: "u1", familyId: "fam1", name: "Ana", email: "ana@example.com", role: "FAMILY_ADMIN" };
 const auth = vi.hoisted(() => ({
-  authenticate: vi.fn(), createSession: vi.fn(), destroySession: vi.fn(), hashPassword: vi.fn(), requireUser: vi.fn(),
+  authenticate: vi.fn(), createSession: vi.fn(), destroySession: vi.fn(), hashPassword: vi.fn(), requireUser: vi.fn(), clearCookie: vi.fn(), hostCookie: (n: string) => n,
   PASSWORD_TOO_LONG: "Use at most 72 characters.", passwordTooLong: () => false,
 }));
 vi.mock("@/lib/auth", () => auth);
@@ -33,9 +33,12 @@ const verify = vi.hoisted(() => ({ sendVerificationEmail: vi.fn(), sendVerificat
 vi.mock("@/lib/email-verification", () => verify);
 const invites = vi.hoisted(() => ({ acceptInvite: vi.fn(), declineInvite: vi.fn() }));
 vi.mock("@/lib/invitations", () => invites);
-const family = vi.hoisted(() => ({ createFamily: vi.fn() }));
-// The real RegisterSchema; creating the family is stubbed
-vi.mock("@/lib/family-service", async (orig) => ({ ...(await orig<typeof import("@/lib/family-service")>()), ...family }));
+// The real RegisterSchema
+vi.mock("@/lib/family-service", async (orig) => ({ ...(await orig<typeof import("@/lib/family-service")>()) }));
+const signup = vi.hoisted(() => ({ SIGNUP_COOKIE: "eg_signup", startSignup: vi.fn(), finishSignup: vi.fn(), resendSignupCode: vi.fn() }));
+vi.mock("@/lib/signup", () => signup);
+const bots = vi.hoisted(() => ({ BOT_CHECK_FIELD: "g-recaptcha-response", verifyHuman: vi.fn() }));
+vi.mock("@/lib/bot-check", () => bots);
 for (const m of ["billing", "web-billing", "organizations", "audit", "device-slots"]) {
   vi.doMock(`@/lib/${m}`, () => ({}));
 }
@@ -74,7 +77,8 @@ describe("login", () => {
     expect(auth.authenticate).not.toHaveBeenCalled();
   });
   it("signs in with the normalised email and goes to the dashboard", async () => {
-    expect(await landing(actions.login(undefined, form({ email: " Ana@Example.com ", password: "pw" })))).toBe("/dashboard");
+    expect(await landing(actions.login(undefined, form({ email: " Ana@Example.com ", password: "pw", "g-recaptcha-response": "human" })))).toBe("/dashboard");
+    expect(bots.verifyHuman).toHaveBeenCalledWith("human", "203.0.113.7", "login");
     expect(auth.authenticate).toHaveBeenCalledWith("ana@example.com", "pw", "203.0.113.7");
     expect(auth.createSession).toHaveBeenCalledWith("u1");
   });
@@ -82,6 +86,11 @@ describe("login", () => {
     auth.authenticate.mockRejectedValue(new ServiceError(401, "That email and password don't match.", "unauthorized"));
     expect(await actions.login(undefined, form({ email: "ana@example.com", password: "nope" }))).toEqual({ error: "That email and password don't match.", fields: { email: "ana@example.com" } });
     expect(auth.createSession).not.toHaveBeenCalled();
+  });
+  it("a failed bot check stops before the password is checked", async () => {
+    bots.verifyHuman.mockRejectedValue(new ServiceError(400, "Not a person.", "bot_check"));
+    expect(await actions.login(undefined, form({ email: "ana@example.com", password: "pw" }))).toEqual({ error: "Not a person.", fields: { email: "ana@example.com" } });
+    expect(auth.authenticate).not.toHaveBeenCalled();
   });
   it("lets an unexpected failure through instead of hiding it", async () => {
     auth.authenticate.mockRejectedValue(new Error("database down"));
@@ -117,19 +126,19 @@ describe("verifySecondStep", () => {
   it("a wrong code keeps the challenge so the parent can try again", async () => {
     twoStep.completeChallenge.mockRejectedValue(new ServiceError(400, "That code isn't right.", "invalid"));
     expect(await actions.verifySecondStep(undefined, form({ code: "000000" }))).toEqual({ error: "That code isn't right.", fields: undefined });
-    expect(jar.delete).not.toHaveBeenCalled();
+    expect(auth.clearCookie).not.toHaveBeenCalled();
     expect(auth.createSession).not.toHaveBeenCalled();
   });
   it("an expired challenge is cleared and the form says so", async () => {
     twoStep.completeChallenge.mockRejectedValue(new ServiceError(400, "That took too long. Sign in again.", "challenge_expired"));
     expect(await actions.verifySecondStep(undefined, form({ code: "123456" }))).toEqual({ error: "That took too long. Sign in again.", fields: { expired: "1" } });
-    expect(jar.delete).toHaveBeenCalledWith("eg_2fa");
+    expect(auth.clearCookie).toHaveBeenCalledWith("eg_2fa");
   });
   it("a right code clears the challenge, starts the session and returns to a safe page", async () => {
     twoStep.completeChallenge.mockResolvedValue({ user, usedRecoveryCode: false });
     expect(await landing(actions.verifySecondStep(undefined, form({ code: " 123456 ", next: "/devices" })))).toBe("/devices");
     expect(twoStep.completeChallenge).toHaveBeenCalledWith("ch1", "123456");
-    expect(jar.delete).toHaveBeenCalledWith("eg_2fa");
+    expect(auth.clearCookie).toHaveBeenCalledWith("eg_2fa");
     expect(auth.createSession).toHaveBeenCalledWith("u1");
     expect(await landing(actions.verifySecondStep(undefined, form({ code: "123456", next: "//evil.example" })))).toBe("/dashboard");
   });
@@ -140,38 +149,75 @@ describe("verifySecondStep", () => {
 });
 
 describe("register", () => {
-  const signup = { name: "Ana Cruz", familyName: "The Cruz family", email: "Ana@Example.com", password: "a-long-password", guardian: "on" };
+  const filled = { name: "Ana Cruz", familyName: "The Cruz family", email: "Ana@Example.com", password: "a-long-password", guardian: "on" };
 
   it("needs the parent or guardian confirmation, and keeps what was typed", async () => {
-    expect(await actions.register(undefined, form({ ...signup, guardian: "" }))).toEqual({
+    expect(await actions.register(undefined, form({ ...filled, guardian: "" }))).toEqual({
       error: "Confirm you're a parent or legal guardian, 18 or older.",
       fields: { name: "Ana Cruz", familyName: "The Cruz family", email: "Ana@Example.com", guardian: "" },
     });
-    expect(family.createFamily).not.toHaveBeenCalled();
+    expect(signup.startSignup).not.toHaveBeenCalled();
   });
-  it("checks the password length before anything is created", async () => {
-    expect((await actions.register(undefined, form({ ...signup, password: "short" })))?.error).toBe("Use at least 10 characters for your password.");
-    expect(limits.enforce).not.toHaveBeenCalled();
-    expect(family.createFamily).not.toHaveBeenCalled();
+  it("checks the password length before anything is stored", async () => {
+    expect((await actions.register(undefined, form({ ...filled, password: "short" })))?.error).toBe("Use at least 10 characters for your password.");
+    expect(bots.verifyHuman).not.toHaveBeenCalled();
+    expect(signup.startSignup).not.toHaveBeenCalled();
   });
-  it("creates the family with a hashed password, sends the verification email, and signs in", async () => {
-    auth.hashPassword.mockResolvedValue("hash");
-    family.createFamily.mockResolvedValue({ id: "u9" });
-    expect(await landing(actions.register(undefined, form(signup)))).toBe("/dashboard");
-    expect(limits.enforce).toHaveBeenCalledWith("signup:203.0.113.7", "signup");
-    // Only the hash: the plain password never leaves the action
-    expect(family.createFamily).toHaveBeenCalledWith({ name: "Ana Cruz", familyName: "The Cruz family", email: "ana@example.com", passwordHash: "hash" });
-    expect(verify.sendVerificationEmailLater).toHaveBeenCalledWith("u9");
+  it("checks for a bot, starts the sign-up, keeps its ticket in a cookie and asks for the code", async () => {
+    const expiresAt = new Date(Date.now() + 900_000);
+    signup.startSignup.mockResolvedValue({ ticket: "tk1", expiresAt, email: "ana@example.com" });
+    expect(await landing(actions.register(undefined, form({ ...filled, "g-recaptcha-response": "human" })))).toBe("/register/verify");
+    expect(bots.verifyHuman).toHaveBeenCalledWith("human", "203.0.113.7", "register");
+    expect(signup.startSignup).toHaveBeenCalledWith({ name: "Ana Cruz", familyName: "The Cruz family", email: "ana@example.com", password: "a-long-password" }, "203.0.113.7");
+    expect(jar.set).toHaveBeenCalledWith("eg_signup", "tk1", expect.objectContaining({ httpOnly: true, sameSite: "lax", path: "/", expires: expiresAt }));
+    // No account and no session until the code checks out
+    expect(auth.createSession).not.toHaveBeenCalled();
+  });
+  it("shows a failed bot check, the rate limit or a breached password instead of throwing", async () => {
+    bots.verifyHuman.mockRejectedValueOnce(new ServiceError(400, "Not a person.", "bot_check"));
+    expect((await actions.register(undefined, form(filled)))?.error).toBe("Not a person.");
+    expect(signup.startSignup).not.toHaveBeenCalled();
+    signup.startSignup.mockRejectedValue(new ServiceError(400, "This password has appeared in a data breach.", "invalid"));
+    expect(await actions.register(undefined, form(filled))).toEqual({
+      error: "This password has appeared in a data breach.", fields: { name: "Ana Cruz", familyName: "The Cruz family", email: "Ana@Example.com", guardian: "on" },
+    });
+    expect(jar.set).not.toHaveBeenCalled();
+  });
+});
+
+describe("verifySignup", () => {
+  beforeEach(() => jar.get.mockReturnValue({ value: "tk1" }));
+
+  it("without a sign-up on this browser, says to start again", async () => {
+    jar.get.mockReturnValue(undefined);
+    expect((await actions.verifySignup(undefined, form({ code: "123456" })))?.fields).toEqual({ expired: "1" });
+    expect(signup.finishSignup).not.toHaveBeenCalled();
+  });
+  it("a wrong code keeps the sign-up for another try", async () => {
+    signup.finishSignup.mockRejectedValue(new ServiceError(400, "That code isn't right.", "wrong_code"));
+    expect(await actions.verifySignup(undefined, form({ code: "000000" }))).toEqual({ error: "That code isn't right.", fields: undefined });
+    expect(auth.clearCookie).not.toHaveBeenCalled();
+    expect(auth.createSession).not.toHaveBeenCalled();
+  });
+  it("an expired sign-up is cleared and the page says to start again", async () => {
+    signup.finishSignup.mockRejectedValue(new ServiceError(400, "This sign-up has expired.", "signup_expired"));
+    expect(await actions.verifySignup(undefined, form({ code: "123456" }))).toEqual({ error: "This sign-up has expired.", fields: { expired: "1" } });
+    expect(auth.clearCookie).toHaveBeenCalledWith("eg_signup");
+  });
+  it("the right code creates the account, clears the ticket and signs in", async () => {
+    signup.finishSignup.mockResolvedValue({ id: "u9" });
+    expect(await landing(actions.verifySignup(undefined, form({ code: " 123456 " })))).toBe("/dashboard");
+    expect(signup.finishSignup).toHaveBeenCalledWith("tk1", "123456", "203.0.113.7");
+    expect(auth.clearCookie).toHaveBeenCalledWith("eg_signup");
     expect(auth.createSession).toHaveBeenCalledWith("u9");
   });
-  it("shows the rate limit or a taken email instead of throwing", async () => {
-    limits.enforce.mockRejectedValue(new ServiceError(429, "Too many sign-ups. Try again later.", "rate_limited"));
-    expect((await actions.register(undefined, form(signup)))?.error).toBe("Too many sign-ups. Try again later.");
-    expect(family.createFamily).not.toHaveBeenCalled();
-    limits.enforce.mockResolvedValue(undefined);
-    family.createFamily.mockRejectedValue(new ServiceError(409, "An account already uses that email.", "conflict"));
-    expect((await actions.register(undefined, form(signup)))?.error).toBe("An account already uses that email.");
-    expect(auth.createSession).not.toHaveBeenCalled();
+  it("resend: a new code, the ticket's cookie lasting as long as it", async () => {
+    const expiresAt = new Date(Date.now() + 900_000);
+    signup.resendSignupCode.mockResolvedValue({ email: "ana@example.com", expiresAt });
+    expect(await actions.resendSignup()).toEqual({ ok: "We sent a new code to ana@example.com. Only the newest code works." });
+    expect(jar.set).toHaveBeenCalledWith("eg_signup", "tk1", expect.objectContaining({ expires: expiresAt }));
+    signup.resendSignupCode.mockRejectedValue(new ServiceError(429, "We just sent a code.", "rate_limited"));
+    expect(await actions.resendSignup()).toEqual({ error: "We just sent a code.", fields: undefined });
   });
 });
 
@@ -191,6 +237,11 @@ describe("verifyEmail", () => {
 describe("forgotPassword", () => {
   it("checks the email first", async () => {
     expect(await actions.forgotPassword(undefined, form({ email: "ana" }))).toEqual({ error: "Enter a valid email address.", fields: { email: "ana" } });
+    expect(later.after).not.toHaveBeenCalled();
+  });
+  it("a failed bot check sends nothing", async () => {
+    bots.verifyHuman.mockRejectedValue(new ServiceError(400, "Not a person.", "bot_check"));
+    expect(await actions.forgotPassword(undefined, form({ email: "ana@example.com" }))).toEqual({ error: "Not a person.", fields: { email: "ana@example.com" } });
     expect(later.after).not.toHaveBeenCalled();
   });
   it("rate-limited: says so and sends nothing", async () => {

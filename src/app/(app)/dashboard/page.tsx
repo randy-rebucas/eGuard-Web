@@ -18,6 +18,9 @@ import { entitlementsFor, nextPlan } from "@/lib/plans";
 import { planWith } from "@/lib/plan-access";
 import { listBrowsers } from "@/lib/browser-service";
 import { browserNeedsAttention, familySummary, healthBadge, isOffline } from "@/lib/health";
+import { db } from "@/lib/db";
+import { status as twoStepStatus } from "@/lib/two-factor";
+import { TwoStepPrompt } from "@/components/two-step-prompt";
 
 import heroArt from "../../../../public/web/dashboard-hero.jpg";
 
@@ -27,6 +30,20 @@ export const metadata = { title: "Dashboard" };
 
 /** How many children the hero's status card lists before linking to the rest. */
 const HERO_CHILDREN = 4;
+/** "Not now" on the two-step verification prompt hides it this long. */
+const TWO_STEP_PROMPT_DAYS = 90;
+
+/**
+ * The family admin is asked to turn on two-step verification once set up (intro seen, email verified, a child added),
+ * unless they closed the prompt in the last 90 days or the server can't offer it.
+ */
+async function showTwoStepPrompt(u: { id: string; role: string; introSeen: boolean; emailVerified: boolean }) {
+  if (u.role !== "FAMILY_ADMIN" || !u.introSeen || !u.emailVerified) return false;
+  const [s, row] = await Promise.all([twoStepStatus(u.id), db.user.findUnique({ where: { id: u.id }, select: { twoFactorPromptClosedAt: true } })]);
+  const closed = row?.twoFactorPromptClosedAt;
+  return s.available && !s.enabled && (!closed || Date.now() - closed.getTime() > TWO_STEP_PROMPT_DAYS * 864e5);
+}
+
 /** How many device icons the Devices metric draws before "+N". */
 const METRIC_DEVICES = 8;
 
@@ -66,7 +83,9 @@ function Streamed({ title, height, children }: { title: string; height: number; 
 export default async function Dashboard() {
   const u = await requireUser();
   // Cached per request, so these reuse what the app layout already loaded
-  const [family, graph, purchase, allBrowsers] = await Promise.all([getFamily(u.familyId), getFamilyGraph(u.familyId), currentPurchase(u.familyId), listBrowsers(u.familyId)]);
+  const [family, graph, purchase, allBrowsers, twoStepPrompt] = await Promise.all([
+    getFamily(u.familyId), getFamilyGraph(u.familyId), currentPurchase(u.familyId), listBrowsers(u.familyId), showTwoStepPrompt(u),
+  ]);
   // Browsers take a device slot like on the Devices page, except one eGuard disconnected for security
   const browsers = allBrowsers.filter((b) => !b.revokedAt);
   const tz = family.timezone;
@@ -106,6 +125,7 @@ export default async function Dashboard() {
 
   return (
     <>
+      {twoStepPrompt ? <TwoStepPrompt /> : null}
       <section className="hero" aria-labelledby="hero-title">
         <HeroArt />
         <div className="hero-copy">

@@ -84,6 +84,10 @@
 .auth-submit{width:100%; min-height:48px; margin-top:4px; border-radius:10px; font-size:15px; background:linear-gradient(180deg, #2398FF, #0F7AF0); box-shadow:0 10px 24px -12px rgba(16,122,240,.75)}
 .auth-submit:hover{background:linear-gradient(180deg, #1A8CFF, #0B6ADB)}
 .auth-submit:disabled{opacity:.7; cursor:progress}
+/* reCAPTCHA v3 (lib/bot-check): Google's floating badge is hidden, as its terms allow when this notice is shown instead */
+.grecaptcha-badge{visibility:hidden}
+.auth-recaptcha{margin:-6px 0 0; font-size:12px; line-height:1.45; color:var(--ink-3); text-align:center}
+.auth-recaptcha a{color:inherit; text-decoration:underline; text-underline-offset:2px}
 .auth-forgot{align-self:flex-end; display:inline-flex; align-items:center; min-height:44px; margin:-12px 0; font-size:13px; font-weight:600; color:var(--accent-ink)}
 /* "Continue with Google / LinkedIn", above the email form */
 .auth-fields{display:flex; flex-direction:column; gap:16px}

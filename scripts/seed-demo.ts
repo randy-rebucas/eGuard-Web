@@ -12,7 +12,7 @@
  */
 import { randomBytes } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
-import bcrypt from "bcryptjs";
+import { hash as argon2Hash } from "@node-rs/argon2";
 import { createDemoFamily } from "../prisma/demo-family";
 
 const DEMO_FAMILY = "eGuard Demo Family";
@@ -50,7 +50,7 @@ async function main() {
 
     const password = process.env.DEMO_PASSWORD || makePassword();
     if (password.length < 8) throw new Error("DEMO_PASSWORD must be at least 8 characters.");
-    const passwordHash = await bcrypt.hash(password, 12);
+    const passwordHash = await argon2Hash(password, { memoryCost: 19456, timeCost: 2, parallelism: 1 });
 
     if (existing) await db.family.delete({ where: { id: existing.familyId } }); // cascades to its children, devices and history
     const family = await createDemoFamily(db, {

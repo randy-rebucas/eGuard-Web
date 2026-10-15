@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { endOfDay } from "@/lib/browser-access";
-import { BASE, PASSWORD, call, cleanup, db, email, verifyInbox } from "./helpers";
+import { BASE, PASSWORD, call, cleanup, db, email, register, verifyInbox } from "./helpers";
 
 /**
  * A child asks from the browser's block page to open a site; a parent answers. Also: what the extension downloads
@@ -21,7 +21,7 @@ const answer = (id: string, body: unknown, t = token) => call("POST", `/browser-
 afterAll(cleanup);
 
 beforeAll(async () => {
-  const r = await call("POST", "/auth/register", { body: { name: "Tess Lim", email: email("tess"), password: PASSWORD, guardian: true } });
+  const r = await register({ name: "Tess Lim", email: email("tess"), password: PASSWORD, guardian: true });
   token = r.data.token;
   familyId = r.data.user.family.id;
   await verifyInbox(email("tess"));
@@ -132,7 +132,7 @@ describe("answering", () => {
   });
 
   it("another family can't see or answer requests", async () => {
-    const other = await call("POST", "/auth/register", { body: { name: "Other", email: email("tess-other"), password: PASSWORD, guardian: true } });
+    const other = await register({ name: "Other", email: email("tess-other"), password: PASSWORD, guardian: true });
     const id = await requestFor("example.org");
     expect((await answer(id, { decision: "APPROVE", duration: "ALWAYS" }, other.data.token)).status).toBe(404);
     expect((await call("GET", `/children/${childId}/browser-access-requests`, { token: other.data.token })).status).toBe(404);

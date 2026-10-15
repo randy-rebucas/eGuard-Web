@@ -32,6 +32,7 @@ import { BROWSER_STATE } from "@/components/browser-card";
 import { isOffline } from "@/lib/health";
 import { enabledWebProviders, isWebProvider, providerLabel } from "@/lib/oauth-web";
 import { oauthMessage } from "@/lib/oauth-errors";
+import { summarizeAgent } from "@/lib/user-agent";
 
 export async function generateMetadata(props: PageProps<"/settings/[section]">) {
   const { section } = await props.params;
@@ -212,7 +213,7 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
           {recoveryLeft !== null && twoStep.enabled ? (
             <div className="verify-banner" role="status" style={{ marginBottom: 12 }}><Icon name="key-round" /><p>You signed in with a recovery code, so it no longer works. {recoveryLeft} {recoveryLeft === 1 ? "code is" : "codes are"} left.{recoveryLeft <= 2 ? " Make new ones below, and check your authenticator app is set up on your phone." : ""}</p></div>
           ) : null}
-          <div className="setting-row">
+          <div className="setting-row" id="two-step">
             {twoStep.available || twoStep.enabled
               ? <TwoStepSettings enabled={twoStep.enabled} recoveryCodesLeft={twoStep.recoveryCodesLeft} />
               : <><div className="grow"><div className="t-title">Two-step verification</div><div className="t-meta">Not available yet. Sign-in currently uses your password only.</div></div><span className="pill tone-muted">Coming soon</span></>}
@@ -477,13 +478,4 @@ function passMethodLabel() {
   const names = [...new Set(passMethods().map((m) => METHOD_NAMES[m] ?? m))];
   const text = names.length > 1 ? `${names.slice(0, -1).join(", ")} or ${names.at(-1)}` : names[0] ?? "";
   return text.charAt(0).toUpperCase() + text.slice(1);
-}
-
-function summarizeAgent(ua: string | null) {
-  if (!ua) return "Unknown device";
-  // The parent app sends "eGuard/1.0 (iPhone; iOS 18.1)" (docs/mobile-api.md › Headers)
-  if (/^eGuard\//i.test(ua)) return `eGuard app on ${/Android/i.test(ua) ? "Android" : /iPhone|iPad|iOS/i.test(ua) ? "iOS" : "a phone"}`;
-  const os = /Windows/.test(ua) ? "Windows" : /Android/.test(ua) ? "Android" : /iPhone|iPad/.test(ua) ? "iOS" : /Mac OS/.test(ua) ? "macOS" : /Linux/.test(ua) ? "Linux" : "Unknown OS";
-  const br = /Edg\//.test(ua) ? "Edge" : /Chrome\//.test(ua) ? "Chrome" : /Firefox\//.test(ua) ? "Firefox" : /Safari\//.test(ua) ? "Safari" : "Browser";
-  return `${br} on ${os}`;
 }

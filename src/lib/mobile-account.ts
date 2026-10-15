@@ -4,6 +4,7 @@ import { db } from "./db";
 import { issueSession } from "./auth";
 import { needsSecondStep, startChallenge } from "./two-factor";
 import { clientIpFrom } from "./rate-limit";
+import { summarizeAgent } from "./user-agent";
 
 /** The signed-in parent, as returned by /me and every sign-in endpoint. */
 export async function meJson(userId: string) {
@@ -22,9 +23,17 @@ export async function meJson(userId: string) {
   };
 }
 
+/** X-eGuard-Install: a random id the app makes once per install, so a sign-in from a new phone can be emailed. */
+const installId = (req: Request) => {
+  const v = req.headers.get("x-eguard-install")?.trim();
+  return v && /^[\w-]{8,64}$/.test(v) ? v : null;
+};
+
 /** Issues a bearer session for the app. Store `token` in the Keychain; it lasts 30 days. */
 export async function sessionResponse(req: Request, userId: string, status = 200, extra: Record<string, unknown> = {}) {
-  const { token, expiresAt } = await issueSession(userId, req.headers.get("user-agent"));
+  const ua = req.headers.get("user-agent");
+  const device = { id: installId(req), userAgent: ua, ip: clientIp(req), label: summarizeAgent(ua) };
+  const { token, expiresAt } = await issueSession(userId, ua, { device });
   return NextResponse.json({ token, expiresAt, user: await meJson(userId), ...extra }, { status });
 }
 

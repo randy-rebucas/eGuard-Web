@@ -12,7 +12,7 @@
 import "dotenv/config";
 import { randomBytes } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
-import bcrypt from "bcryptjs";
+import { hash as argon2Hash } from "@node-rs/argon2";
 import QRCode from "qrcode";
 import { newSecret, otpauthUri, sealSecret, secretKey } from "../src/lib/totp";
 
@@ -49,7 +49,7 @@ async function main() {
     const name = second.trim().slice(0, 100);
     const password = makePassword();
     const secret = newSecret();
-    const data = { name, passwordHash: await bcrypt.hash(password, 12), totpSecret: sealSecret(secret, key), totpLastStep: null, active: true };
+    const data = { name, passwordHash: await argon2Hash(password, { memoryCost: 19456, timeCost: 2, parallelism: 1 }), totpSecret: sealSecret(secret, key), totpLastStep: null, active: true };
     const existing = await db.staffUser.findUnique({ where: { email } });
     if (existing) {
       await db.$transaction([

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { BASE, PASSWORD, call, cleanup, db, email, pairDevice, verifyInbox } from "./helpers";
+import { BASE, PASSWORD, call, cleanup, db, email, pairDevice, register, verifyInbox } from "./helpers";
 
 /**
  * The eGuard browser extension's API (/api/browser/v1): pairing with BROWSER codes, rotating refresh tokens
@@ -32,7 +32,7 @@ async function pairBrowser(deviceLabel?: string) {
 afterAll(cleanup);
 
 beforeAll(async () => {
-  const r = await call("POST", "/auth/register", { body: { name: "Ria Santos", email: email("ria"), password: PASSWORD, guardian: true } });
+  const r = await register({ name: "Ria Santos", email: email("ria"), password: PASSWORD, guardian: true });
   token = r.data.token;
   familyId = r.data.user.family.id;
   await verifyInbox(email("ria"));
@@ -191,7 +191,7 @@ describe("removal and plan limits", () => {
 
   it("another family can't see or remove the browser", async () => {
     const p = await pairBrowser();
-    const other = await call("POST", "/auth/register", { body: { name: "Other Parent", email: email("other"), password: PASSWORD, guardian: true } });
+    const other = await register({ name: "Other Parent", email: email("other"), password: PASSWORD, guardian: true });
     expect((await call("GET", "/browsers", { token: other.data.token })).data.browsers).toEqual([]);
     expect((await call("DELETE", `/browsers/${p.installationId}`, { token: other.data.token, body: { password: PASSWORD } })).status).toBe(404);
     await db.browserInstallation.delete({ where: { id: p.installationId } });

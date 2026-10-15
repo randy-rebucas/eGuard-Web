@@ -13,10 +13,13 @@ export type SecurityChange =
   | { kind: "email"; newEmail: string }
   | { kind: "password" }
   | { kind: "two_factor_off" }
-  | { kind: "identity_linked"; provider: string };
+  | { kind: "identity_linked"; provider: string }
+  /** `device`: "Chrome on Windows"; `when`: already in the family's time zone; `ip` when known */
+  | { kind: "new_sign_in"; device: string; when: string; ip: string | null };
 
 const WHAT: Record<SecurityChange["kind"], { subject: string; did: string }> = {
   identity_linked: { subject: "A new sign-in was added to your eGuard account", did: "A new way to sign in was added to your eGuard account" },
+  new_sign_in: { subject: "New sign-in to your eGuard account", did: "Your eGuard account was signed in to from a device it hasn't been used on before" },
   email: { subject: "Your eGuard email was changed", did: "The email address for your eGuard account was changed" },
   password: { subject: "Your eGuard password was changed", did: "The password for your eGuard account was changed, and your other sessions were signed out" },
   two_factor_off: { subject: "Two-step verification was turned off", did: "Two-step verification was turned off for your eGuard account" },
@@ -24,10 +27,13 @@ const WHAT: Record<SecurityChange["kind"], { subject: string; did: string }> = {
 
 export function securityNoticeEmail(change: SecurityChange, firstName: string) {
   const w = WHAT[change.kind];
-  const detail = change.kind === "email" ? ` to ${change.newEmail}` : change.kind === "identity_linked" ? `: ${change.provider}` : "";
+  const detail = change.kind === "email" ? ` to ${change.newEmail}`
+    : change.kind === "identity_linked" ? `: ${change.provider}`
+    : change.kind === "new_sign_in" ? `: ${change.device}, ${change.when}${change.ip ? ` (address ${change.ip})` : ""}` : "";
   const reset = `${appUrl()}/forgot-password`;
-  // A linked sign-in outlasts a password reset, so it has to be removed too
-  const unlink = change.kind === "identity_linked" ? ` Then remove it in Settings › Security.` : "";
+  // A linked sign-in outlasts a password reset, so it has to be removed too. A reset signs out every session.
+  const unlink = change.kind === "identity_linked" ? ` Then remove it in Settings › Security.`
+    : change.kind === "new_sign_in" ? ` Resetting it signs that device out.` : "";
   const help = `If this was you, there's nothing to do. If it wasn't, reset your password now (${reset}) and write to ${supportEmail()}.${unlink}`;
   return {
     subject: w.subject,

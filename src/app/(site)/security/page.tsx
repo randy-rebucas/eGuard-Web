@@ -45,8 +45,10 @@ const NEVER = ["Messages or chats", "Photos, videos or files", "Which websites y
 
 const SECURITY: { title: string; icon: LucideIcon; items: string[] }[] = [
   { title: "Your account", icon: LockKeyhole, items: [
-    "Passwords are hashed with bcrypt. We never store or see them in plain text.",
+    "Passwords are hashed with argon2id. We never store or see them in plain text, and we turn down passwords already published in a data breach.",
+    "Creating an account needs a code sent to your email, so nobody can open an account in your name.",
     "After repeated failed sign-ins, the account locks for a while.",
+    "Signing in from a new phone or browser sends you an email, so you'd know if someone else had your password.",
     "Turn on two-step verification in Settings › Security, and signing in also needs a code from your authenticator app. Recovery codes get you in if you lose your phone.",
     "See every signed-in session and sign out of the ones you don't recognize. Resetting a password signs out everywhere.",
     "Changing your email needs your password. Email links expire: 24 hours to verify, one hour to reset a password.",

@@ -21,6 +21,13 @@ describe("security notices", () => {
     expect(m.text).toContain("remove it in Settings › Security");
   });
 
+  it("names the device, time and address of a new sign-in, and says a reset signs it out", () => {
+    const m = securityNoticeEmail({ kind: "new_sign_in", device: "Chrome on Windows", when: "Wed, Oct 15, 2026 at 8:04 PM", ip: "203.0.113.8" }, "Ana");
+    expect(m.subject).toBe("New sign-in to your eGuard account");
+    expect(m.text).toContain(": Chrome on Windows, Wed, Oct 15, 2026 at 8:04 PM (address 203.0.113.8).");
+    expect(m.text).toContain("Resetting it signs that device out.");
+  });
+
   it("escapes names in the HTML", () => {
     expect(securityNoticeEmail({ kind: "password" }, "<b>Ana").html).toContain("&lt;b>Ana");
   });

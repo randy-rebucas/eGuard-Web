@@ -451,6 +451,12 @@ export async function setTheme(theme: "system" | "light" | "dark") {
   else jar.set("eg_theme", theme, { path: "/", maxAge: 365 * 864e2, sameSite: "lax" });
 }
 
+/** "Not now" on the dashboard's two-step verification prompt: hidden for 90 days (TWO_STEP_PROMPT_DAYS). */
+export async function closeTwoStepPrompt() {
+  const u = await requireUser();
+  await db.user.update({ where: { id: u.id }, data: { twoFactorPromptClosedAt: new Date() } });
+}
+
 /** The first-run intro was closed (tour taken or skipped): it isn't shown again; the profile menu replays the tour. */
 export async function finishIntro() {
   const u = await requireUser();

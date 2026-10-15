@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { BASE, PASSWORD, call, childDevice, cleanup, db, email, inbox, inviteAndAccept, pairDevice, resetToken, verifyInbox } from "./helpers";
+import { BASE, PASSWORD, call, childDevice, cleanup, db, email, inbox, inviteAndAccept, pairDevice, register, resetToken, verifyInbox } from "./helpers";
 
 /**
  * Fixes from the security audit: password reset, sign-in lockout, account deletion, pairing races,
@@ -15,7 +15,7 @@ let childId = "";
 afterAll(cleanup);
 
 beforeAll(async () => {
-  const r = await call("POST", "/auth/register", { body: { name: "Sam Reyes", email: email("sam"), password: PASSWORD, guardian: true } });
+  const r = await register({ name: "Sam Reyes", email: email("sam"), password: PASSWORD, guardian: true });
   token = r.data.token;
   familyId = r.data.user.family.id;
   // eGuard Plus: these tests pair more devices than Free covers
@@ -54,7 +54,7 @@ describe("sign-in lockout", () => {
     const who = email("locked");
     const from = (n: number) => ({ "x-forwarded-for": `203.0.113.${n}` });
     const login = (password: string, headers?: Record<string, string>) => call("POST", "/auth/login", { body: { email: who, password }, headers });
-    await call("POST", "/auth/register", { body: { name: "Lock Test", email: who, password: PASSWORD, guardian: true } });
+    await register({ name: "Lock Test", email: who, password: PASSWORD, guardian: true });
     for (let i = 0; i < 10; i++) expect((await login(`wrong-${i}`)).status).toBe(401);
     const blocked = await login(PASSWORD);
     expect(blocked.status).toBe(429);

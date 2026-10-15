@@ -4,14 +4,16 @@ import { redirect } from "next/navigation";
 import { cookies, headers } from "next/headers";
 import { after } from "next/server";
 import { z } from "zod";
-import { authenticate, createSession, destroySession, hashPassword, requireUser } from "@/lib/auth";
+import { authenticate, clearCookie, createSession, destroySession, requireUser } from "@/lib/auth";
+import { BOT_CHECK_FIELD, verifyHuman } from "@/lib/bot-check";
+import { SIGNUP_COOKIE, finishSignup, resendSignupCode, startSignup } from "@/lib/signup";
 import { CHALLENGE_COOKIE, completeChallenge, needsSecondStep } from "@/lib/two-factor";
 import { toSecondStep } from "@/lib/web-signin";
 import { LIMITS, clientIpFrom, enforce, hit, ipKey } from "@/lib/rate-limit";
 import { requestPasswordResetQuietly, resetPassword } from "@/lib/password-reset";
-import { type VerifyResult, sendVerificationEmail, sendVerificationEmailLater, verifyEmailToken } from "@/lib/email-verification";
+import { type VerifyResult, sendVerificationEmail, verifyEmailToken } from "@/lib/email-verification";
 import { ServiceError } from "@/lib/errors";
-import { RegisterSchema, createFamily } from "@/lib/family-service";
+import { RegisterSchema } from "@/lib/family-service";
 import { safeNext } from "@/lib/return-to";
 import { acceptInvite, declineInvite } from "@/lib/invitations";
 
@@ -25,7 +27,9 @@ export async function login(_: FormState, form: FormData): Promise<FormState> {
   if (!parsed.success) return { error: parsed.error.issues[0].message, fields: { email } };
   let user: Awaited<ReturnType<typeof authenticate>>;
   try {
-    user = await authenticate(parsed.data.email, parsed.data.password, clientIpFrom(await headers()));
+    const ip = clientIpFrom(await headers());
+    await verifyHuman(form.get(BOT_CHECK_FIELD), ip, "login");
+    user = await authenticate(parsed.data.email, parsed.data.password, ip);
   } catch (e) {
     if (e instanceof ServiceError) return { error: e.message, fields: { email } };
     throw e;
@@ -52,37 +56,79 @@ export async function verifySecondStep(_: FormState, form: FormData): Promise<Fo
   } catch (e) {
     if (e instanceof ServiceError) {
       // Expired or out of attempts: the challenge is gone, so the form can't be used again
-      if (e.code === "challenge_expired") jar.delete(CHALLENGE_COOKIE);
+      if (e.code === "challenge_expired") await clearCookie(CHALLENGE_COOKIE);
       return { error: e.message, fields: e.code === "challenge_expired" ? { expired: "1" } : undefined };
     }
     throw e;
   }
-  jar.delete(CHALLENGE_COOKIE);
+  await clearCookie(CHALLENGE_COOKIE);
   await createSession(done.user.id);
   // A recovery code is gone once used: say so where new ones can be made
   if (done.usedRecoveryCode) redirect(`/settings/security?recovery=${done.recoveryCodesLeft ?? 0}`);
   redirect(safeNext(form.get("next")) ?? "/dashboard");
 }
 
+/**
+ * Create account, step 1 (lib/signup): stores the sign-up and emails a code, then on to /register/verify. Looks the
+ * same whether or not the email already has an account.
+ */
 export async function register(_: FormState, form: FormData): Promise<FormState> {
   const raw = Object.fromEntries(["name", "familyName", "email", "password"].map((k) => [k, String(form.get(k) ?? "")]));
   const guardian = form.get("guardian") === "on";
   const parsed = RegisterSchema.safeParse({ ...raw, guardian });
   const fields = { name: raw.name, familyName: raw.familyName, email: raw.email, guardian: guardian ? "on" : "" };
   if (!parsed.success) return { error: parsed.error.issues[0].message, fields };
-  let userId: string;
   try {
-    await enforce(ipKey("signup", clientIpFrom(await headers())), LIMITS.signupIp);
-    // Only the hash goes on: the plain password stops here
+    const ip = clientIpFrom(await headers());
+    await verifyHuman(form.get(BOT_CHECK_FIELD), ip, "register");
+    // Only the hash is stored: the plain password stops here
     const { name, familyName, email, password } = parsed.data;
-    userId = (await createFamily({ name, familyName, email, passwordHash: await hashPassword(password) })).id;
+    const { ticket, expiresAt } = await startSignup({ name, familyName, email, password }, ip);
+    (await cookies()).set(SIGNUP_COOKIE, ticket, {
+      httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", expires: expiresAt,
+    });
   } catch (e) {
     if (e instanceof ServiceError) return { error: e.message, fields };
     throw e;
   }
-  await sendVerificationEmailLater(userId);
+  redirect("/register/verify");
+}
+
+/** Create account, step 2: the emailed code. Creates the family, signs in, and opens the dashboard. */
+export async function verifySignup(_: FormState, form: FormData): Promise<FormState> {
+  const jar = await cookies();
+  const ticket = jar.get(SIGNUP_COOKIE)?.value;
+  if (!ticket) return { error: "This sign-up has expired. Fill in the form again to get a new code.", fields: { expired: "1" } };
+  const code = String(form.get("code") ?? "").trim();
+  if (!code) return { error: "Enter the 6-digit code from the email." };
+  let userId: string;
+  try {
+    userId = (await finishSignup(ticket, code, clientIpFrom(await headers()))).id;
+  } catch (e) {
+    if (e instanceof ServiceError) {
+      if (e.code === "signup_expired") await clearCookie(SIGNUP_COOKIE);
+      return { error: e.message, fields: e.code === "signup_expired" ? { expired: "1" } : undefined };
+    }
+    throw e;
+  }
+  await clearCookie(SIGNUP_COOKIE);
   await createSession(userId);
   redirect("/dashboard");
+}
+
+/** "Send a new code" on /register/verify */
+export async function resendSignup(): Promise<FormState> {
+  const jar = await cookies();
+  const ticket = jar.get(SIGNUP_COOKIE)?.value;
+  if (!ticket) return { error: "This sign-up has expired. Fill in the form again to get a new code.", fields: { expired: "1" } };
+  try {
+    const { email, expiresAt } = await resendSignupCode(ticket);
+    jar.set(SIGNUP_COOKIE, ticket, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", expires: expiresAt });
+    return { ok: `We sent a new code to ${email}. Only the newest code works.` };
+  } catch (e) {
+    if (e instanceof ServiceError) return { error: e.message, fields: e.code === "signup_expired" ? { expired: "1" } : undefined };
+    throw e;
+  }
 }
 
 /** The button on /verify-email. A POST, so mail scanners that open links don't use up the token. */
@@ -98,6 +144,12 @@ export async function forgotPassword(_: FormState, form: FormData): Promise<Form
   const email = String(form.get("email") ?? "");
   if (!parsed.success) return { error: parsed.error.issues[0].message, fields: { email } };
   const ip = clientIpFrom(await headers());
+  try {
+    await verifyHuman(form.get(BOT_CHECK_FIELD), ip, "reset");
+  } catch (e) {
+    if (e instanceof ServiceError) return { error: e.message, fields: { email } };
+    throw e;
+  }
   if ((await hit(ipKey("reset", ip), LIMITS.resetIp)).limited) return { error: "Too many requests. Try again in an hour.", fields: { email } };
   after(() => requestPasswordResetQuietly(parsed.data, null));
   return { ok: `If an eGuard account uses ${parsed.data}, we sent it a link to reset the password. It expires in an hour.` };

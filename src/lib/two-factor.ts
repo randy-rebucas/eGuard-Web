@@ -1,6 +1,6 @@
 import "server-only";
 import { db } from "./db";
-import { newToken, sha256 } from "./auth";
+import { hostCookie, newToken, sha256 } from "./auth";
 import { audit } from "./audit";
 import { ServiceError, conflict } from "./errors";
 import { LIMITS, clearLimit, hit, isLimited } from "./rate-limit";
@@ -144,7 +144,7 @@ async function requireCode(userId: string, code: string) {
 /* ---------- Signing in ---------- */
 
 /** On the web, the sign-in waiting for its code: httpOnly, and only as long as the challenge itself. */
-export const CHALLENGE_COOKIE = "eg_2fa";
+export const CHALLENGE_COOKIE = hostCookie("eg_2fa");
 
 /**
  * Whether signing in as this parent needs the second step. Fails closed: if TWO_FACTOR_KEY went missing, the code

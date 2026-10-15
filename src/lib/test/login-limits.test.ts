@@ -24,9 +24,10 @@ vi.mock("../rate-limit", async (orig) => {
 
 // Low cost: the limits are what's tested, not bcrypt
 const passwordHash = bcrypt.hashSync("right-password", 4);
-vi.mock("../db", () => ({ db: { user: { findUnique: async ({ where }: { where: { email: string } }) => (where.email === "mia@example.com" ? { id: "u1", email: "mia@example.com", passwordHash } : null) } } }));
+const updateMany = vi.hoisted(() => vi.fn(async () => ({ count: 1 })));
+vi.mock("../db", () => ({ db: { user: { updateMany, findUnique: async ({ where }: { where: { email: string } }) => (where.email === "mia@example.com" ? { id: "u1", email: "mia@example.com", passwordHash } : null) } } }));
 
-const { authenticate } = await import("../auth");
+const { authenticate, hashPassword, isOldHash, verifyPassword } = await import("../auth");
 const tryLogin = (password: string, ip: string) => authenticate("mia@example.com", password, ip).then(() => "ok", (e) => e.code as string);
 
 describe("authenticate rate limits", () => {
@@ -41,5 +42,25 @@ describe("authenticate rate limits", () => {
     counts.clear();
     for (let i = 0; i < 50; i++) await tryLogin("wrong", `203.0.113.${i}`);
     expect(await tryLogin("right-password", "198.51.100.7")).toBe("rate_limited");
+  });
+});
+
+describe("password hashes", () => {
+  it("hashes with argon2id and still checks bcrypt hashes from before", async () => {
+    const hash = await hashPassword("right-password");
+    expect(hash.startsWith("$argon2id$")).toBe(true);
+    expect(isOldHash(hash)).toBe(false);
+    expect(await verifyPassword("right-password", hash)).toBe(true);
+    expect(await verifyPassword("wrong-password", hash)).toBe(false);
+    expect(isOldHash(passwordHash)).toBe(true);
+    expect(await verifyPassword("right-password", passwordHash)).toBe(true);
+    expect(await verifyPassword("anything", "not-a-hash-at-all")).toBe(false);
+  });
+
+  it("upgrades a bcrypt hash at sign-in, without overwriting a password changed meanwhile", async () => {
+    counts.clear();
+    updateMany.mockClear();
+    expect(await tryLogin("right-password", "198.51.100.8")).toBe("ok");
+    expect(updateMany).toHaveBeenCalledWith({ where: { id: "u1", passwordHash }, data: { passwordHash: expect.stringMatching(/^\$argon2id\$/) } });
   });
 });

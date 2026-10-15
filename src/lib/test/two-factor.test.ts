@@ -9,7 +9,7 @@ const db = vi.hoisted(() => ({
   $transaction: vi.fn(),
 }));
 vi.mock("../db", () => ({ db }));
-vi.mock("../auth", () => ({ sha256: (v: string) => createHash("sha256").update(v).digest("hex"), newToken: () => "challenge-token-123456789" }));
+vi.mock("../auth", () => ({ hostCookie: (n: string) => n, sha256: (v: string) => createHash("sha256").update(v).digest("hex"), newToken: () => "challenge-token-123456789" }));
 vi.mock("../audit", () => ({ audit: vi.fn() }));
 vi.mock("../rate-limit", () => ({ LIMITS: { loginAccount: { max: 10, windowMs: 1 } }, clearLimit: vi.fn(), hit: vi.fn(), isLimited: vi.fn(async () => false) }));
 

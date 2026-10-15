@@ -89,8 +89,8 @@ script uses the development key and warns, and those codes only work locally.
 
 **Sessions:**
 - The cookie is `__Host-eg_staff`: Secure, path `/`, no Domain, so it's sent only to console.eguard.family. Parents'
-  `eg_session` stays on www, and neither cookie reaches the other host. In development the cookie is plain
-  `eg_staff`.
+  `__Host-eg_session` stays on www, and neither cookie reaches the other host. In development the cookies are plain
+  `eg_staff` and `eg_session`.
 - It's `httpOnly` and `SameSite=Lax`, so a console link opened from chat still arrives signed in. Changes go
   through server actions, which Next checks against the request's Origin.
 - A session ends 12 hours after sign-in, or after 30 minutes idle. The maintenance job removes ended sessions'

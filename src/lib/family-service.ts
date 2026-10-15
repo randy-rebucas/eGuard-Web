@@ -3,6 +3,7 @@ import { randomInt } from "node:crypto";
 import { z } from "zod";
 import type { AppApproval, AppCategory, PairingKind, Prisma } from "@prisma/client";
 import { db } from "./db";
+import { assertNotBreached } from "./breached-password";
 import { PASSWORD_TOO_LONG, confirmDestructive, confirmPassword, hashPassword, isPendingInvite, passwordTooLong } from "./auth";
 import { refreshPurchases } from "./billing";
 import { cancelSubscriptionsBeforeDeletion } from "./web-billing";
@@ -580,6 +581,7 @@ export async function changePassword(actor: Actor & { sessionId: string }, curre
   if (next.length < 10) throw invalid("Use at least 10 characters for your new password.");
   if (passwordTooLong(next)) throw invalid(PASSWORD_TOO_LONG);
   await confirmPassword(actor.id, current);
+  await assertNotBreached(next);
   const u = await db.user.update({ where: { id: actor.id }, data: { passwordHash: await hashPassword(next), passwordChangedAt: new Date() }, select: { email: true, name: true } });
   await db.session.deleteMany({ where: { userId: actor.id, id: { not: actor.sessionId } } });
   await audit(actor.familyId, actor.name, "password.changed");

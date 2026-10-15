@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { PASSWORD, call, cleanup, db, email, inbox, inviteToken } from "./helpers";
+import { PASSWORD, call, cleanup, db, email, inbox, inviteToken, register } from "./helpers";
 
 /**
  * Inviting another parent (lib/invitations): nobody joins a family without seeing which one it is and accepting,
@@ -10,7 +10,7 @@ let admin = "";
 let familyId = "";
 
 beforeAll(async () => {
-  const r = await call("POST", "/auth/register", { body: { name: "Maria Santos", email: email("maria"), password: PASSWORD, guardian: true } });
+  const r = await register({ name: "Maria Santos", email: email("maria"), password: PASSWORD, guardian: true });
   admin = r.data.token;
   familyId = r.data.user.family.id;
 });
@@ -52,7 +52,7 @@ describe("inviting a parent", () => {
 
   it("never blocks the person signing up for themselves: their own family, invitation dropped", async () => {
     await invite("Dan Cruz", email("dan"));
-    const r = await call("POST", "/auth/register", { body: { name: "Dan Cruz", email: email("dan"), password: PASSWORD, guardian: true } });
+    const r = await register({ name: "Dan Cruz", email: email("dan"), password: PASSWORD, guardian: true });
     expect(r.status).toBe(201);
     expect(r.data.user).toMatchObject({ role: "FAMILY_ADMIN" });
     expect(r.data.user.family.id).not.toBe(familyId);

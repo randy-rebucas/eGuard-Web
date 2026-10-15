@@ -28,6 +28,37 @@ async function mailToken(to: string, path: string, { after = 0 } = {}) {
   throw new Error(`No ${path} email reached ${to} (is Mailpit running? npm run db:up)`);
 }
 
+/** The newest email to `to` (since `after`) whose subject matches `subject`. Waits for it, like mailToken. */
+async function mailWithSubject(to: string, subject: RegExp, { after = 0 } = {}) {
+  for (let i = 0; i < 50; i++) {
+    const r = await fetch(`${MAILPIT}/api/v1/search?query=${encodeURIComponent(`to:"${to}"`)}`).then((r) => r.json());
+    const msg = (r.messages ?? []).find((m: { Created: string; Subject: string }) => Date.parse(m.Created) >= after && subject.test(m.Subject));
+    if (msg) return msg as { ID: string; Subject: string };
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  throw new Error(`No email matching ${subject} reached ${to} (is Mailpit running? npm run db:up)`);
+}
+
+/** The 6-digit code from the newest sign-up email to `to` (lib/signup). */
+export const signupCode = async (to: string, o: { after?: number } = {}) =>
+  /^(\d{6}) is your eGuard sign-up code$/.exec((await mailWithSubject(to, /^\d{6} is your eGuard sign-up code$/, o)).Subject)![1];
+
+/** Waits for an email to `to` with this subject (e.g. "You already have an eGuard account"). */
+export const waitForMail = (to: string, subject: RegExp, o: { after?: number } = {}) => mailWithSubject(to, subject, o);
+
+/**
+ * Create Account the way the app does it: the form, then the code from the email. Answers like the form when that
+ * fails (400 for a bad field), otherwise like /auth/register/verify: 201 with `token` and `user`.
+ */
+export async function register(body: Record<string, unknown>, o: Omit<Opts, "body"> = {}) {
+  // A little earlier than now: Mailpit runs in Docker, whose clock can lag the host's by a second or two
+  const after = Date.now() - 5000;
+  const form = await call("POST", "/auth/register", { ...o, body });
+  if (form.status !== 202) return form;
+  const code = await signupCode(String(body.email).trim().toLowerCase(), { after });
+  return call("POST", "/auth/register/verify", { ...o, body: { signup: form.data.signup, code } });
+}
+
 export const verificationToken = (to: string, o: { after?: number } = {}) => mailToken(to, "verify-email", o);
 export const resetToken = (to: string, o: { after?: number } = {}) => mailToken(to, "reset-password", o);
 export const inviteToken = (to: string, o: { after?: number } = {}) => mailToken(to, "accept-invite", o);
@@ -52,6 +83,8 @@ export async function inbox(to: string) {
 
 /** Verifies a parent's email the way they would: from the link in their inbox. */
 export async function verifyInbox(to: string) {
+  // Sign-up proves the email with its code, so a new parent is verified already: only a changed email has a link
+  if ((await db.user.findUnique({ where: { email: to }, select: { emailVerifiedAt: true } }))?.emailVerifiedAt) return;
   const r = await call("POST", "/auth/verify-email", { body: { token: await verificationToken(to) } });
   if (r.status !== 200) throw new Error(`verify failed: ${JSON.stringify(r.data)}`);
 }
@@ -99,5 +132,7 @@ export async function applyAndReport(send: ReturnType<typeof childDevice>) {
 
 export async function cleanup() {
   await db.family.deleteMany({ where: { users: { some: { email: { endsWith: `.${RUN}@mobile-test.example` } } } } });
+  // Sign-ups never finished (the maintenance job would remove them once expired)
+  await db.signupRequest.deleteMany({ where: { email: { contains: RUN } } });
   await db.$disconnect();
 }

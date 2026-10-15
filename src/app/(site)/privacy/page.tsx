@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { LEGAL, legalDate } from "@/lib/legal";
 import { META_PIXEL_ID } from "@/lib/meta-pixel";
+import { botCheckSiteKey } from "@/lib/bot-check";
 import { pageMetadata } from "@/lib/site";
 import { supportEmail } from "@/lib/support";
 import { LegalBody, PageHead } from "../page-head";
@@ -112,6 +113,9 @@ export default function PrivacyPage() {
           <p><strong>We don&apos;t sell personal data.</strong> Within your family, every parent you add can see your children&apos;s data. Outside your family, we share data only with:</p>
           <ul>
             <li><strong>Service providers</strong> who run parts of eGuard for us: hosting and database, email delivery, PayMongo for payments, and Google&apos;s Firebase Cloud Messaging, which delivers push alerts to the parent app (it carries each alert&apos;s title and text, which can include a child&apos;s first name). They may use the data only to provide their service to us, under contract.</li>
+            {botCheckSiteKey() ? (
+              <li><strong>Google reCAPTCHA</strong> on the sign-in, create-account and forgot-password pages, to tell people from automated attacks. It reads how the page is used and your browser&apos;s details, under Google&apos;s <a href="https://policies.google.com/privacy" rel="noopener noreferrer" target="_blank">Privacy Policy</a> and <a href="https://policies.google.com/terms" rel="noopener noreferrer" target="_blank">Terms</a>. It doesn&apos;t run anywhere else in eGuard.</li>
+            ) : null}
             <li><strong>Apple, Google or LinkedIn</strong>, if you choose to sign in with them. We receive your name and email from them; we don&apos;t send them your family&apos;s data.</li>
             {META_PIXEL_ID && <li><strong>Meta (Facebook)</strong>, if you visit our public pages: see <a href="#cookies">Cookies</a>. Meta never receives your family&apos;s data.</li>}
             <li><strong>Authorities</strong>, when the law requires it, or to protect someone&apos;s safety.</li>
@@ -141,8 +145,10 @@ export default function PrivacyPage() {
         <>
           <p>eGuard sets these cookies of its own:</p>
           <ul>
-            <li><strong>eg_session</strong> keeps you signed in. It is required, and ends when you sign out.</li>
+            <li><strong>eg_session</strong> keeps you signed in. It is required, and ends when you sign out or after 14 days without using eGuard on that browser.</li>
             <li><strong>eg_2fa</strong>, with two-step verification on, holds your sign-in for the 10 minutes you have to enter the code. It is required.</li>
+            <li><strong>eg_signup</strong>, while you create an account, holds it for the 15 minutes you have to enter the emailed code. It is required.</li>
+            <li><strong>eg_device</strong> remembers this browser, so we can email you when someone signs in to your account from one you haven&apos;t used. It doesn&apos;t sign anyone in.</li>
             <li><strong>eg_theme</strong> remembers whether you chose light or dark mode.</li>
           </ul>
           {META_PIXEL_ID ? (

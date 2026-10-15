@@ -169,6 +169,8 @@ model User {
   passwordChangedAt DateTime @default(now())
   /// Set when the parent closes the first-run intro on the web app (taking the quick tour or not). Null: show it.
   introSeenAt  DateTime?
+  /// When a family admin closed the dashboard's "Turn on two-step verification" prompt; it comes back after 90 days
+  twoFactorPromptClosedAt DateTime?
   createdAt    DateTime @default(now())
 
   sessions Session[]
@@ -184,8 +186,44 @@ model User {
   orgApiKeys OrgApiKey[]
   orgInvitesSent OrgInvite[]
   broadcastDeliveries BroadcastDelivery[]
+  knownDevices KnownDevice[]
 
   @@index([familyId])
+}
+
+/// A sign-up waiting for the 6-digit code emailed to it (lib/signup). The family and its admin are only created once
+/// the code checks out, so the form answers the same whether or not the email already has an account. `codeHash` is
+/// null when it does: no code works, and the email sent says to sign in instead. `tokenHash` is the SHA-256 of the
+/// ticket the browser (a cookie) or the app holds, so the code only works where the form was filled in.
+model SignupRequest {
+  id           String   @id @default(cuid())
+  tokenHash    String   @unique
+  email        String
+  name         String
+  familyName   String
+  passwordHash String
+  codeHash     String?
+  attempts     Int      @default(0)
+  sends        Int      @default(1)
+  sentAt       DateTime @default(now())
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  @@index([email])
+}
+
+/// A browser or app install a parent has signed in from (lib/sign-in-notice), so a sign-in from a new one is emailed.
+/// `key` is the SHA-256 of the browser's device cookie or the app's install id.
+model KnownDevice {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  key        String
+  label      String
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, key])
 }
 
 /// A single-use "verify your email" link. Only the SHA-256 of the token is stored; `email` is the
@@ -332,6 +370,9 @@ model Session {
   createdAt  DateTime @default(now())
   lastSeenAt DateTime @default(now())
   expiresAt  DateTime
+  /// A browser's cookie session (lib/auth createSession), which also ends after 14 days unused. App sessions don't:
+  /// their push alerts must keep arriving while the parent doesn't open the app.
+  web        Boolean  @default(false)
   pushTokens PushToken[]
 
   @@index([userId])

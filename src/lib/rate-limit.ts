@@ -20,6 +20,8 @@ export const LIMITS = {
   /** failed sign-ins from one address, across accounts (stops password spraying) */
   loginIp: { max: 30, windowMs: 15 * 60_000 },
   signupIp: { max: 10, windowMs: 60 * 60_000 },
+  /** sign-up emails (codes, "you already have an account") reaching one address, so the form can't flood an inbox */
+  signupMail: { max: 6, windowMs: 60 * 60_000 },
   socialIp: { max: 30, windowMs: 15 * 60_000 },
   pairIp: { max: 20, windowMs: 15 * 60_000 },
   /** pairing codes a parent creates (each new one replaces the child's previous code) */

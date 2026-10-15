@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useActionState, useEffect, useRef, useState } from "react";
-import { acceptInvitation, declineInvitation, forgotPassword, login, register, resetPasswordWithToken, verifySecondStep } from "@/app/actions/auth";
+import { type FormState, acceptInvitation, declineInvitation, forgotPassword, login, register, resendSignup, resetPasswordWithToken, verifySecondStep, verifySignup } from "@/app/actions/auth";
 import type { WebProvider } from "@/lib/oauth-web";
 import { GoogleMark, LinkedInMark } from "./brand-marks";
 import { Icon } from "./icon";
@@ -49,6 +49,57 @@ function PasswordInput({ label, id, children, ...rest }: Omit<InputProps, "icon"
       </div>
       {children}
     </div>
+  );
+}
+
+declare global {
+  interface Window {
+    grecaptcha?: { ready: (cb: () => void) => void; execute: (siteKey: string, o: { action: string }) => Promise<string> };
+  }
+}
+
+let recaptchaScript: Promise<void> | undefined;
+function loadRecaptcha(siteKey: string) {
+  return (recaptchaScript ??= new Promise<void>((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = `https://www.google.com/recaptcha/api.js?render=${encodeURIComponent(siteKey)}`;
+    s.async = true;
+    s.onload = () => window.grecaptcha?.ready(() => resolve());
+    s.onerror = () => { recaptchaScript = undefined; reject(new Error("reCAPTCHA didn't load")); };
+    document.head.appendChild(s);
+  }));
+}
+
+/** A token lasts 2 minutes, so the field gets a new one before then. */
+const RECAPTCHA_REFRESH_MS = 90_000;
+
+/**
+ * Google reCAPTCHA v3 (lib/bot-check): keeps a token for this form's `action` in a hidden field, from when the page
+ * opens, refreshed before it expires and after each try (`resetOn`, the form's last result), since a token works
+ * once. Nothing to click. Google's badge is hidden (auth.css), so the notice its terms ask for is shown instead.
+ */
+function BotCheck({ siteKey, action, resetOn }: { siteKey?: string | null; action: string; resetOn?: unknown }) {
+  const field = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!siteKey) return;
+    let gone = false;
+    const refresh = () => loadRecaptcha(siteKey)
+      .then(() => window.grecaptcha!.execute(siteKey, { action }))
+      .then((token) => { if (!gone && field.current) field.current.value = token; })
+      .catch(() => {});
+    void refresh();
+    const timer = setInterval(refresh, RECAPTCHA_REFRESH_MS);
+    return () => { gone = true; clearInterval(timer); };
+  }, [siteKey, action, resetOn]);
+  if (!siteKey) return null;
+  return (
+    <>
+      <input type="hidden" name="g-recaptcha-response" ref={field} />
+      <p className="auth-recaptcha">
+        Protected by reCAPTCHA. Google&apos;s <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a> and{" "}
+        <a href="https://policies.google.com/terms" target="_blank" rel="noopener noreferrer">Terms of Service</a> apply.
+      </p>
+    </>
   );
 }
 
@@ -105,7 +156,7 @@ function Notice({ text }: { text?: string | null }) {
  * `next`: the signed-in page to return to after signing in (already checked by safeNext on the server).
  * `providers`: the Google / LinkedIn sign-ins set up on this server; `notice`: why one came back without signing in.
  */
-export function LoginForm({ next = "", providers = [], notice }: { next?: string; providers?: WebProvider[]; notice?: string | null }) {
+export function LoginForm({ next = "", providers = [], notice, botCheck }: { next?: string; providers?: WebProvider[]; notice?: string | null; botCheck?: string | null }) {
   const [state, action, pending] = useActionState(login, undefined);
   return (
     <div className="auth-form">
@@ -118,6 +169,7 @@ export function LoginForm({ next = "", providers = [], notice }: { next?: string
         <PasswordInput id="password" label="Password" autoComplete="current-password" placeholder="Enter your password" required>
           <Link className="auth-forgot" href="/forgot-password">Forgot password?</Link>
         </PasswordInput>
+        <BotCheck siteKey={botCheck} action="login" resetOn={state} />
         <button className="btn btn-primary auth-submit" disabled={pending}>{pending ? "Signing in…" : "Sign in"}</button>
       </form>
       {/* Apple sign-in is app-only, so an account made that way has no password on the website yet */}
@@ -165,7 +217,7 @@ export function TwoStepForm({ next = "" }: { next?: string }) {
 
 const MIN_PASSWORD = 10;
 
-export function RegisterForm({ providers = [], notice }: { providers?: WebProvider[]; notice?: string | null }) {
+export function RegisterForm({ providers = [], notice, botCheck }: { providers?: WebProvider[]; notice?: string | null; botCheck?: string | null }) {
   const [state, action, pending] = useActionState(register, undefined);
   const [password, setPassword] = useState("");
   const f = state?.fields ?? {};
@@ -207,14 +259,54 @@ export function RegisterForm({ providers = [], notice }: { providers?: WebProvid
           </ul>
         </PasswordInput>
         {providers.length ? null : guardianBox}
-        <button className="btn btn-primary auth-submit" disabled={pending}>{pending ? "Creating account…" : "Create account"}</button>
+        <BotCheck siteKey={botCheck} action="register" resetOn={state} />
+        <button className="btn btn-primary auth-submit" disabled={pending}>{pending ? "Sending your code…" : "Create account"}</button>
       </form>
       <p className="auth-foot">Already have an account? <Link href="/login">Sign in</Link></p>
     </div>
   );
 }
 
-export function ForgotPasswordForm() {
+type Stamped = (FormState & { at?: number }) | undefined;
+/** Stamps an action's result, so a page with two forms can show whichever answered last. */
+const stamped = (fn: (s: FormState, f: FormData) => Promise<FormState>) =>
+  async (s: Stamped, f: FormData): Promise<Stamped> => ({ ...(await fn(s, f)), at: Date.now() });
+const verifyStamped = stamped(verifySignup);
+const resendStamped = stamped(() => resendSignup());
+
+/** /register/verify: the 6-digit code emailed by the create-account form (lib/signup). */
+export function VerifySignupForm({ email }: { email: string }) {
+  const [state, action, pending] = useActionState(verifyStamped, undefined);
+  const [resent, resend, resending] = useActionState(resendStamped, undefined);
+  const latest = (state?.at ?? 0) > (resent?.at ?? 0) ? state : resent;
+  if (latest?.fields?.expired) {
+    return (
+      <div className="auth-form">
+        <Header title="Start again" sub={latest.error ?? "This sign-up expired."} />
+        <Link className="btn btn-primary auth-submit" href="/register">Back to create account</Link>
+      </div>
+    );
+  }
+  return (
+    <div className="auth-form">
+      <Header title="Check your email" sub={`We sent a 6-digit code to ${email}. Enter it to finish creating your account.`} />
+      {latest?.error ? <ErrorBox error={latest.error} /> : <Notice text={latest?.ok} />}
+      <form action={action} className="auth-fields" noValidate>
+        <IconInput id="code" label="Code" icon="mail" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9 ]*" maxLength={7} placeholder="123456" required autoFocus />
+        <button className="btn btn-primary auth-submit" disabled={pending}>{pending ? "Checking…" : "Create account"}</button>
+      </form>
+      <form action={resend}>
+        <p className="auth-foot">
+          Nothing after a minute? Check your spam folder, or{" "}
+          <button className="link-btn" disabled={resending}>{resending ? "sending…" : "send a new code"}</button>.
+        </p>
+      </form>
+      <p className="auth-foot">Wrong email? <Link href="/register">Start again</Link></p>
+    </div>
+  );
+}
+
+export function ForgotPasswordForm({ botCheck }: { botCheck?: string | null }) {
   const [state, action, pending] = useActionState(forgotPassword, undefined);
   if (state?.ok) {
     return (
@@ -229,6 +321,7 @@ export function ForgotPasswordForm() {
       <Header title="Forgot your password?" sub="Enter your email and we'll send you a link to choose a new one." />
       <ErrorBox error={state?.error} />
       <IconInput id="email" label="Email address" icon="mail" type="email" autoComplete="email" placeholder="you@example.com" required defaultValue={state?.fields?.email ?? ""} />
+      <BotCheck siteKey={botCheck} action="reset" resetOn={state} />
       <button className="btn btn-primary auth-submit" disabled={pending}>{pending ? "Sending…" : "Send reset link"}</button>
       <p className="auth-foot">Remembered it? <Link href="/login">Sign in</Link></p>
     </form>

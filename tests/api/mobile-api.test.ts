@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { PASSWORD, RUN, applyAndReport, call, cleanup, db, email, inviteAndAccept, pairDevice, verificationToken, verifyInbox } from "./helpers";
+import { PASSWORD, RUN, applyAndReport, call, cleanup, db, email, inbox, inviteAndAccept, pairDevice, register, signupCode, verificationToken, verifyInbox, waitForMail } from "./helpers";
 
 /**
  * End-to-end tests of the parent mobile API, screen by screen from public/ios.png.
@@ -32,14 +32,27 @@ describe("public endpoints", () => {
 });
 
 describe("3. Create account / sign in", () => {
-  it("registers a family from name, email, password and the parent/guardian confirmation", async () => {
-    const r = await call("POST", "/auth/register", { body: { name: "Randy Cruz", email: email("randy"), password: PASSWORD, guardian: true } });
+  it("creates the family only once the emailed code is entered, with the email already verified", async () => {
+    const after = Date.now() - 5000;
+    const form = await call("POST", "/auth/register", { body: { name: "Randy Cruz", email: email("randy"), password: PASSWORD, guardian: true } });
+    expect(form.status).toBe(202);
+    expect(form.data).toMatchObject({ verificationRequired: true, email: email("randy") });
+    expect(form.data.signup).toBeTruthy();
+    expect(form.data.token).toBeUndefined();
+    expect(await db.user.count({ where: { email: email("randy") } })).toBe(0);
+    const code = await signupCode(email("randy"), { after });
+    const wrong = await call("POST", "/auth/register/verify", { body: { signup: form.data.signup, code: code === "000000" ? "111111" : "000000" } });
+    expect(wrong.status).toBe(400);
+    expect(wrong.data.code).toBe("wrong_code");
+    const r = await call("POST", "/auth/register/verify", { body: { signup: form.data.signup, code } });
     expect(r.status).toBe(201);
     expect(r.data.token).toBeTruthy();
-    expect(r.data.user).toMatchObject({ name: "Randy Cruz", firstName: "Randy", role: "FAMILY_ADMIN", family: { name: "Cruz Family" } });
+    expect(r.data.user).toMatchObject({ name: "Randy Cruz", firstName: "Randy", role: "FAMILY_ADMIN", emailVerified: true, family: { name: "Cruz Family" } });
     token = r.data.token;
     const log = await db.auditLog.findFirst({ where: { familyId: r.data.user.family.id, action: "account.created" } });
     expect(log?.detail).toMatch(/parent or legal guardian/);
+    // Used up
+    expect((await call("POST", "/auth/register/verify", { body: { signup: form.data.signup, code } })).data.code).toBe("signup_expired");
   });
 
   it("only parents and guardians can sign up", async () => {
@@ -48,22 +61,29 @@ describe("3. Create account / sign in", () => {
       const r = await call("POST", "/auth/register", { body: { name: "Kid Cruz", email: kid, password: PASSWORD, guardian } });
       expect(r.status).toBe(400);
       expect(r.data.error).toMatch(/^guardian: .*parent or legal guardian/);
-      expect(await db.user.count({ where: { email: kid } })).toBe(0);
+      expect(await db.signupRequest.count({ where: { email: kid } })).toBe(0);
     }
   });
 
   it("ignores a role in the body: a new account is always the family admin", async () => {
-    const r = await call("POST", "/auth/register", { body: { name: "Rhea Cruz", email: email("rhea"), password: PASSWORD, guardian: true, role: "CHILD" } });
+    const r = await register({ name: "Rhea Cruz", email: email("rhea"), password: PASSWORD, guardian: true, role: "CHILD" });
     expect(r.status).toBe(201);
     expect(r.data.user.role).toBe("FAMILY_ADMIN");
   });
 
-  it("rejects a duplicate email, in any case or padding, and explains invalid fields", async () => {
+  it("answers an email that already has an account like any other, and only tells that inbox", async () => {
     for (const e of [email("randy"), email("randy").toUpperCase(), `  ${email("randy")} `]) {
-      const dup = await call("POST", "/auth/register", { body: { name: "Randy Cruz", email: e, password: PASSWORD, guardian: true } });
-      expect(dup.status).toBe(409);
-      expect(dup.data.code).toBe("conflict");
+      const after = Date.now() - 5000;
+      const dup = await call("POST", "/auth/register", { body: { name: "Mallory", email: e, password: PASSWORD, guardian: true } });
+      expect(dup.status).toBe(202);
+      expect(Object.keys(dup.data).sort()).toEqual(["email", "expiresAt", "signup", "verificationRequired"]);
+      await waitForMail(email("randy"), /^You already have an eGuard account$/, { after });
+      // No code finishes it
+      for (const code of ["000000", "123456"]) {
+        expect((await call("POST", "/auth/register/verify", { body: { signup: dup.data.signup, code } })).data.code).toBe("wrong_code");
+      }
     }
+    expect(await db.user.count({ where: { email: email("randy") } })).toBe(1);
     const bad = await call("POST", "/auth/register", { body: { name: "Randy", email: "nope", password: "short" } });
     expect(bad.status).toBe(400);
     expect(bad.data.error).toMatch(/^email: /);
@@ -71,13 +91,21 @@ describe("3. Create account / sign in", () => {
     expect(notJson.data.code).toBe("invalid_json");
   });
 
-  it("rejects another spelling of the same mailbox: +tags, and dots or googlemail for Gmail", async () => {
+  it("turns down a password that's been in a data breach", async () => {
+    const r = await call("POST", "/auth/register", { body: { name: "Bea Cruz", email: email("bea"), password: "password12", guardian: true } });
+    expect(r.status).toBe(400);
+    expect(r.data.error).toMatch(/data breach/);
+  });
+
+  it("treats another spelling of the same mailbox as taken: +tags, and dots or googlemail for Gmail", async () => {
     const gmail = `qa.${RUN}@gmail.com`;
-    const first = await call("POST", "/auth/register", { body: { name: "Gia Cruz", email: gmail, password: PASSWORD, guardian: true } });
+    const first = await register({ name: "Gia Cruz", email: gmail, password: PASSWORD, guardian: true });
     expect(first.status).toBe(201);
     for (const alias of [`qa${RUN}@gmail.com`, `q.a.${RUN}+kids@googlemail.com`, email("randy").replace("@", "+second@")]) {
+      const after = Date.now() - 5000;
       const r = await call("POST", "/auth/register", { body: { name: "Alias", email: alias, password: PASSWORD, guardian: true } });
-      expect(r.status, alias).toBe(409);
+      expect(r.status, alias).toBe(202);
+      await waitForMail(alias, /^You already have an eGuard account$/, { after });
     }
     // Changing your email to someone else's alias is caught too
     const moved = await call("PATCH", "/me", { token: first.data.token, body: { email: email("randy").replace("@", "+x@") } });
@@ -85,12 +113,44 @@ describe("3. Create account / sign in", () => {
     await db.family.delete({ where: { id: first.data.user.family.id } });
   });
 
-  it("a double-tapped Create Account makes exactly one account; the rest get 409, never 500", async () => {
+  it("a double-tapped Create Account makes exactly one account, never a 500", async () => {
+    const after = Date.now() - 5000;
     const body = { name: "Double Tap", email: email("double"), password: PASSWORD, guardian: true };
-    const results = await Promise.all(Array.from({ length: 8 }, () => call("POST", "/auth/register", { body })));
-    expect(results.map((r) => r.status).sort()).toEqual([201, 409, 409, 409, 409, 409, 409, 409]);
+    const forms = await Promise.all(Array.from({ length: 3 }, () => call("POST", "/auth/register", { body })));
+    expect(forms.map((r) => r.status)).toEqual([202, 202, 202]);
+    // Each tap got its own code; the newest email belongs to one of them
+    const code = await signupCode(email("double"), { after });
+    const tries = await Promise.all(forms.map((f) => call("POST", "/auth/register/verify", { body: { signup: f.data.signup, code } })));
+    const finished = tries.filter((t) => t.status === 201);
+    expect(finished.length).toBe(1);
+    expect(tries.every((t) => t.status < 500)).toBe(true);
+    // Finishing one ends the others
+    for (const f of forms) expect((await call("POST", "/auth/register/verify", { body: { signup: f.data.signup, code } })).status).toBe(400);
     expect(await db.user.count({ where: { email: email("double") } })).toBe(1);
     expect(await db.family.count({ where: { users: { none: {} } } })).toBe(0);
+  });
+
+  it("a new code replaces the old one, once a minute", async () => {
+    const after = Date.now() - 5000;
+    const form = await call("POST", "/auth/register", { body: { name: "Rae Cruz", email: email("rae"), password: PASSWORD, guardian: true } });
+    const first = await signupCode(email("rae"), { after });
+    const soon = await call("POST", "/auth/register/resend", { body: { signup: form.data.signup } });
+    expect(soon.status).toBe(429);
+    await db.signupRequest.updateMany({ where: { email: email("rae") }, data: { sentAt: new Date(Date.now() - 120_000) } });
+    expect((await call("POST", "/auth/register/resend", { body: { signup: form.data.signup } })).data).toMatchObject({ ok: true, email: email("rae") });
+    // Both emails are seconds apart, so wait for the second one rather than go by time
+    let codes: string[] = [];
+    for (let i = 0; i < 50 && codes.length < 2; i++) {
+      codes = (await inbox(email("rae"))).map((m) => /^(\d{6}) is your eGuard sign-up code$/.exec(m.subject)?.[1]).filter((c): c is string => !!c);
+      if (codes.length < 2) await new Promise((r) => setTimeout(r, 200));
+    }
+    const second = codes[0];
+    expect(codes).toHaveLength(2);
+    if (second !== first) {
+      expect((await call("POST", "/auth/register/verify", { body: { signup: form.data.signup, code: first } })).data.code).toBe("wrong_code");
+    }
+    expect((await call("POST", "/auth/register/verify", { body: { signup: form.data.signup, code: second } })).status).toBe(201);
+    expect((await call("POST", "/auth/register/resend", { body: { signup: "made-up-signup-ticket-123" } })).data.code).toBe("signup_expired");
   });
 
   it("signs in with the right password only", async () => {
@@ -120,56 +180,60 @@ describe("3. Create account / sign in", () => {
 });
 
 describe("3b. Verify email", () => {
+  let rexToken = "";
   let kidId = "";
-  // Free covers one child: make sure Pip is gone before section 4 adds Mia, even if a test below fails
   afterAll(async () => { if (kidId) await db.child.deleteMany({ where: { id: kidId } }); });
 
-  it("a new parent starts unverified and can't pair a device yet", async () => {
-    expect((await call("GET", "/me", { token })).data.emailVerified).toBe(false);
-    kidId = (await call("POST", "/children", { token, body: { name: "Pip", age: 9 } })).data.id;
-    const code = await call("POST", `/children/${kidId}/pairing-code`, { token });
+  it("a parent who changes their email is unverified until the new link, and can't pair a device meanwhile", async () => {
+    const r = await register({ name: "Rex Cruz", email: email("rex"), password: PASSWORD, guardian: true });
+    rexToken = r.data.token;
+    expect(r.data.user.emailVerified).toBe(true);
+    const moved = await call("PATCH", "/me", { token: rexToken, body: { email: email("rex2"), password: PASSWORD } });
+    expect(moved.data).toMatchObject({ email: email("rex2"), emailVerified: false });
+    kidId = (await call("POST", "/children", { token: rexToken, body: { name: "Pip", age: 9 } })).data.id;
+    const code = await call("POST", `/children/${kidId}/pairing-code`, { token: rexToken });
     expect(code.status).toBe(403);
     expect(code.data.code).toBe("email_unverified");
   });
 
   it("the emailed link verifies once, then unlocks pairing", async () => {
-    const t = await verificationToken(email("randy"));
+    const t = await verificationToken(email("rex2"));
     expect((await call("POST", "/auth/verify-email", { body: { token: t } })).status).toBe(200);
     const again = await call("POST", "/auth/verify-email", { body: { token: t } });
     expect(again.data.code).toBe("link_invalid");
-    expect((await call("GET", "/me", { token })).data.emailVerified).toBe(true);
-    expect((await call("POST", `/children/${kidId}/pairing-code`, { token })).status).toBe(201);
-    expect((await call("POST", "/me/verify-email", { token })).data.sent).toBe(false);
-    await call("DELETE", `/children/${kidId}`, { token, body: { password: PASSWORD } });
+    expect((await call("GET", "/me", { token: rexToken })).data.emailVerified).toBe(true);
+    expect((await call("POST", `/children/${kidId}/pairing-code`, { token: rexToken })).status).toBe(201);
+    expect((await call("POST", "/me/verify-email", { token: rexToken })).data.sent).toBe(false);
   });
 
   it("resending replaces the old link, and is limited to once a minute", async () => {
-    const r = await call("POST", "/auth/register", { body: { name: "Rex Cruz", email: email("rex"), password: PASSWORD, guardian: true } });
-    const first = await verificationToken(email("rex"));
+    const r = await register({ name: "Moe Cruz", email: email("moe"), password: PASSWORD, guardian: true });
+    await call("PATCH", "/me", { token: r.data.token, body: { email: email("moe2"), password: PASSWORD } });
+    const first = await verificationToken(email("moe2"));
     const sentAt = Date.now() - 1000;
-    await db.emailVerification.updateMany({ where: { user: { email: email("rex") } }, data: { createdAt: new Date(Date.now() - 120_000) } });
+    await db.emailVerification.updateMany({ where: { user: { email: email("moe2") } }, data: { createdAt: new Date(Date.now() - 120_000) } });
     expect((await call("POST", "/me/verify-email", { token: r.data.token })).status).toBe(202);
     const limited = await call("POST", "/me/verify-email", { token: r.data.token });
     expect(limited.status).toBe(429);
-    const second = await verificationToken(email("rex"), { after: sentAt });
+    const second = await verificationToken(email("moe2"), { after: sentAt });
     expect(second).not.toBe(first);
     expect((await call("POST", "/auth/verify-email", { body: { token: first } })).data.code).toBe("link_invalid");
     // An expired link says so
-    await db.emailVerification.updateMany({ where: { user: { email: email("rex") } }, data: { expiresAt: new Date(Date.now() - 1000) } });
+    await db.emailVerification.updateMany({ where: { user: { email: email("moe2") } }, data: { expiresAt: new Date(Date.now() - 1000) } });
     expect((await call("POST", "/auth/verify-email", { body: { token: second } })).data.code).toBe("link_expired");
   });
 
-  it("changing email needs verifying again, and old links stop working", async () => {
-    const r = await call("POST", "/auth/register", { body: { name: "Moe Cruz", email: email("moe"), password: PASSWORD, guardian: true } });
-    const oldLink = await verificationToken(email("moe"));
-    await verifyInbox(email("moe"));
+  it("changing email again needs the password, and the earlier address's link stops working", async () => {
+    const r = await register({ name: "Moa Cruz", email: email("moa"), password: PASSWORD, guardian: true });
+    await call("PATCH", "/me", { token: r.data.token, body: { email: email("moa2"), password: PASSWORD } });
+    const oldLink = await verificationToken(email("moa2"));
     // Moving the account to another address needs the password
-    expect((await call("PATCH", "/me", { token: r.data.token, body: { email: email("moe2") } })).data.code).toBe("wrong_password");
-    expect((await call("PATCH", "/me", { token: r.data.token, body: { email: email("moe2"), password: "not-it-at-all" } })).status).toBe(403);
-    const moved = await call("PATCH", "/me", { token: r.data.token, body: { email: email("moe2"), password: PASSWORD } });
-    expect(moved.data).toMatchObject({ email: email("moe2"), emailVerified: false });
+    expect((await call("PATCH", "/me", { token: r.data.token, body: { email: email("moa3") } })).data.code).toBe("wrong_password");
+    expect((await call("PATCH", "/me", { token: r.data.token, body: { email: email("moa3"), password: "not-it-at-all" } })).status).toBe(403);
+    const moved = await call("PATCH", "/me", { token: r.data.token, body: { email: email("moa3"), password: PASSWORD } });
+    expect(moved.data).toMatchObject({ email: email("moa3"), emailVerified: false });
     expect((await call("POST", "/auth/verify-email", { body: { token: oldLink } })).data.code).toBe("link_invalid");
-    await verifyInbox(email("moe2"));
+    await verifyInbox(email("moa3"));
     expect((await call("GET", "/me", { token: r.data.token })).data.emailVerified).toBe(true);
   });
 
@@ -706,7 +770,7 @@ describe("16–17. Settings and subscription", () => {
 
 describe("family isolation", () => {
   it("another family can't see or change this family's data", async () => {
-    const eve = (await call("POST", "/auth/register", { body: { name: "Eve", email: email("eve"), password: PASSWORD, guardian: true } })).data;
+    const eve = (await register({ name: "Eve", email: email("eve"), password: PASSWORD, guardian: true })).data;
     expect(eve.user.family.name).toBe("Eve's Family");
     const t = eve.token;
     const app = await db.childApp.findFirstOrThrow({ where: { childId: miaId, approval: { not: "BLOCKED" } } });

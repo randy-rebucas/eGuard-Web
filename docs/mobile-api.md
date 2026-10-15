@@ -54,7 +54,7 @@ the app runs in exactly one mode, against exactly one API, with exactly one cred
 | **Who holds the phone** | A parent or guardian (18+), signed in | A child. Nobody signs in: the device is paired to one child |
 | **Accounts** | Every parent has an eGuard account (`FAMILY_ADMIN` or `PARENT`) | Children never have accounts. A child exists only as a profile a parent created |
 | **API** | Parent API, `/api/mobile/v1` ([Part B](#part-b-parent-api)) | Child device API, `/api/device/v1` ([Part C](#part-c-child-device-api)) |
-| **Credential** | Session token from `/auth/login`, `/auth/register`, `/auth/social` (or after two-step verification) | Device token from `POST /pair`, using a code a parent made |
+| **Credential** | Session token from `/auth/login`, `/auth/register/verify`, `/auth/social` (or after two-step verification) | Device token from `POST /pair`, using a code a parent made |
 | **Lifetime** | 30 days. Ends on sign-out, password change, "sign out other sessions", or removal from the family | Doesn't expire. Ends only when a parent removes the device, or deletes the child or the family |
 | **Can it be recovered?** | Sign in again | No. Only a hash is kept on the server; a lost token means pairing again |
 | **Storage** | iOS Keychain / Android EncryptedSharedPreferences | Android Keystore (EncryptedSharedPreferences) / iOS Keychain shared with the extensions through the App Group |
@@ -246,7 +246,7 @@ For **parent mode**: a parent or guardian signed in on their own phone.
 
 #### Authentication
 
-Sign in (`/auth/login`, `/auth/register` or `/auth/social`) returns:
+Sign in (`/auth/login`, `/auth/register/verify` or `/auth/social`) returns:
 
 ```json
 { "token": "<opaque string>", "expiresAt": "2026-10-27T05:59:56.772Z", "user": { …User } }
@@ -269,6 +269,7 @@ Sign in (`/auth/login`, `/auth/register` or `/auth/social`) returns:
 | `Content-Type` | requests with a body | `application/json` (photos: the image type) |
 | `X-eGuard-Client` | every call (recommended) | `ios` or `android`. Configuration history then reads "Randy Cruz on iOS app" |
 | `User-Agent` | automatic | Shown to the parent in the sessions list, so make it readable, e.g. `eGuard/1.0 (iPhone; iOS 18.1)` |
+| `X-eGuard-Install` | every sign-in call (recommended on all) | A random id (UUID) the app makes once per install and keeps in secure storage; a new one after reinstalling. Signing in from an install the parent hasn't used before emails them "New sign-in to your eGuard account". Without it, the app is told apart only by platform, so a second iPhone isn't noticed. 8–64 of `A–Z a–z 0–9 _ -` |
 
 #### Errors
 
@@ -534,7 +535,7 @@ Returned by `PUT /children/{id}/protections/{KEY}`, `POST /children/{id}/setup` 
 |---|---|---|
 | 1 | Splash | `GET /app-info` (force-update check, which sign-in buttons to show) |
 | 2 | Welcome | none |
-| 3 | Create Account | `POST /auth/register`, `POST /auth/social` (Continue with Apple/Google), `POST /auth/login` (Sign in) |
+| 3 | Create Account | `POST /auth/register` then `POST /auth/register/verify` (code from the email), `POST /auth/social` (Continue with Apple/Google), `POST /auth/login` (Sign in) |
 | 4 | Add Child | `POST /children` → `PUT /children/{id}/photo` |
 | 5 | Protection Profile | `GET /profiles?age=` |
 | 6 | Recommended Setup | `GET /children/{id}/recommendations?profile=` |
@@ -614,27 +615,55 @@ Returns one article with `body` as an array of paragraphs, or `404`.
 
 #### P4.2 Auth
 
-##### `POST /auth/register` → `201`
+##### `POST /auth/register` → `202`
 
-Creates a new family with this parent as `FAMILY_ADMIN` and signs them in.
+Create Account, step 1. Emails a 6-digit code to the address and returns the `signup` ticket that goes with it. **No
+account exists yet**: step 2 (`/auth/register/verify`) creates it and signs in.
 
 | Field | Type | Rules |
 |---|---|---|
 | `name` | string | ≥ 2 chars |
-| `email` | string | valid email. Case doesn't matter; it's stored lowercase. One account per mailbox: `randy+kids@…`, and for Gmail `r.andy@gmail.com` / `randy@googlemail.com`, count as `randy@gmail.com` (`409`) |
-| `password` | string | ≥ 10 chars |
+| `email` | string | valid email. Case doesn't matter; it's stored lowercase |
+| `password` | string | 10–72 chars, and not one published in a data breach (`400`, "This password has appeared in a data breach…") |
 | `familyName` | string, optional | ≥ 2 chars. Default: last name + " Family" ("Cruz Family"), or "Randy's Family" |
 | `guardian` | `true` | Required. The "I'm a parent or legal guardian, 18 or older" checkbox. Children never get accounts; parents add them after sign-up |
 
-Response: `{ token, expiresAt, user }`. Errors: `400` (field message, e.g. `guardian: Confirm you're a parent…`), `409 conflict` (email already registered — also returned to every duplicate of a double-tapped submit, so treat it as "Sign in instead").
+Response: `{ verificationRequired: true, signup, email, expiresAt }`. Keep `signup` in memory for step 2 (it lasts
+15 minutes); show "Check your email" with a 6-digit code field.
 
-The new parent is signed in straight away with `user.emailVerified: false`, and we email them a verification link.
+**The answer is the same whether or not the email already has an account**, so the form can't be used to find out
+who uses eGuard. That inbox gets "You already have an eGuard account" (with sign-in and reset links) instead of a
+code, and no code finishes that sign-up. Don't show anything different; the parent reads the email. One account per
+mailbox: `randy+kids@…`, and for Gmail `r.andy@gmail.com` / `randy@googlemail.com`, count as `randy@gmail.com`.
+
+Errors: `400` (field message, e.g. `guardian: Confirm you're a parent…`, or the breached-password message), `429`
+(10 sign-ups an hour from one address).
+
+##### `POST /auth/register/verify` → `201`
+
+Create Account, step 2. `{ signup, code }`. Creates the family with this parent as `FAMILY_ADMIN`, email already
+verified (`user.emailVerified: true`), and signs in: `{ token, expiresAt, user }` like `/auth/login`.
+
+| Error | What to show |
+|---|---|
+| `400 wrong_code` | The `error` text; let them try again (5 tries per code) |
+| `400 signup_expired` | The `error` text and a button back to the form: the code expired (15 min), was used up, or had 5 wrong tries |
+| `409 conflict` | Only if the email was taken in the minutes between the steps: "Sign in instead" |
+
+A double tap is safe: the first finishes, the second gets `400`/`409`, never a second account.
+
+##### `POST /auth/register/resend` → `200`
+
+"Send a new code". `{ signup }` → `{ ok: true, email, expiresAt }`. The previous code stops working, and tries start
+again. Once a minute (`429` sooner) and 5 emails per sign-up (`429`: fill in the form again). `400 signup_expired` as
+above.
 
 ##### Email verification
 
 Parents must verify their email before they can pair a child's device. Everything else works while unverified.
 
-- New sign-ups, parents added by the admin, and anyone who changes their email get a link:
+- New sign-ups prove their email with the code, so they start verified. Parents added by the admin and anyone who
+  changes their email get a link:
   `{APP_URL}/verify-email?token=…`. It works once, expires after 24 hours, and stops working if a newer link is sent or the email changes.
 - Apple / Google sign-ins count as verified, because the provider has already verified the email.
 - While `user.emailVerified` is `false`, show a "Verify your email" banner with a **Resend link** button.
@@ -1687,7 +1716,7 @@ Home  (+ POST /me/push-tokens if the APNs token changed)
 #### P5.2 Onboarding (screens 3 → 9)
 
 ```
-POST /auth/register | /auth/social        → token
+POST /auth/register → /auth/register/verify { signup, code } | /auth/social → token
 POST /children { name, age }              → childId          (4. Add Child)
 PUT  /children/{id}/photo  (optional)
 GET  /profiles?age=12                     → pick profile     (5. Protection Profile)

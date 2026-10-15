@@ -5,6 +5,7 @@ how complete it is, known issues and suggestions.
 
 | Feature | Route | Doc | Completeness |
 |---|---|---|---|
+| Authentication | `/login`, `/register`, `/register/verify`, `/forgot-password` | [authentication.md](authentication.md) | — |
 | Dashboard | `/dashboard` | [dashboard.md](dashboard.md) | ~89% |
 | Children | `/children`, `/children/new`, `/children/[id]` | [children.md](children.md) | 100% of review |
 | Devices | `/devices`, `/devices/[id]` | [devices.md](devices.md) | 100% of review |

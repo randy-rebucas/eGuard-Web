@@ -1,5 +1,6 @@
 import "server-only";
 import { db } from "./db";
+import { assertNotBreached } from "./breached-password";
 import { MIN_PASSWORD, PASSWORD_TOO_LONG, hashPassword, newToken, passwordTooLong, sha256 } from "./auth";
 import { audit } from "./audit";
 import { appUrl } from "./email-verification";
@@ -99,6 +100,7 @@ export async function acceptInvite(token: string, password: string) {
   const r = await linkFor(token);
   if (!r) throw invalidLink();
   if (r.expiresAt < new Date()) throw new ServiceError(400, "This invitation has expired. Ask the family admin to send a new one.", "link_expired");
+  await assertNotBreached(password);
   const now = new Date();
   const [accepted] = await db.$transaction([
     // Conditional, so the same link opened twice at once accepts once

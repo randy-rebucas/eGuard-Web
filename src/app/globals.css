@@ -773,6 +773,9 @@ select.input{appearance:auto}
 .verify-banner > .lucide{width:20px; height:20px; flex:none}
 .verify-banner p{flex:1 1 240px; margin:0}
 .verify-banner .btn{flex:none}
+/* A recommendation rather than something blocking (the dashboard's two-step verification prompt) */
+.verify-banner.info-banner{background:var(--accent-soft); color:var(--ink-2)}
+.verify-banner.info-banner > .lucide{color:var(--accent-ink)}
 .verify-page{min-height:100dvh; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:24px; padding:24px 16px; background:var(--bg)}
 .verify-card{width:100%; max-width:440px}
 .verify-card-body{display:flex; flex-direction:column; align-items:center; text-align:center; gap:12px}

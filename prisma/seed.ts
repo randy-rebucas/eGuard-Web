@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
-import bcrypt from "bcryptjs";
+import { hash as argon2Hash } from "@node-rs/argon2";
 import { createDemoFamily } from "./demo-family";
 import { createDemoOrganization } from "./demo-organization";
 
@@ -13,7 +13,7 @@ const db = new PrismaClient();
 async function main() {
   await db.organization.deleteMany(); // not deleted with families
   await db.family.deleteMany();
-  const pw = await bcrypt.hash("ChangeMe123!", 12);
+  const pw = await argon2Hash("ChangeMe123!", { memoryCost: 19456, timeCost: 2, parallelism: 1 });
   const family = await createDemoFamily(db, {
     familyName: "Cruz Family",
     parents: [

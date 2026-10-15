@@ -10,7 +10,7 @@ const db = vi.hoisted(() => ({
   staffAuditLog: { create: vi.fn() },
 }));
 vi.mock("../db", () => ({ db }));
-const auth = vi.hoisted(() => ({ verifyPassword: vi.fn(), hashPassword: vi.fn(async () => "decoy-hash") }));
+const auth = vi.hoisted(() => ({ verifyPassword: vi.fn(), hashPassword: vi.fn(async () => "decoy-hash"), isOldHash: () => false }));
 vi.mock("../auth", () => ({
   ...auth,
   sha256: (v: string) => createHash("sha256").update(v).digest("hex"),

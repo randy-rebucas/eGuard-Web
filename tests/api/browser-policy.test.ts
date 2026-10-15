@@ -2,7 +2,7 @@ import { createPrivateKey, createPublicKey, verify } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { canonicalJson, defaultCategories, normalizeDomain, parseDomainList } from "@/lib/browser-policy";
-import { BASE, PASSWORD, call, cleanup, db, email, verifyInbox } from "./helpers";
+import { BASE, PASSWORD, call, cleanup, db, email, register, verifyInbox } from "./helpers";
 
 /**
  * Browser protection policies: editing (mobile API; the web form uses the same service), versioning,
@@ -49,7 +49,7 @@ const settings = (patch: Record<string, unknown> = {}) => ({
 afterAll(cleanup);
 
 beforeAll(async () => {
-  const r = await call("POST", "/auth/register", { body: { name: "Paz Ramos", email: email("paz"), password: PASSWORD, guardian: true } });
+  const r = await register({ name: "Paz Ramos", email: email("paz"), password: PASSWORD, guardian: true });
   token = r.data.token;
   familyId = r.data.user.family.id;
   await verifyInbox(email("paz"));
@@ -130,7 +130,7 @@ describe("editing", () => {
   });
 
   it("another family can't read or change it", async () => {
-    const other = await call("POST", "/auth/register", { body: { name: "Other", email: email("paz-other"), password: PASSWORD, guardian: true } });
+    const other = await register({ name: "Other", email: email("paz-other"), password: PASSWORD, guardian: true });
     expect((await call("GET", `/children/${childId}/browser-policy`, { token: other.data.token })).status).toBe(404);
     expect((await call("PUT", `/children/${childId}/browser-policy`, { token: other.data.token, body: settings() })).status).toBe(404);
   });

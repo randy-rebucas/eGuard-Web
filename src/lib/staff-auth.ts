@@ -3,7 +3,7 @@ import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
 import { db } from "./db";
-import { hashPassword, newToken, sha256, verifyPassword } from "./auth";
+import { clearCookie, hashPassword, isOldHash, newToken, sha256, verifyPassword } from "./auth";
 import { ServiceError } from "./errors";
 import { LIMITS, clearLimit, clientIpFrom, hit, ipKey, isLimited } from "./rate-limit";
 import { matchStep, normalizeCode, openSecret, secretKey } from "./totp";
@@ -58,6 +58,10 @@ export async function authenticateStaff(email: string, password: string, code: s
     throw new ServiceError(401, STAFF_BAD_LOGIN, "invalid_credentials");
   }
   await clearLimit(accountKey);
+  // A bcrypt hash from before argon2id: upgraded now that the password is known to be right
+  if (isOldHash(staff.passwordHash)) {
+    await db.staffUser.updateMany({ where: { id: staff.id, passwordHash: staff.passwordHash }, data: { passwordHash: await hashPassword(password) } });
+  }
   return { id: staff.id, name: staff.name, email: staff.email };
 }
 
@@ -79,7 +83,7 @@ export async function endStaffSession() {
   const jar = await cookies();
   const token = jar.get(STAFF_COOKIE)?.value;
   if (token) await db.staffSession.deleteMany({ where: { tokenHash: sha256(token) } });
-  jar.delete(STAFF_COOKIE);
+  await clearCookie(STAFF_COOKIE);
 }
 
 /** The signed-in staff member, or null. Cached per request. */

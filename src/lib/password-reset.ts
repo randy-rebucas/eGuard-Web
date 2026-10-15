@@ -2,6 +2,7 @@ import "server-only";
 import { db } from "./db";
 import { MIN_PASSWORD, PASSWORD_TOO_LONG, hashPassword, isPendingInvite, loginKeys, newToken, passwordTooLong, sha256 } from "./auth";
 import { acceptInvite, sendInvite } from "./invitations";
+import { assertNotBreached } from "./breached-password";
 import { audit } from "./audit";
 import { appUrl } from "./email-verification";
 import { ServiceError, invalid } from "./errors";
@@ -66,6 +67,7 @@ export async function resetPassword(token: string, password: string, ip: string 
   // An invitation link opened on the reset page (an older app): accepting it is what setting a password means here
   if (isPendingInvite(r.user)) return acceptInvite(token, password);
   if (r.expiresAt < new Date()) throw new ServiceError(400, "This link has expired. Ask for a new one.", "link_expired");
+  await assertNotBreached(password);
   await db.$transaction([
     db.user.update({
       where: { id: r.userId },

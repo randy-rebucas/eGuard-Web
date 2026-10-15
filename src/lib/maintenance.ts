@@ -16,6 +16,8 @@ import { mobileAlertAction } from "./mobile-views";
 import { sendWeeklyDigests } from "./weekly-digest";
 import { deliverBroadcasts } from "./broadcasts";
 import { STAFF_IDLE_MS } from "./console-host";
+import { WEB_IDLE_DAYS } from "./auth";
+import { KNOWN_DEVICE_DAYS } from "./sign-in-notice";
 
 /**
  * Background upkeep, run every few minutes by /api/cron/maintenance. Before this existed, offline
@@ -105,8 +107,8 @@ export async function closeStaleWork(now = new Date()) {
 /**
  * Deletes activity older than each family's retention period (Settings › Privacy): screen time, app
  * usage, location visits, change history, finished requests and checks, browser health reports, daily
- * block counts and site requests, and alerts that are no longer open. Plus expired sessions, links, pairing codes,
- * organization invitations and rate-limit counters.
+ * block counts and site requests, and alerts that are no longer open. Plus expired sessions, sign-ups, links, pairing
+ * codes, organization invitations and rate-limit counters, and devices nobody has signed in from for half a year.
  */
 export async function purgeExpiredData(now = new Date()) {
   const cutoff = (col: string) => `${col} < now() - make_interval(days => f."retentionDays")`;
@@ -124,7 +126,12 @@ export async function purgeExpiredData(now = new Date()) {
     alerts: await db.$executeRawUnsafe(`DELETE FROM "Alert" t USING "Family" f WHERE t."familyId" = f.id AND (t."resolvedAt" IS NOT NULL OR t.severity = 'INFO') AND ${cutoff('t."createdAt"')}`),
     orgEvents: await db.orgEvent.deleteMany({ where: { createdAt: { lt: new Date(now.getTime() - ORG_EVENT_RETENTION_DAYS * 864e5) } } }).then((r) => r.count),
     auditLog: await db.auditLog.deleteMany({ where: { createdAt: { lt: new Date(now.getTime() - AUDIT_RETENTION_DAYS * 864e5) } } }).then((r) => r.count),
-    sessions: await db.session.deleteMany({ where: { expiresAt: { lt: now } } }).then((r) => r.count),
+    // Ended ones, and browser sessions unused for WEB_IDLE_DAYS (which would no longer sign anyone in anyway)
+    sessions: await db.session.deleteMany({
+      where: { OR: [{ expiresAt: { lt: now } }, { web: true, lastSeenAt: { lt: new Date(now.getTime() - WEB_IDLE_DAYS * 864e5) } }] },
+    }).then((r) => r.count),
+    signups: await db.signupRequest.deleteMany({ where: { expiresAt: { lt: now } } }).then((r) => r.count),
+    knownDevices: await db.knownDevice.deleteMany({ where: { lastSeenAt: { lt: new Date(now.getTime() - KNOWN_DEVICE_DAYS * 864e5) } } }).then((r) => r.count),
     // Otherwise only removed when the browser comes back with the cookie
     staffSessions: await db.staffSession.deleteMany({
       where: { OR: [{ expiresAt: { lt: now } }, { lastSeenAt: { lt: new Date(now.getTime() - STAFF_IDLE_MS) } }] },
