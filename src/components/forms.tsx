@@ -59,7 +59,7 @@ export function AccountForm({ name, email, familyName, timezone, zones, canSetTi
           <label htmlFor="em">Email</label>
           {/* Changing the email needs the password, so without one it can't be changed here */}
           <input className="input" id="em" name="email" type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} autoComplete="email" readOnly={!hasPassword} aria-describedby={hasPassword ? undefined : "em-hint"} />
-          {!hasPassword ? <span className="field-hint" id="em-hint">You signed up with Apple or Google. To change your email, sign out and use “Forgot password?” to set a password first.</span> : null}
+          {!hasPassword ? <span className="field-hint" id="em-hint">You signed up with Apple, Google or LinkedIn. To change your email, sign out and use “Forgot password?” to set a password first.</span> : null}
         </div>
         {changingEmail && hasPassword ? (
           <div className="field">
@@ -67,7 +67,7 @@ export function AccountForm({ name, email, familyName, timezone, zones, canSetTi
             <input className="input" id="em-pw" name="password" type="password" autoComplete="current-password" required />
             <span className="field-hint">
               Needed to change your email.
-              {linkedSignIns ? ` Your Apple or Google sign-in will be unlinked; sign in with ${newEmail.trim() || "the new email"} and your password afterwards.` : ""}
+              {linkedSignIns ? ` Your Apple, Google or LinkedIn sign-in will be unlinked; sign in with ${newEmail.trim() || "the new email"} and your password afterwards.` : ""}
             </span>
           </div>
         ) : null}

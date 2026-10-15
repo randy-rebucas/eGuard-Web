@@ -9,7 +9,8 @@ import { ServiceError } from "./errors";
 export type Provider = "apple" | "google";
 
 type Jwk = JsonWebKey & { kid?: string; alg?: string };
-export type Identity = { provider: Provider; subject: string; email: string | null; emailVerified: boolean; name: string | null };
+/** LinkedIn comes only from the website's sign-in (lib/oauth-web), which reads its profile rather than a token here */
+export type Identity = { provider: Provider | "linkedin"; subject: string; email: string | null; emailVerified: boolean; name: string | null };
 
 const PROVIDERS: Record<Provider, { issuers: string[]; jwksUrl: string; audienceEnv: string }> = {
   apple: { issuers: ["https://appleid.apple.com"], jwksUrl: "https://appleid.apple.com/auth/keys", audienceEnv: "APPLE_CLIENT_IDS" },

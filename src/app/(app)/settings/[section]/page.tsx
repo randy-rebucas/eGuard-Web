@@ -30,6 +30,8 @@ import { pushAvailable } from "@/lib/push";
 import { TwoStepSettings } from "@/components/two-step";
 import { BROWSER_STATE } from "@/components/browser-card";
 import { isOffline } from "@/lib/health";
+import { enabledWebProviders, isWebProvider, providerLabel } from "@/lib/oauth-web";
+import { oauthMessage } from "@/lib/oauth-errors";
 
 export async function generateMetadata(props: PageProps<"/settings/[section]">) {
   const { section } = await props.params;
@@ -192,7 +194,7 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
       );
 
     case "security": {
-      const [sessions, identities, twoStep, { recovery }] = await Promise.all([
+      const [sessions, identities, twoStep, { recovery, linked, oauth, provider }] = await Promise.all([
         db.session.findMany({ where: { userId: u.id, expiresAt: { gt: new Date() } }, orderBy: { lastSeenAt: "desc" } }),
         db.oAuthIdentity.findMany({ where: { userId: u.id }, orderBy: { createdAt: "asc" } }),
         twoFactorStatus(u.id),
@@ -200,9 +202,13 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
       ]);
       // Just signed in with a recovery code (see verifySecondStep)
       const recoveryLeft = typeof recovery === "string" && /^\d+$/.test(recovery) ? Number(recovery) : null;
+      // Back from linking Google / LinkedIn (app/auth/[provider]/callback)
+      const linkNotice = typeof linked === "string" && isWebProvider(linked) ? `${providerLabel(linked)} is linked. You can now sign in with it.` : oauthMessage(oauth, provider);
+      const linkable = enabledWebProviders().filter((p) => !identities.some((i) => i.provider === p));
       return (
         <>
           {head}
+          {linkNotice ? <div className="verify-banner" role="status" style={{ marginBottom: 12 }}><Icon name={linked ? "circle-check" : "info"} /><p>{linkNotice}</p></div> : null}
           {recoveryLeft !== null && twoStep.enabled ? (
             <div className="verify-banner" role="status" style={{ marginBottom: 12 }}><Icon name="key-round" /><p>You signed in with a recovery code, so it no longer works. {recoveryLeft} {recoveryLeft === 1 ? "code is" : "codes are"} left.{recoveryLeft <= 2 ? " Make new ones below, and check your authenticator app is set up on your phone." : ""}</p></div>
           ) : null}
@@ -222,18 +228,29 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
             {sessions.length > 1 ? <SignOutOthersButton /> : null}
           </div>
           <div className="setting-row" style={{ flexDirection: "column", alignItems: "stretch" }}>
-            <div><div className="t-title">Password</div><div className="t-meta">{user.passwordSet ? `Last changed ${shortDate(user.passwordChangedAt, tz)}` : "Not set. You sign in with Apple or Google. To add a password, sign out and choose “Forgot password?”."}</div></div>
+            <div><div className="t-title">Password</div><div className="t-meta">{user.passwordSet ? `Last changed ${shortDate(user.passwordChangedAt, tz)}` : "Not set. You sign in with Apple, Google or LinkedIn. To add a password, sign out and choose “Forgot password?”."}</div></div>
             {user.passwordSet ? <PasswordForm /> : null}
           </div>
-          {identities.length ? (
+          {identities.length || linkable.length ? (
             <div className="setting-row" style={{ alignItems: "flex-start", flexDirection: "column" }}>
-              <div className="t-title">Sign in with Apple or Google</div>
+              <div className="t-title">Other ways to sign in</div>
               {identities.map((i) => (
                 <div key={i.id} className="row" style={{ justifyContent: "space-between", width: "100%" }}>
-                  <span className="t-meta">{i.provider === "apple" ? "Apple" : "Google"}{i.email ? ` · ${i.email}` : ""} · linked {shortDate(i.createdAt, tz)}</span>
-                  {user.passwordSet || identities.length > 1 ? <UnlinkIdentityButton identityId={i.id} provider={i.provider === "apple" ? "Apple" : "Google"} /> : null}
+                  <span className="t-meta">{providerLabel(i.provider)}{i.email ? ` · ${i.email}` : ""} · linked {shortDate(i.createdAt, tz)}</span>
+                  {user.passwordSet || identities.length > 1 ? <UnlinkIdentityButton identityId={i.id} provider={providerLabel(i.provider)} /> : null}
                 </div>
               ))}
+              {linkable.length ? (
+                // A plain form: /auth/<provider> confirms the password, then sends the browser to the provider
+                <form method="post" action={`/auth/${linkable[0]}`} className="row" style={{ gap: 8, flexWrap: "wrap", width: "100%" }}>
+                  <input type="hidden" name="intent" value="link" />
+                  {user.passwordSet ? (
+                    <input className="input" type="password" name="password" required autoComplete="current-password" placeholder="Your password"
+                      aria-label="Your password, to link another sign-in" style={{ flex: "1 1 180px", maxWidth: 260 }} />
+                  ) : null}
+                  {linkable.map((p) => <button key={p} formAction={`/auth/${p}`} className="btn btn-secondary btn-sm">Link {providerLabel(p)}</button>)}
+                </form>
+              ) : null}
             </div>
           ) : null}
         </>

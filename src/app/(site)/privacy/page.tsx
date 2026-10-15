@@ -13,7 +13,7 @@ export const metadata: Metadata = pageMetadata({
 });
 
 const COLLECTED: [string, string][] = [
-  ["Your account", "Your name, email address, password (stored only as a one-way hash), your role in the family, notification preferences, and your Apple or Google account ID if you sign in with them. If you turn on two-step verification: your authenticator key (encrypted) and your recovery codes (stored only as hashes)."],
+  ["Your account", "Your name, email address, password (stored only as a one-way hash), your role in the family, notification preferences, and your Apple, Google or LinkedIn account ID if you sign in with them. If you turn on two-step verification: your authenticator key (encrypted) and your recovery codes (stored only as hashes)."],
   ["Other parents you invite", "Their name and email address, so we can send the invitation. If they decline or you withdraw it, we delete them; until they accept, they can't sign in or see anything."],
   ["Organizations", "If your family joins a school, community group or business with its code, which organization it joined and when. If you manage an organization: its name, its admins, and the sponsor codes it bought and when each was redeemed, never by whom."],
   ["Your children", "Each child's first name, birth year, protection settings and, if you add one, a profile photo."],
@@ -112,7 +112,7 @@ export default function PrivacyPage() {
           <p><strong>We don&apos;t sell personal data.</strong> Within your family, every parent you add can see your children&apos;s data. Outside your family, we share data only with:</p>
           <ul>
             <li><strong>Service providers</strong> who run parts of eGuard for us: hosting and database, email delivery, PayMongo for payments, and Google&apos;s Firebase Cloud Messaging, which delivers push alerts to the parent app (it carries each alert&apos;s title and text, which can include a child&apos;s first name). They may use the data only to provide their service to us, under contract.</li>
-            <li><strong>Apple or Google</strong>, if you choose to sign in with them. We receive your name and email from them; we don&apos;t send them your family&apos;s data.</li>
+            <li><strong>Apple, Google or LinkedIn</strong>, if you choose to sign in with them. We receive your name and email from them; we don&apos;t send them your family&apos;s data.</li>
             {META_PIXEL_ID && <li><strong>Meta (Facebook)</strong>, if you visit our public pages: see <a href="#cookies">Cookies</a>. Meta never receives your family&apos;s data.</li>}
             <li><strong>Authorities</strong>, when the law requires it, or to protect someone&apos;s safety.</li>
           </ul>

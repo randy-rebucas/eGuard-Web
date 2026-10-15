@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { acceptInvitation, declineInvitation, forgotPassword, login, register, resetPasswordWithToken, verifySecondStep } from "@/app/actions/auth";
+import type { WebProvider } from "@/lib/oauth-web";
+import { GoogleMark, LinkedInMark } from "./brand-marks";
 import { Icon } from "./icon";
 
 function ErrorBox({ error }: { error?: string }) {
@@ -50,28 +52,83 @@ function PasswordInput({ label, id, children, ...rest }: Omit<InputProps, "icon"
   );
 }
 
-/** `next`: the signed-in page to return to after signing in (already checked by safeNext on the server). */
-export function LoginForm({ next = "" }: { next?: string }) {
+const SOCIAL: Record<WebProvider, { label: string; Mark: () => React.ReactElement }> = {
+  google: { label: "Google", Mark: GoogleMark },
+  linkedin: { label: "LinkedIn", Mark: LinkedInMark },
+};
+
+/**
+ * "Continue with Google / LinkedIn": plain forms posting to /auth/<provider>, which sends the browser on to the
+ * provider. `blocked`: why it can't start yet (create account's guardian confirmation), shown instead of leaving.
+ */
+function SocialSignIn({ providers, intent, next = "", guardian = false, blocked }: {
+  providers: WebProvider[]; intent: "login" | "register"; next?: string; guardian?: boolean; blocked?: () => boolean;
+}) {
+  const [leaving, setLeaving] = useState<WebProvider | null>(null);
+  // Back from the provider's page restores this one from the back/forward cache, buttons still disabled
+  useEffect(() => {
+    const restored = (e: PageTransitionEvent) => { if (e.persisted) setLeaving(null); };
+    window.addEventListener("pageshow", restored);
+    return () => window.removeEventListener("pageshow", restored);
+  }, []);
+  if (!providers.length) return null;
+  return (
+    <>
+      <div className="auth-social">
+        {providers.map((p) => {
+          const { label, Mark } = SOCIAL[p];
+          return (
+            <form key={p} method="post" action={`/auth/${p}`} onSubmit={(e) => {
+              if (blocked?.()) e.preventDefault();
+              else setLeaving(p);
+            }}>
+              <input type="hidden" name="intent" value={intent} />
+              {next ? <input type="hidden" name="next" value={next} /> : null}
+              {guardian ? <input type="hidden" name="guardian" value="on" /> : null}
+              <button className="auth-social-btn" disabled={leaving !== null}><Mark />{leaving === p ? `Opening ${label}…` : `Continue with ${label}`}</button>
+            </form>
+          );
+        })}
+      </div>
+      <div className="auth-or">or</div>
+    </>
+  );
+}
+
+/** Why a Google / LinkedIn sign-in came back here (lib/oauth-errors) */
+function Notice({ text }: { text?: string | null }) {
+  if (!text) return null;
+  return <div className="auth-notice" role="status"><Icon name="info" /><span>{text}</span></div>;
+}
+
+/**
+ * `next`: the signed-in page to return to after signing in (already checked by safeNext on the server).
+ * `providers`: the Google / LinkedIn sign-ins set up on this server; `notice`: why one came back without signing in.
+ */
+export function LoginForm({ next = "", providers = [], notice }: { next?: string; providers?: WebProvider[]; notice?: string | null }) {
   const [state, action, pending] = useActionState(login, undefined);
   return (
-    <form action={action} className="auth-form" noValidate>
+    <div className="auth-form">
       <Header title="Welcome back" sub={next ? "Sign in to continue where you left off." : "Sign in to manage your family's digital safety."} />
-      <ErrorBox error={state?.error} />
-      {next ? <input type="hidden" name="next" value={next} /> : null}
-      <IconInput id="email" label="Email address" icon="mail" type="email" autoComplete="email" placeholder="you@example.com" required defaultValue={state?.fields?.email ?? ""} />
-      <PasswordInput id="password" label="Password" autoComplete="current-password" placeholder="Enter your password" required>
-        <Link className="auth-forgot" href="/forgot-password">Forgot password?</Link>
-      </PasswordInput>
-      <button className="btn btn-primary auth-submit" disabled={pending}>{pending ? "Signing in…" : "Sign in"}</button>
-      {/* The website has no Apple/Google sign-in, so an app-only account has no password here yet */}
+      {state?.error ? <ErrorBox error={state.error} /> : <Notice text={notice} />}
+      <SocialSignIn providers={providers} intent="login" next={next} />
+      <form action={action} className="auth-fields" noValidate>
+        {next ? <input type="hidden" name="next" value={next} /> : null}
+        <IconInput id="email" label="Email address" icon="mail" type="email" autoComplete="email" placeholder="you@example.com" required defaultValue={state?.fields?.email ?? ""} />
+        <PasswordInput id="password" label="Password" autoComplete="current-password" placeholder="Enter your password" required>
+          <Link className="auth-forgot" href="/forgot-password">Forgot password?</Link>
+        </PasswordInput>
+        <button className="btn btn-primary auth-submit" disabled={pending}>{pending ? "Signing in…" : "Sign in"}</button>
+      </form>
+      {/* Apple sign-in is app-only, so an account made that way has no password on the website yet */}
       {state?.error ? (
-        <p className="auth-foot">Signed up in the eGuard app with Apple or Google? <Link href="/forgot-password">Set a password</Link> to sign in here.</p>
+        <p className="auth-foot">Signed up in the eGuard app with Apple? <Link href="/forgot-password">Set a password</Link> to sign in here.</p>
       ) : null}
       <p className="auth-foot">Don&apos;t have an account? <Link href="/register">Create account</Link></p>
       {process.env.NODE_ENV !== "production" ? (
         <p className="dev-banner"><Icon name="info" />Demo account: randy@example.com / ChangeMe123!</p>
       ) : null}
-    </form>
+    </div>
   );
 }
 
@@ -108,33 +165,52 @@ export function TwoStepForm({ next = "" }: { next?: string }) {
 
 const MIN_PASSWORD = 10;
 
-export function RegisterForm() {
+export function RegisterForm({ providers = [], notice }: { providers?: WebProvider[]; notice?: string | null }) {
   const [state, action, pending] = useActionState(register, undefined);
   const [password, setPassword] = useState("");
   const f = state?.fields ?? {};
+  const [guardian, setGuardian] = useState(f.guardian === "on");
+  const [needGuardian, setNeedGuardian] = useState(false);
+  const guardianRef = useRef<HTMLInputElement>(null);
   const longEnough = password.length >= MIN_PASSWORD;
+  // A new account from Google / LinkedIn needs the same confirmation as one made with the form
+  const blocked = () => {
+    if (guardian) return false;
+    setNeedGuardian(true);
+    guardianRef.current?.focus();
+    return true;
+  };
+  // With Google / LinkedIn offered it comes first, since it covers them too; `form` keeps it in the form's data
+  const guardianBox = (
+    <label className="check">
+      <input type="checkbox" name="guardian" form="register-form" required ref={guardianRef} checked={guardian} onChange={(e) => setGuardian(e.target.checked)} />
+      <span>I&apos;m a parent or legal guardian, 18 or older. Children don&apos;t need their own account — you&apos;ll add them after sign-up.</span>
+    </label>
+  );
   return (
-    <form action={action} className="auth-form" noValidate>
+    <div className="auth-form">
       <Header title="Create your account" sub="Start your family's digital safety journey today." />
-      <ErrorBox error={state?.error} />
-      <IconInput id="name" label="Full name" icon="user" autoComplete="name" placeholder="Your full name" required defaultValue={f.name} />
-      <IconInput id="familyName" label="Family name" icon="users" placeholder="The Cruz Family" required defaultValue={f.familyName} />
-      <IconInput id="email" label="Email address" icon="mail" type="email" autoComplete="email" placeholder="you@example.com" required defaultValue={f.email} />
-      <PasswordInput
-        id="password" label="Password" autoComplete="new-password" placeholder="Create a password" minLength={MIN_PASSWORD} required
-        aria-describedby="pw-rules" value={password} onChange={(e) => setPassword(e.target.value)}
-      >
-        <ul className="auth-rules" id="pw-rules">
-          <li data-ok={longEnough}><Icon name={longEnough ? "circle-check" : "circle-dashed"} />At least {MIN_PASSWORD} characters</li>
-        </ul>
-      </PasswordInput>
-      <label className="check">
-        <input type="checkbox" name="guardian" required defaultChecked={f.guardian === "on"} />
-        <span>I&apos;m a parent or legal guardian, 18 or older. Children don&apos;t need their own account — you&apos;ll add them after sign-up.</span>
-      </label>
-      <button className="btn btn-primary auth-submit" disabled={pending}>{pending ? "Creating account…" : "Create account"}</button>
+      {state?.error ? <ErrorBox error={state.error} /> : <Notice text={notice} />}
+      {needGuardian && !guardian ? <ErrorBox error="Confirm you're a parent or legal guardian, 18 or older, first." /> : null}
+      {providers.length ? guardianBox : null}
+      <SocialSignIn providers={providers} intent="register" guardian={guardian} blocked={blocked} />
+      <form action={action} id="register-form" className="auth-fields" noValidate>
+        <IconInput id="name" label="Full name" icon="user" autoComplete="name" placeholder="Your full name" required defaultValue={f.name} />
+        <IconInput id="familyName" label="Family name" icon="users" placeholder="The Cruz Family" required defaultValue={f.familyName} />
+        <IconInput id="email" label="Email address" icon="mail" type="email" autoComplete="email" placeholder="you@example.com" required defaultValue={f.email} />
+        <PasswordInput
+          id="password" label="Password" autoComplete="new-password" placeholder="Create a password" minLength={MIN_PASSWORD} required
+          aria-describedby="pw-rules" value={password} onChange={(e) => setPassword(e.target.value)}
+        >
+          <ul className="auth-rules" id="pw-rules">
+            <li data-ok={longEnough}><Icon name={longEnough ? "circle-check" : "circle-dashed"} />At least {MIN_PASSWORD} characters</li>
+          </ul>
+        </PasswordInput>
+        {providers.length ? null : guardianBox}
+        <button className="btn btn-primary auth-submit" disabled={pending}>{pending ? "Creating account…" : "Create account"}</button>
+      </form>
       <p className="auth-foot">Already have an account? <Link href="/login">Sign in</Link></p>
-    </form>
+    </div>
   );
 }
 

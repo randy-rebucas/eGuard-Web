@@ -7,7 +7,7 @@
 export const PATH_HEADER = "x-eg-path";
 
 /** Paths that would send the parent straight back to signing in. */
-const AUTH_PAGES = ["/login", "/register", "/forgot-password", "/reset-password", "/accept-invite"];
+const AUTH_PAGES = ["/login", "/register", "/forgot-password", "/reset-password", "/accept-invite", "/auth"];
 
 /**
  * `next` if it's a path on this site to return to, otherwise null. Only a single leading slash is allowed:

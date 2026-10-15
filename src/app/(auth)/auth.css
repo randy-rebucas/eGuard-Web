@@ -85,6 +85,18 @@
 .auth-submit:hover{background:linear-gradient(180deg, #1A8CFF, #0B6ADB)}
 .auth-submit:disabled{opacity:.7; cursor:progress}
 .auth-forgot{align-self:flex-end; display:inline-flex; align-items:center; min-height:44px; margin:-12px 0; font-size:13px; font-weight:600; color:var(--accent-ink)}
+/* "Continue with Google / LinkedIn", above the email form */
+.auth-fields{display:flex; flex-direction:column; gap:16px}
+.auth-social{display:flex; flex-direction:column; gap:10px}
+.auth-social-btn{width:100%; min-height:46px; display:flex; align-items:center; justify-content:center; gap:10px; border-radius:10px;
+  border:1px solid var(--line-strong); background:#fff; color:var(--ink); font-size:15px; font-weight:600; transition:background .15s, border-color .15s}
+.auth-social-btn:hover{background:var(--surface-2); border-color:#C2D4E8}
+.auth-social-btn:disabled{opacity:.7; cursor:progress}
+.auth-social-btn svg{width:20px; height:20px; flex:none}
+.auth-or{display:flex; align-items:center; gap:12px; font-size:13px; color:var(--ink-3)}
+.auth-or::before, .auth-or::after{content:""; flex:1; height:1px; background:var(--line-strong)}
+.auth-notice{display:flex; gap:10px; align-items:flex-start; padding:10px 12px; border-radius:10px; background:var(--accent-soft); color:var(--ink-2); font-size:13.5px}
+.auth-notice .lucide{flex:none; width:18px; height:18px; margin-top:1px; color:var(--accent-ink)}
 .auth-foot{text-align:center; font-size:14px; color:var(--ink-2)}
 .auth-foot a{color:var(--accent-ink); font-weight:600}
 .auth-foot a:hover{text-decoration:underline; text-underline-offset:3px}

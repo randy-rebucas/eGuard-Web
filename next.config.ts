@@ -2,8 +2,10 @@ import type { NextConfig } from "next";
 import { META_PIXEL_ID, META_PIXEL_PATHS } from "./src/lib/meta-pixel";
 import { CONSOLE_HOST } from "./src/lib/console-host";
 
+// form-action also covers where a form's response redirects: "Continue with Google / LinkedIn" posts to /auth/<provider>,
+// which redirects to the provider's sign-in page (lib/oauth-web)
 const csp = (extraImg = "") =>
-  `frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; img-src 'self' data: blob:${extraImg}`;
+  `frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://accounts.google.com https://www.linkedin.com; object-src 'none'; img-src 'self' data: blob:${extraImg}`;
 
 /** Sent with every response. The app is never meant to be framed, and pages must never leak tokens in URLs via Referer. */
 const securityHeaders = [

@@ -5,7 +5,8 @@ import { cookies, headers } from "next/headers";
 import { after } from "next/server";
 import { z } from "zod";
 import { authenticate, createSession, destroySession, hashPassword, requireUser } from "@/lib/auth";
-import { CHALLENGE_COOKIE, completeChallenge, needsSecondStep, startChallenge } from "@/lib/two-factor";
+import { CHALLENGE_COOKIE, completeChallenge, needsSecondStep } from "@/lib/two-factor";
+import { toSecondStep } from "@/lib/web-signin";
 import { LIMITS, clientIpFrom, enforce, hit, ipKey } from "@/lib/rate-limit";
 import { requestPasswordResetQuietly, resetPassword } from "@/lib/password-reset";
 import { type VerifyResult, sendVerificationEmail, sendVerificationEmailLater, verifyEmailToken } from "@/lib/email-verification";
@@ -37,15 +38,6 @@ export async function login(_: FormState, form: FormData): Promise<FormState> {
 }
 
 /* ---------- Two-step verification ---------- */
-
-/** The password (or reset link) checked out and a code is needed: no session yet, just the challenge. */
-async function toSecondStep(userId: string, next: string | null): Promise<never> {
-  const { challenge, expiresAt } = await startChallenge(userId);
-  (await cookies()).set(CHALLENGE_COOKIE, challenge, {
-    httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", expires: expiresAt,
-  });
-  redirect(`/login/two-step${next ? `?next=${encodeURIComponent(next)}` : ""}`);
-}
 
 /** /login/two-step: the authenticator code or a recovery code, then the session. */
 export async function verifySecondStep(_: FormState, form: FormData): Promise<FormState> {

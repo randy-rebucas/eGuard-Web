@@ -15,6 +15,12 @@ describe("security notices", () => {
     expect(m.text).toContain("/forgot-password");
   });
 
+  it("names a newly linked sign-in and says to remove it, since a password reset alone leaves it working", () => {
+    const m = securityNoticeEmail({ kind: "identity_linked", provider: "LinkedIn" }, "Ana");
+    expect(m.text).toContain("added to your eGuard account: LinkedIn.");
+    expect(m.text).toContain("remove it in Settings › Security");
+  });
+
   it("escapes names in the HTML", () => {
     expect(securityNoticeEmail({ kind: "password" }, "<b>Ana").html).toContain("&lt;b>Ana");
   });

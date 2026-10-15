@@ -12,9 +12,11 @@ import { supportEmail } from "./support";
 export type SecurityChange =
   | { kind: "email"; newEmail: string }
   | { kind: "password" }
-  | { kind: "two_factor_off" };
+  | { kind: "two_factor_off" }
+  | { kind: "identity_linked"; provider: string };
 
 const WHAT: Record<SecurityChange["kind"], { subject: string; did: string }> = {
+  identity_linked: { subject: "A new sign-in was added to your eGuard account", did: "A new way to sign in was added to your eGuard account" },
   email: { subject: "Your eGuard email was changed", did: "The email address for your eGuard account was changed" },
   password: { subject: "Your eGuard password was changed", did: "The password for your eGuard account was changed, and your other sessions were signed out" },
   two_factor_off: { subject: "Two-step verification was turned off", did: "Two-step verification was turned off for your eGuard account" },
@@ -22,14 +24,16 @@ const WHAT: Record<SecurityChange["kind"], { subject: string; did: string }> = {
 
 export function securityNoticeEmail(change: SecurityChange, firstName: string) {
   const w = WHAT[change.kind];
-  const detail = change.kind === "email" ? ` to ${change.newEmail}` : "";
+  const detail = change.kind === "email" ? ` to ${change.newEmail}` : change.kind === "identity_linked" ? `: ${change.provider}` : "";
   const reset = `${appUrl()}/forgot-password`;
-  const help = `If this was you, there's nothing to do. If it wasn't, reset your password now (${reset}) and write to ${supportEmail()}.`;
+  // A linked sign-in outlasts a password reset, so it has to be removed too
+  const unlink = change.kind === "identity_linked" ? ` Then remove it in Settings › Security.` : "";
+  const help = `If this was you, there's nothing to do. If it wasn't, reset your password now (${reset}) and write to ${supportEmail()}.${unlink}`;
   return {
     subject: w.subject,
     text: `Hi ${firstName},\n\n${w.did}${detail}.\n\n${help}\n\n— eGuard`,
     html: `<p>Hi ${escapeHtml(firstName)},</p><p>${escapeHtml(w.did + detail)}.</p>`
-      + `<p>If this was you, there's nothing to do. If it wasn't, <a href="${reset}">reset your password now</a> and write to ${escapeHtml(supportEmail())}.</p>`,
+      + `<p>If this was you, there's nothing to do. If it wasn't, <a href="${reset}">reset your password now</a> and write to ${escapeHtml(supportEmail())}.${escapeHtml(unlink)}</p>`,
   };
 }
 

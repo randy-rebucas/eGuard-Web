@@ -3,12 +3,37 @@ import { db } from "./db";
 import { hashPassword, newToken } from "./auth";
 import { audit } from "./audit";
 import { ServiceError, conflict, isUniqueViolation } from "./errors";
-import { GUARDIAN_REQUIRED, createFamily, isPendingInvite, userIdForMailbox } from "./family-service";
+import { GUARDIAN_REQUIRED, NAME_MAX, createFamily, isPendingInvite, userIdForMailbox } from "./family-service";
 import { defaultFamilyName } from "./mobile-account";
+import { sendSecurityNotice } from "./security-notice";
 import type { Identity } from "./social-auth";
 
 /**
- * Continue with Apple / Google, once the provider's ID token is verified. Signs in a linked account,
+ * Settings › Security › Link: adds a provider sign-in to the signed-in parent's account. They confirmed it with their
+ * password (app/auth/[provider]) when they have one, so the provider's email doesn't have to match theirs. A linked
+ * sign-in outlasts a password change, so the parent is emailed about it.
+ */
+export async function linkIdentity(actor: { id: string; familyId: string; name: string; email: string }, id: Identity) {
+  const existing = await db.oAuthIdentity.findUnique({ where: { provider_subject: { provider: id.provider, subject: id.subject } } });
+  if (existing) {
+    if (existing.userId === actor.id) return;
+    throw conflict("That account already signs in to a different eGuard account.");
+  }
+  try {
+    await db.oAuthIdentity.create({ data: { userId: actor.id, provider: id.provider, subject: id.subject, email: id.email?.trim().toLowerCase() ?? null } });
+  } catch (e) {
+    // A double click: the other request linked it first
+    if (isUniqueViolation(e)) return;
+    throw e;
+  }
+  await audit(actor.familyId, actor.name, "identity.linked", id.provider);
+  sendSecurityNotice(actor.email, actor.name, { kind: "identity_linked", provider: providerName(id.provider) });
+}
+
+const providerName = (p: string) => ({ apple: "Apple", google: "Google", linkedin: "LinkedIn" })[p] ?? p;
+
+/**
+ * Continue with Apple / Google / LinkedIn, once the provider's ID token is verified. Signs in a linked account,
  * links an existing account with exactly the same email, or creates a new family.
  */
 export async function signInWithIdentity(id: Identity, opts: { name?: string; guardian?: boolean } = {}) {
@@ -66,9 +91,10 @@ async function signIn(id: Identity, opts: { name?: string; guardian?: boolean },
   }
 
   if (opts.guardian !== true) throw new ServiceError(400, GUARDIAN_REQUIRED, "guardian_required");
-  const name = opts.name ?? id.name ?? email.split("@")[0];
+  // The provider's name isn't checked like the sign-up form's: keep it within the same length
+  const name = (opts.name ?? id.name ?? email.split("@")[0]).trim().slice(0, NAME_MAX) || email.split("@")[0].slice(0, NAME_MAX);
   // Social accounts have no password: store a hash of a random secret nobody knows
-  const user = await createFamily({ name, email, familyName: defaultFamilyName(name), passwordHash: await hashPassword(newToken()), emailVerified: true, passwordSet: false });
+  const user = await createFamily({ name, email, familyName: defaultFamilyName(name).slice(0, NAME_MAX), passwordHash: await hashPassword(newToken()), emailVerified: true, passwordSet: false });
   await db.oAuthIdentity.create({ data: { userId: user.id, provider: id.provider, subject: id.subject, email } });
   return { userId: user.id, isNew: true };
 }
