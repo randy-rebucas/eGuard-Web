@@ -15,8 +15,15 @@ const usePhone = () => useSyncExternalStore(never, () => matchMedia("(pointer: c
 export function ShareEguard({ share, qr }: { share: ShareMessage; qr: string }) {
   const { toast } = useFlow();
   const canShare = useCanShare(), phone = usePhone();
-  const copy = (text: string, done: string) =>
-    navigator.clipboard.writeText(text).then(() => toast(done), () => toast("Couldn't copy. Select the text and copy it instead."));
+  // `navigator.clipboard` is missing outside a secure context (a LAN address), so a plain `.then` would throw unseen
+  const copy = async (text: string, done: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast(done);
+    } catch {
+      toast("Couldn't copy. Select the text and copy it instead.");
+    }
+  };
   const shareSheet = async () => {
     try {
       await navigator.share({ title: share.title, text: share.text, url: share.url });
@@ -46,9 +53,14 @@ export function ShareEguard({ share, qr }: { share: ShareMessage; qr: string }) 
       <div>
         <div className="t-title" style={{ marginBottom: 8 }}>Send it with</div>
         <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
-          {SHARE_CHANNELS.filter((c) => phone || !("phoneOnly" in c)).map((c) => (
-            <a key={c.id} className="btn btn-secondary btn-sm" href={c.href(share)} target={c.href(share).startsWith("http") ? "_blank" : undefined} rel="noopener noreferrer">{c.label}</a>
-          ))}
+          {SHARE_CHANNELS.filter((c) => phone || !("phoneOnly" in c)).map((c) => {
+            const href = c.href(share), web = href.startsWith("http");
+            return (
+              <a key={c.id} className="btn btn-secondary btn-sm" href={href} target={web ? "_blank" : undefined} rel="noopener noreferrer">
+                {c.label}{web ? <span className="sr-only"> (opens in a new tab)</span> : null}
+              </a>
+            );
+          })}
         </div>
       </div>
 
