@@ -478,6 +478,7 @@
 .sub-error{margin-top:8px; font-size:14px; font-weight:500; color:#C42B2B}
 .sub-note{margin-top:10px; font-size:12.5px; line-height:1.5; color:var(--ink-3)}
 .sub-note a{color:var(--ink-2); text-decoration:underline; text-underline-offset:2px}
+.sub-captcha{margin-top:4px; font-size:11.5px}
 .sub-done{display:flex; align-items:flex-start; gap:10px; padding:14px 16px; border-radius:12px; background:#E9F8F0; border:1px solid #BFE8D2; color:#0B5E37; font-size:14.5px}
 .sub-done .lucide{flex:none; width:20px; height:20px; margin-top:1px}
 .sub-card .sub-row input,.sub-card .sub-row button{height:52px}

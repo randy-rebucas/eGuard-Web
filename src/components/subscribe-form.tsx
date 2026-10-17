@@ -43,9 +43,14 @@ export function SubscribeForm({ list, source, promise, siteKey, cta = "Sign up",
       </div>
       {state?.error ? <p className="sub-error" role="alert">{state.error}</p> : null}
       <p className="sub-note" id={`${id}-note`}>
-        {short ?? <>You&apos;ll get {promise}. We&apos;ll email you a link to confirm first, and every email has an unsubscribe link that deletes your address.</>} <Link href="/privacy#mailing-lists">Privacy</Link>
-        {siteKey ? <> · Protected by reCAPTCHA (Google&apos;s <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer">Privacy</a> and <a href="https://policies.google.com/terms" target="_blank" rel="noopener noreferrer">Terms</a>)</> : null}
+        {/* The footer's Company column already links /privacy, so the short note doesn't repeat it */}
+        {short ?? <>You&apos;ll get {promise}. We&apos;ll email you a link to confirm first, and every email has an unsubscribe link that deletes your address. <Link href="/privacy#mailing-lists">How we use your email</Link></>}
       </p>
+      {siteKey ? (
+        <p className="sub-note sub-captcha">
+          Protected by reCAPTCHA; Google&apos;s <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer">policies</a> apply.
+        </p>
+      ) : null}
     </form>
   );
 }

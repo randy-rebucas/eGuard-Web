@@ -114,7 +114,7 @@ export function SiteFooter() {
           </div>
           <div>
             <h4>Company</h4>
-            <ul><li><Link href="/about">About</Link></li><li><Link href="/security">Security &amp; privacy</Link></li><li><Link href="/privacy">Privacy</Link></li><li><Link href="/terms">Terms</Link></li><li><Link href="/delete-account">Delete account</Link></li></ul>
+            <ul><li><Link href="/about">About</Link></li><li><Link href="/security">Security</Link></li><li><Link href="/privacy">Privacy Policy</Link></li><li><Link href="/terms">Terms of Service</Link></li><li><Link href="/delete-account">Delete account</Link></li></ul>
           </div>
         </div>
         <div className="lp-foot-bottom">
