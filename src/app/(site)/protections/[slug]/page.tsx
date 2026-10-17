@@ -11,6 +11,7 @@ import { PROFILES, profileConfig, recommendedProfile } from "@/lib/profiles";
 import { PROTECTIONS, PROTECTION_BY_SLUG } from "@/lib/protections";
 import { PROTECTION_PAGES, SAMPLE_AGES, describeSuggested } from "@/lib/protection-pages";
 import { jsonLd, pageMetadata, siteUrl } from "@/lib/site";
+import { StartLink } from "@/components/signed-in";
 import { PageHead } from "../../page-head";
 import { CapabilityChip, CAPABILITY_COPY } from "../capability";
 import "../protections.css";
@@ -156,7 +157,7 @@ export default async function ProtectionPage({ params }: PageProps<"/protections
             <h2>Turn on {def.checkName.toLowerCase()} in a few minutes</h2>
             <p>Free for {FREE_CHILDREN}, with every setting checked on the device.</p>
           </div>
-          <Link href="/register" className="lp-btn lp-btn-white">Get Started Free<ArrowRight /></Link>
+          <StartLink className="lp-btn lp-btn-white" />
         </div>
       </div>
     </article>

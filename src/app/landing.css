@@ -53,6 +53,20 @@
 .lp-nav{display:flex; gap:4px; margin:0 auto}
 .lp-nav a{padding:8px 12px; border-radius:10px; font-size:14.5px; font-weight:500; white-space:nowrap; color:var(--ink-2); transition:color .15s, background .15s}
 .lp-nav a:hover{color:var(--blue-2); background:rgba(232,243,255,.8)}
+.lp-nav-group{position:relative}
+.lp-nav-group > a{display:inline-flex; align-items:center; gap:4px}
+.lp-nav-group > a .lucide{width:15px; height:15px; transition:transform .18s var(--ease)}
+.lp-nav-panel{position:absolute; left:50%; top:100%; translate:-50% 0; width:300px; margin:0; padding:8px; list-style:none; border-radius:16px; background:#fff; border:1px solid var(--line); box-shadow:var(--float-shadow);
+  opacity:0; visibility:hidden; transform:translateY(4px); transition:opacity .16s, transform .16s var(--ease), visibility 0s .16s}
+/* A gap-bridging strip so the pointer can travel from the label to the panel without it closing */
+.lp-nav-panel::before{content:""; position:absolute; left:0; right:0; top:-10px; height:10px}
+.lp-nav-group:is(:hover,:focus-within) .lp-nav-panel{opacity:1; visibility:visible; transform:none; transition:opacity .16s, transform .16s var(--ease)}
+.lp-nav-group:is(:hover,:focus-within) > a .lucide{transform:rotate(180deg)}
+.lp-nav-panel a{display:flex; flex-direction:column; gap:2px; padding:10px 12px; white-space:normal}
+.lp-nav-panel b{font-weight:600; color:var(--ink)}
+.lp-nav-panel span{font-size:13px; color:var(--ink-3)}
+.lp-nav-panel a:hover b{color:var(--blue-2)}
+.lp-menu-h{padding:12px 14px 4px; margin-top:4px; border-top:1px solid var(--line); font-size:12px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-3)}
 .lp-head-cta{display:flex; align-items:center; gap:10px}
 .lp-head-cta .lp-btn{min-height:44px; padding:0 22px; border-radius:22px; font-size:14.5px}
 .lp-signin{background:#fff; color:var(--ink); box-shadow:0 1px 2px rgba(11,35,72,.06)}
@@ -60,7 +74,7 @@
 .lp-menu{display:none; position:relative}
 .lp-menu summary{list-style:none; width:44px; height:44px; border-radius:12px; display:grid; place-items:center; cursor:pointer; background:#fff}
 .lp-menu summary::-webkit-details-marker{display:none}
-.lp-menu-panel{position:absolute; right:0; top:52px; width:230px; padding:8px; border-radius:16px; background:#fff; border:1px solid var(--line); box-shadow:var(--float-shadow); display:flex; flex-direction:column}
+.lp-menu-panel{position:absolute; right:0; top:52px; width:230px; max-height:calc(100dvh - 90px); overflow-y:auto; padding:8px; border-radius:16px; background:#fff; border:1px solid var(--line); box-shadow:var(--float-shadow); display:flex; flex-direction:column}
 .lp-menu-panel a{padding:12px 14px; border-radius:10px; font-weight:500}
 .lp-menu-panel a:hover{background:var(--blue-soft)}
 
@@ -90,12 +104,14 @@
 .lp-btn-app{background:var(--ink); color:#fff; box-shadow:0 12px 28px -12px rgba(11,35,72,.7)}
 .lp-btn-app:hover{background:#12305E; box-shadow:0 16px 32px -12px rgba(11,35,72,.75)}
 .lp-btn-app svg{flex:none; width:22px; height:22px}
-.lp-stores-off{display:inline-flex; align-items:center; gap:8px; font-size:14px; color:var(--ink-3); opacity:.8; cursor:not-allowed}
+.lp-stores-off{display:inline-flex; align-items:center; gap:8px; font-size:14px; color:var(--ink-3); text-decoration:underline; text-decoration-color:rgba(98,118,154,.4); text-underline-offset:3px}
+.lp-stores-off:hover{color:var(--blue-2)}
 .lp-stores-off .lucide{width:18px; height:18px}
 .lp-cta .lp-stores{margin-top:4px}
 .lp-cta .lp-btn-app{background:#fff; color:var(--ink)}
 .lp-cta .lp-btn-app:hover{background:#F0F7FF}
-.lp-cta .lp-stores-off{color:rgba(255,255,255,.8)}
+.lp-cta .lp-stores-off{color:rgba(255,255,255,.9); text-decoration-color:rgba(255,255,255,.5)}
+.lp-cta .lp-stores-off:hover{color:#fff}
 
 /* Floating glass cards */
 .lp-float{background:rgba(255,255,255,.86); backdrop-filter:blur(14px) saturate(1.3); -webkit-backdrop-filter:blur(14px) saturate(1.3); border:1px solid rgba(255,255,255,.9); border-radius:18px; box-shadow:var(--float-shadow)}
@@ -134,7 +150,10 @@
 .lp-trust p{color:var(--ink-3); margin-top:12px; max-width:34em}
 .lp-audiences{list-style:none; margin:0; padding:0; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:16px; text-align:center}
 /* Each item is a centered column, so the icon and its labels always share one axis */
-.lp-audiences li{display:flex; flex-direction:column; align-items:center; min-width:0}
+.lp-audiences li{min-width:0}
+.lp-audiences a{display:flex; flex-direction:column; align-items:center; height:100%; padding:8px 4px 12px; border-radius:16px; color:inherit; transition:background .15s}
+.lp-audiences a:hover{background:rgba(255,255,255,.75)}
+.lp-audiences a:hover b{color:var(--blue-2)}
 .lp-audiences svg{display:block; flex:none; width:84px; height:84px; margin:0 0 12px}
 .lp-audiences b{display:block; font-family:var(--display); font-size:16px; font-weight:600}
 .lp-audiences span{font-size:13.5px; color:var(--ink-3)}
@@ -150,6 +169,10 @@
 .lp-feature > svg{display:block; width:60px; height:60px; margin:-4px 0 14px -4px}
 .lp-feature h3{font-size:16.5px; font-weight:600; letter-spacing:-.01em; line-height:1.3}
 .lp-feature p{font-size:14px; color:var(--ink-3); margin-top:8px; line-height:1.5}
+.lp-feature{display:flex; flex-direction:column; color:inherit}
+.lp-feature-more{display:inline-flex; align-items:center; gap:6px; margin-top:auto; padding-top:14px; font-size:14px; font-weight:600; color:var(--blue-2)}
+.lp-feature-more .lucide{width:15px; height:15px; transition:transform .18s var(--ease)}
+:is(.lp-feature,.lp-age):hover .lp-feature-more .lucide{transform:translateX(3px)}
 .lp-phones{position:relative; display:flex; justify-content:center; align-self:start; gap:0; margin-bottom:-170px; filter:drop-shadow(0 30px 40px rgba(15,60,130,.28))}
 .lp-phones:focus-visible{outline:2px solid var(--blue); outline-offset:6px; border-radius:16px}
 .lp-phone{container-type:inline-size; flex:none; width:min(50%, 232px)}
@@ -288,16 +311,89 @@
 .lp-browsers-note{grid-column:1 / -1; font-size:14.5px; color:var(--ink-3); text-align:center}
 .lp-browsers-note b{color:var(--ink-2); font-weight:600}
 
-/* ---------- Purpose ---------- */
-.lp-purpose{position:relative; isolation:isolate; min-height:360px; display:flex; align-items:center}
-.lp-purpose{background:linear-gradient(90deg, #F6FAFF, #E6F1FF)}
-.lp-purpose-img{position:absolute; left:0; top:0; bottom:0; width:66%; z-index:-1;
-  -webkit-mask-image:linear-gradient(90deg, #000 80%, transparent 100%); mask-image:linear-gradient(90deg, #000 80%, transparent 100%)}
-.lp-purpose-img img{object-fit:cover; object-position:50% 62%}
-.lp-purpose .lp-wrap{display:flex; justify-content:flex-end; padding-top:28px; padding-bottom:28px}
-.lp-purpose-card{max-width:520px; padding:26px 34px 30px; border-radius:20px}
-.lp-purpose-card h2{font-size:clamp(26px, 2.6vw, 32px); line-height:1.18; margin-top:18px}
-.lp-purpose-card p{color:var(--ink-2); margin-top:14px}
+/* ---------- Saved vs Verified ---------- */
+.lp-verify{padding:80px 0 88px; background:linear-gradient(180deg, #EEF5FE, #F6FAFF); border-block:1px solid #E6EFFA; text-align:center}
+.lp-verify-head{max-width:760px; margin:0 auto}
+.lp-verify h2{font-size:clamp(28px, 3vw, 38px); line-height:1.15; margin-top:18px}
+.lp-verify-head p{color:var(--ink-3); font-size:17px; margin-top:14px}
+.lp-verify-cols{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.15fr); gap:24px; max-width:1040px; margin:44px auto 0; text-align:left}
+.lp-verify-col{display:flex; flex-direction:column; padding:28px 30px; border-radius:20px; background:#fff; border:1px solid var(--line); box-shadow:var(--card-shadow)}
+.lp-verify-col.saved{background:#F9FBFE; box-shadow:none}
+.lp-verify-col.ok{border:2px solid #8FD9B4; box-shadow:0 30px 60px -30px rgba(24,178,107,.45)}
+.lp-verify-col h3{display:flex; align-items:center; gap:12px; font-size:19px; font-weight:600}
+.lp-verify-col h3 i{width:40px; height:40px; flex:none; border-radius:12px; display:grid; place-items:center}
+.lp-verify-col.saved h3 i{background:#EEF2F7; color:var(--ink-3)}
+.lp-verify-col.ok h3 i{background:#E3F7EC; color:#0E8F52}
+.lp-verify-col ol{list-style:none; margin:22px 0 0; padding:0; display:flex; flex-direction:column; gap:0; counter-reset:step}
+/* Steps joined by a rail, like a tiny timeline */
+.lp-verify-col li{position:relative; padding:0 0 18px 40px; font-size:15px; color:var(--ink-2); counter-increment:step}
+.lp-verify-col li::before{content:counter(step); position:absolute; left:0; top:-1px; width:26px; height:26px; border-radius:50%; display:grid; place-items:center; font-size:12.5px; font-weight:700; background:#EEF2F7; color:var(--ink-3)}
+.lp-verify-col li:not(:last-child)::after{content:""; position:absolute; left:12px; top:28px; bottom:4px; border-left:2px dotted #C9D6E6}
+.lp-verify-col.ok li::before{background:#E3F7EC; color:#0E8F52}
+.lp-verify-col.ok li:not(:last-child)::after{border-color:#9EDDBD}
+.lp-verify-col.saved li:nth-child(n+3){color:var(--ink-3)}
+.lp-verify-end{align-self:flex-start; display:inline-flex; align-items:center; gap:8px; margin-top:auto; height:34px; padding:0 14px; border-radius:17px; font-size:14px; font-weight:600}
+.lp-verify-col.saved .lp-verify-end{background:#EEF2F7; color:var(--ink-3)}
+.lp-verify-col.ok .lp-verify-end{background:#E3F7EC; color:#0B7A45}
+.lp-verify-end .lucide{width:16px; height:16px; stroke-width:2.6}
+
+/* Verification steps arrive one after another as they scroll into view, ending on "Verified".
+   Scroll-driven, so no JS; browsers without it, and anyone who prefers reduced motion, just see the steps. */
+@supports (animation-timeline: view()){
+  @media (prefers-reduced-motion: no-preference){
+    @keyframes lp-step-in{from{opacity:0; transform:translateY(14px)} to{opacity:1; transform:none}}
+    .lp-verify-col.ok li, .lp-verify-col.ok .lp-verify-end, .hw-track > li{
+      animation:lp-step-in linear both; animation-timeline:view(); animation-range:entry 0% cover 10%}
+    /* Later steps finish a little later, but all of them are done before the section reaches mid-screen */
+    .lp-verify-col.ok li:nth-child(2), .hw-track > li:nth-child(2){animation-range:entry 20% cover 13%}
+    .lp-verify-col.ok li:nth-child(3), .hw-track > li:nth-child(3){animation-range:entry 40% cover 16%}
+    .lp-verify-col.ok li:nth-child(4), .hw-track > li:nth-child(4){animation-range:entry 60% cover 19%}
+    .lp-verify-col.ok .lp-verify-end, .hw-track > li:nth-child(5){animation-range:entry 80% cover 22%}
+  }
+}
+
+/* ---------- Proof (only when lib/social-proof has something real) ---------- */
+.lp-proof{padding:72px 0 24px; text-align:center}
+.lp-proof h2{font-size:clamp(28px, 3vw, 36px)}
+.lp-proof-rating{display:inline-flex; align-items:center; gap:14px; margin-top:22px; padding:12px 20px; border-radius:16px; background:#fff; border:1px solid var(--line); box-shadow:var(--card-shadow); text-align:left}
+.lp-proof-rating b{font-family:var(--display); font-size:34px; line-height:1}
+.lp-proof-rating > span{font-size:14.5px; color:var(--ink-3)}
+.lp-proof-stars{display:block; color:#F5B400; letter-spacing:2px; font-size:16px}
+.lp-quotes{list-style:none; margin:32px auto 0; padding:0; max-width:1100px; display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:18px; text-align:left}
+.lp-quotes li{display:flex; flex-direction:column; gap:14px; padding:24px; border-radius:18px; background:#fff; border:1px solid var(--line); box-shadow:var(--card-shadow)}
+.lp-quotes blockquote{margin:0; font-size:16px; color:var(--ink); line-height:1.55}
+.lp-quotes span{margin-top:auto; font-size:14px; font-weight:600; color:var(--ink-3)}
+.lp-press{list-style:none; margin:28px auto 0; padding:0; display:flex; flex-wrap:wrap; justify-content:center; gap:12px}
+.lp-press a{display:flex; flex-direction:column; padding:12px 18px; border-radius:14px; background:#fff; border:1px solid var(--line); text-align:left}
+.lp-press b{font-weight:700; color:var(--ink)}
+.lp-press span{font-size:13.5px; color:var(--ink-3)}
+
+/* ---------- Resources ---------- */
+.lp-res{padding:24px 0 72px}
+.lp-res-head{max-width:720px}
+.lp-res h2{font-size:clamp(28px, 3vw, 36px); line-height:1.15; margin-top:18px}
+.lp-res-head p{color:var(--ink-3); font-size:17px; margin-top:14px}
+.lp-ages{list-style:none; margin:36px 0 0; padding:0; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:18px}
+.lp-age{display:flex; flex-direction:column; height:100%; padding:22px; border-radius:18px; background:#fff; border:1px solid var(--line); box-shadow:var(--card-shadow); transition:transform .22s var(--ease), box-shadow .22s var(--ease)}
+.lp-age:hover{transform:translateY(-3px); box-shadow:0 2px 4px rgba(11,35,72,.04), 0 22px 40px -18px rgba(20,80,160,.3)}
+.lp-age-label{align-self:flex-start; height:28px; padding:0 12px; border-radius:14px; display:grid; place-items:center; background:var(--blue-soft); color:var(--blue-2); font-size:13px; font-weight:600}
+.lp-age b{font-family:var(--display); font-size:17px; font-weight:600; letter-spacing:-.01em; line-height:1.3; margin-top:14px}
+.lp-age dl{margin:14px 0 18px; display:flex; flex-direction:column; gap:6px}
+.lp-age dl div{border-top:1px solid var(--line); padding-top:8px}
+.lp-age dt{font-size:12.5px; color:var(--ink-3)}
+.lp-age dd{margin:2px 0 0; font-size:14.5px; font-weight:600; color:var(--ink-2)}
+.lp-res-more{display:grid; grid-template-columns:minmax(0,1.2fr) minmax(0,1fr); gap:18px; margin-top:18px}
+.lp-res-card{display:flex; flex-direction:column; padding:26px 28px; border-radius:18px; background:linear-gradient(180deg, #F2F8FF, #fff); border:1px solid var(--line)}
+.lp-res-card h3{display:flex; align-items:center; gap:12px; font-size:18px; font-weight:600}
+.lp-res-card h3 i{width:40px; height:40px; flex:none; border-radius:12px; display:grid; place-items:center; background:var(--blue-soft); color:var(--blue-2)}
+.lp-res-card > p{color:var(--ink-3); font-size:15px; margin-top:12px}
+.lp-res-card > p a{color:var(--blue-2); font-weight:600}
+.lp-res-card ul{list-style:none; margin:10px 0 0; padding:0}
+.lp-res-card li a{display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:44px; border-bottom:1px solid var(--line); font-size:15px; font-weight:500; color:var(--ink)}
+.lp-res-card li a:hover{color:var(--blue-2)}
+.lp-res-card li .lucide{flex:none; width:16px; height:16px; color:var(--blue-2)}
+.lp-res-all{display:inline-flex; align-items:center; gap:8px; margin-top:auto; padding-top:16px; font-weight:600; color:var(--blue-2)}
+.lp-res-all .lucide{width:16px; height:16px}
 
 /* ---------- Pricing ---------- */
 .lp-pricing{padding:48px 0 72px; text-align:center; background:radial-gradient(60% 50% at 50% 0%, #E7F2FF, transparent 70%)}
@@ -344,7 +440,7 @@
 
 /* ---------- Footer ---------- */
 .lp-footer .lp-wrap{padding-top:32px}
-.lp-foot-grid{display:grid; grid-template-columns:2fr repeat(3, 1fr); gap:32px; padding-bottom:36px}
+.lp-foot-grid{display:grid; grid-template-columns:minmax(0,1.6fr) repeat(3, minmax(0,1fr)); gap:32px; padding-bottom:36px}
 .lp-foot-grid h4{font-family:var(--font); font-size:15px; font-weight:600; letter-spacing:0; margin-bottom:12px}
 .lp-foot-grid ul{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:8px}
 .lp-foot-grid ul a{color:var(--ink-3); font-size:14.5px}
@@ -356,15 +452,43 @@
 .lp-sub input:focus{border-color:var(--blue)}
 .lp-sub button{width:42px; height:42px; border-radius:0 8px 8px 0; display:grid; place-items:center; background:var(--blue-2); color:#fff}
 .lp-sub button .lucide{width:18px; height:18px}
-.lp-social{display:flex; gap:14px}
-.lp-social a{color:var(--ink); display:grid; place-items:center; width:28px; height:28px; border-radius:8px}
-.lp-social a:hover{color:var(--blue-2)}
-.lp-social svg{width:17px; height:17px; fill:currentColor}
+.lp-follow{display:flex; align-items:center; gap:12px; margin-top:20px}
+.lp-follow > span{font-size:14px; font-weight:600; color:var(--ink-2)}
+.lp-social{list-style:none; margin:0; padding:0; display:flex; gap:10px}
+/* Brand marks keep their own colours; the tile lifts on hover */
+.lp-social a{display:grid; place-items:center; width:40px; height:40px; border-radius:12px; background:#fff; border:1px solid var(--line); transition:border-color .15s, transform .15s var(--ease)}
+.lp-social a:hover{border-color:#9CCBFF; transform:translateY(-1px)}
+.lp-social a:focus-visible{outline:2px solid var(--blue); outline-offset:2px}
+.lp-social svg{width:22px; height:22px}
+/* Beats the phone footer's `.lp-foot-grid ul{gap:0}` (meant for the link lists) */
+.lp-foot-grid ul.lp-social{flex-direction:row; gap:10px}
+.lp-foot-brand{display:flex; flex-direction:column; align-items:flex-start; gap:0; max-width:400px}
+.lp-foot-brand h4{margin:24px 0 10px}
+
+/* Mailing-list sign-up (components/subscribe-form): the footer, and a card on /iphone */
+.sub{width:100%}
+.sub-row{display:flex; gap:8px}
+.sub-row input{flex:1; min-width:0; height:46px; padding:0 14px; border:1px solid #CFDDEE; border-radius:12px; background:#fff; font-size:15px; color:var(--ink); outline:none; transition:border-color .15s, box-shadow .15s}
+.sub-row input:focus{border-color:var(--blue); box-shadow:0 0 0 3px rgba(26,140,255,.18)}
+.sub-row input[aria-invalid]{border-color:#D93636}
+.sub-row button{flex:none; display:inline-flex; align-items:center; gap:8px; height:46px; padding:0 18px; border-radius:12px; background:linear-gradient(180deg, #2398FF, #0F7AF0); color:#fff; font-weight:600; font-size:15px; transition:filter .15s}
+.sub-row button:hover:not(:disabled){filter:brightness(.95)}
+.sub-row button:disabled{opacity:.7; cursor:progress}
+.sub-row button .lucide{width:16px; height:16px}
+.sub-error{margin-top:8px; font-size:14px; font-weight:500; color:#C42B2B}
+.sub-note{margin-top:10px; font-size:12.5px; line-height:1.5; color:var(--ink-3)}
+.sub-note a{color:var(--ink-2); text-decoration:underline; text-underline-offset:2px}
+.sub-done{display:flex; align-items:flex-start; gap:10px; padding:14px 16px; border-radius:12px; background:#E9F8F0; border:1px solid #BFE8D2; color:#0B5E37; font-size:14.5px}
+.sub-done .lucide{flex:none; width:20px; height:20px; margin-top:1px}
+.sub-card .sub-row input,.sub-card .sub-row button{height:52px}
+/* Stacked, the field keeps its height: flex:1 would size the column's main axis (height) instead of the width */
+@media (max-width:420px){.sub-row{flex-direction:column} .sub-row input{flex:none} .sub-row button{justify-content:center}}
+
 .lp-foot-bottom{display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap; padding:20px 0 28px; border-top:1px solid var(--line); font-size:13.5px; color:var(--ink-3)}
 
 /* ---------- Responsive ---------- */
-/* Eight menu links need about 1320px beside the brand and sign-in buttons; below that, the menu button takes over. */
-@media (max-width:1320px){
+/* Five menu items need about 1120px beside the brand and sign-in buttons; below that, the menu button takes over. */
+@media (max-width:1120px){
   .lp-nav{display:none}
   .lp-menu{display:block}
   .lp-head-cta{margin-left:auto}
@@ -386,10 +510,8 @@
   .lp-habits .lp-wrap{grid-template-columns:minmax(0,1fr); min-height:0}
   .lp-habits-img{position:relative; top:auto; translate:none; width:100%; max-height:none; aspect-ratio:1.6; -webkit-mask-image:linear-gradient(0deg, transparent 0%, #000 22%); mask-image:linear-gradient(0deg, transparent 0%, #000 22%)}
   .lp-habits-copy{grid-column:1; padding:0 0 56px}
-  .lp-purpose{flex-direction:column; align-items:stretch}
-  .lp-purpose-img{position:relative; width:100%; aspect-ratio:2; -webkit-mask-image:none; mask-image:none}
-  .lp-purpose::after{display:none}
-  .lp-purpose .lp-wrap{margin-top:-80px; justify-content:center}
+  .lp-ages{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .lp-res-more{grid-template-columns:minmax(0,1fr)}
   .lp-browsers .lp-wrap{grid-template-columns:minmax(0,1fr); gap:32px}
   .lp-video .lp-wrap{grid-template-columns:minmax(0,1fr); gap:32px}
   .lp-plans{grid-template-columns:minmax(0,1fr); max-width:480px}
@@ -432,8 +554,12 @@
   .lp-phone{width:min(68vw, 270px); scroll-snap-align:center; filter:drop-shadow(0 20px 24px rgba(15,60,130,.26))}
   .lp-phone:first-child,.lp-phone:last-child{transform:none; margin-left:0}
   .lp-habits-img{aspect-ratio:1.3}
-  .lp-purpose-img{aspect-ratio:1.5}
-  .lp-purpose-card{padding:24px 22px}
+  .lp-verify{padding:56px 0 64px}
+  .lp-verify-cols{grid-template-columns:minmax(0,1fr); gap:14px; margin-top:32px}
+  .lp-verify-col{padding:22px 20px}
+  .lp-verify .lp-btn{white-space:normal; text-align:center}
+  .lp-ages{grid-template-columns:minmax(0,1fr); gap:12px}
+  .lp-res-card{padding:22px 20px}
   .lp-cta-box{padding:32px 24px}
   /* CTA photo as a real banner that fades into the blue, not a 35%-opacity wash behind the text. */
   .lp-cta-img{position:relative; width:auto; aspect-ratio:16/10; margin:-32px -24px 4px; opacity:1;

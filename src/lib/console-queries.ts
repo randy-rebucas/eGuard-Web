@@ -180,7 +180,7 @@ export async function listBroadcasts(before?: Date) {
       orderBy: { createdAt: "desc" },
       take,
       select: {
-        id: true, kind: true, subject: true, status: true, plans: true, scheduledAt: true, finishedAt: true, recipients: true, createdAt: true,
+        id: true, audience: true, kind: true, subject: true, status: true, plans: true, scheduledAt: true, finishedAt: true, recipients: true, createdAt: true,
         createdBy: { select: { name: true } },
       },
     }),

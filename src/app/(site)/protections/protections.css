@@ -27,7 +27,16 @@
 .pr-card-ico, .pr-others i{display:grid; place-items:center; flex:none; color:#fff; background:linear-gradient(180deg, #2398FF, #1560DB)}
 .pr-card-ico{width:48px; height:48px; border-radius:14px}
 .pr-card-ico .lucide{width:23px; height:23px}
-.pr-card h2{font-size:20px; letter-spacing:-.015em; margin-top:16px}
+.pr-card h2, .pr-card h3{font-size:20px; letter-spacing:-.015em; margin-top:16px}
+.pr-group{scroll-margin-top:96px}
+.pr-group + .pr-group{margin-top:56px}
+.pr-group > h2{font-size:clamp(22px, 2.2vw, 28px); line-height:1.2; letter-spacing:-.02em}
+.pr-group > .pr-lede{margin:6px 0 22px}
+.pr-worries{display:flex; align-items:center; flex-wrap:wrap; gap:10px 14px; margin-bottom:48px; padding:18px 22px; border-radius:18px; background:#fff; border:1px solid var(--line)}
+.pr-worries b{font-weight:600; color:var(--ink)}
+.pr-worries ul{list-style:none; margin:0; padding:0; display:flex; flex-wrap:wrap; gap:8px}
+.pr-worries a{display:inline-flex; align-items:center; min-height:36px; padding:0 14px; border-radius:18px; background:var(--blue-soft); color:var(--blue-2); font-size:14px; font-weight:600; transition:background .15s}
+.pr-worries a:hover{background:var(--blue-soft-2)}
 .pr-card p{color:var(--ink-3); font-size:15px; margin-top:6px}
 .pr-card .pr-caps{margin-top:16px}
 .pr-card .pr-cap{font-size:12.5px}
@@ -35,7 +44,7 @@
 .pr-card-more .lucide{width:16px; height:16px; transition:transform .2s var(--ease)}
 .pr-card:hover .pr-card-more .lucide{transform:translateX(3px)}
 
-.pr-levels{list-style:none; margin:24px 0 20px; padding:0; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px}
+.pr-levels{list-style:none; margin:24px 0 20px; padding:0; display:grid; grid-template-columns:repeat(auto-fit,minmax(196px,1fr)); gap:14px}
 .pr-levels li{padding:18px 18px 16px; background:#fff; border:1px solid var(--line); border-radius:16px}
 .pr-levels p{font-size:14.5px; color:var(--ink-3); margin-top:10px}
 

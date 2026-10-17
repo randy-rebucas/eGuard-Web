@@ -96,6 +96,10 @@
   .kd-does{grid-template-columns:minmax(0,1fr)}
 }
 
+.kd-lang{display:inline-flex; align-items:center; gap:8px; margin-top:22px; min-height:40px; padding:0 16px; border-radius:20px; background:#fff; border:1px solid var(--line); font-size:14.5px; font-weight:600; color:var(--blue-2)}
+.kd-lang:hover{border-color:var(--blue)}
+.kd-lang .lucide{width:17px; height:17px}
+
 @media print{
   @page{margin:14mm}
   .lp-header, .lp-footer, .kd-screen, nextjs-portal{display:none !important}

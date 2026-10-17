@@ -1111,7 +1111,10 @@ model Broadcast {
   scheduledAt DateTime?
   startedAt   DateTime?
   finishedAt  DateTime?
-  /// How many parents the recipient list held when sending started
+  /// PARENTS: verified parents (kind and plans apply). NEWSLETTER or IOS_LAUNCH: confirmed Subscribers on that
+  /// list; always a product update, plans ignored (lib/broadcasts BROADCAST_AUDIENCES)
+  audience    String    @default("PARENTS")
+  /// How many parents (or subscribers) the recipient list held when sending started
   recipients  Int       @default(0)
   createdById String
   createdBy   StaffUser @relation(fields: [createdById], references: [id], onDelete: Restrict)
@@ -1133,6 +1136,9 @@ model BroadcastDelivery {
   broadcast   Broadcast @relation(fields: [broadcastId], references: [id], onDelete: Cascade)
   userId      String?
   user        User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  /// For a NEWSLETTER or IOS_LAUNCH broadcast; null once they unsubscribe (the row is deleted)
+  subscriberId String?
+  subscriber   Subscriber? @relation(fields: [subscriberId], references: [id], onDelete: SetNull)
   email       String
   /// PENDING → SENDING → SENT or FAILED; SKIPPED when cancelled, unsubscribed or gone before their turn
   status      String    @default("PENDING")
@@ -1145,4 +1151,29 @@ model BroadcastDelivery {
   @@unique([broadcastId, email])
   @@index([broadcastId, status])
   @@index([userId])
+  @@index([subscriberId])
+}
+
+/// Someone who asked for email from the public site: eGuard news, or a note when the iPhone app is out. Not tied to
+/// an account. Double opt-in: nothing is sent until they press the link in the confirmation email. Unconfirmed rows
+/// are deleted after a week, and unsubscribing deletes the row (lib/subscribers).
+model Subscriber {
+  id               String    @id @default(cuid())
+  /// Lowercased
+  email            String    @unique
+  /// "NEWSLETTER", "IOS_LAUNCH"
+  lists            String[]
+  /// Where they last signed up ("footer", "iphone"), for counts only
+  source           String
+  /// sha256 of the confirmation link's token; null once confirmed
+  confirmTokenHash String?   @unique
+  confirmSentAt    DateTime
+  confirmedAt      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  deliveries BroadcastDelivery[]
+
+  @@index([confirmedAt])
+  @@index([createdAt])
 }

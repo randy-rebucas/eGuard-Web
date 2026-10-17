@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireStaff } from "@/lib/staff-auth";
-import { PLAN_NAMES } from "@/lib/broadcasts";
+import { AUDIENCE_OPTIONS, PLAN_NAMES } from "@/lib/broadcasts";
 import { AI_PROVIDER_LABEL, aiProvider } from "@/lib/broadcast-ai";
 import { BroadcastEditor } from "../../../broadcast-forms";
 
@@ -21,7 +21,7 @@ export default async function NewBroadcastPage() {
       </div>
       <section className="card card-pad">
         <p className="cn-muted" style={{ marginBottom: 16 }}>It&apos;s saved as a draft first. Then you can preview it, send yourself a test, and send or schedule it.</p>
-        <BroadcastEditor planNames={PLAN_NAMES} ai={aiLabel()} />
+        <BroadcastEditor planNames={PLAN_NAMES} audiences={AUDIENCE_OPTIONS} ai={aiLabel()} />
       </section>
     </>
   );

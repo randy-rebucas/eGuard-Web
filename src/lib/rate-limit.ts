@@ -41,6 +41,10 @@ export const LIMITS = {
   resetEmail: { max: 3, windowMs: 60 * 60_000 },
   resetIp: { max: 10, windowMs: 60 * 60_000 },
   supportUser: { max: 10, windowMs: 60 * 60_000 },
+  /** mailing-list sign-ups from one address (the site's footer and /iphone) */
+  subscribeIp: { max: 10, windowMs: 60 * 60_000 },
+  /** sign-ups for one email address, so the form can't be used to flood someone's inbox with confirmation emails */
+  subscribeMail: { max: 3, windowMs: 24 * 60 * 60_000 },
   /** AI drafts one staff member asks for in console › Email: each is a paid Claude API request */
   aiDraftStaff: { max: 30, windowMs: 60 * 60_000 },
   /** configuration checks a parent starts: each writes a run, a row per device and an audit entry */

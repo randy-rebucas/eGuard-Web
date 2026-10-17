@@ -97,6 +97,20 @@ export default function PrivacyPage() {
       ),
     },
     {
+      id: "mailing-lists", title: "Mailing lists",
+      body: (
+        <>
+          <p>You can ask for emails from our public pages without an account: <strong>eGuard news</strong> (the form at the bottom of each page) or <strong>one email when the iPhone app is out</strong> (eguard.family/iphone). For these we keep only your email address, which list you chose, where you signed up and when you confirmed.</p>
+          <ul>
+            <li><strong>Confirmation first.</strong> We send one email with a link to confirm. Nothing else is sent until you press it. If you don&apos;t, we delete your address after 7 days.</li>
+            <li><strong>Unsubscribing deletes you.</strong> Every email has an unsubscribe link. Using it deletes your address from our lists entirely; we don&apos;t keep a copy.</li>
+            <li><strong>Separate from your account.</strong> Signing up doesn&apos;t create an eGuard account, and it doesn&apos;t change the emails you get as a parent, which you manage in Settings › Notifications.</li>
+          </ul>
+          <p>We use the address only to send what you asked for. We never sell it or share it, except with our email delivery provider, which sends the emails for us.</p>
+        </>
+      ),
+    },
+    {
       id: "children", title: "Children's data",
       body: (
         <>
@@ -114,7 +128,7 @@ export default function PrivacyPage() {
           <ul>
             <li><strong>Service providers</strong> who run parts of eGuard for us: hosting and database, email delivery, PayMongo for payments, and Google&apos;s Firebase Cloud Messaging, which delivers push alerts to the parent app (it carries each alert&apos;s title and text, which can include a child&apos;s first name). They may use the data only to provide their service to us, under contract.</li>
             {botCheckSiteKey() ? (
-              <li><strong>Google reCAPTCHA</strong> on the sign-in, create-account and forgot-password pages, to tell people from automated attacks. It reads how the page is used and your browser&apos;s details, under Google&apos;s <a href="https://policies.google.com/privacy" rel="noopener noreferrer" target="_blank">Privacy Policy</a> and <a href="https://policies.google.com/terms" rel="noopener noreferrer" target="_blank">Terms</a>. It doesn&apos;t run anywhere else in eGuard.</li>
+              <li><strong>Google reCAPTCHA</strong> on the sign-in, create-account and forgot-password pages, and when you join a mailing list, to tell people from automated attacks. It reads how the page is used and your browser&apos;s details, under Google&apos;s <a href="https://policies.google.com/privacy" rel="noopener noreferrer" target="_blank">Privacy Policy</a> and <a href="https://policies.google.com/terms" rel="noopener noreferrer" target="_blank">Terms</a>. On the mailing-list forms it loads only when you press the button. It doesn&apos;t run anywhere else in eGuard.</li>
             ) : null}
             <li><strong>Apple, Google or LinkedIn</strong>, if you choose to sign in with them. We receive your name and email from them; we don&apos;t send them your family&apos;s data.</li>
             {META_PIXEL_ID && <li><strong>Meta (Facebook)</strong>, if you visit our public pages: see <a href="#cookies">Cookies</a>. Meta never receives your family&apos;s data.</li>}
@@ -122,7 +136,7 @@ export default function PrivacyPage() {
           </ul>
           <p><strong>Organizations</strong> your family joins never see your family&apos;s data: not your name, your children or which code you redeemed. They see only how many families joined and how many of their codes were used. If you manage an organization in eGuard, its other admins see your name and email address.</p>
           <p>Maps in the dashboard are loaded through our own servers, so the map provider never sees your IP address or what you&apos;re looking at.</p>
-          <p>The setup video on our home page is embedded from YouTube in its privacy-enhanced mode: YouTube receives your IP address when the player loads, and sets cookies only if you play the video.</p>
+          <p>The setup video on our home page and How it works page is embedded from YouTube in its privacy-enhanced mode: YouTube receives your IP address when the player loads, and sets cookies only if you play the video.</p>
         </>
       ),
     },
@@ -135,6 +149,7 @@ export default function PrivacyPage() {
           <li><strong>Security records</strong> of account changes: one year.</li>
           <li><strong>Sessions</strong>: until you sign out, or 30 days. Email verification links expire after 24 hours and password-reset links after one hour.</li>
           <li><strong>Your account, children and settings</strong>: until you delete them.</li>
+          <li><strong>Mailing-list addresses</strong>: until you unsubscribe, which deletes them. Unconfirmed sign-ups: 7 days.</li>
           <li><strong>Payment records</strong>: until you delete your account. PayMongo keeps its own record of your payments, as the law requires of it.</li>
         </ul>
       ),

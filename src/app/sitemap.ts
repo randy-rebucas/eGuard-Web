@@ -6,6 +6,7 @@ import { PROTECTIONS } from "@/lib/protections";
 import { AGE_GUIDES } from "@/lib/age-guides";
 import { ARTICLES, TOPICS, articlesIn, newestReview } from "@/lib/learn";
 import { siteUrl } from "@/lib/site";
+import { KIDS_LANGUAGES } from "./(site)/for-kids/copy";
 
 /** Public pages only. Signed-in pages are noindex and left out. */
 export default function sitemap(): MetadataRoute.Sitemap {
@@ -24,7 +25,14 @@ export default function sitemap(): MetadataRoute.Sitemap {
     page("/guides", 0.7, "monthly"),
     ...AGE_GUIDES.map((g) => page(`/guides/${g.slug}`, 0.6, "monthly")),
     page("/security", 0.6, "monthly"),
-    page("/for-kids", 0.6, "monthly"),
+    // Both languages, each naming the other (hreflang), with English as x-default like the pages' own tags
+    ...Object.values(KIDS_LANGUAGES).map((path) => ({
+      ...page(path, 0.6, "monthly"),
+      alternates: { languages: Object.fromEntries(
+        [...Object.entries(KIDS_LANGUAGES), ["x-default", KIDS_LANGUAGES["en-PH"]]].map(([l, p]) => [l, `${site}${p}`])) },
+    })),
+    page("/for-schools", 0.7, "monthly"),
+    page("/iphone", 0.6, "monthly"),
     page("/learn", 0.8, "weekly", newestReview()),
     ...TOPICS.map((t) =>
       page(`/learn/topics/${t.id}`, 0.7, "monthly", articlesIn(t.id).map((a) => a.reviewed).sort().at(-1))),

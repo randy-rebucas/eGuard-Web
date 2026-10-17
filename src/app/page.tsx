@@ -2,25 +2,31 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import {
-  ArrowRight, BellRing, CalendarClock, ChartNoAxesColumnIncreasing, Check, ChevronDown, ChevronRight, CircleCheck,
-  ClipboardCheck, Download, Globe, Laptop, Plus, Settings, ShieldCheck, Smartphone, Sparkles, Tablet, Users, type LucideIcon,
+  ArrowRight, BellRing, BookOpen, CalendarClock, ChartNoAxesColumnIncreasing, Check, ChevronDown, ChevronRight, CircleCheck,
+  CircleDashed, ClipboardCheck, Download, Globe, Laptop, Plus, Settings, ShieldCheck, Smartphone, Sparkles, Tablet, Users,
+  type LucideIcon,
 } from "lucide-react";
 import { LEGAL } from "@/lib/legal";
 import { supportEmail } from "@/lib/support";
 import { FREE_CHILDREN, PLANS as PLAN_CATALOG, webPrice } from "@/lib/plans";
+import { AGE_GUIDES } from "@/lib/age-guides";
+import { profileConfig, recommendedProfile } from "@/lib/profiles";
+import { describeSuggested } from "@/lib/protection-pages";
+import { ARTICLES, articleBySlug } from "@/lib/learn";
+import { SETUP_VIDEO } from "@/lib/setup-video";
+import { MADE_IN, proof } from "@/lib/social-proof";
 import { jsonLd, pageMetadata, siteUrl } from "@/lib/site";
 import { SiteFooter, SiteHeader } from "@/components/site-chrome";
 import { MetaPixel } from "@/components/meta-pixel";
 import { SignedIn, StartLink } from "@/components/signed-in";
 import { PhoneDashboard, PhoneScreenTime } from "@/components/landing-phones";
-import { ChromeMark, EdgeMark, FirefoxMark, STORE_LINKS } from "@/components/brand-marks";
+import { ChromeMark, EdgeMark, FirefoxMark, SOCIAL_LINKS, STORE_LINKS } from "@/components/brand-marks";
 import { AudienceIcon, FeatureIcon, type Audience, type Feature } from "@/components/landing-icons";
 import "./landing.css";
 
 import heroBackground from "../../public/landing/hero-background.jpg";
 import heroFamily from "../../public/landing/hero-family.jpg";
 import digitalHabits from "../../public/landing/digital-habits.jpg";
-import familySunset from "../../public/landing/family-sunset.jpg";
 import ctaFamily from "../../public/landing/cta-family.jpg";
 import avatar1 from "../../public/landing/avatar-1.png";
 import avatar2 from "../../public/landing/avatar-2.png";
@@ -46,21 +52,27 @@ const AUDIENCES: [Audience, string, string][] = [
   ["business", "Businesses", "Workforce families"],
 ];
 
-const FEATURES: [Feature, string, string][] = [
-  ["setup", "Guided Setup", "Step-by-step setup for Android, with iPhone coming soon"],
-  ["health", "Configuration Health", "Verify if protections are correctly applied"],
-  ["screen-time", "Screen Time Management", "Set healthy device limits"],
-  ["apps", "App & Content Controls", "Manage and approve apps"],
-  ["location", "Location Guidance", "Set up location sharing with confidence"],
+/** Each card links to the page that explains it in full. */
+const FEATURES: [Feature, string, string, string][] = [
+  ["setup", "Guided Setup", "Pair a phone with a one-time code. eGuard explains each permission before Android asks for it.", "/how-it-works#setup"],
+  ["health", "Configuration Health", "Every protection shows Verified, Pending or Failed, adding up to one score per child.", "/how-it-works#verified"],
+  ["screen-time", "Screen Time & Bedtime", "A daily limit with its own weekend allowance, and a bedtime that rests apps overnight.", "/protections/screen-time"],
+  ["apps", "App & Content Controls", "Approve new apps, set daily limits per app, and choose age ratings for apps and films.", "/protections/apps"],
+  ["location", "Location Sharing", "See where your child's phone is, only when your family turns sharing on. On paid plans.", "/protections/location"],
   // Alert emails go out with the maintenance run (every few minutes), so not "instant"
-  ["alerts", "Alerts", "Email and in-app alerts when settings change"],
+  ["alerts", "Alerts", "An email and in-app alert when a setting is changed on the device, naming the device and the setting.", "/how-it-works#what-if"],
 ];
 
+/** Concrete routines eGuard supports, not general benefits: each line maps to a real setting. */
 const HABITS: [LucideIcon, string, string, string][] = [
-  [CalendarClock, "lp-t-blue", "Encourage balance", "Set daily limits and bedtime schedules."],
-  [ShieldCheck, "lp-t-blue", "Reduce distractions", "Manage apps and content access."],
-  [Sparkles, "lp-t-purple", "Support real-world activities", "Help them focus on learning, family, and play."],
+  [CalendarClock, "lp-t-blue", "Calmer school nights", "A bedtime that applies only Sunday to Thursday, so weekends stay relaxed."],
+  [Sparkles, "lp-t-purple", "Weekends with a bit more", "A separate, longer screen-time allowance for Saturday and Sunday."],
+  [ShieldCheck, "lp-t-blue", "Homework without dead ends", "When a school site is blocked, your child asks and you allow it for 15 minutes, an hour or for good."],
 ];
+
+/** "Saved" vs "Verified": the reason eGuard exists, in two columns. */
+const SAVED_ONLY = ["You tap Save", "The app says “Saved”", "Is it on the phone? You can't tell", "An update or a switched-off setting goes unnoticed"];
+const VERIFIED = ["You tap Save", "eGuard sends it to each of your child's devices", "Each device reads the setting back and reports what it really has", "Verified, or Failed with what the device has, and an alert if it changes later"];
 
 const STEPS: [LucideIcon, string, string][] = [
   [Smartphone, "Create Your Account", "Set up your family and add your children."],
@@ -68,6 +80,17 @@ const STEPS: [LucideIcon, string, string][] = [
   [ShieldCheck, "Verify & Monitor", "Check configuration health and get alerts when something changes."],
   [ChartNoAxesColumnIncreasing, "Build Healthy Habits", "Manage screen time, apps, and location settings."],
 ];
+
+/** The age guides with the settings eGuard would suggest at each stage, worked out the same way as /guides. */
+const AGES = AGE_GUIDES.map((g) => {
+  const profile = recommendedProfile(g.sampleAge);
+  const at = (key: "SCREEN_TIME" | "BEDTIME") => describeSuggested(profileConfig(profile, key, g.sampleAge));
+  return { slug: g.slug, label: g.label, heading: g.title.split(":")[0], screenTime: at("SCREEN_TIME"), bedtime: at("BEDTIME") };
+});
+
+/** The first three of the Knowledge Center's "Start here" list. */
+const START_HERE = ["how-to-protect-kids-online", "first-phone-checklist", "how-much-screen-time-by-age"]
+  .map(articleBySlug).filter((a) => a !== null);
 
 /** Names, perks and prices come from the plan catalogue, so this page always matches what's sold. */
 const PLAN_LOOK = {
@@ -89,6 +112,7 @@ function structuredData() {
     "@context": "https://schema.org",
     "@graph": [
       { "@type": "Organization", "@id": org, name: "eGuard", url: site, logo: `${site}/brand/logo-mark-512.png`,
+        sameAs: SOCIAL_LINKS.map((s) => s.href),
         parentOrganization: { "@type": "Organization", name: LEGAL.entity },
         contactPoint: { "@type": "ContactPoint", contactType: "customer support", email: supportEmail(), areaServed: "PH", availableLanguage: "en" } },
       { "@type": "WebSite", "@id": `${site}/#website`, name: "eGuard", url: site, inLanguage: "en-PH", publisher: { "@id": org } },
@@ -104,9 +128,17 @@ const FAQS = [
   ["How does eGuard work?",
     "You create a family account, add your children and their devices, then follow guided steps to switch on the protections you choose. eGuard keeps checking that each protection is still applied and alerts you if something changes."],
   ["Is eGuard available for both Android and iOS?",
-    "The Android app is available now on Google Play, and the iOS app is coming soon to the App Store. Where a platform lets eGuard apply a setting directly it does; where it doesn't, you get a step-by-step guide and eGuard verifies the result."],
+    "The Android app is available now on Google Play, and the iOS app is coming soon to the App Store (get an email when it's out at eguard.family/iphone). Where a platform lets eGuard apply a setting directly it does; where it doesn't, you get a step-by-step guide and eGuard verifies the result."],
   ["Do you have a free plan?",
     `Yes. The Free plan covers ${FREE_CHILDREN} with basic protection setup, screen time management and limited app monitoring. You can upgrade whenever your family needs more.`],
+  ["Will my child know eGuard is on?",
+    "Yes. eGuard is never hidden: your child can always open it and see which rules are on and how much screen time is left. On Android it also shows a notification while it's active. There's a page that explains eGuard to children, at eguard.family/for-kids."],
+  ["Can my child switch it off or uninstall it?",
+    "Uninstall protection keeps eGuard from being removed without you. If a setting is changed on the device anyway, the device reports what it really has, so eGuard shows it as Failed and sends you an alert naming the device and the setting."],
+  ["What happens when the phone is offline?",
+    "Protection stays on. Devices keep following the last rules they received and pick up any changes as soon as they reconnect, usually within about 5 minutes."],
+  ["What can I see, and what stays private?",
+    "You see whether each protection is on, screen-time totals, the names of apps used, and location only if your family turns it on. eGuard never sees messages, photos, calls, what your child types, or which websites they visit, beyond a site they ask you to unblock."],
   ["How is my family's data protected?",
     "eGuard only collects what it needs to verify your protections, and it does not sell your children's data. You can export or delete your account data at any time from Settings."],
   ["Can schools or organizations use eGuard?",
@@ -119,8 +151,6 @@ const BROWSERS = [
   { name: "Firefox", Mark: FirefoxMark, store: "Firefox Add-ons", cta: "Add to Firefox", href: STORE_LINKS.firefox },
 ] as const;
 
-const SETUP_VIDEO_ID = "2uPblkkezjg";
-const SETUP_VIDEO_URL = `https://www.youtube.com/watch?v=${SETUP_VIDEO_ID}`;
 const SETUP_VIDEO_POINTS = ["Install eGuard on your child's Android phone", "Connect the phone to your family account", "Switch on the protections you choose"];
 
 const BROWSER_PERKS =["Blocks harmful sites and categories", "Forces SafeSearch", "Lets your child ask before opening a blocked site"];
@@ -144,13 +174,45 @@ function Shield() {
   );
 }
 
+/**
+ * Ratings, parents' words and press, from lib/social-proof. Renders nothing until one of them is real: no
+ * placeholder quotes, no "trusted by thousands".
+ */
+function ProofBand() {
+  const { rating, quotes, press, any } = proof();
+  if (!any) return null;
+  return (
+    <section className="lp-proof" aria-labelledby="lp-proof-h">
+      <div className="lp-wrap">
+        <h2 id="lp-proof-h">What parents say</h2>
+        {rating ? (
+          <a className="lp-proof-rating" href={PLAY_STORE_URL} target="_blank" rel="noopener noreferrer">
+            <b className="num">{rating.stars.toFixed(1)}</b>
+            <span><span className="lp-proof-stars" aria-hidden="true">★ out of 5</span>on Google Play, from {rating.reviews.toLocaleString("en-US")} reviews</span>
+          </a>
+        ) : null}
+        {quotes.length ? (
+          <ul className="lp-quotes">
+            {quotes.map((q) => <li key={q.name + q.quote.slice(0, 20)}><blockquote>&ldquo;{q.quote}&rdquo;</blockquote><span>{q.name}</span></li>)}
+          </ul>
+        ) : null}
+        {press.length ? (
+          <ul className="lp-press" aria-label="In the news">
+            {press.map((p) => <li key={p.url}><a href={p.url} target="_blank" rel="noopener noreferrer"><b>{p.outlet}</b><span>{p.title}</span></a></li>)}
+          </ul>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
 function Avatars() {
   return <div className="lp-avatars">{AVATARS.map((a, i) => <Image key={i} src={a} alt="" width={40} height={40} />)}</div>;
 }
 
 const PLAY_STORE_URL = STORE_LINKS.googlePlay;
 
-/** Android is live on Google Play; the App Store badge stays disabled until the iOS app is published. */
+/** Android is live on Google Play; until the iOS app is published, iPhone links to /iphone and its waitlist. */
 function Stores() {
   return (
     <div className="lp-stores">
@@ -163,7 +225,7 @@ function Stores() {
         </svg>
         Download the Android App<Download />
       </a>
-      <span className="lp-stores-off" aria-disabled="true"><Smartphone />iOS coming soon</span>
+      <Link href="/iphone" className="lp-stores-off"><Smartphone />iPhone coming soon: get notified</Link>
     </div>
   );
 }
@@ -180,14 +242,14 @@ export default function Home() {
           <div className="lp-hero-bg"><Image src={heroBackground} alt="" fill loading="eager" fetchPriority="high" sizes="100vw" placeholder="blur" /></div>
           <div className="lp-wrap">
             <div className="lp-hero-copy">
-              <span className="lp-eyebrow"><Users />Built for modern families</span>
-              <h1>A Safer Digital World for Their <span className="lp-accent">Brighter Tomorrow</span></h1>
-              <p className="lp-hero-lede">eGuard helps parents configure, manage, and verify digital safety protections for their children&apos;s devices — all in one place.</p>
+              <span className="lp-eyebrow"><Users />Made for families in the Philippines</span>
+              <h1>Parental controls that <span className="lp-accent">prove they&apos;re on</span></h1>
+              <p className="lp-hero-lede">Set screen time, bedtime, app and web rules on your child&apos;s Android phone and browser, and see each one confirmed on the device, not just saved.</p>
               <ul className="lp-checks">
-                <li><CircleCheck />Easy setup and configuration</li>
-                <li><ShieldCheck />Verified protection</li>
-                <li><BellRing />Email alerts when something changes</li>
-                <li><CircleCheck />Peace of mind</li>
+                <li><ShieldCheck />Every setting checked on the device</li>
+                <li><BellRing />An alert if a setting is switched off</li>
+                <li><Globe />Android, Chrome, Edge and Firefox</li>
+                <li><CircleCheck />Never hidden from your child</li>
               </ul>
               <div className="lp-hero-actions">
                 <StartLink className="lp-btn lp-btn-primary" />
@@ -246,11 +308,13 @@ export default function Home() {
           <div className="lp-wrap">
             <div>
               <h2>Built for Families, Schools<br />and Communities</h2>
-              <p>eGuard helps families, schools, and organizations promote safer and healthier digital habits.</p>
+              <p>eGuard helps families, schools, and organizations promote safer and healthier digital habits. Built in {MADE_IN} by {LEGAL.entity}.</p>
             </div>
             <ul className="lp-audiences">
               {AUDIENCES.map(([icon, title, sub]) => (
-                <li key={title}><AudienceIcon name={icon} /><b>{title}</b><span>{sub}</span></li>
+                <li key={title}>
+                  <Link href={icon === "family" ? "/how-it-works" : "/for-schools"}><AudienceIcon name={icon} /><b>{title}</b><span>{sub}</span></Link>
+                </li>
               ))}
             </ul>
           </div>
@@ -265,12 +329,13 @@ export default function Home() {
                 <p>From setup to ongoing verification, eGuard makes it simple for parents to keep their children&apos;s devices properly protected.</p>
               </div>
               <div className="lp-feature-grid">
-                {FEATURES.map(([icon, title, body]) => (
-                  <article key={title} className="lp-feature">
+                {FEATURES.map(([icon, title, body, href]) => (
+                  <Link key={title} href={href} className="lp-feature">
                     <FeatureIcon name={icon} />
                     <h3>{title}</h3>
                     <p>{body}</p>
-                  </article>
+                    <span className="lp-feature-more">Learn more<ArrowRight /></span>
+                  </Link>
                 ))}
               </div>
               <Link href="/protections" className="lp-btn lp-btn-outline lp-how-more">See all 10 protections<ArrowRight /></Link>
@@ -325,12 +390,12 @@ export default function Home() {
               <h2>Watch: Set Up Your Child&apos;s Phone</h2>
               <p>See the whole Android setup from start to finish, so you know what to expect before you pick up your child&apos;s phone.</p>
               <ul className="lp-browser-perks">{SETUP_VIDEO_POINTS.map((point) => <li key={point}><Check />{point}</li>)}</ul>
-              <a className="lp-btn lp-btn-outline" href={SETUP_VIDEO_URL} target="_blank" rel="noopener noreferrer"><PlayDot />Watch on YouTube</a>
+              <a className="lp-btn lp-btn-outline" href={SETUP_VIDEO.watchUrl} target="_blank" rel="noopener noreferrer"><PlayDot />Watch on YouTube</a>
             </div>
             <div className="lp-video-frame">
               <iframe
-                src={`https://www.youtube-nocookie.com/embed/${SETUP_VIDEO_ID}?rel=0`}
-                title="eGuard Child Phone Setup: Protect Your Child's Android Phone in Minutes"
+                src={SETUP_VIDEO.embedUrl}
+                title={SETUP_VIDEO.title}
                 loading="lazy"
                 allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                 referrerPolicy="strict-origin-when-cross-origin"
@@ -363,17 +428,31 @@ export default function Home() {
           </div>
         </section>
 
-        {/* ---------- Purpose ---------- */}
-        <section className="lp-purpose">
-          <div className="lp-purpose-img"><Image src={familySunset} alt="A family sitting together looking out over mountains at sunset" fill sizes="(max-width:1024px) 100vw, 66vw" placeholder="blur" /></div>
+        {/* ---------- Saved vs Verified ---------- */}
+        <section className="lp-verify" id="verified" aria-labelledby="lp-verify-h">
           <div className="lp-wrap">
-            <div className="lp-float lp-purpose-card">
-              <span className="lp-eyebrow"><Users />Our purpose</span>
-              <h2>A Safer, Brighter Tomorrow for Every Child</h2>
-              <p>We believe technology should open opportunities, not create risks. eGuard empowers parents, schools, and communities to work together for a safer, healthier digital future.</p>
+            <div className="lp-verify-head">
+              <span className="lp-eyebrow"><ShieldCheck />Why eGuard</span>
+              <h2 id="lp-verify-h">&ldquo;Saved&rdquo; isn&apos;t the same as &ldquo;on&rdquo;</h2>
+              <p>A setting can be saved and still not be on your child&apos;s phone: the phone was offline, an update reset a permission, or someone switched it off. eGuard checks.</p>
             </div>
+            <div className="lp-verify-cols">
+              <div className="lp-verify-col saved">
+                <h3><i><CircleDashed /></i>Most parental controls</h3>
+                <ol>{SAVED_ONLY.map((s) => <li key={s}>{s}</li>)}</ol>
+                <span className="lp-verify-end">Saved</span>
+              </div>
+              <div className="lp-verify-col ok">
+                <h3><i><ShieldCheck /></i>eGuard</h3>
+                <ol>{VERIFIED.map((s) => <li key={s}>{s}</li>)}</ol>
+                <span className="lp-verify-end"><Check />Verified on the device</span>
+              </div>
+            </div>
+            <Link href="/how-it-works#verified" className="lp-btn lp-btn-outline lp-how-more">Follow one setting from your screen to theirs<ArrowRight /></Link>
           </div>
         </section>
+
+        <ProofBand />
 
         {/* ---------- Pricing ---------- */}
         <section className="lp-pricing" id="pricing">
@@ -394,6 +473,46 @@ export default function Home() {
               ))}
             </div>
             <Link href="/pricing" className="lp-btn lp-btn-outline lp-how-more">Compare plans and ways to pay<ArrowRight /></Link>
+          </div>
+        </section>
+
+        {/* ---------- Resources ---------- */}
+        <section className="lp-res" id="resources" aria-labelledby="lp-res-h">
+          <div className="lp-wrap">
+            <div className="lp-res-head">
+              <span className="lp-eyebrow"><BookOpen />Free for every parent</span>
+              <h2 id="lp-res-h">Not sure where to start? Start with their age</h2>
+              <p>Suggested screen time and bedtime for each stage, things to talk about, and when to loosen a rule. No account needed.</p>
+            </div>
+            <ul className="lp-ages">
+              {AGES.map((g) => (
+                <li key={g.slug}>
+                  <Link href={`/guides/${g.slug}`} className="lp-age">
+                    <span className="lp-age-label">{g.label}</span>
+                    <b>{g.heading}</b>
+                    <dl>
+                      <div><dt>Screen time</dt><dd>{g.screenTime}</dd></div>
+                      <div><dt>Bedtime</dt><dd>{g.bedtime}</dd></div>
+                    </dl>
+                    <span className="lp-feature-more">Read the guide<ArrowRight /></span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+            <div className="lp-res-more">
+              <div className="lp-res-card">
+                <h3><i><BookOpen /></i>Knowledge Center</h3>
+                <p>{ARTICLES.length} plain-language guides for Filipino parents. Good places to begin:</p>
+                <ul>{START_HERE.map((a) => <li key={a.slug}><Link href={`/learn/${a.slug}`}>{a.title}<ArrowRight /></Link></li>)}</ul>
+                <Link href="/learn" className="lp-res-all">Browse all guides<ArrowRight /></Link>
+              </div>
+              <div className="lp-res-card">
+                <h3><i><ClipboardCheck /></i>A family phone agreement</h3>
+                <p>Print it, fill it in with your child, and sign it together: screen time on school days, phone-free times, and promises from both sides.</p>
+                <p>It comes with a page that explains eGuard to your child in their own words, in English or <Link href="/fil/for-kids" hrefLang="fil" lang="fil">Filipino</Link>.</p>
+                <Link href="/for-kids#agreement" className="lp-res-all">Get the agreement<ArrowRight /></Link>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -425,7 +544,7 @@ export default function Home() {
               <p>Free for {FREE_CHILDREN}. No card needed.</p>
               <div className="lp-hero-actions">
                 <StartLink className="lp-btn lp-btn-white" />
-                <a href="#how-it-works" className="lp-btn lp-btn-ghost-light"><PlayDot />See How It Works</a>
+                <Link href="/guides" className="lp-btn lp-btn-ghost-light">Read the guide for their age</Link>
               </div>
               <Stores />
             </div>

@@ -9,12 +9,13 @@ const db = vi.hoisted(() => ({
   broadcast: { findMany: vi.fn(), findUnique: vi.fn(), updateMany: vi.fn(), update: vi.fn() },
   broadcastDelivery: { findMany: vi.fn(), findUnique: vi.fn(), updateMany: vi.fn(), update: vi.fn(), count: vi.fn(), createMany: vi.fn() },
   user: { findMany: vi.fn(), updateMany: vi.fn(), count: vi.fn() },
+  subscriber: { findMany: vi.fn(), count: vi.fn(), deleteMany: vi.fn() },
 }));
 vi.mock("../db", () => ({ db }));
 
 const {
-  audienceWhere, broadcastEmail, cancelBroadcast, consoleTimeValue, deliverBroadcasts, parseConsoleTime, skipReason, unsubscribeByToken,
-  BroadcastSchema,
+  audienceWhere, broadcastEmail, cancelBroadcast, consoleTimeValue, countAudience, deliverBroadcasts, parseConsoleTime, skipReason,
+  subscriberSkipReason, unsubscribeByToken, BroadcastSchema,
 } = await import("../broadcasts");
 
 describe("broadcastEmail", () => {
@@ -52,6 +53,49 @@ describe("broadcastEmail", () => {
     expect(m.html).not.toContain("Unsubscribe");
     expect(m.headers).toBeUndefined();
     expect(m.text).toContain("service notice");
+  });
+});
+
+describe("broadcastEmail to a mailing list", () => {
+  const b = { audience: "IOS_LAUNCH", kind: "UPDATE", subject: "eGuard for iPhone is here", body: "Get it now." };
+
+  it("says why they got it, how to leave, and has one-click headers", () => {
+    const m = broadcastEmail(b, "", "tok");
+    expect(m.text).toMatch(/^Hi,\n\nGet it now\./);
+    expect(m.text).toContain("You get this because you asked to hear when eGuard for iPhone is out. Unsubscribing deletes your address. Unsubscribe: https://app.test/unsubscribe?t=tok");
+    expect(m.headers).toMatchObject({ "List-Unsubscribe": "<https://app.test/api/email/unsubscribe?t=tok>" });
+  });
+
+  it("is always a product update, even if a service kind slipped through", () => {
+    const m = broadcastEmail({ ...b, kind: "SERVICE" }, "", "tok");
+    expect(m.text).toContain("Unsubscribe:");
+    expect(m.text).not.toContain("service notice");
+  });
+});
+
+describe("mailing-list audience", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("counts confirmed subscribers on that list, not parents", async () => {
+    db.subscriber.count.mockResolvedValue(4);
+    expect(await countAudience({ audience: "NEWSLETTER", kind: "UPDATE", plans: [] })).toBe(4);
+    expect(db.subscriber.count).toHaveBeenCalledWith({ where: { confirmedAt: { not: null }, lists: { has: "NEWSLETTER" } } });
+    expect(db.user.count).not.toHaveBeenCalled();
+  });
+
+  it("skips anyone who left the list, never confirmed or changed", () => {
+    const ok = { email: "a@x.ph", confirmedAt: new Date(), lists: ["IOS_LAUNCH"] };
+    expect(subscriberSkipReason("IOS_LAUNCH", "a@x.ph", ok)).toBeNull();
+    expect(subscriberSkipReason("IOS_LAUNCH", "a@x.ph", null)).toBe("Unsubscribed");
+    expect(subscriberSkipReason("NEWSLETTER", "a@x.ph", ok)).toBe("Unsubscribed");
+    expect(subscriberSkipReason("IOS_LAUNCH", "a@x.ph", { ...ok, confirmedAt: null })).toBe("Not confirmed");
+    expect(subscriberSkipReason("IOS_LAUNCH", "b@x.ph", ok)).toBe("Email address changed");
+  });
+
+  it("refuses service notices and drops plans", () => {
+    expect(BroadcastSchema.safeParse({ audience: "NEWSLETTER", kind: "SERVICE", subject: "s", body: "b", plans: [] }).success).toBe(false);
+    expect(BroadcastSchema.parse({ audience: "NEWSLETTER", kind: "UPDATE", subject: "s", body: "b", plans: ["Free"] }).plans).toEqual([]);
+    expect(BroadcastSchema.parse({ kind: "SERVICE", subject: "s", body: "b", plans: ["Free"] })).toMatchObject({ audience: "PARENTS", plans: ["Free"] });
   });
 });
 
@@ -151,6 +195,33 @@ describe("deliverBroadcasts", () => {
   });
 });
 
+describe("deliverBroadcasts to a mailing list", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("takes confirmed subscribers as the list, and sends without a name", async () => {
+    db.broadcast.findMany.mockImplementation(async ({ where }) => (where.status === "SCHEDULED"
+      ? [{ id: "b3", audience: "NEWSLETTER", kind: "UPDATE", plans: [] }]
+      : [{ id: "b3", audience: "NEWSLETTER", kind: "UPDATE", subject: "News", body: "Hello" }]));
+    const tx = {
+      broadcast: { updateMany: vi.fn(async () => ({ count: 1 })), update: vi.fn() },
+      user: { findMany: vi.fn() },
+      subscriber: { findMany: vi.fn(async () => [{ id: "s1", email: "a@x.ph" }]) },
+      broadcastDelivery: { createMany: vi.fn() },
+    };
+    db.$transaction.mockImplementation(async (fn) => fn(tx));
+    db.broadcastDelivery.findMany.mockResolvedValue([{ id: "d1", email: "a@x.ph", token: "t1", user: null, subscriber: { email: "a@x.ph", confirmedAt: new Date(), lists: ["NEWSLETTER"] } }]);
+    db.broadcastDelivery.updateMany.mockResolvedValue({ count: 1 });
+    db.broadcastDelivery.count.mockResolvedValue(0);
+    db.broadcast.updateMany.mockResolvedValue({ count: 1 });
+    sendMail.mockResolvedValue(undefined);
+    expect(await deliverBroadcasts()).toMatchObject({ started: 1, sent: 1 });
+    expect(tx.user.findMany).not.toHaveBeenCalled();
+    expect(tx.subscriber.findMany).toHaveBeenCalledWith({ where: { confirmedAt: { not: null }, lists: { has: "NEWSLETTER" } }, select: { id: true, email: true } });
+    expect(tx.broadcastDelivery.createMany.mock.calls[0][0].data[0]).toMatchObject({ broadcastId: "b3", subscriberId: "s1", email: "a@x.ph" });
+    expect(sendMail.mock.calls[0][0].text).toMatch(/^Hi,\n\nHello/);
+  });
+});
+
 describe("cancelBroadcast", () => {
   beforeEach(() => vi.clearAllMocks());
 
@@ -175,6 +246,16 @@ describe("unsubscribeByToken", () => {
     db.broadcastDelivery.findUnique.mockResolvedValue({ userId: "u1", broadcast: { kind: "UPDATE" } });
     expect(await unsubscribeByToken("tok")).toBe("done");
     expect(db.user.updateMany).toHaveBeenCalledWith({ where: { id: "u1" }, data: { productUpdates: false } });
+  });
+
+  it("deletes a mailing-list subscriber, and says the same on a second press", async () => {
+    db.broadcastDelivery.findUnique.mockResolvedValueOnce({ userId: null, subscriberId: "s1", broadcast: { kind: "UPDATE", audience: "NEWSLETTER" } });
+    expect(await unsubscribeByToken("tok")).toBe("list");
+    expect(db.subscriber.deleteMany).toHaveBeenCalledWith({ where: { id: "s1" } });
+    db.broadcastDelivery.findUnique.mockResolvedValueOnce({ userId: null, subscriberId: null, broadcast: { kind: "UPDATE", audience: "NEWSLETTER" } });
+    expect(await unsubscribeByToken("tok")).toBe("list");
+    expect(db.subscriber.deleteMany).toHaveBeenCalledOnce();
+    expect(db.user.updateMany).not.toHaveBeenCalled();
   });
 
   it("does nothing for a service notice's token, a deleted parent or no token", async () => {

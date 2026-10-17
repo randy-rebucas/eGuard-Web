@@ -2,9 +2,12 @@ import type { Metadata } from "next";
 import { FREE_CHILDREN } from "@/lib/plans";
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowRight, BadgeCheck, CircleCheck, HeartHandshake, LockKeyhole, Send, Smartphone, SlidersHorizontal } from "lucide-react";
+import { BadgeCheck, CircleCheck, HeartHandshake, LockKeyhole, Send, Smartphone, SlidersHorizontal } from "lucide-react";
 import { pageMetadata } from "@/lib/site";
 import { supportEmail } from "@/lib/support";
+import { LEGAL } from "@/lib/legal";
+import { MADE_IN } from "@/lib/social-proof";
+import { StartLink } from "@/components/signed-in";
 import { PageHead } from "../page-head";
 
 import digitalHabits from "../../../../public/landing/digital-habits.jpg";
@@ -27,6 +30,11 @@ const VALUES = [
   [LockKeyhole, "Collect as little as we can", "Settings, screen-time totals and app names. Never messages, photos or browsing content. Nothing is sold, and there are no ads."],
   [HeartHandshake, "Keep it a family decision", "eGuard is visible on your child's device, never hidden. On Android it shows a notification whenever it's active."],
 ] as const;
+
+/** "Share your story": the reply is the written consent lib/social-proof needs before a quote goes on the site */
+const storyMailto = `mailto:${supportEmail()}?subject=${encodeURIComponent("My eGuard story")}&body=${encodeURIComponent(
+  "How has eGuard worked for your family?\n\n\n\nMay we quote what you wrote on eguard.family? (Yes / No)\nIf yes, name it as (for example \"Maria, Tacloban\" or \"Parent of two, Cebu\"): \n",
+)}`;
 
 export default function AboutPage() {
   return (
@@ -76,7 +84,7 @@ export default function AboutPage() {
           <p>Prices are in pesos, and you can pay with GCash, Maya, a card or QR Ph. Schools and communities can use eGuard too: Family Pro includes API access for organizations.</p>
           <div className="st-facts">
             <div><b>10</b><span>protections, each checked on the device</span></div>
-            <div><b>Android &amp; browsers</b><span>phones, tablets, Chrome, Edge and Firefox, managed from one dashboard. iPhone and iPad coming soon</span></div>
+            <div><b>Android &amp; browsers</b><span>phones, tablets, Chrome, Edge and Firefox, managed from one dashboard. <Link href="/iphone">iPhone and iPad coming soon</Link></span></div>
             <div><b>₱0</b><span>for {FREE_CHILDREN}, with no card needed to start</span></div>
           </div>
         </div>
@@ -87,12 +95,23 @@ export default function AboutPage() {
           <p>Write to us at <a href={`mailto:${supportEmail()}`}>{supportEmail()}</a>.</p>
         </div>
 
+        <div className="st-block">
+          <h2>Who&apos;s behind eGuard</h2>
+          <p>eGuard is made in {MADE_IN} by {LEGAL.entity}, a registered Philippine business. That&apos;s why prices are in pesos, payments work with GCash and Maya, and our guides are written for Filipino families: lolos and lolas, OFW parents and yayas included.</p>
+        </div>
+
+        <div className="st-block">
+          <h2>Has eGuard helped your family?</h2>
+          <p>We&apos;d love to hear how it&apos;s going, good or bad. With your permission, we may share a line of your story on our site, under the name you choose, so other parents can decide whether eGuard is right for them. We&apos;ll never use your story without asking, or share anything about your children.</p>
+          <p><a href={storyMailto}>Share your story</a></p>
+        </div>
+
         <div className="st-cta">
           <div>
             <h2>Set up your family in a few minutes</h2>
             <p>Free for {FREE_CHILDREN}. Upgrade whenever you need more.</p>
           </div>
-          <Link href="/register" className="lp-btn lp-btn-white">Get Started Free<ArrowRight /></Link>
+          <StartLink className="lp-btn lp-btn-white" />
         </div>
       </div>
     </>

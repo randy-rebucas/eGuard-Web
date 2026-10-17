@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { logStaff, requireStaff } from "@/lib/staff-auth";
 import { broadcastDetail, broadcastProblems } from "@/lib/console-queries";
-import { KIND_LABEL, PLAN_NAMES, broadcastEmail, consoleTimeValue, countAudience, deliveryCounts, type BroadcastKind } from "@/lib/broadcasts";
+import { AUDIENCE_OPTIONS, AUDIENCE_LABEL, KIND_LABEL, PLAN_NAMES, audienceNoun, broadcastEmail, consoleTimeValue, countAudience, deliveryCounts, type BroadcastAudience, type BroadcastKind } from "@/lib/broadcasts";
 import { AI_PROVIDER_LABEL, aiProvider } from "@/lib/broadcast-ai";
 import { cancelBroadcast, deleteBroadcast, unscheduleBroadcast } from "@/app/actions/console";
 import { BroadcastEditor, SendForm, TestForm } from "../../../broadcast-forms";
@@ -58,9 +58,12 @@ export default async function BroadcastPage(props: PageProps<"/console/broadcast
               </div>
             </div>
             <dl className="cn-dl">
+              <dt>To</dt><dd>{AUDIENCE_LABEL[b.audience as BroadcastAudience] ?? b.audience}</dd>
               <dt>Kind</dt><dd>{KIND_LABEL[b.kind as BroadcastKind] ?? b.kind}</dd>
-              <dt>Plans</dt><dd>{b.plans.length ? b.plans.join(", ") : "Every plan"}</dd>
-              {audience !== null ? <><dt>Would reach</dt><dd>{audience.toLocaleString("en-US")} {audience === 1 ? "parent" : "parents"} now (verified email{b.kind === "SERVICE" ? "" : ", product updates on"})</dd></> : null}
+              {b.audience === "PARENTS" ? <><dt>Plans</dt><dd>{b.plans.length ? b.plans.join(", ") : "Every plan"}</dd></> : null}
+              {audience !== null ? (
+                <><dt>Would reach</dt><dd>{audience.toLocaleString("en-US")} {audienceNoun(b.audience, audience)} now ({b.audience === "PARENTS" ? `verified email${b.kind === "SERVICE" ? "" : ", product updates on"}` : "confirmed by email"})</dd></>
+              ) : null}
               {b.recipients ? <><dt>Recipients</dt><dd>{b.recipients.toLocaleString("en-US")}</dd></> : null}
               <dt>Written by</dt><dd>{b.createdBy.name}, {stamp(b.createdAt)}</dd>
               {b.scheduledAt ? <><dt>{b.status === "SCHEDULED" ? "Sends at" : "Scheduled for"}</dt><dd>{stamp(b.scheduledAt)}</dd></> : null}
@@ -83,12 +86,12 @@ export default async function BroadcastPage(props: PageProps<"/console/broadcast
                 <div className="card-head"><h2>Send</h2></div>
                 <div className="cn-stack">
                   <TestForm id={b.id} />
-                  <SendForm id={b.id} audience={audience ?? 0} minTime={consoleTimeValue(new Date())} />
+                  <SendForm id={b.id} audience={audience ?? 0} noun={audienceNoun(b.audience, audience ?? 0)} minTime={consoleTimeValue(new Date())} />
                 </div>
               </section>
               <section className="card card-pad">
                 <div className="card-head"><h2>Edit</h2></div>
-                <BroadcastEditor draft={{ id: b.id, kind: b.kind, subject: b.subject, body: b.body, plans: b.plans }} planNames={PLAN_NAMES} ai={aiLabel()} />
+                <BroadcastEditor draft={{ id: b.id, audience: b.audience, kind: b.kind, subject: b.subject, body: b.body, plans: b.plans }} planNames={PLAN_NAMES} audiences={AUDIENCE_OPTIONS} ai={aiLabel()} />
               </section>
             </>
           ) : null}

@@ -7,6 +7,7 @@ import { discountSummary } from "@/lib/batch-discount";
 import { pageMetadata } from "@/lib/site";
 import { supportEmail } from "@/lib/support";
 import { PageHead } from "../page-head";
+import { PlanFinder } from "./plan-finder";
 import "./pricing.css";
 
 export const metadata: Metadata = pageMetadata({
@@ -46,13 +47,13 @@ const ROWS: [string, string | null, (p: Plan) => Cell][] = [
   ["Support", null, (p) => p.id === "FREE" ? "Email" : p.id === "PLUS" ? "Priority" : "Dedicated"],
 ];
 
-const FAQS: [string, string][] = [
+const FAQS: [string, React.ReactNode][] = [
   ["What counts as a device?", "Each phone, tablet and browser you connect counts as one. A laptop with eGuard in both Chrome and Edge counts as two."],
   ["Is verification included on the Free plan?", "Yes. Every plan checks each protection on the device and shows you Configuration Health. Paying adds capacity and features, not honesty."],
   ["What's the difference between a pass and auto-renew?", "A pass is one month, paid once with GCash, Maya, QR Ph or a card. It never renews; we remind you 3 days before it ends, and buying another adds a month. Auto-renew charges a card or Maya every month until you turn it off."],
   ["What happens if I move to a smaller plan?", "Nothing is removed. Children and devices over the new limit stay protected; you just can't add more until you're under it. If location sharing ends, current locations are cleared and any history is hidden until you upgrade again."],
   ["Can I pay in the app?", "Plans are bought on the web, in Settings › Subscription. Only the family admin can buy or cancel. The app shows your plan as soon as it's paid."],
-  ["Do you have plans for schools or organizations?", `Yes. Any parent can create an organization for a school, community group or business, share a join code with families, and buy sponsor codes that pay for families' plans, with ${discountSummary()}. Family Pro adds API keys, so your own systems can read your codes and counts. Organizations only ever see counts, never a family's data.`],
+  ["Do you have plans for schools or organizations?", <>Yes. Any parent can create an organization for a school, community group or business, share a join code with families, and buy sponsor codes that pay for families&apos; plans, with {discountSummary()}. Family Pro adds API keys, so your own systems can read your codes and counts. Organizations only ever see counts, never a family&apos;s data. <Link href="/for-schools">How it works for organizations</Link>.</>],
 ];
 
 function Mark({ value }: { value: Cell }) {
@@ -92,6 +93,19 @@ export default function PricingPage() {
             );
           })}
         </div>
+
+        <section className="pc-sec" aria-labelledby="pc-finder">
+          <h2 id="pc-finder">Which plan fits your family?</h2>
+          <p className="pc-lede">Count every phone, tablet and browser your children use. Every plan verifies every protection.</p>
+          <PlanFinder
+            contact={supportEmail()}
+            links={Object.fromEntries(PLANS.map((p) => [p.id, <SignedIn key={p.id} signedIn={<PlanLink id={p.id} signedIn />} signedOut={<PlanLink id={p.id} signedIn={false} />} />]))}
+            plans={PLANS.map((p) => ({
+              id: p.id, name: p.name, price: pesos(p), children: p.entitlements.childLimit, devices: p.entitlements.deviceLimit,
+              location: p.entitlements.locationSharing, categoryLimits: p.entitlements.categoryLimits,
+            }))}
+          />
+        </section>
 
         <section className="pc-sec" aria-labelledby="pc-compare">
           <h2 id="pc-compare">Compare plans</h2>

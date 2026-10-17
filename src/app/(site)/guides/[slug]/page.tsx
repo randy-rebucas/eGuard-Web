@@ -9,6 +9,7 @@ import { PROFILES, profileConfig, recommendedProfile } from "@/lib/profiles";
 import { PROTECTIONS, PROTECTION_BY_SLUG } from "@/lib/protections";
 import { PROTECTION_PAGES, describeSuggested } from "@/lib/protection-pages";
 import { jsonLd, pageMetadata, siteUrl } from "@/lib/site";
+import { StartLink } from "@/components/signed-in";
 import { PageHead } from "../../page-head";
 import "../guides.css";
 
@@ -33,7 +34,8 @@ export default async function AgeGuidePage({ params }: PageProps<"/guides/[slug]
   const data = {
     "@context": "https://schema.org",
     "@graph": [
-      { "@type": "Article", headline: g.title, description: g.summary, url: `${site}/guides/${g.slug}`, inLanguage: "en-PH",
+      { "@type": "Article", headline: g.title, description: g.summary, url: `${site}/guides/${g.slug}`, mainEntityOfPage: `${site}/guides/${g.slug}`,
+        inLanguage: "en-PH", author: { "@type": "Organization", name: "eGuard", url: site },
         publisher: { "@type": "Organization", "@id": `${site}/#org`, name: "eGuard", logo: `${site}/brand/logo-mark-512.png` } },
       { "@type": "BreadcrumbList", itemListElement: [
         { "@type": "ListItem", position: 1, name: "Home", item: site },
@@ -115,7 +117,7 @@ export default async function AgeGuidePage({ params }: PageProps<"/guides/[slug]
             <h2>Set up eGuard for your {g.sampleAge < 13 ? "child" : "teen"}</h2>
             <p>eGuard suggests these settings for you. Free for {FREE_CHILDREN}.</p>
           </div>
-          <Link href="/register" className="lp-btn lp-btn-white">Get Started Free<ArrowRight /></Link>
+          <StartLink className="lp-btn lp-btn-white" />
         </div>
       </div>
     </article>

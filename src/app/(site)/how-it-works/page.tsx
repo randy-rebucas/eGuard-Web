@@ -13,6 +13,7 @@ import {
   ServerCloud,
 } from "@/components/flow-devices";
 import { StartLink } from "@/components/signed-in";
+import { SETUP_VIDEO } from "@/lib/setup-video";
 import { PageHead } from "../page-head";
 import "./how-it-works.css";
 
@@ -265,6 +266,23 @@ export default function HowItWorksPage() {
               </div>
             </li>
           </ol>
+          <div className="hw-video">
+            <div>
+              <h3>Prefer to watch?</h3>
+              <p>The whole Android setup from start to finish, so you know what to expect before you pick up your child&apos;s phone.</p>
+              <a className="lp-btn lp-btn-outline" href={SETUP_VIDEO.watchUrl} target="_blank" rel="noopener noreferrer">Watch on YouTube<ArrowRight /></a>
+            </div>
+            <div className="lp-video-frame">
+              <iframe
+                src={SETUP_VIDEO.embedUrl}
+                title={SETUP_VIDEO.title}
+                loading="lazy"
+                allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                referrerPolicy="strict-origin-when-cross-origin"
+                allowFullScreen
+              />
+            </div>
+          </div>
         </Section>
 
         {/* ---------- Verification ---------- */}
@@ -401,7 +419,7 @@ export default function HowItWorksPage() {
             <li className="soon">
               <span className="hw-get-mark"><AppleMark /></span>
               <div><b>iPhone &amp; iPad</b><span>App Store</span></div>
-              <span className="hw-soon">Coming soon</span>
+              <Link href="/iphone" className="lp-btn lp-btn-outline">Get notified<ArrowRight /></Link>
             </li>
             <li>
               <span className="hw-get-mark"><ChromeMark /></span>

@@ -15,6 +15,7 @@ import { alertPush, pushAvailable, pushToUsers } from "./push";
 import { mobileAlertAction } from "./mobile-views";
 import { sendWeeklyDigests } from "./weekly-digest";
 import { deliverBroadcasts } from "./broadcasts";
+import { CONFIRM_DAYS } from "./subscribers";
 import { STAFF_IDLE_MS } from "./console-host";
 import { WEB_IDLE_DAYS } from "./auth";
 import { KNOWN_DEVICE_DAYS } from "./sign-in-notice";
@@ -140,6 +141,8 @@ export async function purgeExpiredData(now = new Date()) {
     links: (await db.emailVerification.deleteMany({ where: { expiresAt: { lt: now } } })).count + (await db.passwordReset.deleteMany({ where: { expiresAt: { lt: now } } })).count,
     pairingCodes: await db.pairingCode.deleteMany({ where: { expiresAt: { lt: new Date(now.getTime() - 864e5) } } }).then((r) => r.count),
     orgInvites: await db.orgInvite.deleteMany({ where: { expiresAt: { lt: now } } }).then((r) => r.count),
+    // Mailing-list sign-ups nobody confirmed: their link has expired, and we keep no address we weren't allowed to
+    unconfirmedSubscribers: await db.subscriber.deleteMany({ where: { confirmedAt: null, confirmSentAt: { lt: new Date(now.getTime() - CONFIRM_DAYS * 864e5) } } }).then((r) => r.count),
     rateLimits: await db.rateLimit.deleteMany({ where: { resetAt: { lt: now } } }).then((r) => r.count),
   };
   return counts;

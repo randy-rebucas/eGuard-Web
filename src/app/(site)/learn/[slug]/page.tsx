@@ -3,13 +3,34 @@ import { FREE_CHILDREN } from "@/lib/plans";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ArrowRight } from "lucide-react";
-import { ARTICLES, articleBySlug, readMinutes, relatedTo, reviewedDate, topicById } from "@/lib/learn";
+import { ARTICLES, articleBySlug, readMinutes, relatedTo, reviewedDate, topicById, type TopicId } from "@/lib/learn";
+import { PROTECTION_BY_SLUG } from "@/lib/protections";
+import { Icon } from "@/components/icon";
 import { parseMarkdown } from "@/lib/learn/markdown";
 import { jsonLd, pageMetadata, siteUrl } from "@/lib/site";
+import { StartLink } from "@/components/signed-in";
 import { supportEmail } from "@/lib/support";
 import { PageHead } from "../../page-head";
 import { MdBlocks } from "../markdown";
 import "../learn.css";
+
+/**
+ * The box at the end of each guide, by topic: the protections that put that topic into practice.
+ * Grooming and exploitation guides get no product pitch (null); they point to how to report instead.
+ */
+const TOPIC_CTA: Record<TopicId, { title: string; body: string; protections: string[] } | null> = {
+  "online-safety": { title: "Put the basics in place", body: "eGuard sets screen time, app approval and location sharing on your child's phone, and checks that each one is really on.", protections: ["screen-time", "app-approval", "location"] },
+  "parental-controls": { title: "Parental controls you can check", body: "eGuard applies screen time, web filtering and app rules on your child's phone, then confirms each one on the device.", protections: ["screen-time", "web", "apps"] },
+  "screen-time": { title: "Turn your screen-time plan into settings", body: "eGuard sets a daily limit with its own weekend allowance and a bedtime, and tells you if either is switched off.", protections: ["screen-time", "bedtime"] },
+  exploitation: null,
+  cyberbullying: { title: "Quieter nights, fewer surprise apps", body: "A bedtime rests apps and group chats overnight, and app approval means new apps need your OK first.", protections: ["bedtime", "app-approval"] },
+  "social-media": { title: "Decide together which apps come next", body: "With app approval, your child asks before installing a new app, and screen time keeps feeds from eating the evening.", protections: ["app-approval", "screen-time"] },
+  tiktok: { title: "Limits that hold outside the app too", body: "TikTok's settings only cover TikTok. eGuard's screen time and app approval cover the whole phone and are checked on the device.", protections: ["screen-time", "app-approval"] },
+  gaming: { title: "Gaming time, on your terms", body: "eGuard sets a daily limit and per-app limits, plus a limit for all games together on paid plans, and new games need your OK.", protections: ["screen-time", "app-approval", "downloads"] },
+  "chat-apps": { title: "Know when a new chat app arrives", body: "With app approval, a new chat app needs your OK before it's installed, and age ratings keep adult apps off the phone.", protections: ["app-approval", "apps"] },
+  ai: { title: "Choose which AI apps they use", body: "App approval puts new AI and companion apps through you first, and web filtering blocks adult sites in every browser.", protections: ["app-approval", "web"] },
+  "digital-parenting": { title: "Rules the whole family can see", body: "eGuard is never hidden: your child sees the same rules you set, and every carer in your family account sees the same status.", protections: ["screen-time", "bedtime", "location"] },
+};
 
 export function generateStaticParams() {
   return ARTICLES.map((a) => ({ slug: a.slug }));
@@ -28,6 +49,7 @@ export default async function LearnArticlePage({ params }: PageProps<"/learn/[sl
   const blocks = parseMarkdown(a.body);
   const toc = blocks.flatMap((b) => (b.type === "h2" ? [b] : []));
   const related = relatedTo(a);
+  const cta = TOPIC_CTA[a.topic];
   const site = siteUrl();
   const url = `${site}/learn/${a.slug}`;
   const data = {
@@ -87,13 +109,29 @@ export default async function LearnArticlePage({ params }: PageProps<"/learn/[sl
               </p>
             </aside>
 
-            <div className="kc-cta">
-              <div>
-                <b>Want help putting this into practice?</b>
-                <p>eGuard sets up screen time, bedtime and app rules on your child&apos;s phone and checks that each one is really on. Free for {FREE_CHILDREN}.</p>
+            {cta ? (
+              <div className="kc-cta">
+                <div>
+                  <b>{cta.title}</b>
+                  <p>{cta.body} Free for {FREE_CHILDREN}.</p>
+                  <ul className="kc-cta-links">
+                    {cta.protections.map((slug) => {
+                      const p = PROTECTION_BY_SLUG[slug];
+                      return <li key={slug}><Link href={`/protections/${slug}`}><Icon name={p.icon} />{p.name}</Link></li>;
+                    })}
+                  </ul>
+                </div>
+                <StartLink className="lp-btn lp-btn-primary" start="Try eGuard free" />
               </div>
-              <Link href="/register" className="lp-btn lp-btn-primary">Try eGuard free<ArrowRight /></Link>
-            </div>
+            ) : (
+              <div className="kc-cta kc-cta-help">
+                <div>
+                  <b>If something has already happened</b>
+                  <p>You don&apos;t have to handle it alone. Our guide lists who to call and how to report online abuse of a child in the Philippines. If a child is in danger right now, call 911.</p>
+                </div>
+                <Link href="/learn/report-online-child-abuse-philippines" className="lp-btn lp-btn-primary">How to report<ArrowRight /></Link>
+              </div>
+            )}
           </div>
         </div>
 

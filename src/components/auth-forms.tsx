@@ -6,6 +6,7 @@ import { type FormState, acceptInvitation, declineInvitation, forgotPassword, lo
 import type { WebProvider } from "@/lib/oauth-web";
 import { GoogleMark, LinkedInMark } from "./brand-marks";
 import { Icon } from "./icon";
+import { loadRecaptcha } from "./recaptcha";
 
 function ErrorBox({ error }: { error?: string }) {
   if (!error) return null;
@@ -50,24 +51,6 @@ function PasswordInput({ label, id, children, ...rest }: Omit<InputProps, "icon"
       {children}
     </div>
   );
-}
-
-declare global {
-  interface Window {
-    grecaptcha?: { ready: (cb: () => void) => void; execute: (siteKey: string, o: { action: string }) => Promise<string> };
-  }
-}
-
-let recaptchaScript: Promise<void> | undefined;
-function loadRecaptcha(siteKey: string) {
-  return (recaptchaScript ??= new Promise<void>((resolve, reject) => {
-    const s = document.createElement("script");
-    s.src = `https://www.google.com/recaptcha/api.js?render=${encodeURIComponent(siteKey)}`;
-    s.async = true;
-    s.onload = () => window.grecaptcha?.ready(() => resolve());
-    s.onerror = () => { recaptchaScript = undefined; reject(new Error("reCAPTCHA didn't load")); };
-    document.head.appendChild(s);
-  }));
 }
 
 /** A token lasts 2 minutes, so the field gets a new one before then. */

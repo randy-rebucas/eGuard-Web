@@ -173,6 +173,31 @@ One email to many parents at once, from **Email** in the console.
 
 Either can be narrowed to some plans (none ticked: every plan). Unverified addresses never get one.
 
+### Mailing lists (added 2026-10-17)
+
+**To** picks the audience: parents (above), or one of the public mailing lists people join without an account
+(`src/lib/subscribers.ts`, migration `20261017041612_subscribers`):
+
+| List | Joined from | Promise made on the form |
+| --- | --- | --- |
+| eGuard news (`NEWSLETTER`) | The form in every public page's footer | Occasional news, about once a month at most |
+| iPhone launch (`IOS_LAUNCH`) | `/iphone`, linked from every "iPhone coming soon" | One email when the iPhone app is out, and a few about setting it up |
+
+- **Double opt-in.** The form (`src/components/subscribe-form.tsx`, action `src/app/actions/subscribe.ts`) stores
+  the address unconfirmed and emails a link to `/subscribe/confirm`, which confirms only when its button is pressed
+  (mail scanners open links). Links work for 7 days; unconfirmed sign-ups are deleted by maintenance › data
+  retention after 7 days. Only **confirmed** subscribers are on a list's recipient list.
+- **Nothing leaks.** The form says the same thing whether or not the address was already on a list. Rate limits:
+  10 sign-ups an hour per IP (`subscribeIp`), 3 confirmation emails a day per address (`subscribeMail`), plus
+  reCAPTCHA v3 (action `subscribe`) when the keys are set, loaded only when someone presses the button.
+- **Always a product update.** A list email can't be a service notice and has no plans. It starts "Hi," (no name)
+  and its footer says why they got it.
+- **Unsubscribing deletes the address**, from every list: the footer link (`/unsubscribe`, button) and the
+  one-click header (`/api/email/unsubscribe`) both work as for parents. Pressing again says the same.
+- The Email page shows each list's confirmed and waiting counts. A broadcast's page shows **Would reach N
+  subscribers**.
+- The Privacy Policy covers this under **Mailing lists** (`/privacy#mailing-lists`).
+
 ### Manual and scheduled
 
 1. **New email** saves a draft (subject, plain-text message, kind, plans). A blank line starts a paragraph, links

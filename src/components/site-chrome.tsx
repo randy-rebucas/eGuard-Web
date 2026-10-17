@@ -1,22 +1,31 @@
 import type { CSSProperties } from "react";
 import Link from "next/link";
 import { cacheLife } from "next/cache";
-import { Menu } from "lucide-react";
+import { ChevronDown, Menu } from "lucide-react";
 import { LogoMark } from "@/components/logo";
 import { SignedIn } from "@/components/signed-in";
 import { LEGAL } from "@/lib/legal";
+import { LIST_COPY } from "@/lib/subscribers";
+import { botCheckSiteKey } from "@/lib/bot-check";
+import { SubscribeForm } from "@/components/subscribe-form";
+import { SOCIAL_LINKS } from "@/components/brand-marks";
 
 /**
  * Header and footer shared by the landing page and the public pages (about, privacy, terms, blog).
- * Social links and a newsletter sign-up belong in the footer once the accounts and a mailing list exist.
+ * The footer has the eGuard news sign-up (lib/subscribers) and links to eGuard's profiles (SOCIAL_LINKS).
  */
 
-/** In the order the sections appear on the landing page, then pages elsewhere. */
-const NAV = [
-  ["Who It's For", "/#communities"], ["Features", "/#features"], ["For Parents", "/#habits"],
-  ["How It Works", "/how-it-works"], ["Extension", "/#browsers"], ["Pricing", "/pricing"],
-  ["FAQ", "/#faq"], ["Learn", "/learn"],
+/** Pages, not landing-page anchors, so the menu means the same thing on every page. */
+const NAV = [["Protections", "/protections"], ["How It Works", "/how-it-works"], ["Pricing", "/pricing"]] as const;
+/** Grouped under "Resources", which itself opens the Knowledge Center. */
+const RESOURCES = [
+  ["Knowledge Center", "/learn", "Guides on online safety, apps and games"],
+  ["Guides by age", "/guides", "The right rules from 5 to 17"],
+  ["Help Center", "/help", "Setup and fixes"],
+  ["For kids", "/for-kids", "eGuard explained, and a family agreement"],
+  ["Blog", "/blog", "News and product notes"],
 ] as const;
+const AFTER = [["Security", "/security"]] as const;
 
 function Brand({ style }: { style?: CSSProperties }) {
   return (
@@ -35,6 +44,14 @@ export function SiteHeader() {
         <Brand />
         <nav className="lp-nav" aria-label="Primary">
           {NAV.map(([label, href]) => <Link key={href} href={href}>{label}</Link>)}
+          {/* Opens on hover and on keyboard focus (focus-within), so tabbing walks into the list; a click goes to /learn */}
+          <div className="lp-nav-group">
+            <Link href="/learn" aria-haspopup="true">Resources<ChevronDown /></Link>
+            <ul className="lp-nav-panel">
+              {RESOURCES.map(([label, href, sub]) => <li key={href}><Link href={href}><b>{label}</b><span>{sub}</span></Link></li>)}
+            </ul>
+          </div>
+          {AFTER.map(([label, href]) => <Link key={href} href={href}>{label}</Link>)}
         </nav>
         <div className="lp-head-cta">
           <SignedIn
@@ -49,7 +66,9 @@ export function SiteHeader() {
           <details className="lp-menu">
             <summary aria-label="Open menu"><Menu /></summary>
             <nav className="lp-menu-panel" aria-label="Mobile">
-              {NAV.map(([label, href]) => <Link key={href} href={href}>{label}</Link>)}
+              {[...NAV, ...AFTER].map(([label, href]) => <Link key={href} href={href}>{label}</Link>)}
+              <span className="lp-menu-h">Resources</span>
+              {RESOURCES.map(([label, href]) => <Link key={href} href={href}>{label}</Link>)}
               <SignedIn signedIn={null} signedOut={<Link href="/login">Sign In</Link>} />
             </nav>
           </details>
@@ -71,10 +90,23 @@ export function SiteFooter() {
     <footer className="lp-footer">
       <div className="lp-wrap">
         <div className="lp-foot-grid">
-          <Brand style={{ alignSelf: "start" }} />
+          <div className="lp-foot-brand">
+            <Brand />
+            <h4>Get eGuard news</h4>
+            <SubscribeForm list="NEWSLETTER" source="footer" promise={LIST_COPY.NEWSLETTER.promise} siteKey={botCheckSiteKey()}
+              short="New protections, guides and offers, once a month at most. Unsubscribe anytime." />
+            <div className="lp-follow">
+              <span>Follow us</span>
+              <ul className="lp-social">
+                {SOCIAL_LINKS.map(({ name, href, Mark }) => (
+                  <li key={name}><a href={href} target="_blank" rel="noopener noreferrer" aria-label={`eGuard on ${name}`} title={`eGuard on ${name}`}><Mark /></a></li>
+                ))}
+              </ul>
+            </div>
+          </div>
           <div>
             <h4>Product</h4>
-            <ul><li><Link href="/#features">Features</Link></li><li><Link href="/protections">Protections</Link></li><li><Link href="/how-it-works">How it works</Link></li><li><Link href="/#browsers">Browser extension</Link></li><li><Link href="/pricing">Pricing</Link></li></ul>
+            <ul><li><Link href="/#features">Features</Link></li><li><Link href="/protections">Protections</Link></li><li><Link href="/how-it-works">How it works</Link></li><li><Link href="/#browsers">Browser extension</Link></li><li><Link href="/pricing">Pricing</Link></li><li><Link href="/for-schools">For schools &amp; organizations</Link></li></ul>
           </div>
           <div>
             <h4>Resources</h4>

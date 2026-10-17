@@ -105,6 +105,15 @@ export function LinkedInMark() {
   );
 }
 
+export function FacebookMark() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="12" fill="#0866FF" />
+      <path fill="#fff" d="M13.3 24v-8.6h2.9l.45-3.4H13.3V9.9c0-1 .3-1.6 1.7-1.6h1.75V5.25c-.3-.04-1.35-.13-2.55-.13-2.53 0-4.27 1.55-4.27 4.4V12H7.1v3.4h2.83V24h3.37Z" />
+    </svg>
+  );
+}
+
 export function AndroidMark() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -116,6 +125,12 @@ export function AndroidMark() {
 }
 
 /** Where to get each eGuard client. `null` means not published yet. */
+/** eGuard's public profiles: the footer's "Follow us" and the Organization's `sameAs` in the landing page's JSON-LD */
+export const SOCIAL_LINKS = [
+  { name: "Facebook", href: "https://www.facebook.com/p/eGuard-61595315873274/", Mark: FacebookMark },
+  { name: "LinkedIn", href: "https://www.linkedin.com/company/eguard-family/", Mark: LinkedInMark },
+] as const;
+
 export const STORE_LINKS = {
   googlePlay: "https://play.google.com/store/apps/details?id=com.devcom.eguard",
   appStore: null,

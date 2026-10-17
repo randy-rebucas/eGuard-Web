@@ -2,11 +2,12 @@ import type { Metadata } from "next";
 import { FREE_CHILDREN } from "@/lib/plans";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, ArrowRight } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { HELP_ARTICLES, HELP_CATEGORIES } from "@/lib/help";
 import { jsonLd, pageMetadata, siteUrl } from "@/lib/site";
 import { supportEmail } from "@/lib/support";
 import { STORE_LINKS } from "@/components/brand-marks";
+import { StartLink } from "@/components/signed-in";
 import { PageHead } from "../../page-head";
 
 export function generateStaticParams() {
@@ -61,7 +62,7 @@ export default async function HelpArticlePage({ params }: PageProps<"/help/[slug
             <h2>Try eGuard free</h2>
             <p>Free for {FREE_CHILDREN}, every setting verified on the device. No card needed.</p>
           </div>
-          <Link href="/register" className="lp-btn lp-btn-white">Get Started Free<ArrowRight /></Link>
+          <StartLink className="lp-btn lp-btn-white" />
         </div>
 
         {related.length ? (

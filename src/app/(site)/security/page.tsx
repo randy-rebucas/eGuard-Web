@@ -2,12 +2,13 @@ import type { Metadata } from "next";
 import { FREE_CHILDREN } from "@/lib/plans";
 import Link from "next/link";
 import {
-  ArrowRight, BadgeCheck, Ban, Download, Eye, EyeOff, FileSignature, Fingerprint, History, KeyRound, LockKeyhole,
+  BadgeCheck, Ban, Download, Eye, EyeOff, FileSignature, Fingerprint, History, KeyRound, LockKeyhole,
   MapPinned, School, ShieldCheck, Trash2, UserCog, Users, type LucideIcon,
 } from "lucide-react";
 import { LEGAL } from "@/lib/legal";
 import { META_PIXEL_ID } from "@/lib/meta-pixel";
 import { pageMetadata } from "@/lib/site";
+import { StartLink } from "@/components/signed-in";
 import { supportEmail } from "@/lib/support";
 import { ServerCloud } from "@/components/flow-devices";
 import { PageHead } from "../page-head";
@@ -151,7 +152,7 @@ export default function SecurityPage() {
           <i><School /></i>
           <div>
             <h2>For schools and organizations</h2>
-            <p>Recommending eGuard to your families, or reviewing it for a program? Each family keeps its own account and its own data; a school or employer never sees a family&apos;s information. For our data-processing details, write to <a href={`mailto:${privacyEmail}`}>{privacyEmail}</a>.</p>
+            <p>Recommending eGuard to your families, or reviewing it for a program? Each family keeps its own account and its own data; a school or employer never sees a family&apos;s information. For our data-processing details, write to <a href={`mailto:${privacyEmail}`}>{privacyEmail}</a>, or see <Link href="/for-schools">eGuard for schools and organizations</Link>.</p>
           </div>
         </div>
 
@@ -166,7 +167,7 @@ export default function SecurityPage() {
             <h2>Protect your children, not their privacy</h2>
             <p>Free for {FREE_CHILDREN}. No card needed.</p>
           </div>
-          <Link href="/register" className="lp-btn lp-btn-white">Get Started Free<ArrowRight /></Link>
+          <StartLink className="lp-btn lp-btn-white" />
         </div>
       </div>
     </>

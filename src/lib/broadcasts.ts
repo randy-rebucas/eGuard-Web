@@ -6,6 +6,7 @@ import { newToken } from "./auth";
 import { appUrl } from "./email-verification";
 import { escapeHtml, sendMail } from "./mail";
 import { PLANS } from "./plans";
+import { LISTS, LIST_COPY, deleteSubscriber, isMailingList, listWhere, type MailingList } from "./subscribers";
 
 /**
  * Emails the eGuard team sends to many parents at once (console › Email, docs/console.md §8). Staff write one,
@@ -38,17 +39,41 @@ const STUCK_MS = 15 * 60_000;
 /** "[TODO: the launch date]": a gap the AI writer (lib/broadcast-ai) left for staff. An email with one isn't sent. */
 export const PLACEHOLDER_RE = /\[TODO[^\]]*\]/i;
 
+/** PARENTS: eGuard accounts. The others are the public mailing lists (lib/subscribers), always product updates. */
+export const BROADCAST_AUDIENCES = ["PARENTS", ...LISTS] as const;
+export type BroadcastAudience = (typeof BROADCAST_AUDIENCES)[number];
+export const AUDIENCE_LABEL: Record<BroadcastAudience, string> = {
+  PARENTS: "Parents with an account", NEWSLETTER: `Mailing list: ${LIST_COPY.NEWSLETTER.name}`, IOS_LAUNCH: `Mailing list: ${LIST_COPY.IOS_LAUNCH.name}`,
+};
+/** The editor's "To" choices (the form is a client component, so it gets these as props) */
+export const AUDIENCE_OPTIONS = BROADCAST_AUDIENCES.map((id) => ({
+  id, label: AUDIENCE_LABEL[id],
+  hint: id === "PARENTS"
+    ? "eGuard accounts with a verified email. Choose the kind and plans below."
+    : `People who confirmed by email that they want ${LIST_COPY[id].promise}. Always a product update, with an unsubscribe link that deletes their address.`,
+}));
+
+/** "parent" or "subscriber", for counts */
+export const audienceNoun = (audience: string, n: number) => `${audience === "PARENTS" ? "parent" : "subscriber"}${n === 1 ? "" : "s"}`;
+
 export const BroadcastSchema = z.object({
+  audience: z.enum(BROADCAST_AUDIENCES, "Choose who it goes to.").default("PARENTS"),
   kind: z.enum(BROADCAST_KINDS, "Choose the kind of email."),
   subject: z.string().trim().min(1, "Enter a subject.").max(150, "Keep the subject under 150 characters."),
   body: z.string().trim().min(1, "Write the message.").max(20_000, "Keep the message under 20,000 characters."),
   plans: z.array(z.string().refine((p) => PLAN_NAMES.includes(p), "Choose plans from the list.")),
-});
+})
+  // A mailing list isn't customers: no service notices (they have no account to be noticed about), and no plans
+  .refine((b) => b.audience === "PARENTS" || b.kind === "UPDATE", { message: "A mailing list only gets product updates.", path: ["kind"] })
+  .transform((b) => (b.audience === "PARENTS" ? b : { ...b, plans: [] }));
 export type BroadcastInput = z.infer<typeof BroadcastSchema>;
 
+type Audienced = { audience?: string; kind: string; plans: string[] };
+const listOf = (b: { audience?: string }): MailingList | null => (isMailingList(b.audience) ? b.audience : null);
+
 /**
- * Who a broadcast goes to: parents with a verified address (nobody else gets any email from eGuard), on the chosen
- * plans; product updates only to those who haven't turned them off.
+ * Who a parents' broadcast goes to: parents with a verified address (nobody else gets any email from eGuard), on the
+ * chosen plans; product updates only to those who haven't turned them off.
  */
 export const audienceWhere = (b: { kind: string; plans: string[] }) => ({
   emailVerifiedAt: { not: null },
@@ -56,7 +81,11 @@ export const audienceWhere = (b: { kind: string; plans: string[] }) => ({
   ...(b.plans.length ? { family: { plan: { in: b.plans } } } : {}),
 }) satisfies Prisma.UserWhereInput;
 
-export const countAudience = (b: { kind: string; plans: string[] }) => db.user.count({ where: audienceWhere(b) });
+/** How many it would reach now: parents, or confirmed subscribers on its list */
+export const countAudience = (b: Audienced) => {
+  const list = listOf(b);
+  return list ? db.subscriber.count({ where: listWhere(list) }) : db.user.count({ where: audienceWhere(b) });
+};
 
 /**
  * A time typed in the console's datetime-local field ("2026-10-12T14:30"), which is Philippine time like the rest
@@ -85,14 +114,18 @@ const linkify = (s: string) =>
  * The email for one parent. Pure, so it can be tested without a database. `token` is their delivery's unsubscribe
  * token (product updates only); without one (a test send) the footer still shows where the link goes.
  */
-export function broadcastEmail(b: { kind: string; subject: string; body: string }, name: string, token: string | null) {
+export function broadcastEmail(b: { audience?: string; kind: string; subject: string; body: string }, name: string, token: string | null) {
   const paragraphs = b.body.trim().split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
   const hi = name ? `Hi ${name},` : "Hi,";
-  const update = b.kind !== "SERVICE";
-  const page = token ? unsubscribePage(token) : `${appUrl()}/settings/notifications`;
-  const why = update
-    ? `You get product updates from eGuard because they're on in Settings › Notifications.`
-    : `This is a service notice about your eGuard account, so it goes to every parent whatever their email settings.`;
+  const list = isMailingList(b.audience) ? b.audience : null;
+  const update = list !== null || b.kind !== "SERVICE";
+  // A test send has no token: a parents' email points at Settings, a list's at a page that explains (no account to open)
+  const page = token ? unsubscribePage(token) : list ? `${appUrl()}/unsubscribe` : `${appUrl()}/settings/notifications`;
+  const why = list
+    ? `${LIST_COPY[list].why} Unsubscribing deletes your address.`
+    : update
+      ? `You get product updates from eGuard because they're on in Settings › Notifications.`
+      : `This is a service notice about your eGuard account, so it goes to every parent whatever their email settings.`;
   const text = `${hi}\n\n${paragraphs.join("\n\n")}\n\n— The eGuard team\n\n${why}`
     + (update ? ` Unsubscribe: ${page}` : "");
   const html = `<p>${escapeHtml(hi)}</p>`
@@ -119,18 +152,21 @@ export async function sendTestBroadcast(b: { kind: string; subject: string; body
  * recipient list, in one transaction, so a broadcast is never SENDING without its list.
  */
 export async function startDueBroadcasts(now = new Date()) {
-  const due = await db.broadcast.findMany({ where: { status: "SCHEDULED", scheduledAt: { lte: now } }, select: { id: true, kind: true, plans: true } });
+  const due = await db.broadcast.findMany({ where: { status: "SCHEDULED", scheduledAt: { lte: now } }, select: { id: true, audience: true, kind: true, plans: true } });
   let started = 0;
   for (const b of due) {
     const ok = await db.$transaction(async (tx) => {
       const claimed = await tx.broadcast.updateMany({ where: { id: b.id, status: "SCHEDULED" }, data: { status: "SENDING", startedAt: now } });
       if (!claimed.count) return false;
-      const users = await tx.user.findMany({ where: audienceWhere(b), select: { id: true, email: true } });
+      const list = listOf(b);
+      const rows = list
+        ? (await tx.subscriber.findMany({ where: listWhere(list), select: { id: true, email: true } })).map((s) => ({ subscriberId: s.id, email: s.email }))
+        : (await tx.user.findMany({ where: audienceWhere(b), select: { id: true, email: true } })).map((u) => ({ userId: u.id, email: u.email }));
       await tx.broadcastDelivery.createMany({
-        data: users.map((u) => ({ broadcastId: b.id, userId: u.id, email: u.email, token: newToken(24) })),
+        data: rows.map((r) => ({ broadcastId: b.id, ...r, token: newToken(24) })),
         skipDuplicates: true,
       });
-      await tx.broadcast.update({ where: { id: b.id }, data: { recipients: users.length } });
+      await tx.broadcast.update({ where: { id: b.id }, data: { recipients: rows.length } });
       return true;
     }, { timeout: 60_000 });
     if (ok) started++;
@@ -144,6 +180,14 @@ export function skipReason(kind: string, email: string, user: { email: string; e
   if (user.email !== email) return "Email address changed";
   if (!user.emailVerifiedAt) return "Email not verified";
   if (kind !== "SERVICE" && !user.productUpdates) return "Unsubscribed";
+  return null;
+}
+
+/** The same for a mailing-list subscriber. Unsubscribing deletes them, so a missing row means they left. */
+export function subscriberSkipReason(list: MailingList, email: string, s: { email: string; confirmedAt: Date | null; lists: string[] } | null) {
+  if (!s || !s.lists.includes(list)) return "Unsubscribed";
+  if (s.email !== email) return "Email address changed";
+  if (!s.confirmedAt) return "Not confirmed";
   return null;
 }
 
@@ -169,18 +213,23 @@ export async function deliverBroadcasts({ now = new Date(), limit = BATCH_SIZE, 
   const gap = process.env.NODE_ENV === "production" ? SEND_GAP_MS : 0;
   const stopAt = Date.now() + deadlineMs;
   let sent = 0, failed = 0, skipped = 0, budget = limit;
-  const sending = await db.broadcast.findMany({ where: { status: "SENDING" }, orderBy: { startedAt: "asc" }, select: { id: true, kind: true, subject: true, body: true } });
+  const sending = await db.broadcast.findMany({ where: { status: "SENDING" }, orderBy: { startedAt: "asc" }, select: { id: true, audience: true, kind: true, subject: true, body: true } });
   for (const b of sending) {
+    const list = listOf(b);
     if (budget > 0 && Date.now() < stopAt) {
       const batch = await db.broadcastDelivery.findMany({
         where: { broadcastId: b.id, status: "PENDING" }, orderBy: { id: "asc" }, take: budget,
-        select: { id: true, email: true, token: true, user: { select: { name: true, email: true, emailVerifiedAt: true, productUpdates: true } } },
+        select: {
+          id: true, email: true, token: true,
+          user: { select: { name: true, email: true, emailVerifiedAt: true, productUpdates: true } },
+          subscriber: { select: { email: true, confirmedAt: true, lists: true } },
+        },
       });
       for (const d of batch) {
         if (budget <= 0 || Date.now() >= stopAt) break;
         const claimed = await db.broadcastDelivery.updateMany({ where: { id: d.id, status: "PENDING", broadcast: { status: "SENDING" } }, data: { status: "SENDING" } });
         if (!claimed.count) continue;
-        const reason = skipReason(b.kind, d.email, d.user);
+        const reason = list ? subscriberSkipReason(list, d.email, d.subscriber) : skipReason(b.kind, d.email, d.user);
         if (reason) {
           await db.broadcastDelivery.update({ where: { id: d.id }, data: { status: "SKIPPED", error: reason } });
           skipped++;
@@ -188,7 +237,8 @@ export async function deliverBroadcasts({ now = new Date(), limit = BATCH_SIZE, 
         }
         budget--;
         try {
-          await sendMail({ to: d.email, ...broadcastEmail(b, firstName(d.user!.name), d.token) });
+          // Subscribers gave no name, so "Hi,"
+          await sendMail({ to: d.email, ...broadcastEmail(b, list ? "" : firstName(d.user!.name), d.token) });
           await db.broadcastDelivery.update({ where: { id: d.id }, data: { status: "SENT", sentAt: new Date() } });
           sent++;
         } catch (e) {
@@ -225,13 +275,19 @@ export async function deliveryCounts(ids: string[]) {
 }
 
 /**
- * The unsubscribe link: turns product updates off for that delivery's parent. The token can do nothing else, and
- * keeps working (it's idempotent) until its broadcast is deleted.
+ * The unsubscribe link: turns product updates off for that delivery's parent, or deletes that delivery's mailing-list
+ * subscriber ("list"). The token can do nothing else, and keeps working (it's idempotent) until its broadcast is
+ * deleted: a second press on a list email finds the subscriber already gone and says so the same way.
  */
-export async function unsubscribeByToken(token: string): Promise<"done" | "invalid"> {
+export async function unsubscribeByToken(token: string): Promise<"done" | "list" | "invalid"> {
   if (!token || token.length > 100) return "invalid";
-  const d = await db.broadcastDelivery.findUnique({ where: { token }, select: { userId: true, broadcast: { select: { kind: true } } } });
-  if (!d?.userId || d.broadcast.kind === "SERVICE") return "invalid";
+  const d = await db.broadcastDelivery.findUnique({ where: { token }, select: { userId: true, subscriberId: true, broadcast: { select: { kind: true, audience: true } } } });
+  if (!d) return "invalid";
+  if (isMailingList(d.broadcast.audience)) {
+    if (d.subscriberId) await deleteSubscriber(d.subscriberId);
+    return "list";
+  }
+  if (!d.userId || d.broadcast.kind === "SERVICE") return "invalid";
   await db.user.updateMany({ where: { id: d.userId }, data: { productUpdates: false } });
   return "done";
 }

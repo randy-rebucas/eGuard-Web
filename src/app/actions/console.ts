@@ -13,7 +13,7 @@ import { db } from "@/lib/db";
 import { ServiceError } from "@/lib/errors";
 import { isTicketStatus } from "@/lib/console-queries";
 import {
-  BroadcastSchema, KIND_LABEL, PLACEHOLDER_RE, cancelBroadcast as cancel, countAudience, deliverBroadcasts, parseConsoleTime, sendTestBroadcast,
+  AUDIENCE_LABEL, BroadcastSchema, KIND_LABEL, audienceNoun, type BroadcastAudience, PLACEHOLDER_RE, cancelBroadcast as cancel, countAudience, deliverBroadcasts, parseConsoleTime, sendTestBroadcast,
   type BroadcastKind,
 } from "@/lib/broadcasts";
 import type { FormState } from "./auth";
@@ -73,19 +73,21 @@ export async function setTicketStatus(form: FormData) {
 /* Email broadcasts (docs/console.md §8). Only a draft can be edited, sent or deleted. */
 
 const broadcastFields = (form: FormData) => ({
+  audience: String(form.get("audience") ?? "PARENTS"),
   kind: String(form.get("kind") ?? ""), subject: String(form.get("subject") ?? ""), body: String(form.get("body") ?? ""),
   plans: form.getAll("plans").map(String),
 });
 
-const audienceDetail = (b: { kind: string; plans: string[] }, n: number) =>
-  `${KIND_LABEL[b.kind as BroadcastKind] ?? b.kind}, ${b.plans.length ? b.plans.join(", ") : "every plan"}, ${n} ${n === 1 ? "parent" : "parents"}`;
+const audienceDetail = (b: { audience?: string; kind: string; plans: string[] }, n: number) => !b.audience || b.audience === "PARENTS"
+  ? `${KIND_LABEL[b.kind as BroadcastKind] ?? b.kind}, ${b.plans.length ? b.plans.join(", ") : "every plan"}, ${n} ${audienceNoun("PARENTS", n)}`
+  : `${AUDIENCE_LABEL[b.audience as BroadcastAudience] ?? b.audience}, ${n} ${audienceNoun(b.audience, n)}`;
 
 /** New (no id: then on to its page) or an edit of a draft. */
 export async function saveBroadcast(_: FormState, form: FormData): Promise<FormState> {
   await consoleRequest();
   const staff = await requireStaff();
   const fields = broadcastFields(form);
-  const echo = { kind: fields.kind, subject: fields.subject, body: fields.body, plans: fields.plans.join("\n") };
+  const echo = { audience: fields.audience, kind: fields.kind, subject: fields.subject, body: fields.body, plans: fields.plans.join("\n") };
   const parsed = BroadcastSchema.safeParse(fields);
   if (!parsed.success) return { error: parsed.error.issues[0].message, fields: echo };
   const id = String(form.get("id") ?? "");
@@ -102,7 +104,7 @@ export async function saveBroadcast(_: FormState, form: FormData): Promise<FormS
 }
 
 async function draft(id: string) {
-  const b = await db.broadcast.findUnique({ where: { id }, select: { id: true, status: true, kind: true, subject: true, body: true, plans: true } });
+  const b = await db.broadcast.findUnique({ where: { id }, select: { id: true, status: true, audience: true, kind: true, subject: true, body: true, plans: true } });
   if (!b) throw new ServiceError(404, "Email not found.", "not_found");
   return b;
 }

@@ -12,5 +12,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Too many requests." }, { status: 429 });
   }
   const result = await unsubscribeByToken(new URL(req.url).searchParams.get("t") ?? "");
-  return result === "done" ? NextResponse.json({ ok: true }) : NextResponse.json({ error: "This link doesn't work." }, { status: 404 });
+  // "list": a mailing-list subscriber, now deleted (or already gone, from an earlier press)
+  return result === "invalid" ? NextResponse.json({ error: "This link doesn't work." }, { status: 404 }) : NextResponse.json({ ok: true });
 }

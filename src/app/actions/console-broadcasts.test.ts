@@ -85,7 +85,19 @@ describe("saveBroadcast", () => {
     db.broadcast.updateMany.mockResolvedValue({ count: 0 });
     const r = await saveBroadcast(undefined, form({ id: "b1", kind: "UPDATE", subject: "Hi", body: "Body", plans: ["Free", "Family Pro"] }));
     expect(r).toMatchObject({ error: expect.stringContaining("Only a draft"), fields: { plans: "Free\nFamily Pro" } });
-    expect(db.broadcast.updateMany).toHaveBeenCalledWith({ where: { id: "b1", status: "DRAFT" }, data: { kind: "UPDATE", subject: "Hi", body: "Body", plans: ["Free", "Family Pro"] } });
+    expect(db.broadcast.updateMany).toHaveBeenCalledWith({ where: { id: "b1", status: "DRAFT" }, data: { audience: "PARENTS", kind: "UPDATE", subject: "Hi", body: "Body", plans: ["Free", "Family Pro"] } });
+  });
+
+  it("saves a mailing-list email as a product update with no plans", async () => {
+    db.broadcast.updateMany.mockResolvedValue({ count: 1 });
+    expect(await saveBroadcast(undefined, form({ id: "b1", audience: "IOS_LAUNCH", kind: "UPDATE", subject: "Out now", body: "Body", plans: ["Free"] }))).toEqual({ ok: "Saved." });
+    expect(db.broadcast.updateMany).toHaveBeenCalledWith({ where: { id: "b1", status: "DRAFT" }, data: { audience: "IOS_LAUNCH", kind: "UPDATE", subject: "Out now", body: "Body", plans: [] } });
+  });
+
+  it("refuses a service notice to a mailing list, and an unknown audience", async () => {
+    expect(await saveBroadcast(undefined, form({ audience: "NEWSLETTER", kind: "SERVICE", subject: "Hi", body: "Body" }))).toMatchObject({ error: "A mailing list only gets product updates." });
+    expect(await saveBroadcast(undefined, form({ audience: "EVERYONE", kind: "UPDATE", subject: "Hi", body: "Body" }))).toHaveProperty("error");
+    expect(db.broadcast.create).not.toHaveBeenCalled();
   });
 
   it("refuses an unknown plan", async () => {

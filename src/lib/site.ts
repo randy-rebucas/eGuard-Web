@@ -12,7 +12,7 @@ export const SITE_TAGLINE = "Protections you set once, verified on every device"
  * Pages with their own `opengraph-image` file pass `ownImage`; the rest point at the site-wide one explicitly,
  * because setting `openGraph` drops the image inherited from the root.
  */
-export function pageMetadata({ title, description, path, absoluteTitle, type = "website", publishedTime, share, ownImage }: {
+export function pageMetadata({ title, description, path, absoluteTitle, type = "website", publishedTime, share, ownImage, locale = "en_PH", languages }: {
   title: string;
   description: string;
   /** Different wording for link previews than for search results */
@@ -23,6 +23,10 @@ export function pageMetadata({ title, description, path, absoluteTitle, type = "
   type?: "website" | "article";
   publishedTime?: string;
   ownImage?: boolean;
+  /** Open Graph locale: "fil_PH" for a page in Filipino */
+  locale?: string;
+  /** The same page in each language, for hreflang: { "en-PH": "/for-kids", "fil-PH": "/fil/for-kids" }. Both versions pass the same map. */
+  languages?: Record<string, string>;
 }): Metadata {
   const shareTitle = share?.title ?? (absoluteTitle ? title : `${title} · ${SITE_NAME}`);
   const shareDescription = share?.description ?? description;
@@ -30,9 +34,9 @@ export function pageMetadata({ title, description, path, absoluteTitle, type = "
   return {
     title: absoluteTitle ? { absolute: title } : title,
     description,
-    alternates: { canonical: path },
+    alternates: { canonical: path, ...(languages ? { languages: { ...languages, "x-default": languages["en-PH"] ?? path } } : {}) },
     openGraph: {
-      type, siteName: SITE_NAME, locale: "en_PH", url: path, title: shareTitle, description: shareDescription,
+      type, siteName: SITE_NAME, locale, url: path, title: shareTitle, description: shareDescription,
       ...(type === "article" && publishedTime ? { publishedTime } : {}),
       ...images,
     },

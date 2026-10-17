@@ -24,12 +24,22 @@ export function UnsubscribeForm({ token }: { token: string }) {
       </div>
     );
   }
+  if (result === "list") {
+    return (
+      <div className="verify-card-body">
+        <MailCheck {...ico} />
+        <h1>You&apos;re unsubscribed</h1>
+        <p>We&apos;ve deleted your email address from our mailing lists, so you won&apos;t hear from them again. If you have an eGuard account, emails about it aren&apos;t affected.</p>
+        <Link className="btn btn-primary" href="/">Go to eguard.family</Link>
+      </div>
+    );
+  }
   if (result === "invalid") {
     return (
       <div className="verify-card-body">
         <TriangleAlert {...ico} />
         <h1>This link doesn&apos;t work</h1>
-        <p>It may be incomplete. You can turn product updates off in Settings › Notifications.</p>
+        <p>It may be incomplete. Use the Unsubscribe link at the bottom of the email again. If you have an account, you can also turn product updates off in Settings › Notifications.</p>
         <Link className="btn btn-primary" href="/settings/notifications">Open Settings</Link>
       </div>
     );
@@ -38,9 +48,9 @@ export function UnsubscribeForm({ token }: { token: string }) {
   return (
     <form action={action} className="verify-card-body">
       {limited ? <Hourglass {...ico} /> : <MailX {...ico} />}
-      <h1>{limited ? "Too many tries" : "Unsubscribe from product updates?"}</h1>
+      <h1>{limited ? "Too many tries" : "Unsubscribe from eGuard news?"}</h1>
       <p role={limited ? "alert" : undefined}>
-        {limited ? "Wait a few minutes, then try the button again." : "You'll stop getting emails about new eGuard features. Alerts, your weekly summary and notices about your account aren't affected."}
+        {limited ? "Wait a few minutes, then try the button again." : "You'll stop getting emails about new eGuard features and news. If you have an account, alerts, your weekly summary and notices about your account aren't affected."}
       </p>
       <input type="hidden" name="token" value={token} />
       <button className="btn btn-primary" disabled={pending}>{pending ? "Unsubscribing…" : "Unsubscribe"}</button>

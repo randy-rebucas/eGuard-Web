@@ -4,21 +4,59 @@ import { useActionState, useRef, useState, useTransition } from "react";
 import { draftBroadcastWithAi, saveBroadcast, sendBroadcast, testBroadcast } from "@/app/actions/console";
 import { Feedback } from "@/components/feedback";
 
-type Draft = { id: string; kind: string; subject: string; body: string; plans: string[] };
+type Draft = { id: string; audience: string; kind: string; subject: string; body: string; plans: string[] };
+type AudienceOption = { id: string; label: string; hint: string };
 
-/** Write a new email, or edit a draft. No plan ticked: every plan. `ai`: who drafts with AI (Claude, OpenAI), or null. */
-export function BroadcastEditor({ draft, planNames, ai }: { draft?: Draft; planNames: string[]; ai: string | null }) {
+/**
+ * Write a new email, or edit a draft. No plan ticked: every plan. `ai`: who drafts with AI (Claude, OpenAI), or null.
+ * A mailing list (any audience but PARENTS) has no kind or plans to choose: it's always a product update to the list.
+ */
+export function BroadcastEditor({ draft, planNames, audiences, ai }: { draft?: Draft; planNames: string[]; audiences: AudienceOption[]; ai: string | null }) {
   const [state, action, pending] = useActionState(saveBroadcast, undefined);
   const formRef = useRef<HTMLFormElement>(null);
   // After a failed save, show what was typed rather than what's stored
   const f = state?.fields;
-  const v = f ? { kind: f.kind, subject: f.subject, body: f.body, plans: f.plans ? f.plans.split("\n") : [] } : draft;
+  const v = f ? { audience: f.audience, kind: f.kind, subject: f.subject, body: f.body, plans: f.plans ? f.plans.split("\n") : [] } : draft;
   const kind = v?.kind || "UPDATE";
+  const [audience, setAudience] = useState(v?.audience || "PARENTS");
+  const parents = audience === "PARENTS";
   return (
     // The key resets the fields to what was typed (or saved) each time the action returns
     <form ref={formRef} key={JSON.stringify(state ?? draft?.id ?? "new")} action={action} className="cn-form" noValidate>
       <Feedback state={state} />
       {draft ? <input type="hidden" name="id" value={draft.id} /> : null}
+      <fieldset className="cn-fieldset">
+        <legend className="cn-legend">To</legend>
+        {audiences.map((a) => (
+          <label key={a.id} className="check">
+            <input type="radio" name="audience" value={a.id} checked={audience === a.id} onChange={() => setAudience(a.id)} />
+            <span><b>{a.label}</b><br /><span className="field-hint">{a.hint}</span></span>
+          </label>
+        ))}
+      </fieldset>
+      {parents ? <ParentFields kind={kind} plans={v?.plans ?? []} planNames={planNames} /> : <input type="hidden" name="kind" value="UPDATE" />}
+      <AiWriter formRef={formRef} provider={ai} />
+      <div className="field">
+        <label htmlFor="bc-subject">Subject</label>
+        <input className="input" id="bc-subject" name="subject" maxLength={150} required defaultValue={v?.subject ?? ""} />
+      </div>
+      <div className="field">
+        <label htmlFor="bc-body">Message</label>
+        <textarea className="input cn-textarea" id="bc-body" name="body" required defaultValue={v?.body ?? ""}
+          placeholder={"What's new, in plain text.\n\nA blank line starts a new paragraph. Links like https://eguard.family/help become clickable."} />
+        <span className="field-hint">{parents ? <>&ldquo;Hi &lt;first name&gt;,&rdquo; is added above it</> : <>&ldquo;Hi,&rdquo; is added above it (subscribers give no name)</>}, and the sign-off and why they got it below.</span>
+      </div>
+      <div className="cn-actions">
+        <button className="btn btn-primary" disabled={pending}>{pending ? "Saving…" : draft ? "Save draft" : "Create draft"}</button>
+      </div>
+    </form>
+  );
+}
+
+/** Kind and plans: only for an email to parents */
+function ParentFields({ kind, plans, planNames }: { kind: string; plans: string[]; planNames: string[] }) {
+  return (
+    <>
       <fieldset className="cn-fieldset">
         <legend className="cn-legend">Kind</legend>
         <label className="check">
@@ -34,26 +72,12 @@ export function BroadcastEditor({ draft, planNames, ai }: { draft?: Draft; planN
         <legend className="cn-legend">Plans</legend>
         <div className="cn-choices">
           {planNames.map((p) => (
-            <label key={p} className="check"><input type="checkbox" name="plans" value={p} defaultChecked={v?.plans.includes(p)} /><span>{p}</span></label>
+            <label key={p} className="check"><input type="checkbox" name="plans" value={p} defaultChecked={plans.includes(p)} /><span>{p}</span></label>
           ))}
         </div>
         <span className="field-hint">None ticked: every plan.</span>
       </fieldset>
-      <AiWriter formRef={formRef} provider={ai} />
-      <div className="field">
-        <label htmlFor="bc-subject">Subject</label>
-        <input className="input" id="bc-subject" name="subject" maxLength={150} required defaultValue={v?.subject ?? ""} />
-      </div>
-      <div className="field">
-        <label htmlFor="bc-body">Message</label>
-        <textarea className="input cn-textarea" id="bc-body" name="body" required defaultValue={v?.body ?? ""}
-          placeholder={"What's new, in plain text.\n\nA blank line starts a new paragraph. Links like https://eguard.family/help become clickable."} />
-        <span className="field-hint">&ldquo;Hi &lt;first name&gt;,&rdquo; is added above it, and the sign-off and why they got it below.</span>
-      </div>
-      <div className="cn-actions">
-        <button className="btn btn-primary" disabled={pending}>{pending ? "Saving…" : draft ? "Save draft" : "Create draft"}</button>
-      </div>
-    </form>
+    </>
   );
 }
 
@@ -112,10 +136,10 @@ export function TestForm({ id }: { id: string }) {
 }
 
 /** Now or at a time (Philippine time, like every time in the console), confirmed with the audience size. */
-export function SendForm({ id, audience, minTime }: { id: string; audience: number; minTime: string }) {
+export function SendForm({ id, audience, noun, minTime }: { id: string; audience: number; noun: string; minTime: string }) {
   const [state, action, pending] = useActionState(sendBroadcast, undefined);
   const [mode, setMode] = useState<"now" | "later">("now");
-  const parents = `${audience.toLocaleString("en-US")} ${audience === 1 ? "parent" : "parents"}`;
+  const parents = `${audience.toLocaleString("en-US")} ${noun}`;
   return (
     <form action={action} className="cn-form">
       <Feedback state={state} />
