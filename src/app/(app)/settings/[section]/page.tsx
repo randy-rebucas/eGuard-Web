@@ -28,6 +28,8 @@ import { confirmReturn, paidTimeName, passMethods, webBillingAvailable } from "@
 import { status as twoFactorStatus } from "@/lib/two-factor";
 import { pushAvailable } from "@/lib/push";
 import { TwoStepSettings } from "@/components/two-step";
+import { CareSettings } from "@/components/care";
+import { carePreferences } from "@/lib/parent-care/service";
 import { BROWSER_STATE } from "@/components/browser-card";
 import { isOffline } from "@/lib/health";
 import { enabledWebProviders, isWebProvider, providerLabel } from "@/lib/oauth-web";
@@ -177,6 +179,10 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
               : `Your email isn't verified yet, so nothing is emailed until you open the link we sent to ${user.email}.`}
             {push ? "" : " Push notifications aren't sent yet; your choice is saved and applies once they are."}
           </p>
+          <hr className="divider" style={{ margin: "24px 0 8px" }} />
+          <h3 className="org-sub" id="tips">Tips and reminders</h3>
+          <CareSettings initial={await carePreferences(u)} zones={timeZones(tz)} />
+          <p className="t-meta" style={{ marginTop: 12 }}>See your activities and messages on your <Link className="inline-link" href="/plan">Safety plan</Link>.</p>
         </>
       );
     }

@@ -187,6 +187,14 @@ model User {
   orgInvitesSent OrgInvite[]
   broadcastDeliveries BroadcastDelivery[]
   knownDevices KnownDevice[]
+  carePreference   ParentCarePreference?
+  careEnrollments  ParentCareEnrollment[]
+  careJobs         ParentCareJob[]
+  careMessages     ParentCareMessage[]
+  careEvents       ParentCareEvent[]
+  careActivities   ParentCareActivity[]
+  carePlans        ParentCarePlan[]
+  careSuppressions ParentCareSuppression[]
 
   @@index([familyId])
 }
@@ -1176,4 +1184,254 @@ model Subscriber {
 
   @@index([confirmedAt])
   @@index([createdAt])
+}
+
+// ---------- Parent care (docs/features/parent-care.md) ----------
+
+/**
+ * A parent's choices for tips, reminders and check-ins from eGuard (Settings › Notifications › Tips and reminders).
+ * Separate from alert preferences: nothing here can hold back a safety alert. Push and email need explicit consent
+ * (`pushConsentAt`, `emailConsentAt`), recorded when the parent turns them on; in-app is on by default.
+ */
+model ParentCarePreference {
+  userId           String    @id
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Master switch for every optional automation
+  enabled          Boolean   @default(true)
+  /// Null: the family's time zone
+  timezone         String?
+  /// "en" or "fil" (lib/parent-care/templates SUPPORTED_LANGUAGES)
+  language         String    @default("en")
+  inApp            Boolean   @default(true)
+  push             Boolean   @default(false)
+  email            Boolean   @default(false)
+  pushConsentAt    DateTime?
+  emailConsentAt   DateTime?
+  /// Per automation
+  briefings        Boolean   @default(true)
+  followUps        Boolean   @default(true)
+  weeklyPlan       Boolean   @default(true)
+  checkIns         Boolean   @default(true)
+  monthlyReport    Boolean   @default(true)
+  /// Days of the week for briefings, 0 = Sunday
+  briefingDays     Int[]     @default([1, 3, 5])
+  /// Local minutes after midnight messages are sent at (default 7:30 PM)
+  deliveryMinute   Int       @default(1170)
+  /// Quiet hours for push and email, local minutes after midnight; equal: none
+  quietStart       Int       @default(1260)
+  quietEnd         Int       @default(420)
+  /// TREATMENT or HOLDOUT, fixed when the row is made: holdout parents get no proactive messages, for measuring
+  cohort           String    @default("TREATMENT")
+  /// The last qualifying action (lib/parent-care/events QUALIFYING_TYPES): passive opens never count
+  lastQualifyingAt DateTime  @default(now())
+  /// When the scheduler last planned this parent's time-based messages
+  plannedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([lastQualifyingAt])
+  @@index([plannedAt])
+}
+
+/**
+ * An automation's live state. Steps and rules live in code (lib/parent-care/definitions), versioned; staff pause it here.
+ */
+model ParentCareAutomation {
+  key         String   @id
+  name        String
+  description String
+  /// EVENT or SCHEDULE
+  triggerType String
+  enabled     Boolean  @default(true)
+  /// The code definition's version last synced
+  version     Int      @default(1)
+  /// Snapshot of the definition (steps, caps, channels), for the console
+  config      Json
+  templateKey String
+  updatedBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  enrollments ParentCareEnrollment[]
+  jobs        ParentCareJob[]
+}
+
+/**
+ * A parent going through a multi-step automation (a reactivation sequence).
+ */
+model ParentCareEnrollment {
+  id            String               @id @default(cuid())
+  userId        String
+  user          User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  automationKey String
+  automation    ParentCareAutomation @relation(fields: [automationKey], references: [key], onDelete: Cascade)
+  /// What it's about, e.g. the start of the inactivity period
+  subjectKey    String
+  /// ACTIVE, COMPLETED, EXITED; HOLDOUT: would have been enrolled (measured, never messaged)
+  status        String               @default("ACTIVE")
+  version       Int                  @default(1)
+  step          Int                  @default(0)
+  nextAt        DateTime?
+  startedAt     DateTime             @default(now())
+  completedAt   DateTime?
+  exitReason    String?
+  updatedAt     DateTime             @updatedAt
+
+  jobs ParentCareJob[]
+
+  @@unique([userId, automationKey, subjectKey])
+  @@index([automationKey, status])
+}
+
+/**
+ * One scheduled message step. `idempotencyKey` makes scheduling the same step twice a no-op.
+ */
+model ParentCareJob {
+  id             String                @id @default(cuid())
+  userId         String
+  user           User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  automationKey  String
+  automation     ParentCareAutomation  @relation(fields: [automationKey], references: [key], onDelete: Cascade)
+  enrollmentId   String?
+  enrollment     ParentCareEnrollment? @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  step           Int                   @default(0)
+  /// Minimal: an activity key, a plan week, a report month. Never message text or child details.
+  payload        Json                  @default("{}")
+  runAt          DateTime
+  /// PENDING → RUNNING → DONE | SKIPPED | CANCELLED; RUNNING → PENDING (retry) or DEAD (gave up)
+  status         String                @default("PENDING")
+  attempts       Int                   @default(0)
+  idempotencyKey String                @unique
+  lockedAt       DateTime?
+  /// Why it was skipped or failed: an eligibility reason or error code, never a stack trace
+  lastError      String?
+  processedAt    DateTime?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  messages ParentCareMessage[]
+
+  @@index([status, runAt])
+  @@index([userId, status])
+  @@index([automationKey, status])
+  @@index([enrollmentId])
+}
+
+/**
+ * One message sent (or attempted) on one channel. Its text isn't stored: it's rendered from `templateKey` and
+ * `contentKey` when shown. `dedupeKey` (the job's key) allows one message per job, whatever the retries.
+ */
+model ParentCareMessage {
+  id              String         @id @default(cuid())
+  userId          String
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  automationKey   String
+  jobId           String?
+  job             ParentCareJob? @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  dedupeKey       String         @unique
+  /// PUSH, EMAIL, IN_APP
+  channel         String
+  templateKey     String
+  templateVersion Int
+  language        String
+  /// The tip, activity, plan or report it carried, so the same one isn't sent again
+  contentKey      String?
+  /// What the template was given: ids only (a tip key, activity keys, a month), never text or child details
+  params          Json           @default("{}")
+  /// Where opening it goes: an app path
+  link            String
+  /// Counts toward the contact limits
+  proactive       Boolean        @default(true)
+  /// SENDING → ACCEPTED (the provider took it) | DELIVERED (in-app: shown) | FAILED; UNCERTAIN: a send was
+  /// interrupted, and isn't retried so it can't arrive twice
+  status          String         @default("SENDING")
+  providerRef     String?
+  /// An error code, never a provider's full response
+  error           String?
+  /// Click tracking and one-click opt-out in emails
+  token           String         @unique
+  sentAt          DateTime?
+  deliveredAt     DateTime?
+  openedAt        DateTime?
+  clickedAt       DateTime?
+  dismissedAt     DateTime?
+  createdAt       DateTime       @default(now())
+
+  @@index([userId, createdAt])
+  @@index([userId, channel, createdAt])
+  @@index([automationKey, createdAt])
+  @@index([status, createdAt])
+}
+
+/**
+ * Lifecycle and engagement events (lib/parent-care/events EVENT_TYPES). `eventId` is stable, so a repeat is dropped.
+ */
+model ParentCareEvent {
+  id         String   @id @default(cuid())
+  eventId    String   @unique
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  familyId   String
+  type       String
+  occurredAt DateTime
+  /// Minimal: an automation key, a channel, an activity key. Never child details or message text
+  meta       Json     @default("{}")
+  createdAt  DateTime @default(now())
+
+  @@index([userId, type, occurredAt])
+  @@index([type, occurredAt])
+  @@index([familyId, occurredAt])
+}
+
+/**
+ * A parent's progress on a safety activity from the catalog (lib/parent-care/content ACTIVITIES).
+ */
+model ParentCareActivity {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activityKey String
+  /// STARTED, COMPLETED, DISMISSED ("not for us")
+  status      String
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([userId, activityKey])
+  @@index([userId, status])
+  @@index([status, completedAt])
+}
+
+/**
+ * This week's one or two activities for a parent. `week`: the local Monday, YYYY-MM-DD.
+ */
+model ParentCarePlan {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  week         String
+  activityKeys String[]
+  createdAt    DateTime  @default(now())
+  deliveredAt  DateTime?
+  openedAt     DateTime?
+
+  @@unique([userId, week])
+}
+
+/**
+ * A contact restriction: an opt-out (no `until`), or a cooldown, temporary suppression or bounce (with `until`).
+ * `scope`: ALL, an automation key, or a channel (CHANNEL:EMAIL, CHANNEL:PUSH, CHANNEL:IN_APP).
+ */
+model ParentCareSuppression {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scope     String
+  /// OPT_OUT, COOLDOWN, BOUNCE, ADMIN
+  reason    String
+  until     DateTime?
+  createdAt DateTime  @default(now())
+
+  @@unique([userId, scope, reason])
+  @@index([scope])
 }

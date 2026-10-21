@@ -24,6 +24,16 @@ export function UnsubscribeForm({ token }: { token: string }) {
       </div>
     );
   }
+  if (result === "care") {
+    return (
+      <div className="verify-card-body">
+        <MailCheck {...ico} />
+        <h1>Tips and reminders by email are off</h1>
+        <p>You won&apos;t get eGuard&apos;s tips, weekly plans or check-ins by email any more. Safety alerts and notices about your account still come as set in Settings › Notifications, where you can also turn these emails back on.</p>
+        <Link className="btn btn-primary" href="/settings/notifications">Open Settings</Link>
+      </div>
+    );
+  }
   if (result === "list") {
     return (
       <div className="verify-card-body">
@@ -48,9 +58,10 @@ export function UnsubscribeForm({ token }: { token: string }) {
   return (
     <form action={action} className="verify-card-body">
       {limited ? <Hourglass {...ico} /> : <MailX {...ico} />}
-      <h1>{limited ? "Too many tries" : "Unsubscribe from eGuard news?"}</h1>
+      <h1>{limited ? "Too many tries" : "Unsubscribe from these emails?"}</h1>
       <p role={limited ? "alert" : undefined}>
-        {limited ? "Wait a few minutes, then try the button again." : "You'll stop getting emails about new eGuard features and news. If you have an account, alerts, your weekly summary and notices about your account aren't affected."}
+        {/* The same link serves product news and parent-care tips; which it is depends on the token */}
+        {limited ? "Wait a few minutes, then try the button again." : "You'll stop getting emails like the one you came from: eGuard news, or tips and reminders. If you have an account, alerts, your weekly summary and notices about your account aren't affected."}
       </p>
       <input type="hidden" name="token" value={token} />
       <button className="btn btn-primary" disabled={pending}>{pending ? "Unsubscribing…" : "Unsubscribe"}</button>

@@ -1697,6 +1697,26 @@ The public help endpoints are in [§P4.1](#p41-public-no-sign-in).
 - `subject`: 3–120 characters.
 - `message`: 10–5000 characters.
 
+#### Parent care (tips, plans, reminders)
+
+Optional guidance, separate from safety alerts (`/alerts`): nothing here changes which alerts arrive. Full design in
+[docs/features/parent-care.md](features/parent-care.md). Writes share one limit per parent (300 an hour, 429 `rate_limited`).
+
+| Method & path | Body | Response |
+|---|---|---|
+| `GET /me/care` | none | `{ enabled, inApp, push, email, briefings, followUps, weeklyPlan, checkIns, monthlyReport, briefingDays, deliveryTime, quietStart, quietEnd, language, timezone, effectiveTimezone, consent: { push, email }, channels: { push, email, inApp }, languages }` |
+| `PATCH /me/care` | any of the fields above except `consent`, `channels`, `languages`, `effectiveTimezone` | Same as GET. Times are `"HH:MM"` (24-hour, local); `briefingDays` 0 (Sun)–6; `language` `en` or `fil`; `timezone` an IANA zone or `null` (the family's). Unknown fields: 400 |
+| `GET /care/activities` | none | `{ week, plan, inProgress, suggested, completed, dismissed, completedTotal }`; each activity `{ key, title, why, minutes, steps, ages?, article, appLink?, repeatDays?, status, startedAt, completedAt, due }` |
+| `GET /care/activities/{key}` | none | One activity, as above |
+| `POST /care/activities/{key}` | `{ action: "start" \| "complete" \| "dismiss" \| "restore" }` | The activity. `start` schedules one reminder ~24 h later; `complete`/`dismiss` cancel it. 409 `already_completed` when starting a one-time activity that's done |
+| `GET /care/messages` | query `limit` (1–50), `before`, `channel` | `{ messages: [{ id, automation, channel, title, body, cta, link, sentAt, openedAt, clickedAt }], unread, nextBefore }` |
+| `POST /care/messages/{id}` | `{ action: "open" \| "click" \| "dismiss" }` | `{ ok, link }`. Recorded once each. 404 for another parent's message |
+| `POST /care/events` | `{ events: [{ eventId, type, occurredAt?, messageId?, month? }] }` (1–50) | `{ recorded, skipped }`. `type`: `NOTIFICATION_OPENED`, `NOTIFICATION_CLICKED` (need `messageId`), `PLAN_OPENED`, `REPORT_VIEWED`. `eventId` is the app's own (8–64 chars) so resending a queue records once |
+| `GET /care/report` | query `month` (`YYYY-MM`, default last month) | `{ month, completed, started, protectionChanges, planWeeks, activities, nextStep, joinedAfter }` |
+
+Push: parent-care pushes carry `data: { type: "care", messageId, link }` (alerts carry `type: "alert"`). On tap, open
+`link` in the app and report `NOTIFICATION_CLICKED` with `messageId`.
+
 ---
 
 ### P5. Flows

@@ -111,6 +111,10 @@ script uses the development key and warns, and those codes only work locally.
 | `/organizations/[id]` | Admins, join code, and code batches with how many codes were redeemed. |
 | `/broadcasts` | Emails to many parents: drafts, scheduled, sending and sent, with how many went out. See [section 8](#8-email-broadcasts). |
 | `/broadcasts/new`, `/broadcasts/[id]` | Write an email; preview it, send yourself a test, send it now or schedule it; stop it; see failures. |
+| `/care` | Parent care engagement: weekly active families, 7- and 30-day retention and reactivation (treatment vs holdout), activities, messages by channel. See [docs/features/parent-care.md](features/parent-care.md). |
+| `/care/automations`, `/care/automations/[key]` | The five automations: status, version, channels, counts, conversion, why jobs were skipped, template preview. Pause or resume (with confirmation; pausing cancels pending jobs). |
+| `/care/delivery` | The job queue, reliability, provider errors, duplicate guards, failed and retrying jobs; retry one, or all from the last 7 days (with confirmation). |
+| `/care/trust` | Consent and preference counts, opt-outs and suppressions, channel readiness, contact limits, template approval, staff changes (`care.*` audit entries). |
 | `/audit` | The staff audit log. |
 
 A page or action that fails shows the console's own error panel (`(signed-in)/error.tsx`), with the bar and nav

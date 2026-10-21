@@ -16,6 +16,7 @@ export const NAV = [
   { href: "/protection", label: "Protection", icon: "shield-check" },
   { href: "/reports", label: "Reports", icon: "chart-column" },
   { href: "/location", label: "Location", icon: "map-pin" },
+  { href: "/plan", label: "Safety plan", icon: "list-checks" },
   // Straight to the first section: going through the /settings redirect (next.config) costs a round trip, and a client
   // navigation that hits it while the dev server is compiling fails ("Failed to fetch RSC payload") and reloads the page
   { href: "/settings/account", section: "/settings", label: "Settings", icon: "settings" },

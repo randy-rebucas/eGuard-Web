@@ -33,3 +33,19 @@ export function BroadcastPill({ status }: { status: string }) {
 export function Empty({ children }: { children: React.ReactNode }) {
   return <p className="cn-empty">{children}</p>;
 }
+
+const CARE_TABS = [["/care", "Engagement"], ["/care/automations", "Automations"], ["/care/delivery", "Delivery"], ["/care/trust", "Trust and compliance"]] as const;
+
+/** The Parent care section's pages */
+export function CareTabs({ active }: { active: (typeof CARE_TABS)[number][0] }) {
+  return (
+    <nav className="cn-tabs" aria-label="Parent care">
+      {CARE_TABS.map(([href, label]) => <Link key={href} className="cn-tab" href={href} aria-current={href === active ? "page" : undefined}>{label}</Link>)}
+    </nav>
+  );
+}
+
+/** "42.5% (17 of 40)", or a dash with nothing to divide by */
+export function RateText({ r }: { r: { n: number; of: number; pct: number | null } }) {
+  return r.pct === null ? <span className="cn-muted">— (none yet)</span> : <span>{r.pct}% <span className="cn-muted">({r.n.toLocaleString("en-US")} of {r.of.toLocaleString("en-US")})</span></span>;
+}

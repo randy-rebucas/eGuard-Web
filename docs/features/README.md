@@ -12,6 +12,7 @@ how complete it is, known issues and suggestions.
 | Protection | `/protection` | [protection.md](protection.md) | 100% of review |
 | Location | `/location`, `/location/[childId]` | [location.md](location.md) | ~97% |
 | Notifications | `/notifications` | — | — |
+| Parent care (Safety plan, tips and reminders) | `/plan`, `/plan/[key]`, `/plan/report`, Settings › Notifications | [parent-care.md](parent-care.md) | pilot-ready, see doc |
 | Reports | `/reports` | — | — |
 | Organizations | `/organizations/[id]` | see [organizations.md](../organizations.md) | — |
 | Settings | `/settings/[section]` | — | — |

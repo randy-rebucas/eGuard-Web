@@ -8,6 +8,7 @@ import { computeHealth, isOffline, reportedLabel, statusOn, worst } from "./heal
 import { syncChildLimits } from "./engine";
 import { wakeDevices } from "./push";
 import { ServiceError, notFound } from "./errors";
+import { noteActivitySafely } from "./parent-care/hooks";
 
 /**
  * The configuration workflow, shared by the web server actions and the mobile API.
@@ -147,6 +148,7 @@ export async function requestConfigs(actor: Actor, childId: string, configs: Pro
   await db.auditLog.create({ data: { familyId: actor.familyId, actor: actor.name, action: "config.requested", detail } });
   // Guided steps wait for the parent (confirmGuided wakes those devices)
   await wakeDevices(rows.filter((r) => r.mode === "APPLY").map((r) => r.deviceId), "config");
+  await noteActivitySafely(actor, "protection_change");
   return {
     batchId: rows.length ? batchId : null,
     requested: [...new Set(rows.map((r) => r.key as ProtectionKey))],

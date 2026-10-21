@@ -13,6 +13,7 @@ vi.mock("../mail", () => ({}));
 vi.mock("../plan-access", () => ({}));
 vi.mock("../push", () => ({}));
 vi.mock("../weekly-digest", () => ({}));
+vi.mock("../parent-care/runner", () => ({}));
 
 type Fn = ReturnType<typeof vi.fn>;
 const { isChildRequest, worthEmail, closeStaleWork, OPEN_CHANGE_DAYS, groupProtectionAlerts, combineAlerts } = await import("../maintenance");

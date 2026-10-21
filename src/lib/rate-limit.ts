@@ -47,6 +47,8 @@ export const LIMITS = {
   subscribeMail: { max: 3, windowMs: 24 * 60 * 60_000 },
   /** AI drafts one staff member asks for in console › Email: each is a paid Claude API request */
   aiDraftStaff: { max: 30, windowMs: 60 * 60_000 },
+  /** parent-care writes one parent makes (preferences, activities, message taps, app-reported events) */
+  careUser: { max: 300, windowMs: 60 * 60_000 },
   /** configuration checks a parent starts: each writes a run, a row per device and an audit entry */
   checkUser: { max: 30, windowMs: 60 * 60_000 },
   /** parent invitations an admin sends or resends: each emails someone outside the family */

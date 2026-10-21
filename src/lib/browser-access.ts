@@ -8,6 +8,7 @@ import { enforce } from "./rate-limit";
 import { allowDomain, normalizeDomain } from "./browser-policy";
 import { browserLabel } from "./browser-service";
 import type { Actor } from "./config-service";
+import { noteActivitySafely } from "./parent-care/hooks";
 
 /**
  * A child asks, from the extension's block page, to open a blocked site; a parent approves (for a while or
@@ -135,5 +136,6 @@ export async function decideAccessRequest(actor: Actor, requestId: string, d: De
       actor: `${actor.name} on ${via}${d.decision === "APPROVE" ? " · applies on next browser sync" : ""}`,
     },
   });
+  await noteActivitySafely(actor, "web_request_decision");
   return db.browserAccessRequest.findUniqueOrThrow({ where: { id: req.id } });
 }

@@ -10,6 +10,7 @@ import { LIMITS, enforce } from "./rate-limit";
 import { InviteSchema, isPendingInvite, userIdForMailbox } from "./family-service";
 import type { Actor } from "./config-service";
 import type { z } from "zod";
+import { noteRegistration } from "./parent-care/hooks";
 
 /**
  * Adding another parent: the family admin invites them by email. Until they open the link, see which family it
@@ -118,6 +119,7 @@ export async function acceptInvite(token: string, password: string) {
       title: "Parent joined", body: `${r.user.name} accepted the invitation and can now help manage your family's protections.`,
     },
   });
+  await noteRegistration({ id: r.userId, familyId: r.user.familyId });
   return db.user.findUniqueOrThrow({ where: { id: r.userId } });
 }
 

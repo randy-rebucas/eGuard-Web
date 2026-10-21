@@ -17,6 +17,7 @@ import {
   type BroadcastKind,
 } from "@/lib/broadcasts";
 import type { FormState } from "./auth";
+import { automationByKey } from "@/lib/parent-care/definitions";
 
 /**
  * The staff console's actions (docs/console.md). Server actions can be posted to any page of the app, so each one
@@ -200,4 +201,41 @@ export async function draftBroadcastWithAi(input: AiDraftInput): Promise<AiDraft
     if (e instanceof z.ZodError) return { error: e.issues[0].message };
     throw e;
   }
+}
+
+/* Parent care (docs/features/parent-care.md › Admin). Pausing and bulk retries need the confirmation box. */
+
+/** Pauses or resumes an automation. Pausing cancels its pending jobs: nothing queued goes out while it's paused. */
+export async function setCareAutomation(_: FormState, form: FormData): Promise<FormState> {
+  await consoleRequest();
+  const staff = await requireStaff();
+  const key = String(form.get("key") ?? "");
+  const enable = form.get("enabled") === "true";
+  if (!automationByKey(key)) return { error: "Unknown automation." };
+  if (form.get("confirm") !== "on") return { error: enable ? "Tick the box to confirm resuming it." : "Tick the box to confirm pausing it." };
+  const { count } = await db.parentCareAutomation.updateMany({ where: { key, enabled: !enable }, data: { enabled: enable, updatedBy: staff.name } });
+  if (!count) return { ok: enable ? "It's already running." : "It's already paused." };
+  const cancelled = enable ? 0 : (await db.parentCareJob.updateMany({ where: { automationKey: key, status: "PENDING" }, data: { status: "CANCELLED", lastError: "automation_paused", processedAt: new Date() } })).count;
+  await logStaff(staff.id, enable ? "care.automation.resume" : "care.automation.pause", `care:${key}`, enable ? undefined : `${cancelled} pending jobs cancelled`);
+  refresh();
+  return { ok: enable ? "Resumed. Messages are planned again within a few hours." : `Paused. ${cancelled} pending ${cancelled === 1 ? "message was" : "messages were"} cancelled.` };
+}
+
+/**
+ * Tries failed jobs again: one (`id`), or every job given up in the last 7 days (`all`, optionally one automation's).
+ * Safe: a job whose message may already have reached the provider is never re-sent (lib/parent-care/runner), and
+ * eligibility is checked again, so an opted-out parent gets nothing.
+ */
+export async function retryCareJobs(_: FormState, form: FormData): Promise<FormState> {
+  await consoleRequest();
+  const staff = await requireStaff();
+  const id = String(form.get("id") ?? "");
+  const automation = String(form.get("automation") ?? "");
+  if (!id && form.get("confirm") !== "on") return { error: "Tick the box to confirm retrying them all." };
+  const where = id ? { id, status: "DEAD" } : { status: "DEAD", processedAt: { gte: new Date(Date.now() - 7 * 864e5) }, ...(automation ? { automationKey: automation } : {}) };
+  const { count } = await db.parentCareJob.updateMany({ where, data: { status: "PENDING", attempts: 0, runAt: new Date(), lockedAt: null, lastError: "retried_by_staff" } });
+  if (!count) return { error: id ? "That job isn't failed any more." : "No failed jobs from the last 7 days to retry." };
+  await logStaff(staff.id, id ? "care.job.retry" : "care.job.retry_all", id ? `care-job:${id}` : `care:${automation || "all"}`, `${count} jobs`);
+  refresh();
+  return { ok: `${count} ${count === 1 ? "job" : "jobs"} queued again. The next maintenance run (within 10 minutes) delivers ${count === 1 ? "it" : "them"}.` };
 }

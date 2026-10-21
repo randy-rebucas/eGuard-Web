@@ -19,6 +19,8 @@ import { CONFIRM_DAYS } from "./subscribers";
 import { STAFF_IDLE_MS } from "./console-host";
 import { WEB_IDLE_DAYS } from "./auth";
 import { KNOWN_DEVICE_DAYS } from "./sign-in-notice";
+import { runParentCare } from "./parent-care/runner";
+import { CARE_RETENTION_DAYS } from "./parent-care/retention";
 
 /**
  * Background upkeep, run every few minutes by /api/cron/maintenance. Before this existed, offline
@@ -144,6 +146,12 @@ export async function purgeExpiredData(now = new Date()) {
     // Mailing-list sign-ups nobody confirmed: their link has expired, and we keep no address we weren't allowed to
     unconfirmedSubscribers: await db.subscriber.deleteMany({ where: { confirmedAt: null, confirmSentAt: { lt: new Date(now.getTime() - CONFIRM_DAYS * 864e5) } } }).then((r) => r.count),
     rateLimits: await db.rateLimit.deleteMany({ where: { resetAt: { lt: now } } }).then((r) => r.count),
+    // Parent care (docs/features/parent-care.md › Retention): engagement history, not activity, so its own periods
+    careEvents: await db.parentCareEvent.deleteMany({ where: { occurredAt: { lt: new Date(now.getTime() - CARE_RETENTION_DAYS.events * 864e5) } } }).then((r) => r.count),
+    careMessages: await db.parentCareMessage.deleteMany({ where: { createdAt: { lt: new Date(now.getTime() - CARE_RETENTION_DAYS.messages * 864e5) } } }).then((r) => r.count),
+    careJobs: await db.parentCareJob.deleteMany({ where: { status: { in: ["DONE", "SKIPPED", "CANCELLED", "DEAD"] }, updatedAt: { lt: new Date(now.getTime() - CARE_RETENTION_DAYS.jobs * 864e5) } } }).then((r) => r.count),
+    carePlans: await db.parentCarePlan.deleteMany({ where: { createdAt: { lt: new Date(now.getTime() - CARE_RETENTION_DAYS.plans * 864e5) } } }).then((r) => r.count),
+    careSuppressions: await db.parentCareSuppression.deleteMany({ where: { until: { lt: now } } }).then((r) => r.count),
   };
   return counts;
 }
@@ -290,7 +298,9 @@ export async function runMaintenance() {
   const emails = await step("alert emails and push", notifyNewAlerts);
   const weeklyDigests = await step("weekly summaries", () => sendWeeklyDigests());
   const broadcasts = await step("broadcast emails", () => deliverBroadcasts());
+  // After alert emails, so a safety alert never waits behind tips and reminders
+  const parentCare = await step("parent care", () => runParentCare());
   const stale = await step("stale checks and changes", () => closeStaleWork());
   const purged = await step("data retention", () => purgeExpiredData());
-  return { offlineFamilies, unfinishedPairings, offlineBrowsers, purchases, passReminders, codeBatches, codeReminders, orgDigests, emails, weeklyDigests, broadcasts, stale, purged, failed };
+  return { offlineFamilies, unfinishedPairings, offlineBrowsers, purchases, passReminders, codeBatches, codeReminders, orgDigests, emails, weeklyDigests, broadcasts, parentCare, stale, purged, failed };
 }

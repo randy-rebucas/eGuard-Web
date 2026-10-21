@@ -7,6 +7,7 @@ import { audit } from "./audit";
 import { ServiceError, notFound } from "./errors";
 import type { Actor } from "./config-service";
 import { categoryDomains } from "./category-lists";
+import { noteActivitySafely } from "./parent-care/hooks";
 
 /**
  * Browser protection: what the eGuard browser extension enforces for a child. One policy per child, shared
@@ -238,6 +239,7 @@ export async function updateBrowserPolicy(actor: Actor, childId: string, input: 
       fromValue: describeBrowserPolicy(current), toValue: describeBrowserPolicy(next),
     },
   });
+  await noteActivitySafely(actor, "browser_policy");
   return next;
 }
 

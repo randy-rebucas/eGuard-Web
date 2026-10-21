@@ -874,3 +874,22 @@ code{font-family:ui-monospace,"SF Mono",Consolas,monospace; font-size:.92em; bac
 .bp-note-muted{color:var(--ink-3); font-weight:500}
 .bp-requests{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:10px}
 .bp-request{display:flex; gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap; padding:14px; border:1px solid var(--line); border-radius:var(--r); background:var(--surface)}
+
+/* Parent care: Settings › Notifications › Tips and reminders, and the Safety plan (components/care) */
+.care-group{border:0; margin:18px 0 0; padding:0; min-width:0}
+.care-group > legend{padding:0; margin-bottom:2px; font-size:15px}
+.care-group:disabled{opacity:.55}
+.care-days{display:flex; flex-wrap:wrap; align-items:center; gap:6px; padding:0 0 14px; border-bottom:1px solid var(--line)}
+.care-day{min-width:44px; height:36px; padding:0 10px; border-radius:18px; border:1px solid var(--line-strong); background:var(--surface); color:var(--ink-2); font-weight:600; font-size:13px}
+.care-day[aria-pressed="true"]{background:var(--accent-btn); border-color:var(--accent-btn); color:#fff}
+.care-messages{list-style:none; margin:0; padding:0; display:flex; flex-direction:column}
+.care-message{display:flex; align-items:flex-start; gap:12px; padding:14px 0; border-bottom:1px solid var(--line)}
+.care-message:last-child{border-bottom:0}
+.care-message.unread .t-title::before{content:""; display:inline-block; width:8px; height:8px; margin-right:8px; border-radius:50%; background:var(--accent); vertical-align:middle}
+.care-plan{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px}
+.care-activity{display:flex; flex-direction:column; gap:10px; padding:18px; border:1px solid var(--line); border-radius:var(--r); background:var(--surface); min-width:0}
+.care-activity .guide-steps{margin:2px 0}
+.care-list{list-style:none; margin:0; padding:0}
+.care-list li{display:flex; align-items:center; gap:12px; padding:12px 0; border-bottom:1px solid var(--line); flex-wrap:wrap}
+.care-list li:last-child{border-bottom:0}
+@media (max-width:767px){ .care-plan{grid-template-columns:minmax(0,1fr)} }

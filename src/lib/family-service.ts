@@ -21,6 +21,7 @@ import { LIMITS, enforce } from "./rate-limit";
 import { sendSecurityNotice } from "./security-notice";
 import { wakeChildDevices, wakeDevices } from "./push";
 import { ensurePrimary, makePrimary, promoteOldest, usedDeviceSlots, withDeviceLock } from "./device-slots";
+import { noteActivitySafely, noteRegistration } from "./parent-care/hooks";
 
 /** Family, children, apps and devices: shared by the web server actions and the mobile API. */
 
@@ -120,6 +121,7 @@ export async function createChild(actor: Actor, input: { name: string; birthYear
     });
   });
   await audit(actor.familyId, actor.name, "child.created", child.name);
+  await noteActivitySafely(actor, "child_added");
   return child;
 }
 
@@ -141,6 +143,7 @@ export async function updateChild(actor: Actor, childId: string, input: { name?:
   if (data.name !== current.name || data.birthYear !== current.birthYear) {
     await audit(actor.familyId, actor.name, "child.updated", data.name === current.name ? current.name : `${current.name} → ${data.name}`);
   }
+  await noteActivitySafely(actor, "child_updated");
   return { before: current, after: data };
 }
 
@@ -208,6 +211,7 @@ export async function setAppApproval(actor: Actor, appId: string, approval: AppA
     db.alert.updateMany({ where: { familyId: actor.familyId, resolveKey: `APPREQ:${app.childId}:${app.name}`, resolvedAt: null }, data: { resolvedAt: new Date() } });
   if (app.approval === approval) {
     await resolveRequest();
+    await noteActivitySafely(actor, "app_decision");
     return app;
   }
   const updated = await db.childApp.update({ where: { id: appId }, data: { approval } });
@@ -219,6 +223,7 @@ export async function setAppApproval(actor: Actor, appId: string, approval: AppA
   });
   await resolveRequest();
   await wakeChildDevices([app.childId], "apps");
+  await noteActivitySafely(actor, "app_decision");
   return updated;
 }
 
@@ -238,6 +243,7 @@ export async function setAppLimit(actor: Actor, appId: string, minutes: number |
     },
   });
   await wakeChildDevices([app.childId], "apps");
+  await noteActivitySafely(actor, "screen_rule");
   return updated;
 }
 
@@ -259,6 +265,7 @@ export async function setAppCategory(actor: Actor, appId: string, category: AppC
     });
     await wakeChildDevices([app.childId], "apps");
   }
+  await noteActivitySafely(actor, "screen_rule");
   return updated;
 }
 
@@ -308,6 +315,7 @@ export async function setCategoryLimit(actor: Actor, childId: string, category: 
     },
   });
   await wakeChildDevices([childId], "apps");
+  await noteActivitySafely(actor, "screen_rule");
   return { category, dailyLimitMinutes: m };
 }
 
@@ -371,6 +379,7 @@ export async function grantExtraTime(actor: Actor, childId: string, minutes: num
     await audit(actor.familyId, actor.name, "child.extra_time", `${child.name}: ${fmtMinutes(added)}`);
     await wakeChildDevices([child.id], "extra_time");
   }
+  await noteActivitySafely(actor, "extra_time");
   return { extraTimeUntil: until, addedMinutes: added };
 }
 
@@ -389,6 +398,7 @@ export async function endExtraTime(actor: Actor, childId: string, via: string) {
     await audit(actor.familyId, actor.name, "child.extra_time_ended", child.name);
     await wakeChildDevices([child.id], "extra_time");
   }
+  await noteActivitySafely(actor, "extra_time");
   return { extraTimeUntil: null };
 }
 
@@ -435,6 +445,7 @@ export async function createPairingCode(actor: Actor, childId: string, opts: Pai
     }),
   ]);
   // expiresInSeconds: screens count down from this, not from expiresAt, so a device clock that's off doesn't matter
+  await noteActivitySafely(actor, "device_pairing");
   return { code, expiresAt, expiresInSeconds: PAIRING_CODE_TTL_S, childName: child.name, kind: opts.kind };
 }
 
@@ -736,5 +747,6 @@ export async function createFamily(input: { name: string; familyName: string; em
     include: { users: true },
   }).catch((e) => { throw isUniqueViolation(e) ? taken() : e; });
   await audit(family.id, input.name, "account.created", "Confirmed parent or legal guardian, 18 or older");
+  await noteRegistration(family.users[0]);
   return family.users[0];
 }

@@ -7,6 +7,7 @@ import { appUrl } from "./email-verification";
 import { escapeHtml, sendMail } from "./mail";
 import { PLANS } from "./plans";
 import { LISTS, LIST_COPY, deleteSubscriber, isMailingList, listWhere, type MailingList } from "./subscribers";
+import { optOutByToken } from "./parent-care/optout";
 
 /**
  * Emails the eGuard team sends to many parents at once (console › Email, docs/console.md §8). Staff write one,
@@ -279,10 +280,11 @@ export async function deliveryCounts(ids: string[]) {
  * subscriber ("list"). The token can do nothing else, and keeps working (it's idempotent) until its broadcast is
  * deleted: a second press on a list email finds the subscriber already gone and says so the same way.
  */
-export async function unsubscribeByToken(token: string): Promise<"done" | "list" | "invalid"> {
+export async function unsubscribeByToken(token: string): Promise<"done" | "list" | "care" | "invalid"> {
   if (!token || token.length > 100) return "invalid";
   const d = await db.broadcastDelivery.findUnique({ where: { token }, select: { userId: true, subscriberId: true, broadcast: { select: { kind: true, audience: true } } } });
-  if (!d) return "invalid";
+  // Not a broadcast's: perhaps a parent-care email's (tips and reminders), which share this page and endpoint
+  if (!d) return (await optOutByToken(token)) ?? "invalid";
   if (isMailingList(d.broadcast.audience)) {
     if (d.subscriberId) await deleteSubscriber(d.subscriberId);
     return "list";

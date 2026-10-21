@@ -7,6 +7,7 @@ import { requireLocationSharing } from "./plan-access";
 import type { Actor } from "./config-service";
 import { placeFor } from "./location";
 import { DEFAULT_RADIUS_M, MAX_PLACES, PLACE_RADII } from "./place-radii";
+import { noteActivitySafely } from "./parent-care/hooks";
 
 /**
  * Saved places: spots the parents name (Home, School). Devices don't name places, so without these every visit
@@ -92,6 +93,7 @@ export async function createPlace(actor: Actor, input: z.input<typeof PlaceInput
   });
   await relabelAround(actor.familyId, p, p.radiusM);
   await audit(actor.familyId, actor.name, "place.created", `${p.name} (${p.radiusM} m, notices ${notices(p)})`);
+  await noteActivitySafely(actor, "place_saved");
   return p;
 }
 

@@ -4,7 +4,7 @@ import { CONSOLE_PUBLIC, STAFF_COOKIE, isConsoleHost } from "@/lib/console-host"
 
 /** The signed-in parent pages: requireUser() is told which one was asked for. */
 const SIGNED_IN = [
-  "/dashboard", "/children", "/devices", "/location", "/notifications", "/protection", "/reports", "/settings", "/organizations",
+  "/dashboard", "/children", "/devices", "/location", "/notifications", "/protection", "/reports", "/settings", "/organizations", "/plan",
 ];
 
 /** The staff console's pages live under this path, and are only ever reached through the console host. */
