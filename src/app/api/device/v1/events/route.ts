@@ -5,17 +5,52 @@ import { fmtMinutes } from "@/lib/protections";
 import { createAlertUnless, resolveAlerts } from "@/lib/engine";
 import { authDevice, badRequest, readJson, unauthorized } from "@/lib/device-auth";
 import { LIMITS, clearLimit, hit } from "@/lib/rate-limit";
-import { isUniqueViolation } from "@/lib/errors";
+import { ServiceError, isUniqueViolation } from "@/lib/errors";
 import { CATEGORY_BY_KEY, CATEGORY_KEYS } from "@/lib/app-categories";
 import { APPS_UPGRADE, mayNameApp } from "@/lib/plan-access";
-import { timeRequestKey } from "@/lib/family-service";
+import { deleteDevice, timeRequestKey } from "@/lib/family-service";
+import { AppIds, canonicalNames, rememberIds } from "@/lib/app-identity";
+import { removalCode, REMOVAL_CODE_WINDOW_MS } from "@/lib/device-removal";
 
 /** Trimmed, so " YouTube" and "YouTube" are one app, and a blank name is refused */
 const appName = z.string().trim().min(1, "app is required").max(80);
 
+/** Desktop agent: how it found the app (docs/desktop-agent-spec.md, "Scanning installed apps") */
+const AppSourceSchema = z.enum(["CATALOG", "LAUNCHER", "UNKNOWN_PUBLISHER"]);
+const FoundApp = z.object({ app: appName, ids: AppIds, source: AppSourceSchema.optional(), category: z.enum(CATEGORY_KEYS).optional() });
+
+/** What the desktop agent saw someone try (docs/desktop-agent-spec.md, "Can't be uninstalled") */
+const TAMPER_KINDS = {
+  UNINSTALL_BLOCKED: "Someone tried to uninstall eGuard",
+  SERVICE_STOP_DENIED: "Someone tried to stop eGuard",
+  AGENT_RESTARTED: "eGuard was closed and started again",
+  FILES_CHANGED: "eGuard's files were changed",
+  ADMIN_ACCOUNT: "Your child's account is an administrator",
+  CLOCK_CHANGED: "The computer's clock was changed",
+  SAFE_MODE: "The computer was started in Safe Mode",
+  REMOVAL_CODE_GUESSED: "Someone is guessing eGuard's removal code",
+  NEW_ACCOUNT: "A new account was added to the computer",
+} as const;
+const TAMPER_BODY: Record<keyof typeof TAMPER_KINDS, string> = {
+  UNINSTALL_BLOCKED: "Someone tried to uninstall eGuard from {d}. eGuard refused and is still running. Only you can remove it, from the device page.",
+  SERVICE_STOP_DENIED: "Someone tried to stop eGuard on {d}. eGuard refused and is still running.",
+  AGENT_RESTARTED: "eGuard's window on {d} was closed, and eGuard started it again. Limits and app rules kept applying.",
+  FILES_CHANGED: "eGuard's files on {d} were changed or deleted. eGuard put them back. If it happens again, check who has an administrator account on the computer.",
+  ADMIN_ACCOUNT: "Your child signs in to {d} with an administrator account, so they could switch eGuard off. Change it to a standard account (see Uninstall Protection).",
+  CLOCK_CHANGED: "The clock on {d} was changed. eGuard keeps counting time by its own clock, so no time was gained.",
+  SAFE_MODE: "{d} was started in Safe Mode. eGuard runs there too and kept applying your settings.",
+  REMOVAL_CODE_GUESSED: "Wrong removal codes were typed on {d} several times. eGuard stopped taking codes for a while and is still running. Only you can remove it, from the device page.",
+  NEW_ACCOUNT: "A new Windows account was added on {d}. eGuard applies your rules only in the accounts you chose when pairing, so this one isn't limited. If it's your child's, choose it in eGuard on the computer.",
+};
+
 const Body = z.discriminatedUnion("type", [
-  // Same bounds as a reported age rating (ReportedConfigSchema)
-  z.object({ type: z.literal("APP_INSTALLED"), app: appName, ageRating: z.number().int().min(0).max(21).optional() }),
+  // Same bounds as a reported age rating (ReportedConfigSchema). `ids` and `source`: the desktop agent
+  z.object({ type: z.literal("APP_INSTALLED"), app: appName, ageRating: z.number().int().min(0).max(21).optional(), ids: AppIds, source: AppSourceSchema.optional(), category: z.enum(CATEGORY_KEYS).optional() }),
+  // Desktop agent: what its first scan (and later full scans) found that was installed before it was there
+  z.object({ type: z.literal("APPS_FOUND"), apps: z.array(FoundApp).min(1).max(200) }),
+  z.object({ type: z.literal("TAMPER"), kind: z.enum(Object.keys(TAMPER_KINDS) as [keyof typeof TAMPER_KINDS, ...(keyof typeof TAMPER_KINDS)[]]) }),
+  // Desktop agent: it uninstalled itself, after the signed uninstall command (sync) or an offline removal code
+  z.object({ type: z.literal("UNINSTALL_ACK"), code: z.string().trim().toUpperCase().length(8).optional() }),
   z.object({ type: z.literal("APP_REQUESTED"), app: appName }),
   // `category`: a category limit (sync's categoryLimits) was used up, rather than the whole day's screen time
   z.object({ type: z.literal("LIMIT_REACHED"), minutes: z.number().int().min(0).max(1440), category: z.enum(CATEGORY_KEYS).optional() }),
@@ -39,6 +74,8 @@ const ALLOWED = ["ALLOWED", "ALWAYS_ALLOWED"];
 /** Optional on every event: an id the device makes once per event (e.g. a UUID) and reuses when it retries. */
 const EventId = z.object({ eventId: z.string().trim().min(8, "eventId must be 8–64 characters").max(64, "eventId must be 8–64 characters").optional() });
 
+/** The same kind of tampering on one computer raises one alert per this window. */
+const TAMPER_ALERT_WINDOW_MS = 60 * 60_000;
 /** Repeated attempts to open the same blocked app raise one alert per this window. */
 const BLOCKED_ALERT_WINDOW_MS = 60 * 60_000;
 /** A child asking again for an app the parent blocked raises one alert per this window. */
@@ -47,6 +84,9 @@ const DECLINED_REQUEST_WINDOW_MS = 24 * 60 * 60_000;
 const LIMIT_ALERT_WINDOW_MS = 12 * 60 * 60_000;
 /** After a parent answers, asking for more time again raises a new request only once this has passed (as the device's own throttle). */
 const TIME_REQUEST_WINDOW_MS = 10 * 60_000;
+
+/** Apps on one child's list (as /usage): past it, found apps aren't added. */
+const MAX_CHILD_APPS = 1000;
 
 /** Notable things that happened on the device. Protection changes are detected from /report instead. */
 export async function POST(req: Request) {
@@ -81,25 +121,46 @@ async function handle(device: Device, e: z.infer<typeof Body>, legacyRequest: bo
   const base = { familyId: device.familyId, childId: device.childId, deviceId: device.id };
 
   if (e.type === "APP_INSTALLED") {
+    // Known by one of its ids under another name: not a new app (a computer reporting a game it already listed)
+    if ((await canonicalNames(device.childId, device.platform, [{ name: e.app, ids: e.ids }])).has(e.app)) {
+      await db.device.update({ where: { id: device.id }, data: { lastSeenAt: new Date() } });
+      return NextResponse.json({ ok: true });
+    }
     // Only a newly seen app is news; reinstalls and reports from a second device don't raise another alert.
     // Whoever creates the row raises it, so two devices reporting the same app at once raise one alert, not two.
     // With approval on, a new app waits for the parent: created PENDING with a request, never ALLOWED (Android
     // 1.0.9 and earlier send APP_INSTALLED before APP_REQUESTED, and an allowed app has nothing to ask for).
     const pending = await approvalRequired(device.childId);
-    const created = await db.childApp.create({ data: { childId: device.childId, name: e.app, ...(pending ? { approval: "PENDING" as const } : {}) } })
+    const created = await db.childApp.create({ data: { childId: device.childId, name: e.app, source: e.source, category: e.category, ...(pending ? { approval: "PENDING" as const } : {}) } })
       .then(() => true, (err) => {
         if (isUniqueViolation(err)) return false;
         throw err;
       });
+    await rememberIds(device.childId, device.platform, [{ name: e.app, ids: e.ids }]);
+    const unverified = e.source === "UNKNOWN_PUBLISHER" ? " Its publisher isn't verified." : "";
     if (created && pending) {
-      await raiseAppRequest(device, e.app, `${device.child.name} asked to install ${e.app}.`);
+      // A computer's scan found it; the child didn't ask (a phone asks when the child installs something)
+      const found = device.kind === "COMPUTER"
+        ? `${e.app} was found on ${who} and waits for you.`
+        : `${device.child.name} asked to install ${e.app}.`;
+      await raiseAppRequest(device, e.app, `${found}${unverified}`);
     } else if (created) {
       const rated = e.ageRating ? `. Rated ${e.ageRating}+` : "";
       await db.alert.create({ data: { ...base, severity: "INFO", category: "APPS", icon: "layout-grid", title: "New app installed",
         ...(await mayNameApp(device.familyId, device.childId, e.app)
-          ? { body: `${e.app} was installed${rated}.`, subject: `${e.app} · ${who}` }
+          ? { body: `${e.app} was installed${rated}.${unverified}`, subject: `${e.app} · ${who}` }
           : { body: `An app was installed${rated}. ${APPS_UPGRADE}`, subject: who }) } });
     }
+  } else if (e.type === "APPS_FOUND") {
+    await appsFound(device, e.apps);
+  } else if (e.type === "TAMPER") {
+    const title = TAMPER_KINDS[e.kind];
+    await createAlertUnless(`TAMPER:${device.id}:${e.kind}`,
+      { ...base, title, createdAt: { gt: new Date(Date.now() - TAMPER_ALERT_WINDOW_MS) } },
+      { ...base, severity: e.kind === "AGENT_RESTARTED" || e.kind === "CLOCK_CHANGED" || e.kind === "NEW_ACCOUNT" ? "ATTENTION" : "ACTION_REQUIRED", category: "DEVICES",
+        icon: "shield-alert", title, body: TAMPER_BODY[e.kind].replace("{d}", who), subject: who });
+  } else if (e.type === "UNINSTALL_ACK") {
+    return uninstalled(device, e.code);
   } else if (e.type === "APP_REQUESTED") {
     const app = await db.childApp.findUnique({ where: { childId_name: { childId: device.childId, name: e.app } } });
     // A request never overrides the parent's decision. An allowed app has nothing to ask for.
@@ -162,6 +223,66 @@ async function handle(device: Device, e: z.infer<typeof Body>, legacyRequest: bo
         body: `${device.child.name} reached the ${fmtMinutes(e.minutes)} daily limit. Apps were paused as scheduled.`, subject: who });
   }
   await db.device.update({ where: { id: device.id }, data: { lastSeenAt: new Date() } });
+  return NextResponse.json({ ok: true });
+}
+
+/**
+ * Apps the desktop agent found installed before it was there. They go on the child's list (with their ids) and the
+ * parent hears once, not once per app. With App Approval on they wait for the parent like a new app, since the parent
+ * hasn't seen any of them yet; otherwise they stay allowed until the parent blocks or limits them.
+ */
+async function appsFound(device: Device, found: z.infer<typeof FoundApp>[]) {
+  const renamed = await canonicalNames(device.childId, device.platform, found.map((a) => ({ name: a.app, ids: a.ids })));
+  const apps = found.filter((a) => !renamed.has(a.app));
+  const listed = new Set((await db.childApp.findMany({ where: { childId: device.childId, name: { in: apps.map((a) => a.app) } }, select: { name: true } })).map((l) => l.name));
+  const room = Math.max(0, MAX_CHILD_APPS - await db.childApp.count({ where: { childId: device.childId } }));
+  const fresh = [...new Map(apps.filter((a) => !listed.has(a.app)).map((a) => [a.app, a])).values()].slice(0, room);
+  const pending = fresh.length > 0 && await approvalRequired(device.childId);
+  if (fresh.length) {
+    await db.childApp.createMany({ skipDuplicates: true, data: fresh.map((a) => ({
+      childId: device.childId, name: a.app, source: a.source, category: a.category, ...(pending ? { approval: "PENDING" as const } : {}),
+    })) });
+  }
+  await rememberIds(device.childId, device.platform, apps.map((a) => ({ name: a.app, ids: a.ids })));
+  if (!fresh.length) return;
+  const games = fresh.filter((a) => a.category === "GAMES").length;
+  const unverified = fresh.filter((a) => a.source === "UNKNOWN_PUBLISHER").length;
+  const what = games ? `${games} game${games === 1 ? "" : "s"}${fresh.length > games ? ` and ${fresh.length - games} other app${fresh.length - games === 1 ? "" : "s"}` : ""}` : `${fresh.length} app${fresh.length === 1 ? "" : "s"}`;
+  const who = `${device.child.name}'s ${device.name}`;
+  await db.alert.create({ data: {
+    familyId: device.familyId, childId: device.childId, deviceId: device.id, severity: pending || unverified ? "ATTENTION" : "INFO", category: "APPS",
+    icon: "gamepad", title: "Apps found on a computer", subject: who,
+    body: `eGuard found ${what} on ${who}${unverified ? `, ${unverified} from a publisher eGuard can't verify` : ""}. ${pending
+      ? "They're blocked until you allow them in the Apps tab."
+      : "They're allowed for now. Block or limit them in the Apps tab."}`,
+  } });
+}
+
+/**
+ * The computer uninstalled eGuard. Only as a parent asked: the signed command (a removal waiting), or an offline removal
+ * code the parent typed into it, which eGuard checks here too. Anything else is refused and the device stays.
+ */
+async function uninstalled(device: Device, code?: string) {
+  if (!device.removalRequestedAt) {
+    // A real code with no removal waiting: the parent kept the computer after asking for one, and someone typed
+    // the code they'd seen anyway. The computer checks codes offline, so it may have removed eGuard already: the
+    // parent hears about it rather than the device quietly disappearing
+    const valid = !!code && !!device.removalSecret && [0, 1].some((back) => removalCode(device.removalSecret!, device.id, Date.now() - back * REMOVAL_CODE_WINDOW_MS).code === code);
+    if (valid) {
+      const who = `${device.child.name}'s ${device.name}`;
+      const base = { familyId: device.familyId, childId: device.childId, deviceId: device.id };
+      const title = "A removal code was used after you kept the computer";
+      await createAlertUnless(`REMOVALCODE:${device.id}`, { ...base, title, createdAt: { gt: new Date(Date.now() - TAMPER_ALERT_WINDOW_MS) } },
+        { ...base, severity: "ACTION_REQUIRED", category: "DEVICES", icon: "shield-alert", title, subject: who,
+          body: `Someone typed a removal code on ${who} after you chose to keep it. If eGuard stops checking in from it, pair it again.` });
+    }
+    return NextResponse.json({ error: "No removal was asked for this computer" }, { status: 409 });
+  }
+  const by = device.removalRequestedBy ?? "A parent";
+  await deleteDevice(device, by, device.removalDeletesHistory, "uninstalled").catch((err) => {
+    // Already removed (a parent finished it a moment ago): the same answer
+    if (!(err instanceof ServiceError && err.status === 404)) throw err;
+  });
   return NextResponse.json({ ok: true });
 }
 

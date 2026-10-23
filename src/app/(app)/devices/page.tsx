@@ -18,8 +18,10 @@ export default async function DevicesPage(props: PageProps<"/devices">) {
   const [family, { children, devices, deviceStates }, browsers] = await Promise.all([
     getFamily(u.familyId), getFamilyGraph(u.familyId), listBrowsers(u.familyId),
   ]);
-  // Browsers take a device slot, except one eGuard disconnected for security
-  const used = devices.length + browsers.filter((b) => !b.revokedAt).length;
+  // Browsers take a device slot, except one eGuard disconnected for security and one on a paired computer (its slot covers it)
+  const used = devices.length + browsers.filter((b) => !b.revokedAt && !b.deviceId).length;
+  // Children with a computer: their browsers can pair on a full plan (lib/browser-link)
+  const withComputer = [...new Set(devices.filter((d) => d.kind === "COMPUTER" && !d.removalRequestedAt).map((d) => d.childId))];
   const kids = children.map((c) => ({ id: c.id, name: c.name }));
   const preselect = kids.find((k) => k.id === child)?.id;
   // On the top plan there's nothing bigger to move to: only removing frees a slot
@@ -68,7 +70,7 @@ export default async function DevicesPage(props: PageProps<"/devices">) {
           </section>
           <section className="card card-pad" id="add-browser">
             <div className="card-head"><div><h2>Add a browser</h2><div className="sub">For your child&apos;s computer: the eGuard extension for Chrome, Edge or Firefox. Name the computer, then enter the code in the extension.</div></div></div>
-            <PairDevice key={preselect ?? "browser"} kids={kids} used={used} limit={family.deviceLimit} upgrade={upgrade} kind="BROWSER" initialChildId={preselect} />
+            <PairDevice key={preselect ?? "browser"} kids={kids} used={used} limit={family.deviceLimit} upgrade={upgrade} kind="BROWSER" initialChildId={preselect} withComputer={withComputer} />
           </section>
         </>
       )}

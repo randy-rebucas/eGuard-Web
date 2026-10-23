@@ -366,7 +366,7 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
           return (
             <div className="setting-row" key={a.id} style={{ flexWrap: "wrap" }}>
               <span className="ico-tile"><Icon name="app-window" /></span>
-              <div className="grow" style={{ minWidth: 160 }}><div className="t-title">{a.name}</div><div className="t-meta">{CATEGORY_BY_KEY[categoryOf(a).category].label} · {label[a.approval]}{a.approval === "BLOCKED" && requested.has(a.name) ? " · Asked again" : ""}{m != null ? ` · ${fmtMinutes(m)} today` : ""}{a.dailyLimitMinutes ? ` · limit ${fmtMinutes(a.dailyLimitMinutes)}` : ""}</div></div>
+              <div className="grow" style={{ minWidth: 160 }}><div className="t-title">{a.name}</div><div className="t-meta">{CATEGORY_BY_KEY[categoryOf(a).category].label}{a.source === "UNKNOWN_PUBLISHER" ? " · Unverified publisher" : a.source === "CATALOG" ? " · Popular game" : ""} · {label[a.approval]}{a.approval === "BLOCKED" && requested.has(a.name) ? " · Asked again" : ""}{m != null ? ` · ${fmtMinutes(m)} today` : ""}{a.dailyLimitMinutes ? ` · limit ${fmtMinutes(a.dailyLimitMinutes)}` : ""}</div></div>
               <AppControls app={{ id: a.id, name: a.name, approval: a.approval, dailyLimitMinutes: a.dailyLimitMinutes, requested: requested.has(a.name), category: a.category, guess: guessCategory(a.name) }} />
             </div>
           );

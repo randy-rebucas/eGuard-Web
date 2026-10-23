@@ -127,17 +127,20 @@ type Customer = { email: string };
 
 const planCache = new Map<string, string>();
 
-/** The PayMongo plan for this price, created on first use, so changing the price in env needs no dashboard work. */
-export async function planFor(cfg: PaymongoConfig, planName: string, amount: number, f: Fetch = fetch) {
-  const name = `${planName} monthly ${(amount / 100).toFixed(2)} PHP`;
+/**
+ * The PayMongo plan for this price and period, created on first use, so changing the price in env needs no dashboard
+ * work. Named "eGuard Plus monthly 149.00 PHP" or "eGuard Plus yearly 1490.00 PHP".
+ */
+export async function planFor(cfg: PaymongoConfig, planName: string, amount: number, f: Fetch = fetch, period: "monthly" | "yearly" = "monthly") {
+  const name = `${planName} ${period} ${(amount / 100).toFixed(2)} PHP`;
   const key = `${cfg.secretKey.slice(-8)}:${name}`;
   const hit = planCache.get(key);
   if (hit) return hit;
   const list = (await callList<Plan>(cfg, `/v1/subscriptions/plans?name=${encodeURIComponent(name)}&limit=100`, f))
-    .find((p) => p.attributes.name === name && p.attributes.amount === amount && p.attributes.interval_count === 1);
+    .find((p) => p.attributes.name === name && p.attributes.amount === amount && p.attributes.interval === period && p.attributes.interval_count === 1);
   const plan = list ?? await call<Plan>(cfg, "POST", "/v1/subscriptions/plans", {
-    name, description: `${planName}, billed every month`,
-    amount, currency: "PHP", interval: "monthly", interval_count: 1,
+    name, description: `${planName}, billed every ${period === "yearly" ? "year" : "month"}`,
+    amount, currency: "PHP", interval: period, interval_count: 1,
   }, f);
   planCache.set(key, plan.id);
   return plan.id;

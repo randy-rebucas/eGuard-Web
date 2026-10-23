@@ -14,6 +14,7 @@ import { childLocation, locationPolicy, stayed, visitSpan } from "./location";
 import type { Entitlements } from "./plans";
 import { requestedApps } from "./family-service";
 import { forClient } from "./store-neutral";
+import { removalCode } from "./device-removal";
 
 /**
  * JSON shapes for the parent mobile app. Values are raw (ISO dates, minutes) with a
@@ -52,6 +53,8 @@ export function deviceJson(d: DeviceView, graph: FamilyGraph, tz: string) {
     state: state.key, issues: state.issues,
     // Just paired, nothing reported: `issues` counts every protection, so the app says "Waiting for first check"
     firstCheck: state.firstCheck,
+    // A computer a parent removed, waiting to uninstall eGuard (lib/device-removal); null otherwise
+    removalRequestedAt: d.removalRequestedAt,
   };
 }
 
@@ -60,8 +63,13 @@ export async function deviceDetailJson(familyId: string, deviceId: string) {
   const [family, graph] = await Promise.all([getFamily(familyId), getFamilyGraph(familyId)]);
   const d = graph.devices.find((x) => x.id === deviceId);
   if (!d) throw notFound("Device");
+  const secret = d.removalRequestedAt ? (await db.device.findUnique({ where: { id: d.id }, select: { removalSecret: true } }))?.removalSecret : null;
   return {
     ...deviceJson(d, graph, family.timezone),
+    // While a computer's removal waits: the offline code to type into eGuard on it, and until when it works
+    removalCode: secret ? removalCode(secret, d.id) : null,
+    // Computers: its Windows accounts and whether the child's rules apply in each; null until the agent reports them
+    accounts: d.kind === "COMPUTER" ? (d.accounts ?? null) : null,
     protections: PROTECTIONS.map((p) => {
       const row = d.protections.find((x) => x.key === p.key);
       const cap = p.caps[d.platform];

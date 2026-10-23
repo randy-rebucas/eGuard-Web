@@ -8,6 +8,7 @@ import { withDeviceSlot } from "./device-slots";
 import { ServiceError, notFound } from "./errors";
 import { OFFLINE_AFTER_MS } from "./health";
 import { signRevocation } from "./browser-policy";
+import { computerFromLink } from "./browser-link";
 import type { Actor } from "./config-service";
 
 /**
@@ -36,7 +37,8 @@ function newGrant() {
   };
 }
 
-export type PairInput = { code: string; browser: string; browserVersion: string | null; extensionVersion: string; platform: string };
+/** `deviceLink`: from the desktop agent's managed policy, when the browser is on a paired computer (lib/browser-link) */
+export type PairInput = { code: string; browser: string; browserVersion: string | null; extensionVersion: string; platform: string; deviceLink?: string };
 
 const invalidCode = () => new ServiceError(400, "Pairing code is invalid or expired", "invalid_code");
 
@@ -59,15 +61,18 @@ export async function pairBrowser(input: PairInput) {
   let inst, family;
   try {
     family = await db.family.findUniqueOrThrow({ where: { id: code.familyId } });
-    // Same slot lock as device pairing: a phone and a browser can't both take the last slot
-    inst = await withDeviceSlot(code.familyId, family.deviceLimit, (tx) => tx.browserInstallation.create({
+    // On the child's paired computer: part of it, so no slot of its own, and named after it
+    const computer = await computerFromLink(input.deviceLink, code, input.platform);
+    const create = (tx: Pick<typeof db, "browserInstallation">) => tx.browserInstallation.create({
       data: {
-        familyId: code.familyId, childId: code.childId, deviceLabel: code.deviceLabel ?? "Computer",
+        familyId: code.familyId, childId: code.childId, deviceLabel: computer?.name ?? code.deviceLabel ?? "Computer", deviceId: computer?.id,
         browser: input.browser, browserVersion: input.browserVersion, extensionVersion: input.extensionVersion, platform: input.platform,
         ...hashes, lastSeenAt: new Date(),
       },
       include: { child: true },
-    }));
+    });
+    // Same slot lock as device pairing: a phone and a browser can't both take the last slot
+    inst = computer ? await create(db) : await withDeviceSlot(code.familyId, family.deviceLimit, create);
   } catch (e) {
     await release().catch(() => {});
     throw e;

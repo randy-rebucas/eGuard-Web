@@ -22,6 +22,8 @@ import { sendSecurityNotice } from "./security-notice";
 import { wakeChildDevices, wakeDevices } from "./push";
 import { ensurePrimary, makePrimary, promoteOldest, usedDeviceSlots, withDeviceLock } from "./device-slots";
 import { noteActivitySafely, noteRegistration } from "./parent-care/hooks";
+import { removalWaits } from "./device-removal";
+import { advancePolicyPast } from "./browser-policy";
 
 /** Family, children, apps and devices: shared by the web server actions and the mobile API. */
 
@@ -429,7 +431,10 @@ export async function createPairingCode(actor: Actor, childId: string, opts: Pai
   ]);
   if (!child) throw notFound("Child");
   await requireVerifiedEmail(actor.id);
-  if (count >= family.deviceLimit) {
+  // A full plan still lets a browser pair on the child's computer, where it takes no slot (lib/browser-link). One
+  // that turns out not to be on it is refused when it pairs
+  const onComputer = opts.kind === "BROWSER" && count >= family.deviceLimit && await db.device.count({ where: { childId, kind: "COMPUTER", removalRequestedAt: null } }) > 0;
+  if (count >= family.deviceLimit && !onComputer) {
     const up = nextPlan(family.plan);
     throw planLimit(`${family.plan} covers ${family.deviceLimit} devices. Remove a device${up ? ` or upgrade to ${up.name}` : ""} to add another.`);
   }
@@ -532,10 +537,19 @@ export async function moveDevice(actor: Actor, deviceId: string, childId: string
     await tx.alert.updateMany({ where: { familyId: actor.familyId, deviceId: d.id, resolvedAt: null }, data: { resolvedAt: now } });
     const toHasPrimary = await tx.device.count({ where: { childId: to.id, isPrimary: true } });
     await tx.device.update({ where: { id: d.id }, data: { childId: to.id, isPrimary: !toHasPrimary, checkRequestedAt: now } });
+    // A computer's browsers are part of it: they follow it, and get the new child's browser policy on their next check
+    await tx.browserInstallation.updateMany({ where: { deviceId: d.id }, data: { childId: to.id } });
     if (cur.isPrimary) await promoteOldest(tx, d.childId);
     return true;
   });
   if (!moved) throw notFound("Device");
+  // Those browsers refuse a policy older than the one they enforced (versions only move forward), and each child's
+  // versions count on their own: move the new child's past theirs, or they'd keep the old child's rules
+  const carried = await db.browserInstallation.findMany({ where: { deviceId: d.id }, select: { appliedPolicyVersion: true } });
+  if (carried.length) {
+    const from = await db.browserPolicy.findUnique({ where: { childId: d.childId }, select: { version: true } });
+    await advancePolicyPast(to.id, Math.max(from?.version ?? 0, ...carried.map((b) => b.appliedPolicyVersion ?? 0)), actor.name);
+  }
   await audit(actor.familyId, actor.name, "device.moved", `${d.name}: ${d.child.name} → ${to.name}`);
   await wakeDevices([d.id], "check");
   await db.alert.create({
@@ -553,37 +567,82 @@ export async function moveDevice(actor: Actor, deviceId: string, childId: string
  * silence tamper alerts, so it needs the parent's password and tells the family (the alert is emailed).
  * The screen time, app usage and location visits it recorded stay with the child (their deviceId becomes null)
  * unless the parent chose `deleteHistory`.
+ *
+ * A computer isn't removed yet (device-removal.ts): its agent can only be uninstalled with eGuard's word, so the removal
+ * waits for the computer to confirm. Returns `pending: true` then. `now` finishes a waiting removal without the
+ * computer (it's lost, or reset): the parent is told the agent stays until a removal code is typed into it.
  */
-export async function removeDevice(actor: Actor, deviceId: string, confirm: Confirm, opts: { deleteHistory?: boolean } = {}) {
+export async function removeDevice(actor: Actor, deviceId: string, confirm: Confirm, opts: { deleteHistory?: boolean; now?: boolean } = {}) {
   const d = await db.device.findFirst({ where: { id: deviceId, familyId: actor.familyId }, include: { child: true } });
   if (!d) throw notFound("Device");
   await confirmDestructive(actor.id, confirm);
+  const label = `${d.child.name}'s ${d.name}`;
+  if (removalWaits(d) && !opts.now) {
+    // Conditional: of two parents removing it at once, only the first starts the removal and tells the family
+    const started = await db.device.updateMany({ where: { id: d.id, removalRequestedAt: null }, data: { removalRequestedAt: new Date(), removalRequestedBy: actor.name, removalDeletesHistory: opts.deleteHistory === true } });
+    if (started.count) {
+      await audit(actor.familyId, actor.name, "device.removal_requested", label);
+      await db.alert.create({
+        data: {
+          familyId: actor.familyId, childId: d.childId, deviceId: d.id, severity: "ATTENTION", category: "DEVICES", icon: "trash",
+          title: "Removing a computer", subject: label, resolveKey: `REMOVING:${d.id}`,
+          body: `${actor.name} asked to remove ${d.name} from eGuard. eGuard uninstalls itself from the computer the next time it's online, then the device is removed. Until then it stays protected.`,
+        },
+      });
+    }
+    await wakeDevices([d.id], "remove");
+    return { ...d, pending: true as const };
+  }
+  await deleteDevice(d, actor.name, opts.deleteHistory ?? d.removalDeletesHistory, removalWaits(d) ? "forced" : "removed");
+  return { ...d, pending: false as const };
+}
+
+/** A parent changed their mind while a computer's removal waits: it stays in the family as it was. */
+export async function cancelDeviceRemoval(actor: Actor, deviceId: string) {
+  const d = await db.device.findFirst({ where: { id: deviceId, familyId: actor.familyId }, include: { child: true } });
+  if (!d) throw notFound("Device");
+  if (!d.removalRequestedAt) return d;
+  await db.device.update({ where: { id: d.id }, data: { removalRequestedAt: null, removalRequestedBy: null, removalDeletesHistory: false } });
+  await db.alert.updateMany({ where: { familyId: actor.familyId, resolveKey: `REMOVING:${d.id}`, resolvedAt: null }, data: { resolvedAt: new Date() } });
+  await audit(actor.familyId, actor.name, "device.removal_cancelled", `${d.child.name}'s ${d.name}`);
+  return d;
+}
+
+/**
+ * The device delete itself. `how`: "removed" (a phone, or a parent's removal), "uninstalled" (the computer confirmed
+ * its removal) or "forced" (a parent finished a computer's removal without it).
+ */
+export async function deleteDevice(d: { id: string; familyId: string; childId: string; name: string; isPrimary: boolean; child: { name: string } }, by: string, deleteHistory: boolean, how: "removed" | "uninstalled" | "forced") {
   const history = { where: { deviceId: d.id, childId: d.childId } };
   const results = await db.$transaction([
     // First, while the rows still carry the device's id: deleting the device sets it to null on them
-    ...(opts.deleteHistory ? [db.screenTimeDaily.deleteMany(history), db.appUsageDaily.deleteMany(history), db.locationVisit.deleteMany(history)] : []),
+    ...(deleteHistory ? [db.screenTimeDaily.deleteMany(history), db.appUsageDaily.deleteMany(history), db.locationVisit.deleteMany(history)] : []),
     // deleteMany: another parent removing it at the same moment is a 404 here, not a Prisma error
     db.device.deleteMany({ where: { id: d.id } }),
     // Alerts only hold the device's id, so its open ones (offline, protection changed) would never resolve
-    db.alert.updateMany({ where: { familyId: actor.familyId, deviceId: d.id, resolvedAt: null }, data: { resolvedAt: new Date() } }),
+    db.alert.updateMany({ where: { familyId: d.familyId, deviceId: d.id, resolvedAt: null }, data: { resolvedAt: new Date() } }),
   ]);
   const gone = results.at(-2)!; // the device delete: last comes the alerts update
   if (!gone.count) throw notFound("Device");
-  if (d.isPrimary) await ensurePrimary(actor.familyId, d.childId);
+  if (d.isPrimary) await ensurePrimary(d.familyId, d.childId);
   const label = `${d.child.name}'s ${d.name}`;
-  await audit(actor.familyId, actor.name, opts.deleteHistory ? "device.removed_with_history" : "device.removed", label);
+  await audit(d.familyId, by, deleteHistory ? "device.removed_with_history" : "device.removed", label);
+  const kept = deleteHistory
+    ? `The screen time, app usage and places it recorded were deleted.`
+    : `The screen time, app usage and places it recorded stay in ${d.child.name}'s reports and history.`;
   await db.alert.create({
     data: {
-      familyId: actor.familyId, childId: d.childId, severity: "ATTENTION", category: "DEVICES", icon: "trash",
+      familyId: d.familyId, childId: d.childId, severity: "ATTENTION", category: "DEVICES", icon: "trash",
       title: "Device removed", subject: label,
       // Other parents are told what happened to the history too, since it can't be undone
       // The child app signs out and stops applying the family's settings once its token stops working
-      body: `${actor.name} removed ${d.name} from eGuard. The eGuard app on it stops applying your settings, and eGuard no longer checks it. ${opts.deleteHistory
-        ? `The screen time, app usage and places it recorded were deleted.`
-        : `The screen time, app usage and places it recorded stay in ${d.child.name}'s reports and history.`}`,
+      body: how === "uninstalled"
+        ? `${d.name} confirmed it uninstalled eGuard, as ${by} asked, and was removed. ${kept}`
+        : how === "forced"
+          ? `${by} removed ${d.name} without waiting for it. eGuard stays on the computer and keeps its last settings until a removal code from the device page is typed into it. ${kept}`
+          : `${by} removed ${d.name} from eGuard. The eGuard app on it stops applying your settings, and eGuard no longer checks it. ${kept}`,
     },
   });
-  return d;
 }
 
 /* ---------- Account ---------- */

@@ -66,8 +66,12 @@ Defined in code in [src/lib/plans.ts](../src/lib/plans.ts). There is no plans ta
 | Plan | Price | Children | Devices | Google Play product |
 |---|---|---|---|---|
 | **Free** (base plan) | ₱0 | 1 | 2 | none; every family starts here and falls back here |
-| **eGuard Plus** | ₱149 / month | 5 | 10 | `eguard_plus` |
-| **Family Pro** | ₱249 / month | 10 | 20 | `eguard_pro` |
+| **eGuard Plus** | ₱149 / month or ₱1,490 / year | 5 | 10 | `eguard_plus` |
+| **Family Pro** | ₱249 / month or ₱2,490 / year | 10 | 20 | `eguard_pro` |
+
+A year costs ten months (added 2026-10-23, [pricing-desktop.md](pricing-desktop.md)). On Google Play each product
+needs a monthly and a yearly **base plan** in Play Console; the server reads the expiry from the purchase, so it needs
+no change for them.
 
 What each plan unlocks is its `entitlements`, checked on the server and returned to the apps
 (`GET /subscription`, `GET /family`):
@@ -95,14 +99,22 @@ paid, at the price they were bought at, but aren't sold.
 
 ### Web products (`WEB_PRODUCTS`)
 
-Monthly only.
+By the month or by the year.
 
 | `productId` | Plan | Kind |
 |---|---|---|
-| `plus_monthly` | eGuard Plus | Auto-renew |
+| `plus_monthly` | eGuard Plus | Auto-renew, every month |
 | `plus_pass_month` | eGuard Plus | Pass (one month) |
-| `pro_monthly` | Family Pro | Auto-renew |
+| `pro_monthly` | Family Pro | Auto-renew, every month |
 | `pro_pass_month` | Family Pro | Pass (one month) |
+| `plus_yearly` | eGuard Plus | Auto-renew, every year |
+| `plus_pass_year` | eGuard Plus | Pass (one year) |
+| `pro_yearly` | Family Pro | Auto-renew, every year |
+| `pro_pass_year` | Family Pro | Pass (one year) |
+
+Settings › Subscription has a Monthly / Yearly switch; the server actions take the period (`buyPass(plan, "year")`,
+`startAutoRenew(plan, "year")`). A pass of either period over a pass of the same plan starts when the current one
+ends. Yearly auto-renew uses its own PayMongo plan, `interval: "yearly"`.
 
 ### Prices
 
@@ -112,9 +124,20 @@ Prices come from env, in pesos, and are the same for auto-renew and passes:
 |---|---|
 | `PRICE_PLUS_MONTHLY` | `149` |
 | `PRICE_PRO_MONTHLY` | `249` |
+| `PRICE_PLUS_YEARLY` | `1490` |
+| `PRICE_PRO_YEARLY` | `2490` |
 
-`webPrice(plan)` returns centavos, which is what PayMongo expects. An invalid value throws, so a typo fails
+`webPrice(plan, env, interval)` returns centavos, which is what PayMongo expects. An invalid value throws, so a typo fails
 loudly instead of charging the wrong amount. The landing page's prices come from the same place.
+
+### Windows launch offer (`PROMO`)
+
+While `PC_LAUNCH_OFFER_UNTIL` (an ISO date) is in the future, a family with no paid time that pairs a computer gets one
+month of eGuard Plus, once ever (`grantComputerLaunchOffer` in [src/lib/launch-offer.ts](../src/lib/launch-offer.ts),
+called from `/device/v1/pair`). It's a `StorePurchase` with `store: "PROMO"`, product `plus_pass_month` and token
+`promo:pc-launch:<familyId>` (the unique token keeps it to one per family), so it ends like a pass: a reminder 3 days
+before, then back to Free. The family can add Plus months on top, as over a pass. The family gets an "A month of eGuard
+Plus, on us" alert. Unset, there's no offer. Set it when eGuard for Windows ships ([pricing-desktop.md](pricing-desktop.md)).
 
 **Changing a price:**
 
@@ -140,7 +163,7 @@ loudly instead of charging the wrong amount. The landing page's prices come from
 
 | Field | Meaning |
 |---|---|
-| `store` | `PAYMONGO`, `VOUCHER` (a redeemed sponsor code, see [organizations.md](organizations.md)), or `GOOGLE_PLAY` |
+| `store` | `PAYMONGO`, `VOUCHER` (a redeemed sponsor code, see [organizations.md](organizations.md)), `PROMO` (eGuard's own free month, see below), or `GOOGLE_PLAY` |
 | `productId` | One of the web products above |
 | `purchaseToken` **unique** | Checkout session id (`cs_…`) for a pass, subscription id (`subs_…`) for auto-renew, `voucher:{id}` for a sponsor code |
 | `state` | See below |

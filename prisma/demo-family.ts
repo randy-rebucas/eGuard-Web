@@ -1,8 +1,8 @@
-import type { CheckStatus, Platform, PrismaClient, ProtectionKey, Prisma, Role } from "@prisma/client";
+import type { AppCategory, AppIdentifierKind, AppSource, CheckStatus, Platform, PrismaClient, ProtectionKey, Prisma, Role } from "@prisma/client";
 import { PROTECTIONS, defaultConfig, type ProtectionConfig } from "../src/lib/protections";
 
 /**
- * The demo family (Mia, Lucas, Sophie and 5 devices) with two weeks of screen time, alerts and history.
+ * The demo family (Mia, Lucas, Sophie and 5 devices, plus a Windows PC with `computer`) with two weeks of screen time, alerts and history.
  * Used by prisma/seed.ts (local development) and scripts/seed-demo.ts (store reviewers and testers).
  * Only creates rows; callers decide what, if anything, to delete first.
  */
@@ -19,7 +19,10 @@ type Kid = {
   todayApps: [string, number][];
   week: number[]; last: number[];
   apps: [string, Prisma.ChildAppCreateWithoutChildInput["approval"]][];
-  devices: { name: string; model: string; kind: "PHONE" | "TABLET"; platform: Platform; os: string; battery: number | null; seenHoursAgo: number; loc?: [number, number, string] | "off" }[];
+  devices: { name: string; model: string; kind: "PHONE" | "TABLET" | "COMPUTER"; platform: Platform; os: string; battery: number | null; seenHoursAgo: number; loc?: [number, number, string] | "off"; accounts?: { name: string; enforced: boolean }[] }[];
+  /** Found by the computer's scan (desktop-agent-spec section 5), with the ids the agent sends. An app already on `apps` gains the ids */
+  pcApps?: { name: string; approval: Prisma.ChildAppCreateWithoutChildInput["approval"]; source: AppSource; category?: AppCategory; ids: [AppIdentifierKind, string][]; minutes: number }[];
+  gamingLimit?: number;
 };
 
 const KIDS: Kid[] = [
@@ -31,7 +34,15 @@ const KIDS: Kid[] = [
     devices: [
       { name: "Galaxy A54", model: "SM-A546E", kind: "PHONE", platform: "ANDROID", os: "Android 14", battery: 72, seenHoursAgo: 0.3, loc: [14.6507, 121.0494, "Home"] },
       { name: "Galaxy Tab S6 Lite", model: "SM-P620", kind: "TABLET", platform: "ANDROID", os: "Android 13", battery: 48, seenHoursAgo: 0.9 },
+      { name: "Gaming PC", model: "Desktop PC", kind: "COMPUTER", platform: "WINDOWS", os: "Windows 11 Home 24H2", battery: null, seenHoursAgo: 0.02,
+        accounts: [{ name: "Mia", enforced: true }, { name: "Dad", enforced: false }] },
     ],
+    pcApps: [
+      { name: "Counter-Strike 2", approval: "PENDING", source: "CATALOG", category: "GAMES", ids: [["STEAM", "730"], ["EXE", "valve corporation|cs2"]], minutes: 0 },
+      { name: "Roblox", approval: "ALLOWED", source: "CATALOG", ids: [["EXE", "roblox corporation|robloxplayerbeta"]], minutes: 35 },
+      { name: "Pixel Dungeon Run", approval: "PENDING", source: "UNKNOWN_PUBLISHER", category: "GAMES", ids: [["EXE", "|pixel dungeon run"]], minutes: 0 },
+    ],
+    gamingLimit: 120,
   },
   {
     name: "Lucas", age: 9, hue: 160, limit: 120, weekend: 180,
@@ -74,7 +85,8 @@ export type DemoParent = {
   notifyEmail?: boolean;
 };
 
-export async function createDemoFamily(db: PrismaClient, { familyName, parents }: { familyName: string; parents: DemoParent[] }) {
+/** `computer`: also Mia's Windows Gaming PC with its games (local development; store reviewers don't get it until the agent ships) */
+export async function createDemoFamily(db: PrismaClient, { familyName, parents, computer = false }: { familyName: string; parents: DemoParent[]; computer?: boolean }) {
   const today = new Date(`${dayKey(new Date())}T00:00:00.000Z`);
   const daysAgo = (n: number) => new Date(today.getTime() - n * 864e5);
   const ago = (ms: number) => new Date(Date.now() - ms);
@@ -96,7 +108,8 @@ export async function createDemoFamily(db: PrismaClient, { familyName, parents }
 
   const ids: Record<string, { child: string; devices: string[] }> = {};
 
-  for (const k of KIDS) {
+  for (const kid of KIDS) {
+    const k = computer ? kid : { ...kid, devices: kid.devices.filter((d) => d.kind !== "COMPUTER"), pcApps: undefined, gamingLimit: undefined };
     const child = await db.child.create({
       data: {
         familyId: family.id, name: k.name, birthYear: new Date().getFullYear() - k.age, hue: k.hue,
@@ -105,6 +118,7 @@ export async function createDemoFamily(db: PrismaClient, { familyName, parents }
       },
     });
     ids[k.name] = { child: child.id, devices: [] };
+    if (k.gamingLimit) await db.childCategoryLimit.create({ data: { childId: child.id, category: "GAMES", dailyLimitMinutes: k.gamingLimit } });
 
     // Policies (desired state)
     const policies: Record<string, ProtectionConfig> = {};
@@ -122,9 +136,9 @@ export async function createDemoFamily(db: PrismaClient, { familyName, parents }
       const dev = await db.device.create({
         data: {
           familyId: family.id, childId: child.id, name: d.name, model: d.model, kind: d.kind, platform: d.platform,
-          osVersion: d.os, battery: d.battery, lastSeenAt: seen, isPrimary: i === 0, appVersion: "4.2.1",
+          osVersion: d.os, battery: d.battery, lastSeenAt: seen, accounts: d.accounts, isPrimary: i === 0, appVersion: "4.2.1",
           simulated: true, simulatedOnline: seen > ago(24 * H),
-          createdAt: k.name === "Mia" && i === 1 ? ago(5 * 24 * H) : daysAgo(90),
+          createdAt: k.name === "Mia" && i === 1 ? ago(5 * 24 * H) : d.kind === "COMPUTER" ? ago(3 * H) : daysAgo(90),
         },
       });
       ids[k.name].devices.push(dev.id);
@@ -154,6 +168,20 @@ export async function createDemoFamily(db: PrismaClient, { familyName, parents }
       }
     }
 
+    // The computer paired 3 hours ago: its scan's apps, and today's play on it
+    const pc = k.devices.findIndex((d) => d.kind === "COMPUTER");
+    for (const a of k.pcApps ?? []) {
+      const app = await db.childApp.upsert({
+        where: { childId_name: { childId: child.id, name: a.name } },
+        create: { childId: child.id, name: a.name, approval: a.approval, source: a.source, category: a.category, installedAt: ago(3 * H) },
+        update: { source: a.source },
+      });
+      await db.appIdentifier.createMany({ data: a.ids.map(([kind, value]) => ({ childAppId: app.id, childId: child.id, platform: k.devices[pc].platform, kind, value })) });
+      if (a.minutes) await db.appUsageDaily.create({ data: { childId: child.id, deviceId: ids[k.name].devices[pc], date: today, app: a.name, minutes: a.minutes } });
+    }
+    const pcToday = (k.pcApps ?? []).reduce((s, a) => s + a.minutes, 0);
+    if (pc >= 0 && pcToday) await db.screenTimeDaily.create({ data: { childId: child.id, deviceId: ids[k.name].devices[pc], date: today, minutes: pcToday, hourly: spreadOverDay(pcToday) } });
+
     // Screen time: 13 previous days + today
     const todayTotal = k.todayApps.reduce((s, [, m]) => s + m, 0);
     const series = [...k.last, ...k.week, todayTotal]; // 7 + 6 + 1 = 14
@@ -178,6 +206,9 @@ export async function createDemoFamily(db: PrismaClient, { familyName, parents }
     { familyId: family.id, childId: sophie.child, deviceId: sophie.devices[0], severity: "ATTENTION", category: "PROTECTION", icon: "moon",
       title: "Bedtime not configured", body: "No bedtime schedule is set on this device. Other protections are working.",
       subject: "Sophie's iPhone 13", resolveKey: `BEDTIME:${sophie.devices[0]}`, createdAt: ago(2 * H) },
+    ...(computer ? [{ familyId: family.id, childId: mia.child, deviceId: mia.devices[2], severity: "ATTENTION", category: "APPS", icon: "gamepad",
+      title: "Apps found on a computer", subject: "Mia's Gaming PC",
+      body: "eGuard found 3 games on Mia's Gaming PC, 1 from a publisher eGuard can't verify. They're blocked until you allow them in the Apps tab.", createdAt: ago(3 * H) } satisfies Prisma.AlertCreateManyInput] : []),
     { familyId: family.id, childId: mia.child, deviceId: mia.devices[0], severity: "INFO", category: "APPS", icon: "layout-grid",
       title: "New app installed", body: "Roblox was approved and installed. Rated 13+ with parental controls on.",
       subject: "Roblox · Mia's Galaxy A54", createdAt: ago(5 * H) },

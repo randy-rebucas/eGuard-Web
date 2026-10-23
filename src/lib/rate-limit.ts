@@ -57,6 +57,8 @@ export const LIMITS = {
   orgAdminUser: { max: 10, windowMs: 60 * 60_000 },
   /** events one child device reports (each can add an app row or an alert); a real phone sends a handful an hour */
   deviceEvents: { max: 120, windowMs: 60 * 60_000 },
+  // The desktop agent asks every few hours; a looping one mustn't download the whole catalog without limit
+  deviceCatalog: { max: 30, windowMs: 60 * 60_000 },
   /** location fixes one child device sends (each is several writes with history on); a real phone sends 12–20 an hour */
   deviceLocation: { max: 240, windowMs: 60 * 60_000 },
   /** daily totals one child device sends (each can write up to 200 app rows); a real phone sends one per sync, plus a backlog after a few days offline */

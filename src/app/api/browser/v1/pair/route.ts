@@ -10,6 +10,8 @@ const Body = z.object({
   browserVersion: z.string().trim().max(40).nullable(),
   extensionVersion: z.string().trim().min(1).max(20),
   platform: z.string().trim().min(1).max(40),
+  // On a computer with the eGuard desktop agent: the link from its managed policy (lib/browser-link)
+  deviceLink: z.string().trim().max(200).optional(),
 });
 
 /** Exchange a one-time BROWSER pairing code (from the parent dashboard) for installation credentials. */

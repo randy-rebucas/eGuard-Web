@@ -190,9 +190,20 @@ describe("device actions", () => {
     expect(await actions.renameDevice("d1", undefined, form({ name: "Tab" }))).toEqual({ error: "Device not found." });
   });
   it("remove: passes the confirmation and the history choice, then goes to Devices", async () => {
+    svc.removeDevice.mockResolvedValue({ pending: false });
     await actions.removeDevice("d1", undefined, form({ password: "pw", deleteHistory: "on" }));
-    expect(svc.removeDevice).toHaveBeenCalledWith(user, "d1", { password: "pw", phrase: "" }, { deleteHistory: true });
+    expect(svc.removeDevice).toHaveBeenCalledWith(user, "d1", { password: "pw", phrase: "" }, { deleteHistory: true, now: false });
     expect(nav.redirect).toHaveBeenCalledWith("/devices");
+  });
+  it("remove: a computer waits for its uninstall, so the parent stays on its page", async () => {
+    svc.removeDevice.mockResolvedValue({ pending: true });
+    expect(await actions.removeDevice("d1", undefined, form({ password: "pw" }))).toEqual({ ok: "eGuard will uninstall itself from this computer the next time it's online." });
+    expect(nav.redirect).not.toHaveBeenCalled();
+  });
+  it("remove without waiting keeps the history choice made when the removal started", async () => {
+    svc.removeDevice.mockResolvedValue({ pending: false });
+    await actions.removeDevice("d1", undefined, form({ password: "pw", now: "1" }));
+    expect(svc.removeDevice).toHaveBeenCalledWith(user, "d1", { password: "pw", phrase: "" }, { deleteHistory: undefined, now: true });
   });
   it("remove: already removed (another parent or tab) says so instead of failing", async () => {
     svc.removeDevice.mockRejectedValue(gone("Device"));

@@ -8,7 +8,7 @@ import { FAILED } from "./flow";
 import { peso } from "@/lib/format";
 import { startAutoRenew } from "@/app/actions/billing";
 import type { FirstPayment } from "@/lib/web-billing";
-import type { PlanCard } from "./billing";
+import type { Period, PlanCard } from "./billing";
 
 /** Calls PayMongo from the browser with the public key, so card details never pass through eGuard. */
 async function paymongo(path: string, publicKey: string, attributes: unknown) {
@@ -35,7 +35,8 @@ async function payFirstInvoice(p: FirstPayment, method: "card" | "paymaya", card
   else throw new Error(a.last_payment_error?.failed_message ?? "The payment didn't go through. Check the details or use another card.");
 }
 
-export function AutoRenewCheckout({ plan, payer, onBack }: { plan: PlanCard; payer: { name: string; email: string }; onBack: () => void }) {
+export function AutoRenewCheckout({ plan, period, payer, onBack }: { plan: PlanCard; period: Period; payer: { name: string; email: string }; onBack: () => void }) {
+  const amount = period === "year" ? plan.yearly : plan.price;
   const [method, setMethod] = useState<"card" | "paymaya">("card");
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -43,7 +44,7 @@ export function AutoRenewCheckout({ plan, payer, onBack }: { plan: PlanCard; pay
   const autoRenew = (form: FormData) => start(async () => {
     setError(null);
     let r: Awaited<ReturnType<typeof startAutoRenew>>;
-    try { r = await startAutoRenew(plan.id); } catch { setError(FAILED); return; }
+    try { r = await startAutoRenew(plan.id, period); } catch { setError(FAILED); return; }
     if ("error" in r) { setError(r.error); return; }
     try {
       await payFirstInvoice(r.payment, method, Object.fromEntries([...form].map(([k, v]) => [k, String(v)])), payer);
@@ -56,7 +57,7 @@ export function AutoRenewCheckout({ plan, payer, onBack }: { plan: PlanCard; pay
   return (
     <form action={autoRenew} className="buy-option" style={{ gap: 14 }}>
       {error ? <div className="form-error" role="alert"><Icon name="triangle-alert" />{error}</div> : null}
-      <div className="t-title">Auto-renew {plan.name}: {peso(plan.price)} every month</div>
+      <div className="t-title">Auto-renew {plan.name}: {peso(amount)} every {period}</div>
       <div className="seg" role="group" aria-label="Pay with">
         <button type="button" aria-pressed={method === "card"} onClick={() => setMethod("card")}>Card</button>
         <button type="button" aria-pressed={method === "paymaya"} onClick={() => setMethod("paymaya")}>Maya</button>
@@ -71,11 +72,11 @@ export function AutoRenewCheckout({ plan, payer, onBack }: { plan: PlanCard; pay
       ) : <p className="t-meta">You&apos;ll sign in to Maya to approve this payment and future renewals.</p>}
       <div className="row t-meta" style={{ gap: 8, alignItems: "flex-start" }}>
         <Icon name="lock" size={14} style={{ flex: "none", marginTop: 3 }} />
-        <span>Your {method === "card" ? "card details go" : "payment goes"} straight to PayMongo; eGuard never sees them. You&apos;re charged {peso(plan.price)} now and every month until you turn auto-renew off.</span>
+        <span>Your {method === "card" ? "card details go" : "payment goes"} straight to PayMongo; eGuard never sees them. You&apos;re charged {peso(amount)} now and every {period} until you turn auto-renew off.</span>
       </div>
       <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
         <button type="button" className="btn btn-ghost" disabled={pending} onClick={onBack}>Back</button>
-        <button className="btn btn-primary" disabled={pending}>{pending ? <><Icon name="loader-circle" className="spin" />Processing…</> : `Pay ${peso(plan.price)} and turn on auto-renew`}</button>
+        <button className="btn btn-primary" disabled={pending}>{pending ? <><Icon name="loader-circle" className="spin" />Processing…</> : `Pay ${peso(amount)} and turn on auto-renew`}</button>
       </div>
     </form>
   );

@@ -3,6 +3,7 @@ import { PrismaClient } from "@prisma/client";
 import { hash as argon2Hash } from "@node-rs/argon2";
 import { createDemoFamily } from "./demo-family";
 import { createDemoOrganization } from "./demo-organization";
+import { seedDesktopCatalog } from "../scripts/seed-desktop-catalog";
 
 /**
  * Local development only: wipes every family and organization, then creates the demo family and the demo
@@ -15,6 +16,7 @@ async function main() {
   await db.family.deleteMany();
   const pw = await argon2Hash("ChangeMe123!", { memoryCost: 19456, timeCost: 2, parallelism: 1 });
   const family = await createDemoFamily(db, {
+    computer: true,
     familyName: "Cruz Family",
     parents: [
       // Two-step verification off: turning it on takes an authenticator secret (Settings › Privacy & security)
@@ -34,6 +36,8 @@ async function main() {
   await db.orgApiKey.create({
     data: { orgId: demo.org.id, name: "Demo script", access: "READ", prefix: apiKey.slice(0, 12), tokenHash: createHash("sha256").update(apiKey).digest("hex"), createdById: randy.id },
   });
+
+  await seedDesktopCatalog(db);
 
   console.log("Seeded. Sign in with randy@example.com / ChangeMe123!");
   console.log(`Organization "${demo.org.name}": owner school@example.com / ChangeMe123!, join code SCHL-7K2P`);

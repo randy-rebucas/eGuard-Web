@@ -228,15 +228,28 @@ export async function renameDevice(deviceId: string, _: FormState, form: FormDat
 export async function removeDevice(deviceId: string, _: FormState, form: FormData): Promise<FormState> {
   const u = await requireUser();
   if (!Id.safeParse(deviceId).success) return { error: "This device was already removed.", fields: { gone: "1" } };
+  let pending = false;
   try {
-    await family.removeDevice(u, deviceId, confirmFrom(form), { deleteHistory: form.get("deleteHistory") === "on" });
+    ({ pending } = await family.removeDevice(u, deviceId, confirmFrom(form), // Finishing a waiting removal keeps the history choice made when it started
+    { deleteHistory: form.get("now") === "1" ? undefined : form.get("deleteHistory") === "on", now: form.get("now") === "1" }));
   } catch (e) {
     // Already removed (another tab, another parent): nothing left to do here
     if (e instanceof ServiceError && e.status === 404) return { error: "This device was already removed.", fields: { gone: "1" } };
     return failed(e);
   }
   revalidatePath("/", "layout");
+  // A computer waits to confirm: its page says so and shows the removal code
+  if (pending) return { ok: "eGuard will uninstall itself from this computer the next time it's online." };
   redirect("/devices");
+}
+
+export async function cancelDeviceRemoval(deviceId: string): Promise<Result> {
+  const u = await requireUser();
+  return toResult(async () => {
+    await family.cancelDeviceRemoval(u, Id.parse(deviceId));
+    revalidatePath("/", "layout");
+    return {};
+  });
 }
 
 export async function setPrimaryDevice(deviceId: string): Promise<Result> {

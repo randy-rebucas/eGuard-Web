@@ -29,6 +29,11 @@ const KNOWN: Record<Exclude<AppCategory, "OTHER">, string[]> = {
     "subwaysurfers", "amongus", "pokemongo", "pokemonunite", "stumbleguys", "8ballpool", "templerun2", "geometrydash", "fallguys",
     "valorant", "leagueoflegends", "wildrift", "leagueoflegendswildrift", "codm", "asphalt9", "hayday", "plantsvszombies", "angrybirds2",
     "steam", "epicgames", "xbox", "playstation", "playgames", "googleplaygames", "gamecenter",
+    // Computer games and launchers (the desktop agent also sends a category for the ones it recognizes)
+    "counterstrike2", "counterstrike", "cs2", "dota2", "apexlegends", "overwatch2", "rocketleague", "grandtheftautov", "gtav", "rust",
+    "marvelrivals", "deltaforce", "pubgbattlegrounds", "palworld", "helldivers2", "lethalcompany", "baldursgate3", "eldenring", "terraria",
+    "teamfortress2", "rainbowsixsiege", "deadbydaylight", "warframe", "worldofwarcraft", "hearthstone", "thesims4", "osu", "honkaistarrail",
+    "epicgameslauncher", "riotclient", "battlenet", "eaapp", "ubisoftconnect", "goggalaxy", "itch",
   ],
   SOCIAL: ["tiktok", "instagram", "facebook", "snapchat", "x", "twitter", "threads", "pinterest", "reddit", "tumblr", "bereal", "lemon8", "likee", "kwai", "facebooklite"],
   VIDEO: ["youtube", "youtubekids", "netflix", "disney", "disneyplus", "primevideo", "hbomax", "max", "viu", "iqiyi", "wetv", "twitch", "vimeo", "bilibili", "appletv", "crunchyroll"],

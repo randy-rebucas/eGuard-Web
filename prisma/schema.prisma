@@ -17,11 +17,15 @@ enum Role {
 enum Platform {
   ANDROID
   IOS
+  /// The eGuard desktop agent (eguard-desktop) on a Windows PC or a Mac
+  WINDOWS
+  MACOS
 }
 
 enum DeviceKind {
   PHONE
   TABLET
+  COMPUTER
 }
 
 /// Protection keys double as the 10 Configuration Health checks.
@@ -628,6 +632,20 @@ model Device {
   /// Dev-only: device is driven by the built-in simulator
   simulated   Boolean    @default(false)
   simulatedOnline Boolean @default(true)
+  /// Computers only: the secret behind the parent's offline removal codes (lib/device-removal). Sent to the agent once,
+  /// at pairing, and shown to nobody.
+  removalSecret         String?
+  /// Computers only: a parent removed it. The agent can't be uninstalled on the PC itself, so the device stays until
+  /// the agent picks up eGuard's signed uninstall command on sync and confirms (UNINSTALL_ACK), or a parent finishes
+  /// the removal without waiting.
+  removalRequestedAt    DateTime?
+  removalRequestedBy    String?
+  /// Whether to delete what it recorded once the removal finishes (the parent's choice when removing)
+  removalDeletesHistory Boolean    @default(false)
+  /// Computers only: the Windows accounts on it and whether eGuard applies the child's rules in each, as the agent last
+  /// reported (`/report` `accounts`: [{ name, enforced }]). The parent picks them when pairing; the rest (a parent's
+  /// own account on a family PC) aren't limited or counted. Null until the agent reports them.
+  accounts              Json?
   createdAt   DateTime   @default(now())
 
   protections DeviceProtection[]
@@ -637,6 +655,8 @@ model Device {
   appUsage    AppUsageDaily[]
   checkResults CheckRunResult[]
   visits      LocationVisit[]
+  /// Computers: the browsers on it, connected through its agent (lib/browser-link). They don't take a device slot.
+  browsers    BrowserInstallation[]
 
   @@index([familyId])
   @@index([childId])
@@ -742,6 +762,10 @@ model BrowserInstallation {
   child                Child     @relation(fields: [childId], references: [id], onDelete: Cascade)
   /// Entered by the parent with the pairing code; nothing is read from the machine
   deviceLabel          String
+  /// The paired computer this browser is on, proven by the agent's browser link (lib/browser-link). Such a browser is
+  /// part of that computer: it takes no device slot, moves with it and is removed with it. Null for any other browser.
+  deviceId             String?
+  device               Device?   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
   browser              String
   browserVersion       String?
   extensionVersion     String
@@ -767,6 +791,7 @@ model BrowserInstallation {
 
   @@index([familyId])
   @@index([childId])
+  @@index([deviceId])
 }
 
 /// One health report from the extension: its self-checks and the policy version it enforces.
@@ -909,8 +934,81 @@ model ChildApp {
   /// The parent's choice; null means eGuard's guess from the name (lib/app-categories.categoryOf)
   category   AppCategory?
   installedAt DateTime   @default(now())
+  /// How the agent found it on a computer: CATALOG (a known game), LAUNCHER (Steam, Epic…) or UNKNOWN_PUBLISHER.
+  /// Null for phone apps.
+  source            AppSource?
+  identifiers       AppIdentifier[]
 
   @@unique([childId, name])
+}
+
+enum AppSource {
+  CATALOG
+  LAUNCHER
+  UNKNOWN_PUBLISHER
+}
+
+/// A stable id for an app on one platform ("steam:730", "exe:<signer>|<product>"), so the same app reported under
+/// two names ("Counter-Strike 2" from Steam's manifest, "cs2.exe" from a process) is one row on the child's list.
+model AppIdentifier {
+  id         String            @id @default(cuid())
+  childAppId String
+  childApp   ChildApp          @relation(fields: [childAppId], references: [id], onDelete: Cascade)
+  /// Copied from the app, so an id is unique per child
+  childId    String
+  platform   Platform
+  kind       AppIdentifierKind
+  value      String
+
+  @@unique([childId, platform, kind, value])
+  @@index([childAppId])
+}
+
+enum AppIdentifierKind {
+  STEAM
+  EPIC
+  RIOT
+  BATTLENET
+  EA
+  UBISOFT
+  GOG
+  MSSTORE
+  EXE
+  PACKAGE
+  BUNDLE
+}
+
+/// What the desktop agent knows before it scans: games worth reporting (trending or not), and publishers it can skip
+/// (drivers, office suites, runtimes). Served signed and versioned on GET /api/device/v1/catalog; seeded by
+/// scripts/seed-desktop-catalog.ts.
+model DesktopCatalogEntry {
+  id          String             @id @default(cuid())
+  kind        DesktopCatalogKind
+  /// What to match: a launcher id ("steam:730"), an exe file name ("cs2.exe", lowercase), an Authenticode signer
+  /// ("Roblox Corporation") or a product name
+  matchType   DesktopMatchType
+  match       String
+  /// Games only: the name the parent sees
+  displayName String?
+  category    AppCategory?
+  /// Shown to parents as "a popular game"
+  trending    Boolean            @default(false)
+  updatedAt   DateTime           @updatedAt
+
+  @@unique([kind, matchType, match])
+  @@index([updatedAt])
+}
+
+enum DesktopCatalogKind {
+  GAME
+  TRUSTED_PUBLISHER
+}
+
+enum DesktopMatchType {
+  LAUNCHER_ID
+  EXE_NAME
+  SIGNER
+  PRODUCT_NAME
 }
 
 enum AppCategory {

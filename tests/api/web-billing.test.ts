@@ -87,6 +87,15 @@ describe("paymongo helpers", () => {
     expect(webPrice("PLUS", { PRICE_PLUS_MONTHLY: "159.50" })).toBe(15950);
     expect(() => webPrice("PRO", { PRICE_PRO_MONTHLY: "free" })).toThrow();
   });
+
+  it("reads yearly prices from env too: ten months for twelve by default", () => {
+    expect(webPrice("PLUS", {}, "year")).toBe(149000);
+    expect(webPrice("PRO", {}, "year")).toBe(249000);
+    expect(webPrice("PLUS", { PRICE_PLUS_YEARLY: "1790" }, "year")).toBe(179000);
+    // A monthly override doesn't move the yearly price, and a bad yearly one fails loudly
+    expect(webPrice("PRO", { PRICE_PRO_MONTHLY: "299" }, "year")).toBe(249000);
+    expect(() => webPrice("PRO", { PRICE_PRO_YEARLY: "0" }, "year")).toThrow();
+  });
 });
 
 describe("passes (pay once)", () => {
@@ -350,5 +359,48 @@ describe("renewal wording", () => {
     expect(paidTimeName({ store: "PAYMONGO", productId: "plus_pass_month" })).toBe("eGuard Plus pass");
     expect(paidTimeName({ store: "PAYMONGO", productId: "plus_monthly" })).toBe("eGuard Plus");
     expect(paidTimeName({ store: "VOUCHER", productId: "pro_pass_month" })).toBe("sponsored Family Pro");
+  });
+});
+
+describe("yearly", () => {
+  let yearPass: Actor, yearRenew: Actor;
+  beforeAll(async () => {
+    [yearPass] = await family("Annual");
+    [yearRenew] = await family("Yearly");
+  });
+
+  it("a yearly pass charges the yearly price and lasts a year", async () => {
+    const r = await buyPass(yearPass, "PLUS", { ...opts, interval: "year" });
+    const cs = r.checkoutUrl.split("/").pop()!;
+    expect(await row(cs)).toMatchObject({ productId: "plus_pass_year", state: "PENDING" });
+    expect(pm.sessions.get(cs)!.amount).toBe(149000);
+    pm.pay(cs);
+    expect(await confirmReturn(yearPass.familyId, r.purchaseId, opts)).toMatchObject({ status: "paid" });
+    const p = await row(cs);
+    expect(Math.abs(p.expiresAt!.getTime() - addInterval(p.checkedAt, "year").getTime())).toBeLessThan(5000);
+    expect(await fam(yearPass)).toMatchObject({ plan: "eGuard Plus", deviceLimit: 10 });
+  });
+
+  it("a month added to a yearly pass of the same plan starts when the year ends", async () => {
+    const before = await db.storePurchase.findFirstOrThrow({ where: { familyId: yearPass.familyId, state: "PAID" } });
+    const r = await buyPass(yearPass, "PLUS", opts);
+    const cs = r.checkoutUrl.split("/").pop()!;
+    pm.pay(cs);
+    await confirmReturn(yearPass.familyId, r.purchaseId, opts);
+    expect((await row(cs)).expiresAt!.getTime()).toBe(addInterval(before.expiresAt!, "month").getTime());
+  });
+
+  it("yearly auto-renew uses its own PayMongo plan, billed every year", async () => {
+    const p = await startAutoRenew(yearRenew, "PRO", { ...opts, interval: "year" });
+    expect(p.amount).toBe(249000);
+    expect(await db.storePurchase.findUniqueOrThrow({ where: { id: p.purchaseId } })).toMatchObject({ productId: "pro_yearly", state: "incomplete" });
+    expect(pm.plans.find((x) => x.attributes.name === "Family Pro yearly 2490.00 PHP")?.attributes).toMatchObject({ amount: 249000, interval: "yearly", interval_count: 1 });
+  });
+
+  it("asking for monthly instead replaces the unfinished yearly one", async () => {
+    const p = await startAutoRenew(yearRenew, "PRO", opts);
+    expect(p.amount).toBe(24900);
+    expect(await db.storePurchase.findUniqueOrThrow({ where: { id: p.purchaseId } })).toMatchObject({ productId: "pro_monthly" });
+    expect(await db.storePurchase.count({ where: { familyId: yearRenew.familyId, productId: "pro_yearly", state: "incomplete_cancelled" } })).toBe(1);
   });
 });

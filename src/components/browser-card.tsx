@@ -9,7 +9,7 @@ import { dayTime } from "@/lib/format";
 
 export { BROWSER_STATE } from "./cards";
 
-export type BrowserView = Pick<BrowserInstallation, "id" | "childId" | "deviceLabel" | "browser" | "browserVersion" | "extensionVersion" | "lastSeenAt" | "revokedAt" | "protectionState"> & { child: { name: string } };
+export type BrowserView = Pick<BrowserInstallation, "id" | "childId" | "deviceId" | "deviceLabel" | "browser" | "browserVersion" | "extensionVersion" | "lastSeenAt" | "revokedAt" | "protectionState"> & { child: { name: string } };
 
 /** A connected eGuard browser extension, described by what it last reported about its own protection. */
 export function BrowserCard({ b, tz, hasPassword }: { b: BrowserView; tz: string; hasPassword: boolean }) {
@@ -31,6 +31,8 @@ export function BrowserCard({ b, tz, hasPassword }: { b: BrowserView; tz: string
         <span className="t-meta num" title="Last check-in"><Icon name="refresh-cw" size={13} style={{ verticalAlign: -2 }} /> {dayTime(b.lastSeenAt, tz).replace("Today, ", "")}</span>
       </div>
       {note ? <p className="t-meta">{note}</p> : null}
+      {/* Paired through the computer's eGuard agent: the computer's device slot covers it */}
+      {b.deviceId ? <p className="t-meta"><Icon name="laptop" size={13} style={{ verticalAlign: -2 }} /> Part of {b.deviceLabel}. Doesn&apos;t use a device slot.</p> : null}
       {/* The rules and the child's site requests live on their Browser tab; not a card-wide link, since Remove sits inside */}
       <Link className="link-btn" href={`/children/${b.childId}?tab=browser`} style={{ minHeight: 0 }}>Browser settings <Icon name="arrow-right" /></Link>
       <RemoveBrowserButton installationId={b.id} name={name} hasPassword={hasPassword} />

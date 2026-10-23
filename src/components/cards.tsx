@@ -40,6 +40,7 @@ export function DeviceCard({ d, state, tz }: { d: DeviceView; state: DeviceState
     : state.issues ? <StatusBadge status="issues" count={state.issues} /> : null;
   const badge = state.key === "healthy" ? <StatusBadge status="healthy" /> : state.key === "offline" ? <span className="row" style={{ gap: 6 }}><StatusBadge status="offline" />{issues}</span> : issues;
   const status = [
+    d.removalRequestedAt ? "being removed" : null,
     state.key === "healthy" ? "Healthy" : state.key === "offline" ? "Offline" : null,
     first ? "waiting for first check" : state.issues ? `${state.issues} ${state.issues === 1 ? "issue" : "issues"}` : null,
   ].filter(Boolean).join(", ");
@@ -52,7 +53,8 @@ export function DeviceCard({ d, state, tz }: { d: DeviceView; state: DeviceState
       </div>
       <div><div className="t-title">{d.name}</div><div className="t-meta">{d.child.name} · {d.osVersion}</div></div>
       <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-        {badge}
+        {/* A computer a parent removed, until it confirms it uninstalled eGuard (lib/device-removal) */}
+        {d.removalRequestedAt ? <span className="row" style={{ gap: 6 }}><span className="pill tone-warn"><Icon name="trash" />Removing</span>{badge}</span> : badge}
         <span className="t-meta num" title="Last synchronization"><Icon name="refresh-cw" size={13} style={{ verticalAlign: -2 }} /> {dayTime(d.lastSeenAt, tz).replace("Today, ", "")}</span>
       </div>
     </Link>

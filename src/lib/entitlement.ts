@@ -45,7 +45,7 @@ export async function applyEntitlement(familyId: string) {
   await db.family.update({ where: { id: familyId }, data: next });
   if (entitlementsFor(family.plan).locationSharing && !entitlementsFor(next.plan).locationSharing) await clearCurrentLocations(familyId);
   if (family.plan !== next.plan) {
-    await audit(familyId, active?.store === "GOOGLE_PLAY" ? "Google Play" : active ? "PayMongo" : "eGuard", "plan.changed", `${family.plan} → ${next.plan}`);
+    await audit(familyId, active?.store === "GOOGLE_PLAY" ? "Google Play" : active && active.store !== "PROMO" ? "PayMongo" : "eGuard", "plan.changed", `${family.plan} → ${next.plan}`);
     await db.alert.create({
       data: {
         familyId, severity: "INFO", category: "SYSTEM", icon: "crown",

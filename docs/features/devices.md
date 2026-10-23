@@ -15,6 +15,9 @@ one, nothing the parent sets can be verified.
 lock), `src/lib/browser-service.ts` (browsers), `src/app/api/device/v1/{pair,sync}/route.ts` (the device's side).
 **Mobile counterpart:** `/api/mobile/v1/devices/**`, `/api/mobile/v1/browsers/**`,
 `POST /api/mobile/v1/children/{id}/pairing-code`, see [mobile-api.md](../mobile-api.md).
+**Computers (2026-10-23):** a Windows PC pairs with the same code as a phone and is a `COMPUTER`. Removing one waits
+until the PC uninstalls eGuard: the device page shows "Removing", an offline removal code, **Keep this computer** and
+**Remove without waiting**. See [desktop-agent-spec.md](../desktop-agent-spec.md) (the agent isn't built yet).
 **Related:** [dashboard.md](dashboard.md) (scoring, device states), [children.md](children.md) (a child's Devices
 and Browser tabs), [browser-extension-api.md](../browser-extension-api.md), [child-app-spec.md](../child-app-spec.md)
 (what devices report), [subscriptions.md](../subscriptions.md) (device limits).

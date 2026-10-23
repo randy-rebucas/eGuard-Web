@@ -14,6 +14,35 @@ const PLAY_PARENTAL_CONTROLS = [
   "Tap Family, then Parental controls. Turn them on and choose a PIN your child doesn't know.",
 ];
 
+/**
+ * A computer (the eGuard desktop agent). It controls apps and time itself, but only holds while the child signs in
+ * with a standard account: an administrator can switch anything off. Web filtering is the eGuard browser extension,
+ * which the agent installs in every browser and keeps there. A Mac uses the same table as Windows.
+ */
+const COMPUTER_CAPS = {
+  SCREEN_TIME: "AVAILABLE", BEDTIME: "AVAILABLE", APP_APPROVAL: "AVAILABLE", DOWNLOADS: "AVAILABLE",
+  // Computer games and apps carry no age rating eGuard can read, and there's no film store to restrict
+  APP_RESTRICTIONS: "UNSUPPORTED", CONTENT: "UNSUPPORTED",
+  WEB: "GUIDED", UNINSTALL_PROTECTION: "GUIDED", LOCATION: "UNSUPPORTED", NOTIFICATIONS: "UNSUPPORTED",
+} as const satisfies Record<ProtectionKey, Capability>;
+const computer = (key: ProtectionKey) => ({ WINDOWS: COMPUTER_CAPS[key], MACOS: COMPUTER_CAPS[key] });
+
+const WINDOWS_STANDARD_ACCOUNT = [
+  "On the computer, sign in with your own administrator account and open Settings, then Accounts, then Other users (Family on some versions).",
+  "Choose your child's account, select Change account type, pick Standard User and select OK.",
+  "Sign your child in again. eGuard checks that their account can't install or remove apps, then shows this as on.",
+];
+const MAC_STANDARD_ACCOUNT = [
+  "On the Mac, open System Settings, then Users & Groups, and unlock with your administrator password.",
+  "Select your child's account and turn off Allow this user to administer this computer.",
+  "Restart the Mac and sign your child in. eGuard checks their account, then shows this as on.",
+];
+const BROWSER_EXTENSION = [
+  "In the eGuard dashboard, open your child's page and choose Add a browser to get a code.",
+  "On the computer, open each browser. eGuard has already installed its extension there: open it and type the code.",
+  "Browsers the extension can't run in stay blocked on the computer until you allow them in the Apps tab.",
+];
+
 export type ProtectionDef = {
   key: ProtectionKey;
   name: string;
@@ -28,20 +57,20 @@ export type ProtectionDef = {
 
 export const PROTECTIONS: ProtectionDef[] = [
   { key: "SCREEN_TIME", slug: "screen-time", name: "Screen Time", checkName: "Screen Time", icon: "hourglass",
-    caps: { ANDROID: "AVAILABLE", IOS: "AVAILABLE" } },
+    caps: { ANDROID: "AVAILABLE", IOS: "AVAILABLE", ...computer("SCREEN_TIME") } },
   { key: "BEDTIME", slug: "bedtime", name: "Bedtime", checkName: "Bedtime", icon: "moon",
-    caps: { ANDROID: "AVAILABLE", IOS: "AVAILABLE" } },
+    caps: { ANDROID: "AVAILABLE", IOS: "AVAILABLE", ...computer("BEDTIME") } },
   // Android has no way to read an app's or a film's age rating, so the rating is Google Play's parental controls
   { key: "APP_RESTRICTIONS", slug: "apps", name: "Apps", checkName: "App Restrictions", icon: "layout-grid",
-    caps: { ANDROID: "PARENT_SET", IOS: "AVAILABLE" },
+    caps: { ANDROID: "PARENT_SET", IOS: "AVAILABLE", ...computer("APP_RESTRICTIONS") },
     guide: { ANDROID: [
       ...PLAY_PARENTAL_CONTROLS,
       "Tap Apps & games and choose the highest rating that isn't above your setting, then Save.",
     ] } },
   { key: "APP_APPROVAL", slug: "app-approval", name: "App Approval", checkName: "App Approval", icon: "badge-check",
-    caps: { ANDROID: "AVAILABLE", IOS: "AVAILABLE" } },
+    caps: { ANDROID: "AVAILABLE", IOS: "AVAILABLE", ...computer("APP_APPROVAL") } },
   { key: "CONTENT", slug: "content", name: "Content", checkName: "Content Restrictions", icon: "film",
-    caps: { ANDROID: "PARENT_SET", IOS: "AVAILABLE" },
+    caps: { ANDROID: "PARENT_SET", IOS: "AVAILABLE", ...computer("CONTENT") },
     guide: { ANDROID: [
       ...PLAY_PARENTAL_CONTROLS,
       "Tap Movies (and TV, where it's listed) and choose the highest rating that isn't above your setting, then Save.",
@@ -50,8 +79,10 @@ export const PROTECTIONS: ProtectionDef[] = [
     // Android: a family-filter Private DNS, which covers every browser and app; eGuard reads it back to verify.
     // iOS: eGuard turns on the Screen Time adult-website filter itself and reads it back.
     // The browser extension covers computers only (Chrome on Android has no extensions).
-    caps: { ANDROID: "GUIDED", IOS: "AVAILABLE" },
+    caps: { ANDROID: "GUIDED", IOS: "AVAILABLE", ...computer("WEB") },
     guide: {
+      WINDOWS: BROWSER_EXTENSION,
+      MACOS: BROWSER_EXTENSION,
       ANDROID: [
         "Open Settings, tap Network & internet, then Private DNS. On Samsung: Connections, More connection settings, Private DNS.",
         "Choose Private DNS provider hostname.",
@@ -60,19 +91,23 @@ export const PROTECTIONS: ProtectionDef[] = [
     } },
   // iOS: eGuard blocks installing apps through Screen Time (the same switch as App Approval) and reads it back
   { key: "DOWNLOADS", slug: "downloads", name: "Downloads", checkName: "Downloads", icon: "download",
-    caps: { ANDROID: "AVAILABLE", IOS: "AVAILABLE" } },
+    caps: { ANDROID: "AVAILABLE", IOS: "AVAILABLE", ...computer("DOWNLOADS") } },
   { key: "LOCATION", slug: "location", name: "Location", checkName: "Location", icon: "map-pin",
-    caps: { ANDROID: "AVAILABLE", IOS: "GUIDED" },
+    caps: { ANDROID: "AVAILABLE", IOS: "GUIDED", ...computer("LOCATION") },
     guide: { IOS: [
       "Open Settings and tap your child's name at the top.",
       "Tap Find My, then turn on Share My Location.",
       "Open the eGuard app and tap Allow location if it asks.",
     ] } },
   { key: "NOTIFICATIONS", slug: "notifications", name: "Notifications", checkName: "Notification Controls", icon: "bell-ring",
-    caps: { ANDROID: "AVAILABLE", IOS: "UNSUPPORTED" } },
+    caps: { ANDROID: "AVAILABLE", IOS: "UNSUPPORTED", ...computer("NOTIFICATIONS") } },
   { key: "UNINSTALL_PROTECTION", slug: "uninstall-protection", name: "Uninstall Protection", checkName: "Uninstall Protection", icon: "lock",
-    caps: { ANDROID: "AVAILABLE", IOS: "AVAILABLE" } },
+    caps: { ANDROID: "AVAILABLE", IOS: "AVAILABLE", ...computer("UNINSTALL_PROTECTION") },
+    // Computers: the agent can't be removed there, but an administrator account can switch anything off
+    guide: { WINDOWS: WINDOWS_STANDARD_ACCOUNT, MACOS: MAC_STANDARD_ACCOUNT } },
 ];
+
+export const PLATFORM_NAME: Record<Platform, string> = { ANDROID: "Android", IOS: "iOS", WINDOWS: "Windows", MACOS: "macOS" };
 
 export const PROTECTION_BY_KEY = Object.fromEntries(PROTECTIONS.map((p) => [p.key, p])) as Record<ProtectionKey, ProtectionDef>;
 export const PROTECTION_BY_SLUG = Object.fromEntries(PROTECTIONS.map((p) => [p.slug, p])) as Record<string, ProtectionDef>;

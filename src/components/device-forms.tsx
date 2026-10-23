@@ -7,7 +7,7 @@ import { Icon } from "./icon";
 import { Feedback } from "./feedback";
 import { ConfirmField, confirmHint } from "./confirm-field";
 import { useFlow } from "./flow";
-import { createPairingCode, moveDevice, pairingStatus, removeBrowser, removeDevice, renameDevice, setPrimaryDevice } from "@/app/actions/family";
+import { cancelDeviceRemoval, createPairingCode, moveDevice, pairingStatus, removeBrowser, removeDevice, renameDevice, setPrimaryDevice } from "@/app/actions/family";
 
 /** `deadline`: this browser's clock when the code expires, from the server's "valid for n seconds" (clock-skew safe). */
 type PairResult = { code?: string; deadline?: number; childName?: string; error?: string };
@@ -21,8 +21,9 @@ const PAIR_POLL_MS = 3000;
 /**
  * `kind="BROWSER"` makes a code for the eGuard browser extension, for a computer the parent names.
  * `upgrade`: a bigger plan exists, so a full family is offered "change your plan" (not on the top plan).
+ * `withComputer`: children with a paired computer, whose browsers there take no slot, so a full plan doesn't stop them.
  */
-export function PairDevice({ kids: children, used, limit, upgrade = true, kind = "DEVICE", initialChildId }: { kids: { id: string; name: string }[]; used: number; limit: number; upgrade?: boolean; kind?: "DEVICE" | "BROWSER"; initialChildId?: string }) {
+export function PairDevice({ kids: children, used, limit, upgrade = true, kind = "DEVICE", initialChildId, withComputer = [] }: { kids: { id: string; name: string }[]; used: number; limit: number; upgrade?: boolean; kind?: "DEVICE" | "BROWSER"; initialChildId?: string; withComputer?: string[] }) {
   const [picked, setChildId] = useState(initialChildId ?? children[0]?.id ?? "");
   // A child removed since (another parent; the page refreshed): the select shows the first child, so use that one,
   // not the removed child's id ("Child not found")
@@ -37,7 +38,8 @@ export function PairDevice({ kids: children, used, limit, upgrade = true, kind =
   const { toast } = useFlow();
   const router = useRouter();
   const code = result?.code;
-  const full = used >= limit;
+  const onComputer = browser && withComputer.includes(childId);
+  const full = used >= limit && !onComputer;
 
   // While a code is on screen: tick the countdown, and ask every few seconds whether a device used it
   useEffect(() => {
@@ -82,12 +84,13 @@ export function PairDevice({ kids: children, used, limit, upgrade = true, kind =
         {full ? upgrade
           ? <> Remove a device or <Link className="inline-link" href="/settings/subscription">change your plan</Link> to add another.</>
           : <> Remove a device to add another.</> : null}
+        {onComputer && used >= limit ? <> A browser on {children.find((c) => c.id === childId)?.name}&apos;s computer doesn&apos;t use a slot, so you can still add one there.</> : null}
       </p>
       {/* Capped: a child's name or a computer name doesn't need the card's full width */}
       <div className="row" style={{ flexWrap: "wrap", alignItems: "flex-end", maxWidth: 720 }}>
         <div className="field grow" style={{ minWidth: 180 }}>
           <label htmlFor={`${idp}-child`}>{browser ? "Browser belongs to" : "Device belongs to"}</label>
-          <select id={`${idp}-child`} className="input" value={childId} disabled={full} onChange={(e) => { setChildId(e.target.value); setResult(null); setPair(null); }}>
+          <select id={`${idp}-child`} className="input" value={childId} disabled={full && !withComputer.length} onChange={(e) => { setChildId(e.target.value); setResult(null); setPair(null); }}>
             {children.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </div>
@@ -117,7 +120,7 @@ export function PairDevice({ kids: children, used, limit, upgrade = true, kind =
             <span className="t-meta">
               {browser
                 ? <>On {result?.childName}&apos;s computer, install eGuard for Chrome, Edge or Firefox. It opens a setup page: choose <b>Get started</b> and enter this code.{" "}</>
-                : <>Open the eGuard app on {result?.childName}&apos;s phone or tablet, choose <b>Pair with parent</b>, and enter this code.{" "}</>}
+                : <>Open the eGuard app on {result?.childName}&apos;s phone or tablet and choose <b>Pair with parent</b>, or open eGuard for Windows on their computer, and enter this code.{" "}</>}
               <span className="num">Expires in {mmss(left)}.</span> This page updates when the device pairs.
             </span>
             <button className="btn btn-secondary btn-sm" onClick={async () => { try { await navigator.clipboard.writeText(code); toast("Code copied."); } catch { toast("Select the code to copy it."); } }}><Icon name="copy" />Copy</button>
@@ -163,6 +166,40 @@ export function PrimaryDevice({ deviceId, isPrimary, childName, others }: { devi
 }
 
 /** Gives the device to another child without pairing it again; only offered when the family has another child. */
+/**
+ * A computer waiting to uninstall eGuard: the offline removal code, and a way back. `until`: when the code stops working,
+ * already in the family's time zone ("Today, 4:15 PM"), so it reads the same on the server and in the browser.
+ */
+export function RemovalPending({ deviceId, name, code, until, requestedBy }: { deviceId: string; name: string; code: string | null; until: string | null; requestedBy: string | null }) {
+  const [pending, start] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+  const keep = () => start(async () => {
+    const r = await cancelDeviceRemoval(deviceId);
+    if ("error" in r && r.error) setError(r.error);
+    else router.refresh();
+  });
+  return (
+    <div className="dash-col" style={{ gap: 10 }}>
+      <div className="t-title">Waiting for {name} to uninstall eGuard</div>
+      <p className="t-meta" style={{ color: "var(--ink-2)" }}>
+        {requestedBy ?? "A parent"} asked to remove it. eGuard uninstalls itself the next time the computer is online, then it disappears from your devices. Until then it stays protected.
+      </p>
+      {code ? (
+        <>
+          <p className="t-meta" style={{ color: "var(--ink-2)" }}>Offline, or in a hurry? On the computer, open eGuard, choose <b>Remove with a code</b> and type:</p>
+          <div className="pairing-code num" aria-label={`Removal code ${code.split("").join(" ")}`}>{code}</div>
+          {until ? <span className="t-meta">Works until {until}. Reload this page for a new one.</span> : null}
+        </>
+      ) : null}
+      {error ? <div className="form-error" role="alert"><Icon name="triangle-alert" />{error}</div> : null}
+      <div className="row" style={{ flexWrap: "wrap" }}>
+        <button className="btn btn-secondary btn-sm" disabled={pending} onClick={keep}>{pending ? "Keeping…" : "Keep this computer"}</button>
+      </div>
+    </div>
+  );
+}
+
 export function MoveDeviceForm({ deviceId, name, childName, kids, hasPassword }: { deviceId: string; name: string; childName: string; kids: { id: string; name: string }[]; hasPassword: boolean }) {
   const [open, setOpen] = useState(false);
   const [state, action, pending] = useActionState(moveDevice.bind(null, deviceId), undefined);
@@ -209,24 +246,36 @@ export function RemoveBrowserButton({ installationId, name, hasPassword }: { ins
   );
 }
 
-export function RemoveDeviceButton({ deviceId, name, hasPassword }: { deviceId: string; name: string; hasPassword: boolean }) {
+/**
+ * `computer`: removing it waits for the computer to uninstall eGuard (lib/device-removal). `now` finishes such a
+ * waiting removal without the computer.
+ */
+export function RemoveDeviceButton({ deviceId, name, hasPassword, computer = false, now = false }: { deviceId: string; name: string; hasPassword: boolean; computer?: boolean; now?: boolean }) {
   const [open, setOpen] = useState(false);
   const [state, action, pending] = useActionState(removeDevice.bind(null, deviceId), undefined);
-  if (!open) return <button className="btn btn-secondary btn-sm" style={{ color: "var(--crit-ink)" }} onClick={() => setOpen(true)}><Icon name="trash" />Remove device</button>;
+  if (!open) {
+    return <button className="btn btn-secondary btn-sm" style={{ color: "var(--crit-ink)" }} onClick={() => setOpen(true)}><Icon name="trash" />{now ? "Remove without waiting" : computer ? "Remove computer" : "Remove device"}</button>;
+  }
   if (state?.fields?.gone) {
     return <div className="form-error" role="alert"><Icon name="triangle-alert" />{state.error} <Link className="inline-link" href="/devices">Back to devices</Link></div>;
   }
   return (
     <form action={action} className="dash-col" style={{ gap: 10 }}>
+      {now ? <input type="hidden" name="now" value="1" /> : null}
       <p className="t-meta" style={{ color: "var(--ink-2)" }}>
-        Removing {name} disconnects eGuard from it: the eGuard app there stops applying your settings, and eGuard stops checking it. Other parents in your family are told. {confirmHint(hasPassword)}
+        {now
+          ? <>Only if {name} is lost or was reset. eGuard stops checking it now, but eGuard stays on the computer with its last settings until the removal code above is typed into it, so type it in first if you can. </>
+          : computer
+            ? <>Your child can&apos;t remove eGuard from {name}, so eGuard uninstalls itself the next time the computer is online, then it&apos;s removed here. Until then it stays protected. Other parents in your family are told. </>
+            : <>Removing {name} disconnects eGuard from it: the eGuard app there stops applying your settings, and eGuard stops checking it. Other parents in your family are told. </>}
+        {confirmHint(hasPassword)}
       </p>
       {/* Unchecked keeps the history with the child (deviceId becomes null), until the family's retention period */}
-      <label className="check" style={{ maxWidth: 520 }}>
+      {now ? null : <label className="check" style={{ maxWidth: 520 }}>
         <input type="checkbox" name="deleteHistory" />
         <span><span className="t-title" style={{ fontSize: 14 }}>Also delete what it recorded</span>
           <span className="t-meta" style={{ display: "block" }}>The screen time, app usage and places from {name}. Left unticked, they stay in your child&apos;s reports and history. Deleting can&apos;t be undone.</span></span>
-      </label>
+      </label>}
       <Feedback state={state} />
       <ConfirmField id="rm-dev-confirm" hasPassword={hasPassword} />
       <div className="row"><button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpen(false)}>Cancel</button>

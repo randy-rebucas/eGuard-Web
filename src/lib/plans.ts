@@ -31,6 +31,8 @@ export type Plan = {
   blurb: string;
   /** Web price in pesos per month (PRICE_PLUS_MONTHLY / PRICE_PRO_MONTHLY override it); 0 for Free */
   monthlyPesos: number;
+  /** Web price in pesos per year, two months free (PRICE_PLUS_YEARLY / PRICE_PRO_YEARLY override it); 0 for Free */
+  yearlyPesos: number;
   /** Google Play subscription product id; null for Free */
   googlePlayProductId: string | null;
   entitlements: Entitlements;
@@ -42,7 +44,7 @@ export const FREE_APP_LIMIT = 5;
 
 export const PLANS: Plan[] = [
   {
-    id: "FREE", name: "Free", blurb: "Get started with essential protection tools.", monthlyPesos: 0, googlePlayProductId: null,
+    id: "FREE", name: "Free", blurb: "Get started with essential protection tools.", monthlyPesos: 0, yearlyPesos: 0, googlePlayProductId: null,
     entitlements: { childLimit: 1, deviceLimit: 2, locationSharing: false, appMonitoringLimit: FREE_APP_LIMIT, realtimeAlerts: false, advancedReports: false, apiAccess: false, categoryLimits: false },
     features: [
       { key: "children", label: "Up to 1 child", included: true },
@@ -53,7 +55,7 @@ export const PLANS: Plan[] = [
     ],
   },
   {
-    id: "PLUS", name: "eGuard Plus", blurb: "Complete protection for growing families.", monthlyPesos: 149, googlePlayProductId: "eguard_plus",
+    id: "PLUS", name: "eGuard Plus", blurb: "Complete protection for growing families.", monthlyPesos: 149, yearlyPesos: 1490, googlePlayProductId: "eguard_plus",
     entitlements: { childLimit: 5, deviceLimit: 10, locationSharing: true, appMonitoringLimit: null, realtimeAlerts: true, advancedReports: false, apiAccess: false, categoryLimits: true },
     features: [
       { key: "children", label: "Up to 5 children", included: true },
@@ -66,7 +68,7 @@ export const PLANS: Plan[] = [
     ],
   },
   {
-    id: "PRO", name: "Family Pro", blurb: "Advanced features for larger families.", monthlyPesos: 249, googlePlayProductId: "eguard_pro",
+    id: "PRO", name: "Family Pro", blurb: "Advanced features for larger families.", monthlyPesos: 249, yearlyPesos: 2490, googlePlayProductId: "eguard_pro",
     entitlements: { childLimit: 10, deviceLimit: 20, locationSharing: true, appMonitoringLimit: null, realtimeAlerts: true, advancedReports: true, apiAccess: true, categoryLimits: true },
     features: [
       { key: "children", label: "Up to 10 children", included: true },
@@ -113,8 +115,8 @@ export function planByGoogleProduct(productId: string) {
 export type Interval = "month" | "year";
 
 /**
- * What the web sells through PayMongo, monthly only. Auto-renew charges a card or Maya every month (PayMongo
- * Subscriptions); a pass is paid once with any method (GCash, QR Ph, …) and doesn't renew.
+ * What the web sells through PayMongo, by the month or by the year. Auto-renew charges a card or Maya every period
+ * (PayMongo Subscriptions); a pass is paid once with any method (GCash, QR Ph, …) and doesn't renew.
  * `legacy` products were sold before these plans; purchases of them still grant Family Pro but they aren't sold.
  */
 export type WebProduct = { id: string; plan: PaidPlanId; interval: Interval; autoRenew: boolean; legacy?: true };
@@ -124,6 +126,10 @@ export const WEB_PRODUCTS: WebProduct[] = [
   { id: "plus_pass_month", plan: "PLUS", interval: "month", autoRenew: false },
   { id: "pro_monthly", plan: "PRO", interval: "month", autoRenew: true },
   { id: "pro_pass_month", plan: "PRO", interval: "month", autoRenew: false },
+  { id: "plus_yearly", plan: "PLUS", interval: "year", autoRenew: true },
+  { id: "plus_pass_year", plan: "PLUS", interval: "year", autoRenew: false },
+  { id: "pro_yearly", plan: "PRO", interval: "year", autoRenew: true },
+  { id: "pro_pass_year", plan: "PRO", interval: "year", autoRenew: false },
   { id: "family_monthly", plan: "PRO", interval: "month", autoRenew: true, legacy: true },
   { id: "family_yearly", plan: "PRO", interval: "year", autoRenew: true, legacy: true },
   { id: "family_pass_month", plan: "PRO", interval: "month", autoRenew: false, legacy: true },
@@ -131,15 +137,23 @@ export const WEB_PRODUCTS: WebProduct[] = [
 ];
 
 export const webProduct = (id: string) => WEB_PRODUCTS.find((p) => p.id === id) ?? null;
-export const webProductFor = (plan: PaidPlanId, autoRenew: boolean) => WEB_PRODUCTS.find((p) => p.plan === plan && p.autoRenew === autoRenew && !p.legacy)!;
+export const webProductFor = (plan: PaidPlanId, autoRenew: boolean, interval: Interval = "month") =>
+  WEB_PRODUCTS.find((p) => p.plan === plan && p.autoRenew === autoRenew && p.interval === interval && !p.legacy)!;
 
-/** Monthly web price in centavos. Configurable so it can change without a release. */
-export function webPrice(plan: PaidPlanId, env: Record<string, string | undefined> = process.env) {
-  const raw = plan === "PLUS" ? env.PRICE_PLUS_MONTHLY : env.PRICE_PRO_MONTHLY;
-  const pesos = Number(raw?.trim() || byId(plan).monthlyPesos);
-  if (!Number.isFinite(pesos) || pesos < 1) throw new Error(`Invalid price for ${plan}: ${raw}`);
+/**
+ * Web price in centavos for one month or one year. Configurable so it can change without a release:
+ * PRICE_PLUS_MONTHLY, PRICE_PRO_MONTHLY, PRICE_PLUS_YEARLY, PRICE_PRO_YEARLY (pesos).
+ */
+export function webPrice(plan: PaidPlanId, env: Record<string, string | undefined> = process.env, interval: Interval = "month") {
+  const yearly = interval === "year";
+  const raw = plan === "PLUS" ? (yearly ? env.PRICE_PLUS_YEARLY : env.PRICE_PLUS_MONTHLY) : (yearly ? env.PRICE_PRO_YEARLY : env.PRICE_PRO_MONTHLY);
+  const pesos = Number(raw?.trim() || (yearly ? byId(plan).yearlyPesos : byId(plan).monthlyPesos));
+  if (!Number.isFinite(pesos) || pesos < 1) throw new Error(`Invalid ${yearly ? "yearly " : ""}price for ${plan}: ${raw}`);
   return Math.round(pesos * 100);
 }
+
+/** The yearly price for a plan, in centavos (webPrice with interval "year"). */
+export const webYearlyPrice = (plan: PaidPlanId, env: Record<string, string | undefined> = process.env) => webPrice(plan, env, "year");
 
 /** The plan a store product grants (Google Play or web). */
 export function planByProduct(productId: string) {

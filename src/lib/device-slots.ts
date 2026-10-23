@@ -10,7 +10,8 @@ type Client = Prisma.TransactionClient | typeof db;
  */
 export async function usedDeviceSlots(familyId: string, client: Client = db) {
   const devices = await client.device.count({ where: { familyId } });
-  const browsers = await client.browserInstallation.count({ where: { familyId, revokedAt: null } });
+  // A browser on a paired computer is part of it (lib/browser-link): the computer's slot covers it
+  const browsers = await client.browserInstallation.count({ where: { familyId, revokedAt: null, deviceId: null } });
   return devices + browsers;
 }
 

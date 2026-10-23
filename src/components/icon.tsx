@@ -1,7 +1,7 @@
 import {
   AppWindow, ArrowDown, ArrowLeft, ArrowRight, ArrowRightLeft, BadgeCheck, Briefcase, Building2, Bell, BellOff, BellRing, BookOpen, Calendar, Camera, ChartColumn, Check, CheckCheck,
   ChevronDown, ChevronLeft, ChevronRight, CircleCheck, Compass, CreditCard, CircleDashed, CircleSlash, Copy, Crown, Database, Download, Eye, EyeOff,
-  Film, Gamepad2, Globe, History, Hourglass, House, Inbox, Info, KeyRound, LayoutGrid, LifeBuoy, Link2, ListChecks, LoaderCircle, Lock, QrCode, Share2,
+  Film, Gamepad2, Globe, History, Hourglass, House, Inbox, Info, KeyRound, Laptop, LayoutGrid, LifeBuoy, Link2, ListChecks, LoaderCircle, Lock, QrCode, Share2,
   LogOut, Mail, Map, MapPin, MapPinOff, Menu, MessageCircle, Monitor, Moon, OctagonAlert, Palette, Pencil, Plug, Plus, Receipt,
   RefreshCw, Route, ScanSearch, School, Search, SearchX, Settings, Shield, ShieldAlert, ShieldCheck, Siren, SlidersHorizontal,
   Printer, Smartphone, Star, Sun, Table, Tablet, TabletSmartphone, Ticket, Trash2, TriangleAlert, User, UserCheck, UserPlus, Users, Wallet, WifiOff, X,
@@ -15,7 +15,7 @@ const ICONS: Record<string, LucideIcon> = {
   "check-check": CheckCheck, "chevron-down": ChevronDown, "chevron-left": ChevronLeft, "chevron-right": ChevronRight, "circle-check": CircleCheck, "credit-card": CreditCard,
   "circle-dashed": CircleDashed, "circle-slash": CircleSlash, compass: Compass, copy: Copy, crown: Crown, database: Database,
   download: Download, eye: Eye, "eye-off": EyeOff, film: Film, gamepad: Gamepad2, globe: Globe, history: History, hourglass: Hourglass,
-  house: House, inbox: Inbox, info: Info, "key-round": KeyRound, "layout-grid": LayoutGrid, "life-buoy": LifeBuoy, link: Link2, "qr-code": QrCode, share: Share2,
+  house: House, inbox: Inbox, info: Info, "key-round": KeyRound, laptop: Laptop, "layout-grid": LayoutGrid, "life-buoy": LifeBuoy, link: Link2, "qr-code": QrCode, share: Share2,
   "list-checks": ListChecks, "loader-circle": LoaderCircle, lock: Lock, "log-out": LogOut, mail: Mail, map: Map, "map-pin": MapPin,
   "map-pin-off": MapPinOff, menu: Menu, "message-circle": MessageCircle, monitor: Monitor, moon: Moon,
   "octagon-alert": OctagonAlert, palette: Palette, pencil: Pencil, plug: Plug, plus: Plus, receipt: Receipt, "refresh-cw": RefreshCw, route: Route,

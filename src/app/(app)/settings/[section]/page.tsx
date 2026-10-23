@@ -279,10 +279,10 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
       const paidUntil = purchase?.expiresAt ? shortDate(purchase.expiresAt, tz) : null;
       const sponsor = await sponsorOf(purchase);
       const sponsored = purchase?.store === VOUCHER_STORE;
-      const how = !purchase ? null : purchase.store === "GOOGLE_PLAY" ? "Google Play" : sponsored ? `Sponsored by ${sponsor ?? "an organization"}` : webProduct(purchase.productId)?.autoRenew ? (purchase.autoRenewing ? "Auto-renew" : "Auto-renew off") : "Prepaid pass";
+      const how = !purchase ? null : purchase.store === "GOOGLE_PLAY" ? "Google Play" : sponsored ? `Sponsored by ${sponsor ?? "an organization"}` : purchase.store === "PROMO" ? "Free month from eGuard" : webProduct(purchase.productId)?.autoRenew ? (purchase.autoRenewing ? "Auto-renew" : "Auto-renew off") : "Prepaid pass";
       const nextCharge = purchase?.autoRenewing ? webProduct(purchase.productId) : null;
       // Plans retired before these keep billing at the price they were bought at, which only PayMongo knows
-      const nextAmount = nextCharge && !nextCharge.legacy ? peso(webPrice(nextCharge.plan)) : null;
+      const nextAmount = nextCharge && !nextCharge.legacy ? peso(webPrice(nextCharge.plan, process.env, nextCharge.interval)) : null;
       const runningPass = purchase && !purchase.autoRenewing && purchase.store !== "GOOGLE_PLAY" ? planByProduct(purchase.productId) : null;
       const usage = (label: string, used: number, limit: number) => {
         const over = used > limit;
@@ -343,12 +343,12 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
             </div>
           ) : (
             <BuyPlan
-              plans={PLANS.map((p) => ({ id: p.id, name: p.name, blurb: p.blurb, price: p.id === "FREE" ? 0 : webPrice(p.id), features: p.features.map((f) => f.label) }))}
+              plans={PLANS.map((p) => ({ id: p.id, name: p.name, blurb: p.blurb, price: p.id === "FREE" ? 0 : webPrice(p.id), yearly: p.id === "FREE" ? 0 : webPrice(p.id, process.env, "year"), features: p.features.map((f) => f.label) }))}
               current={current.id}
               methods={passMethodLabel()}
               payer={{ name: user.name, email: user.email }}
               autoRenewBlocked={purchase && paidUntil ? `available once your paid time ends on ${paidUntil}.` : null}
-              passOnly={purchase && runningPass && paidUntil ? { plan: runningPass.id, reason: `Your ${paidTimeName(purchase)} runs until ${paidUntil}. You can add months to it now, or switch plans after it ends.` } : null}
+              passOnly={purchase && runningPass && paidUntil ? { plan: runningPass.id, reason: `Your ${paidTimeName(purchase)} runs until ${paidUntil}. You can add a month or a year to it now, or switch plans after it ends.` } : null}
             />
           )}
         </>
@@ -387,11 +387,13 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
     case "integrations": {
       const graph = await getFamilyGraph(u.familyId);
       const android = graph.devices.filter((d) => d.platform === "ANDROID").length, ios = graph.devices.filter((d) => d.platform === "IOS").length;
+      const windows = graph.devices.filter((d) => d.platform === "WINDOWS").length;
       return (
         <>
           {head}
           <div className="setting-row"><span className="ico-tile"><Icon name="smartphone" /></span><div className="grow"><div className="t-title">Android device management</div><div className="t-meta">eGuard Android app with device admin permissions</div></div><span className={`pill ${android ? "tone-accent" : "tone-muted"}`}>{android ? `${android} paired` : "No devices"}</span></div>
           <div className="setting-row"><span className="ico-tile"><Icon name="tablet-smartphone" /></span><div className="grow"><div className="t-title">Apple Screen Time (Family Controls)</div><div className="t-meta">eGuard iOS app authorized through Family Sharing{ios ? "" : ". The iPhone and iPad app is coming soon"}</div></div><span className={`pill ${ios ? "tone-accent" : "tone-muted"}`}>{ios ? `${ios} paired` : "Coming soon"}</span></div>
+          <div className="setting-row"><span className="ico-tile"><Icon name="laptop" /></span><div className="grow"><div className="t-title">Windows computers</div><div className="t-meta">eGuard for Windows limits games and apps, and only you can remove it{windows ? "" : ". Coming soon"}</div></div><span className={`pill ${windows ? "tone-accent" : "tone-muted"}`}>{windows ? `${windows} paired` : "Coming soon"}</span></div>
           <p className="t-meta" style={{ marginTop: 12 }}>Whether each protection is actually active on a device is checked on the <Link className="link-btn" href="/protection">Protection</Link> page.</p>
         </>
       );

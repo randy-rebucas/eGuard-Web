@@ -4,12 +4,14 @@ vi.mock("server-only", () => ({}));
 // Each write returns a tag, so the test can see what ran inside the transaction and in which order
 const op = (name: string, count = 1) => vi.fn((args: unknown) => ({ op: name, args, count }));
 const db = vi.hoisted(() => ({
-  device: { findFirst: vi.fn(), deleteMany: vi.fn(), updateMany: vi.fn() },
+  device: { findFirst: vi.fn(), deleteMany: vi.fn(), updateMany: vi.fn(), update: vi.fn() },
   screenTimeDaily: { deleteMany: vi.fn() },
   appUsageDaily: { deleteMany: vi.fn() },
   locationVisit: { deleteMany: vi.fn() },
   child: { findFirst: vi.fn() },
   alert: { updateMany: vi.fn(), create: vi.fn() },
+  browserInstallation: { findMany: vi.fn(async () => [] as { appliedPolicyVersion: number | null }[]) },
+  browserPolicy: { findUnique: vi.fn() },
   $transaction: vi.fn(async (ops: unknown[]) => ops),
 }));
 // The transaction client moveDevice works with, inside the (mocked) family device lock
@@ -22,6 +24,7 @@ const tx = vi.hoisted(() => ({
   deviceLocation: { updateMany: vi.fn() },
   configRequest: { updateMany: vi.fn() },
   alert: { updateMany: vi.fn() },
+  browserInstallation: { updateMany: vi.fn() },
 }));
 const audit = vi.hoisted(() => vi.fn());
 const confirmDestructive = vi.hoisted(() => vi.fn());
@@ -33,6 +36,10 @@ vi.mock("../organizations", () => ({}));
 vi.mock("../audit", () => ({ audit }));
 vi.mock("../email-verification", () => ({}));
 vi.mock("../rate-limit", () => ({}));
+const push = vi.hoisted(() => ({ wakeDevices: vi.fn(), wakeChildDevices: vi.fn() }));
+vi.mock("../push", () => push);
+const policy = vi.hoisted(() => ({ signPolicy: () => ({ signature: "sig", keyId: "k" }), advancePolicyPast: vi.fn() }));
+vi.mock("../browser-policy", () => policy);
 const slots = vi.hoisted(() => ({
   ensurePrimary: vi.fn(), makePrimary: vi.fn(), promoteOldest: vi.fn(),
   withDeviceLock: vi.fn(async (_familyId: string, fn: (t: unknown) => unknown) => fn(tx)),
@@ -40,7 +47,7 @@ const slots = vi.hoisted(() => ({
 const { ensurePrimary } = slots;
 vi.mock("../device-slots", () => slots);
 
-const { removeDevice, renameDevice, setPrimaryDevice, moveDevice, DeviceName } = await import("../family-service");
+const { removeDevice, cancelDeviceRemoval, renameDevice, setPrimaryDevice, moveDevice, DeviceName } = await import("../family-service");
 
 const actor = { id: "u1", familyId: "fam1", name: "Ana", role: "FAMILY_ADMIN" } as Parameters<typeof removeDevice>[0];
 const confirm = { password: "pw", phrase: "" };
@@ -50,7 +57,7 @@ const alertBody = () => (db.alert.create.mock.calls[0][0] as { data: { body: str
 describe("removeDevice", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    db.device.findFirst.mockResolvedValue({ id: "d1", name: "Old phone", childId: "c1", child: { name: "Mia" } });
+    db.device.findFirst.mockResolvedValue({ id: "d1", familyId: "fam1", name: "Old phone", kind: "PHONE", childId: "c1", child: { name: "Mia" } });
     db.device.deleteMany.mockImplementation(op("device"));
     db.screenTimeDaily.deleteMany.mockImplementation(op("screenTime"));
     db.appUsageDaily.deleteMany.mockImplementation(op("appUsage"));
@@ -82,7 +89,7 @@ describe("removeDevice", () => {
   });
 
   it("hands primary on to the child's oldest remaining device when the primary is removed", async () => {
-    db.device.findFirst.mockResolvedValue({ id: "d1", name: "Old phone", childId: "c1", isPrimary: true, child: { name: "Mia" } });
+    db.device.findFirst.mockResolvedValue({ id: "d1", familyId: "fam1", name: "Old phone", kind: "PHONE", childId: "c1", isPrimary: true, child: { name: "Mia" } });
     await removeDevice(actor, "d1", confirm);
     expect(ensurePrimary).toHaveBeenCalledWith("fam1", "c1");
   });
@@ -90,6 +97,53 @@ describe("removeDevice", () => {
   it("leaves primary alone when another device is removed", async () => {
     await removeDevice(actor, "d1", confirm);
     expect(ensurePrimary).not.toHaveBeenCalled();
+  });
+});
+
+describe("removeDevice on a computer", () => {
+  const pc = { id: "d1", familyId: "fam1", name: "Gaming PC", kind: "COMPUTER", childId: "c1", child: { name: "Mia" }, removalRequestedAt: null };
+  beforeEach(() => {
+    vi.clearAllMocks();
+    db.device.findFirst.mockResolvedValue(pc);
+    db.device.deleteMany.mockImplementation(op("device"));
+    db.device.updateMany.mockResolvedValue({ count: 1 });
+    db.alert.updateMany.mockImplementation(op("alerts"));
+  });
+
+  it("waits for the computer to uninstall eGuard instead of deleting it, and wakes it", async () => {
+    expect(await removeDevice(actor, "d1", confirm, { deleteHistory: true })).toMatchObject({ pending: true });
+    expect(confirmDestructive).toHaveBeenCalled();
+    expect(db.$transaction).not.toHaveBeenCalled();
+    // Only starts a removal that isn't waiting already
+    expect(db.device.updateMany).toHaveBeenCalledWith({ where: { id: "d1", removalRequestedAt: null }, data: expect.objectContaining({ removalRequestedBy: "Ana", removalDeletesHistory: true }) });
+    expect(push.wakeDevices).toHaveBeenCalledWith(["d1"], "remove");
+    expect((db.alert.create.mock.calls[0][0] as { data: { title: string } }).data.title).toBe("Removing a computer");
+  });
+
+  it("asking again while it waits (or two parents at once) only wakes it again", async () => {
+    db.device.findFirst.mockResolvedValue({ ...pc, removalRequestedAt: new Date() });
+    db.device.updateMany.mockResolvedValue({ count: 0 });
+    expect(await removeDevice(actor, "d1", confirm)).toMatchObject({ pending: true });
+    expect(audit).not.toHaveBeenCalled();
+    expect(db.alert.create).not.toHaveBeenCalled();
+    expect(push.wakeDevices).toHaveBeenCalled();
+  });
+
+  it("`now` removes it without waiting, with the history choice made when the removal started", async () => {
+    db.device.findFirst.mockResolvedValue({ ...pc, removalRequestedAt: new Date(), removalDeletesHistory: true });
+    db.screenTimeDaily.deleteMany.mockImplementation(op("screenTime"));
+    db.appUsageDaily.deleteMany.mockImplementation(op("appUsage"));
+    db.locationVisit.deleteMany.mockImplementation(op("visits"));
+    expect(await removeDevice(actor, "d1", confirm, { now: true })).toMatchObject({ pending: false });
+    expect(ops()).toEqual(["screenTime", "appUsage", "visits", "device", "alerts"]);
+    expect(alertBody()).toContain("until a removal code from the device page is typed into it");
+  });
+
+  it("can be kept while it waits", async () => {
+    db.device.findFirst.mockResolvedValue({ ...pc, removalRequestedAt: new Date() });
+    await cancelDeviceRemoval(actor, "d1");
+    expect(db.device.update).toHaveBeenCalledWith({ where: { id: "d1" }, data: { removalRequestedAt: null, removalRequestedBy: null, removalDeletesHistory: false } });
+    expect(audit).toHaveBeenCalledWith("fam1", "Ana", "device.removal_cancelled", "Mia's Gaming PC");
   });
 });
 
@@ -165,8 +219,22 @@ describe("moveDevice", () => {
     vi.clearAllMocks();
     db.device.findFirst.mockResolvedValue(phone);
     db.child.findFirst.mockResolvedValue({ id: "c2", name: "Leo" });
+    db.browserInstallation.findMany.mockResolvedValue([]);
     tx.device.findFirst.mockResolvedValue({ childId: "c1", isPrimary: true });
     tx.device.count.mockResolvedValue(0);
+  });
+
+  it("a computer's browsers come along: the new child's browser policy moves past the version they enforced", async () => {
+    db.browserInstallation.findMany.mockResolvedValue([{ appliedPolicyVersion: 7 }, { appliedPolicyVersion: null }]);
+    db.browserPolicy.findUnique.mockResolvedValue({ version: 5 });
+    await moveDevice(actor, "d1", "c2", confirm);
+    expect(db.browserPolicy.findUnique).toHaveBeenCalledWith({ where: { childId: "c1" }, select: { version: true } });
+    expect(policy.advancePolicyPast).toHaveBeenCalledWith("c2", 7, "Ana");
+  });
+
+  it("a phone (no browsers) leaves browser policies alone", async () => {
+    await moveDevice(actor, "d1", "c2", confirm);
+    expect(policy.advancePolicyPast).not.toHaveBeenCalled();
   });
 
   it("gives the device to the new child, keeping what it recorded with the old one", async () => {
@@ -181,6 +249,8 @@ describe("moveDevice", () => {
     expect(tx.configRequest.updateMany).toHaveBeenCalledWith({ where: { deviceId: "d1", status: { in: ["PENDING", "AWAITING_PARENT", "DELIVERED"] } }, data: { status: "CANCELLED" } });
     expect(tx.alert.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { familyId: "fam1", deviceId: "d1", resolvedAt: null } }));
     expect(tx.device.update).toHaveBeenCalledWith({ where: { id: "d1" }, data: { childId: "c2", isPrimary: true, checkRequestedAt: expect.any(Date) } });
+    // A computer's browsers are part of it (lib/browser-link), so they go to the new child too
+    expect(tx.browserInstallation.updateMany).toHaveBeenCalledWith({ where: { deviceId: "d1" }, data: { childId: "c2" } });
     expect(moved.child.name).toBe("Leo");
     expect(audit).toHaveBeenCalledWith("fam1", "Ana", "device.moved", "Galaxy A54: Mia → Leo");
     const alert = (db.alert.create.mock.calls[0][0] as { data: { childId: string; title: string; body: string } }).data;

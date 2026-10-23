@@ -11,7 +11,8 @@ import type { ProtectionKey } from "@prisma/client";
 import { Icon } from "@/components/icon";
 import { CheckBadge, DeviceIcon, StatusBadge, Timeline, platformName } from "@/components/ui";
 import { CheckButton, FlowButton } from "@/components/flow";
-import { MoveDeviceForm, PrimaryDevice, RemoveDeviceButton, RenameDeviceForm } from "@/components/device-forms";
+import { MoveDeviceForm, PrimaryDevice, RemovalPending, RemoveDeviceButton, RenameDeviceForm } from "@/components/device-forms";
+import { removalCode, removalWaits } from "@/lib/device-removal";
 
 const REQUESTS_SHOWN = 6;
 
@@ -33,12 +34,13 @@ export default async function DevicePage(props: PageProps<"/devices/[id]">) {
   const state = graph.deviceStates[d.id];
   const todayKey = dayKey(new Date(), tz);
   const today = dateFromKey(todayKey);
-  const [usage, childUsage, requests, lastCheck] = await Promise.all([
+  const [usage, childUsage, requests, lastCheck, secret] = await Promise.all([
     db.screenTimeDaily.findUnique({ where: { deviceId_date: { deviceId: d.id, date: today } } }),
     // The limit covers all of the child's devices, so compare it with their total, not this device's share
     db.screenTimeDaily.aggregate({ where: { childId: d.childId, date: today }, _sum: { minutes: true } }),
     db.configRequest.findMany({ where: { deviceId: d.id }, orderBy: { createdAt: "desc" }, take: REQUESTS_SHOWN }),
     db.checkRunResult.findFirst({ where: { deviceId: d.id, reportedAt: { not: null } }, orderBy: { reportedAt: "desc" } }),
+    d.removalRequestedAt ? db.device.findUnique({ where: { id: d.id }, select: { removalSecret: true } }).then((r) => r?.removalSecret ?? null) : null,
   ]);
   const used = childUsage._sum.minutes ?? 0, limit = limitOn(child, todayKey);
   const prot = (key: string) => d.protections.find((p) => p.key === key);
@@ -50,6 +52,9 @@ export default async function DevicePage(props: PageProps<"/devices/[id]">) {
   const offline = state.key === "offline";
   const reqLabel: Record<string, string> = { PENDING: "Waiting for device", AWAITING_PARENT: "Waiting for guided setup", DELIVERED: "Delivered, not yet verified", VERIFIED: "Verified", FAILED: "Didn't match", CANCELLED: "Cancelled" };
   const reqIcon: Record<string, string> = { VERIFIED: "circle-check", FAILED: "triangle-alert", CANCELLED: "circle-slash" };
+  const computer = removalWaits(d);
+  // Shown only while a removal waits: the code removes eGuard from the computer without it reaching eGuard
+  const removal = secret ? removalCode(secret, d.id) : null;
 
   return (
     <>
@@ -65,6 +70,7 @@ export default async function DevicePage(props: PageProps<"/devices/[id]">) {
               {state.firstCheck ? <span className="pill tone-muted"><Icon name="loader-circle" />Waiting for first check</span>
                 : state.issues ? <StatusBadge status="issues" count={state.issues} /> : null}
               <span className="pill tone-muted">{platformName(d.platform)}</span>
+              {d.removalRequestedAt ? <span className="pill tone-warn"><Icon name="trash" />Removing</span> : null}
               {d.simulated ? <span className="pill tone-accent" title="Driven by the development device simulator">Simulated</span> : null}
             </div>
           </div>
@@ -74,6 +80,13 @@ export default async function DevicePage(props: PageProps<"/devices/[id]">) {
           </div>
         </section>
       </div>
+
+      {d.removalRequestedAt ? (
+        <section className="card card-pad" style={{ background: "var(--warn-soft)", borderColor: "transparent" }}>
+          <RemovalPending deviceId={d.id} name={d.name} code={removal?.code ?? null} until={removal ? dayTime(removal.expiresAt, tz) : null} requestedBy={d.removalRequestedBy} />
+          <div style={{ marginTop: 12 }}><RemoveDeviceButton deviceId={d.id} name={d.name} hasPassword={u.hasPassword} computer now /></div>
+        </section>
+      ) : null}
 
       {offline ? (
         <div className="card card-pad row" style={{ background: "var(--warn-soft)", borderColor: "transparent" }}>
@@ -92,11 +105,11 @@ export default async function DevicePage(props: PageProps<"/devices/[id]">) {
           {child.devices.length > 1 ? <dd className="t-meta">{fmtMinutesPadded(usage?.minutes ?? 0)} on this device</dd> : null}
         </div>
         <div><dt>Bedtime</dt><dd>{reported("BEDTIME")}</dd></div>
-        {/* No row until the device reports location: that's "not reported", not sharing turned off */}
-        <div><dt>Location</dt><dd>{!entitlementsFor(family.plan).locationSharing ? <><Icon name="map-pin-off" />Not on your plan</>
-          : !loc ? "Not reported" : loc.sharing ? <><Icon name="map-pin" />Sharing</> : <><Icon name="map-pin-off" />Off</>}</dd></div>
+        {/* No row until the device reports location: that's "not reported", not sharing turned off. Computers have no location or battery */}
+        {computer ? null : <div><dt>Location</dt><dd>{!entitlementsFor(family.plan).locationSharing ? <><Icon name="map-pin-off" />Not on your plan</>
+          : !loc ? "Not reported" : loc.sharing ? <><Icon name="map-pin" />Sharing</> : <><Icon name="map-pin-off" />Off</>}</dd></div>}
         <div><dt>App approval</dt><dd>{approvalOn ? <><Icon name="badge-check" />Required</> : reported("APP_APPROVAL")}</dd></div>
-        <div><dt>Battery</dt><dd className="num">{d.battery != null ? `${d.battery}%` : "Unknown"}</dd></div>
+        {computer ? null : <div><dt>Battery</dt><dd className="num">{d.battery != null ? `${d.battery}%` : "Unknown"}</dd></div>}
       </dl>
       <div className="detail-grid">
         <section className="card card-pad">
@@ -147,7 +160,7 @@ export default async function DevicePage(props: PageProps<"/devices/[id]">) {
               <PrimaryDevice deviceId={d.id} isPrimary={d.isPrimary} childName={child.name} others={child.devices.length - 1} />
               <MoveDeviceForm deviceId={d.id} name={d.name} childName={child.name} hasPassword={u.hasPassword}
                 kids={graph.children.filter((c) => c.id !== child.id).map((c) => ({ id: c.id, name: c.name }))} />
-              <RemoveDeviceButton deviceId={d.id} name={d.name} hasPassword={u.hasPassword} />
+              {d.removalRequestedAt ? null : <RemoveDeviceButton deviceId={d.id} name={d.name} hasPassword={u.hasPassword} computer={computer} />}
             </div>
           </section>
         </div>

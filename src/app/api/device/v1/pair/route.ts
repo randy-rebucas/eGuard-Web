@@ -6,17 +6,21 @@ import { badRequest, readJson } from "@/lib/device-auth";
 import { refreshPurchases } from "@/lib/billing";
 import { LIMITS, clientIpFrom, hit, ipKey } from "@/lib/rate-limit";
 import { withDeviceSlot } from "@/lib/device-slots";
+import { newRemovalSecret } from "@/lib/device-removal";
+import { grantComputerLaunchOffer } from "@/lib/launch-offer";
 
 const Body = z.object({
   // Parents may type "ABCD-2345" or "abcd 2345" (same as the browser extension)
   code: z.string().transform((s) => s.replace(/[\s-]/g, "").toUpperCase()).pipe(z.string().min(6).max(12)),
-  platform: z.enum(["ANDROID", "IOS"]),
+  // WINDOWS: the eGuard desktop agent (eguard-desktop). MACOS is in the schema but has no agent yet.
+  platform: z.enum(["ANDROID", "IOS", "WINDOWS"]),
   name: z.string().trim().min(1).max(60),
   model: z.string().trim().min(1).max(60),
-  kind: z.enum(["PHONE", "TABLET"]).default("PHONE"),
+  kind: z.enum(["PHONE", "TABLET", "COMPUTER"]).optional(),
   osVersion: z.string().trim().min(1).max(40),
   appVersion: z.string().trim().max(20).optional(),
-});
+}).transform((b) => ({ ...b, kind: b.platform === "WINDOWS" ? "COMPUTER" as const : b.kind ?? "PHONE" }))
+  .refine((b) => (b.platform === "WINDOWS") === (b.kind === "COMPUTER"), "kind COMPUTER is for the desktop agent (platform WINDOWS)");
 
 /** Exchange a one-time pairing code (shown in the parent dashboard) for a device token. */
 export async function POST(req: Request) {
@@ -40,6 +44,8 @@ export async function POST(req: Request) {
   // A store that can't be reached right now mustn't stop pairing: the plan as last known decides the limit
   await refreshPurchases(code.familyId).catch((e) => console.error("[pair] refreshing purchases failed", code.familyId, e));
   const token = newToken();
+  // A computer can only be uninstalled with eGuard's word, or with an offline code made from this (lib/device-removal)
+  const removalSecret = b.kind === "COMPUTER" ? newRemovalSecret() : undefined;
   let device;
   try {
     const family = await db.family.findUniqueOrThrow({ where: { id: code.familyId } });
@@ -49,7 +55,7 @@ export async function POST(req: Request) {
       return tx.device.create({
         data: {
           familyId: code.familyId, childId: code.childId, name: b.name, model: b.model, kind: b.kind, platform: b.platform,
-          osVersion: b.osVersion, appVersion: b.appVersion, tokenHash: sha256(token), lastSeenAt: new Date(), isPrimary: !hasPrimary,
+          osVersion: b.osVersion, appVersion: b.appVersion, tokenHash: sha256(token), lastSeenAt: new Date(), isPrimary: !hasPrimary, removalSecret,
         },
         include: { child: true },
       });
@@ -71,5 +77,7 @@ export async function POST(req: Request) {
   });
   // Ask the new device for a full report so health is known right away
   await db.device.update({ where: { id: device.id }, data: { checkRequestedAt: new Date() } });
-  return NextResponse.json({ deviceId: device.id, token, childName: device.child.name }, { status: 201 });
+  // A Free family's first computer: a month of Plus, while the launch offer runs (never fails the pairing)
+  if (device.kind === "COMPUTER") await grantComputerLaunchOffer(code.familyId);
+  return NextResponse.json({ deviceId: device.id, token, childName: device.child.name, ...(removalSecret ? { removalSecret } : {}) }, { status: 201 });
 }

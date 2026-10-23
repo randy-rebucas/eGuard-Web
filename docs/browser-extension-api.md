@@ -138,10 +138,22 @@ browser" alert for the family. The next check-in resolves it.
 | `browserVersion` | string \| `null` | ≤ 40 chars |
 | `extensionVersion` | string | 1–20 chars, e.g. `0.1.0` |
 | `platform` | string | 1–40 chars, e.g. `mac`, `win`, `cros` (`chrome.runtime.getPlatformInfo().os`) |
+| `deviceLink` | string, optional | ≤ 200 chars. On a PC with eGuard for Windows: the `deviceLink` value from the extension's managed policy (`chrome.storage.managed`), as the desktop agent wrote it. Send it as is |
 
 ```json
 { "code": "FJZM-7J7H", "browser": "Chrome", "browserVersion": "153.0.0.0", "extensionVersion": "0.1.0", "platform": "mac" }
 ```
+
+**A browser on a paired computer.** When `deviceLink` is genuine and the computer belongs to the code's child, the
+browser is part of that computer:
+- It takes no device slot. A full plan doesn't stop it, and parents can get a browser code for that child even then.
+- Its `deviceName` is the computer's name.
+- It moves with the computer to another child, and is removed with it.
+
+An invalid, expired or other child's link is ignored, without an error, and the browser pairs like any other. So is a
+link sent from a browser whose `platform` isn't the computer's (`win` for Windows), and one for a computer that already
+carries 5 browsers. Read the
+managed policy at pairing time; the agent refreshes the link on every sync (it lasts 30 days).
 
 Response `201`:
 
@@ -163,7 +175,7 @@ Then fetch the policy straight away.
 - Codes are 8 characters, single use, and valid for 15 minutes. Only the child's newest browser code works (a device code for the phone app can be live at the same time).
 - A malformed body gets the same `400 invalid_code` as a wrong code, with no detail.
 - `400 wrong_code_kind`: the parent typed a phone-app code. Show `error`, which tells them to choose "Add a browser".
-- `409 device_limit`: the code isn't used up, so the parent can remove a device and then use the same code.
+- `409 device_limit`: the code isn't used up, so the parent can remove a device and then use the same code. Never for a browser with a valid `deviceLink`.
 - `429 rate_limited`: more than 20 attempts in 15 minutes from one IP address. This limit is shared with phone pairing.
 - Pairing adds a "Browser connected" alert for the family.
 

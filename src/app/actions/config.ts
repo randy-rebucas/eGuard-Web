@@ -1,10 +1,10 @@
 "use server";
 
 import { z } from "zod";
-import type { ProtectionKey } from "@prisma/client";
+import type { Platform, ProtectionKey } from "@prisma/client";
 import { db } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { PROTECTION_BY_KEY, defaultConfig, describeConfig, isGuided, type ProtectionConfig } from "@/lib/protections";
+import { PLATFORM_NAME, PROTECTION_BY_KEY, defaultConfig, describeConfig, isGuided, type ProtectionConfig } from "@/lib/protections";
 import { reportedLabel, statusOn } from "@/lib/health";
 import { startCheckRun } from "@/lib/engine";
 import { notFound, toResult, type Result } from "@/lib/errors";
@@ -13,13 +13,11 @@ import {
   ConfigSchema, cancelBatch as cancelConfigBatch, childFor, confirmGuided as confirmGuidedBatch, requestConfigs, versionOf,
 } from "@/lib/config-service";
 
-const platformName = (p: "ANDROID" | "IOS") => (p === "IOS" ? "iOS" : "Android");
-
 /** Server actions take whatever the client sends: an object id would be read by Prisma as a filter. */
 const Id = z.string().min(1).max(64);
 
 export type FlowDevice = {
-  id: string; name: string; platform: "ANDROID" | "IOS"; platformLabel: string;
+  id: string; name: string; platform: Platform; platformLabel: string;
   capability: string; currentLabel: string; status: string; lastVerified: string | null; guide: string[] | null;
 };
 export type FlowContext = {
@@ -69,7 +67,7 @@ async function flowContext(familyId: string, childId: string, key: ProtectionKey
       const cap = def.caps[d.platform];
       const status = statusOn(d, key);
       return {
-        id: d.id, name: d.name, platform: d.platform, platformLabel: platformName(d.platform), capability: cap,
+        id: d.id, name: d.name, platform: d.platform, platformLabel: PLATFORM_NAME[d.platform], capability: cap,
         currentLabel: reportedLabel(cap, status, p),
         status,
         lastVerified: p?.lastVerifiedAt?.toISOString() ?? null,

@@ -33,6 +33,8 @@ import {
 
 type Fetch = typeof fetch;
 export type WebBillingOpts = { cfg?: PaymongoConfig | null; fetch?: Fetch; now?: Date };
+/** What a parent buys: one month (the default) or one year, two months free (plans.ts yearlyPesos). */
+export type BuyOpts = WebBillingOpts & { interval?: Interval };
 
 export const STORE = "PAYMONGO";
 
@@ -89,13 +91,14 @@ async function assertCanBuy(familyId: string, plan: PaidPlanId, autoRenew: boole
   const until = shortDate(current.expiresAt!, family.timezone);
   if (autoRenew) throw conflict(`Your plan is paid until ${until}. Turn on auto-renew after that, or buy a pass to extend it.`);
   const now = planByProduct(current.productId);
-  if (now && now.id !== plan) throw conflict(`Your ${paidTimeName(current)} runs until ${until}. Switch to ${planById(plan).name} after that, or buy another ${now.name} month to extend it.`);
+  if (now && now.id !== plan) throw conflict(`Your ${paidTimeName(current)} runs until ${until}. Switch to ${planById(plan).name} after that, or buy more ${now.name} time to extend it.`);
 }
 
 /** What the family's paid time is called: "eGuard Plus pass", "sponsored eGuard Plus", or the plan alone (auto-renew turned off). */
 export function paidTimeName(p: { store: string; productId: string }) {
   const name = planByProduct(p.productId)?.name ?? "plan";
   if (p.store === "VOUCHER") return `sponsored ${name}`;
+  if (p.store === "PROMO") return `${name} launch offer`;
   return webProduct(p.productId)?.autoRenew ? name : `${name} pass`;
 }
 
@@ -108,21 +111,22 @@ export const lockPaidTime = (tx: Prisma.TransactionClient, familyId: string) =>
 
 /* ---------- Pass (Checkout) ---------- */
 
-export async function buyPass(actor: Actor, planId: PaidPlanId, o: WebBillingOpts = {}) {
+export async function buyPass(actor: Actor, planId: PaidPlanId, o: BuyOpts = {}) {
+  const interval = o.interval ?? "month";
   requireAdmin(actor);
   const cfg = requireConfig(o);
   // PayMongo sends the receipt to this address: a mistyped, unverified one would lose it
   await requireVerifiedEmail(actor.id, "pay for a plan");
   await assertCanBuy(actor.familyId, planId, false);
   await enforce(`billing:family:${actor.familyId}`, LIMITS.billingStart, "You've started several payments. Wait a few minutes and try again.");
-  const product = webProductFor(planId, false);
+  const product = webProductFor(planId, false, interval);
   const plan = planById(planId);
   const user = await db.user.findUniqueOrThrow({ where: { id: actor.id } });
   const id = randomUUID();
   const cs = await createCheckoutSession(cfg, {
-    name: `${plan.name}: 1 month`,
-    description: `Up to ${plan.entitlements.childLimit} children for one month. Doesn't renew automatically.`,
-    amount: webPrice(planId),
+    name: `${plan.name}: 1 ${interval}`,
+    description: `Up to ${plan.entitlements.childLimit} children for one ${interval}. Doesn't renew automatically.`,
+    amount: webPrice(planId, process.env, interval),
     methods: passMethods(),
     email: user.email,
     reference: id,
@@ -178,14 +182,15 @@ async function firstPayment(cfg: PaymongoConfig, p: StorePurchase, paymentIntent
  * Starts auto-renew and returns what the browser needs to make the first payment. Retrying picks up the
  * unfinished one instead of creating another; one for a different period is cancelled.
  */
-export async function startAutoRenew(actor: Actor, planId: PaidPlanId, o: WebBillingOpts = {}): Promise<FirstPayment> {
+export async function startAutoRenew(actor: Actor, planId: PaidPlanId, o: BuyOpts = {}): Promise<FirstPayment> {
+  const interval = o.interval ?? "month";
   requireAdmin(actor);
   const cfg = requireConfig(o);
   // Renewal receipts and PayMongo's customer record use this address too
   await requireVerifiedEmail(actor.id, "pay for a plan");
   const now = o.now ?? new Date();
   await assertCanBuy(actor.familyId, planId, true);
-  const product = webProductFor(planId, true);
+  const product = webProductFor(planId, true, interval);
 
   // An old subscription whose renewals went unpaid would keep its open invoice collectible: close it
   for (const p of await db.storePurchase.findMany({ where: { familyId: actor.familyId, store: STORE, state: "unpaid" } })) {
@@ -237,7 +242,7 @@ export async function startAutoRenew(actor: Actor, planId: PaidPlanId, o: WebBil
       customerId = await customerFor(cfg, { name: user.name, email: user.email }, o.fetch);
       await db.family.update({ where: { id: family.id }, data: { paymongoCustomerId: customerId } });
     }
-    const paymongoPlan = await planFor(cfg, planById(planId).name, webPrice(planId), o.fetch);
+    const paymongoPlan = await planFor(cfg, planById(planId).name, webPrice(planId, process.env, interval), o.fetch, interval === "year" ? "yearly" : "monthly");
     sub = await createSubscription(cfg, customerId, paymongoPlan, o.fetch);
     p = await db.storePurchase.create({
       data: { familyId: actor.familyId, store: STORE, productId: product.id, purchaseToken: sub.id, state: sub.attributes.status, checkedAt: now },
@@ -392,9 +397,10 @@ export async function handlePaymongoEvent(e: WebhookEvent, o: WebBillingOpts = {
  */
 export async function sendPassReminders(now = new Date()) {
   const due = await db.storePurchase.findMany({
-    // Passes, plans from sponsor codes (store VOUCHER) and auto-renew turned off, which all end the same way
+    // Passes, plans from sponsor codes (store VOUCHER), eGuard's own offers (PROMO, lib/launch-offer) and auto-renew
+    // turned off, which all end the same way
     where: {
-      OR: [{ store: { in: [STORE, "VOUCHER"] }, state: "PAID" }, { store: STORE, state: "cancelled" }],
+      OR: [{ store: { in: [STORE, "VOUCHER", "PROMO"] }, state: "PAID" }, { store: STORE, state: "cancelled" }],
       remindedAt: null, expiresAt: { gt: now, lte: new Date(now.getTime() + REMIND_BEFORE_MS) },
     },
   });
@@ -407,7 +413,7 @@ export async function sendPassReminders(now = new Date()) {
     const family = await db.family.findUniqueOrThrow({ where: { id: p.familyId }, include: { users: { where: { role: "FAMILY_ADMIN", emailVerifiedAt: { not: null } } } } });
     const ends = shortDate(p.expiresAt!, family.timezone);
     const plan = planByProduct(p.productId)?.name ?? family.plan;
-    const what = p.store === "VOUCHER" ? "sponsored plan" : webProduct(p.productId)?.autoRenew ? "plan" : "pass";
+    const what = p.store === "VOUCHER" ? "sponsored plan" : p.store === "PROMO" ? "free month" : webProduct(p.productId)?.autoRenew ? "plan" : "pass";
     const link = `${appUrl()}/settings/subscription`;
     await db.alert.create({
       data: {

@@ -47,6 +47,8 @@ export const getFamilyGraph = cache(async (familyId: string) => {
       photo: { select: { updatedAt: true, contentType: true } },
       devices: {
         orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }],
+        // Only the device page reads it (for the removal code), on its own: pages hand device rows to the browser
+        omit: { removalSecret: true },
         include: { protections: true, location: true },
       },
     },

@@ -16,6 +16,8 @@ export const GET = authed(async ({ user }) => {
         id: b.id, childId: b.childId, childName: b.child.name, deviceLabel: b.deviceLabel, browser: b.browser,
         browserVersion: b.browserVersion, extensionVersion: b.extensionVersion, platform: b.platform,
         lastSeenAt: b.lastSeenAt, lastSeenLabel: dayTime(b.lastSeenAt, family.timezone), connected: !b.revokedAt, createdAt: b.createdAt,
+        // Paired through the computer's eGuard agent: part of that device, and no device slot of its own
+        deviceId: b.deviceId,
         // The extension's own answer from its latest health report, as the web's browser card shows it
         protectionState: b.protectionState, offline: isOffline(b),
         // What the web card says: disconnected and silent override what it last reported. Show these, don't re-derive.

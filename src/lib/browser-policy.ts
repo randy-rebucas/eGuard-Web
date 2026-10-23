@@ -181,13 +181,30 @@ async function writeVersion(current: BrowserPolicy, data: Prisma.BrowserPolicyUp
   return db.$transaction(async (tx) => {
     const res = await tx.browserPolicy.updateMany({
       where: { id: current.id, version: current.version },
-      data: { temporaryAllows: activeTemporaryAllows(current), ...data, version: { increment: 1 }, updatedBy: actorName },
+      data: { temporaryAllows: activeTemporaryAllows(current), version: { increment: 1 }, ...data, updatedBy: actorName },
     });
     if (!res.count) throw new ServiceError(409, "Someone else changed these settings just now. Reload to see their changes.", "conflict");
     const p = await tx.browserPolicy.findUniqueOrThrow({ where: { id: current.id } });
     await tx.browserPolicyVersion.create({ data: { policyId: p.id, version: p.version, snapshot: snapshot(p) as Prisma.InputJsonValue, createdBy: actorName } });
     return p;
   });
+}
+
+/**
+ * Moves the child's policy to a version above `floor`, with the same settings. Browsers that move to this child (a
+ * computer moved to another child takes its browsers along) have enforced another child's policy up to `floor`, and
+ * the extension refuses a lower version than it has: without this they'd keep the other child's rules.
+ */
+export async function advancePolicyPast(childId: string, floor: number, actorName: string) {
+  for (let attempt = 0; ; attempt++) {
+    const current = await getOrCreateBrowserPolicy(childId);
+    if (current.version > floor) return current;
+    try {
+      return await writeVersion(current, { version: floor + 1 }, actorName);
+    } catch (e) {
+      if (!(e instanceof ServiceError && e.status === 409) || attempt >= 4) throw e;
+    }
+  }
 }
 
 /**

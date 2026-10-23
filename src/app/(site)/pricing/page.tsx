@@ -13,7 +13,7 @@ import "./pricing.css";
 export const metadata: Metadata = pageMetadata({
   title: "Pricing: free parental controls, plans in pesos",
   path: "/pricing",
-  description: `eGuard is free for ${FREE_CHILDREN}. eGuard Plus and Family Pro add more children, devices, location sharing and reports. Pay monthly in pesos with GCash, Maya, QR Ph or card.`,
+  description: `eGuard is free for ${FREE_CHILDREN}. eGuard Plus and Family Pro add more children, devices, location sharing and reports. Pay monthly or yearly in pesos with GCash, Maya, QR Ph or card.`,
 });
 
 const LOOK = {
@@ -22,10 +22,18 @@ const LOOK = {
   PRO: { cta: "Get Family Pro", style: "lp-btn-outline", featured: false },
 } as const;
 
-const pesos = (p: Plan) => {
-  if (p.id === "FREE") return "0";
-  const c = webPrice(p.id);
-  return c % 100 ? (c / 100).toFixed(2) : String(c / 100);
+const money = (c: number) => (c % 100 ? (c / 100).toFixed(2) : (c / 100).toLocaleString("en-PH"));
+const pesos = (p: Plan) => (p.id === "FREE" ? "0" : money(webPrice(p.id)));
+/** "₱1,490 a year, 2 months free": the yearly price, and what it saves, from the prices themselves */
+/** Months a year costs, from eGuard Plus's prices (the same ratio for every plan by default) */
+const yearlyAnswer = () => {
+  const months = Math.round(webPrice("PLUS", process.env, "year") / webPrice("PLUS"));
+  return months < 12 ? `Yes. A year costs the same as ${months} months, as a pass or with auto-renew.` : "A year costs the same as paying monthly, as a pass or with auto-renew, and you pay once.";
+};
+const yearlyNote = (p: Plan) => {
+  if (p.id === "FREE") return null;
+  const year = webPrice(p.id, process.env, "year"), months = Math.round((webPrice(p.id) * 12 - year) / webPrice(p.id));
+  return `or ₱${money(year)} a year${months > 0 ? `, ${months} month${months === 1 ? "" : "s"} free` : ""}`;
 };
 
 type Cell = string | boolean;
@@ -50,7 +58,8 @@ const ROWS: [string, string | null, (p: Plan) => Cell][] = [
 const FAQS: [string, React.ReactNode][] = [
   ["What counts as a device?", "Each phone, tablet and browser you connect counts as one. A laptop with eGuard in both Chrome and Edge counts as two."],
   ["Is verification included on the Free plan?", "Yes. Every plan checks each protection on the device and shows you Configuration Health. Paying adds capacity and features, not honesty."],
-  ["What's the difference between a pass and auto-renew?", "A pass is one month, paid once with GCash, Maya, QR Ph or a card. It never renews; we remind you 3 days before it ends, and buying another adds a month. Auto-renew charges a card or Maya every month until you turn it off."],
+  ["What's the difference between a pass and auto-renew?", "A pass is one month or one year, paid once with GCash, Maya, QR Ph or a card. It never renews; we remind you 3 days before it ends, and buying another adds to it. Auto-renew charges a card or Maya every month or every year until you turn it off."],
+  ["Is paying yearly cheaper?", yearlyAnswer()],
   ["What happens if I move to a smaller plan?", "Nothing is removed. Children and devices over the new limit stay protected; you just can't add more until you're under it. If location sharing ends, current locations are cleared and any history is hidden until you upgrade again."],
   ["Can I pay in the app?", "Plans are bought on the web, in Settings › Subscription. Only the family admin can buy or cancel. The app shows your plan as soon as it's paid."],
   ["Do you have plans for schools or organizations?", <>Yes. Any parent can create an organization for a school, community group or business, share a join code with families, and buy sponsor codes that pay for families&apos; plans, with {discountSummary()}. Family Pro adds API keys, so your own systems can read your codes and counts. Organizations only ever see counts, never a family&apos;s data. <Link href="/for-schools">How it works for organizations</Link>.</>],
@@ -87,6 +96,7 @@ export default function PricingPage() {
                 <h2 className="pc-plan-name">{p.name}</h2>
                 <p>{p.blurb}</p>
                 <div className="lp-price"><b className="num"><sup>₱</sup>{pesos(p)}</b><span>/ month</span></div>
+                {yearlyNote(p) ? <p className="t-meta num">{yearlyNote(p)}</p> : null}
                 <ul>{p.features.map((f) => <li key={f.key}><Check />{f.label}</li>)}</ul>
                 <SignedIn signedIn={<PlanLink id={p.id} signedIn />} signedOut={<PlanLink id={p.id} signedIn={false} />} />
               </article>
@@ -132,18 +142,18 @@ export default function PricingPage() {
           <div className="pc-ways">
             <div className="pc-way">
               <i><Ticket /></i>
-              <h3>Monthly pass</h3>
-              <p>Pay once for a month. Nothing renews by surprise.</p>
+              <h3>Pass</h3>
+              <p>Pay once for a month or a year. Nothing renews by surprise.</p>
               <ul className="pc-methods"><li>GCash</li><li>Maya</li><li>QR Ph</li><li>Card</li></ul>
               <ul className="pc-points">
                 <li><Check />We remind you 3 days before it ends</li>
-                <li><Check />Buy another to add a month</li>
+                <li><Check />Buy another to add a month or a year</li>
               </ul>
             </div>
             <div className="pc-way">
               <i><RefreshCw /></i>
               <h3>Auto-renew</h3>
-              <p>Charged every month, so protection never lapses.</p>
+              <p>Charged every month or every year, so protection never lapses.</p>
               <ul className="pc-methods"><li>Visa</li><li>Mastercard</li><li>Maya</li></ul>
               <ul className="pc-points">
                 <li><Check />Turn it off any time</li>

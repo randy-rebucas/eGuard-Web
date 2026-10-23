@@ -1,7 +1,7 @@
 import Link from "next/link";
-import type { AlertSeverity, CheckStatus } from "@prisma/client";
+import type { AlertSeverity, CheckStatus, DeviceKind, Platform } from "@prisma/client";
 import { Icon } from "./icon";
-import { CHECK_META, CAPABILITY_META, type Capability } from "@/lib/protections";
+import { CHECK_META, CAPABILITY_META, PLATFORM_NAME, type Capability } from "@/lib/protections";
 
 export type StatusKey = "protected" | "attention" | "action" | "offline" | "notconfigured" | "healthy" | "issues";
 
@@ -81,11 +81,11 @@ export function AvatarGroup({ people, max = 6 }: { people: { id: string; name: s
   );
 }
 
-export function DeviceIcon({ kind, className }: { kind: "PHONE" | "TABLET"; className?: string }) {
-  return <Icon name={kind === "TABLET" ? "tablet" : "smartphone"} className={className} />;
+export function DeviceIcon({ kind, className }: { kind: DeviceKind; className?: string }) {
+  return <Icon name={kind === "TABLET" ? "tablet" : kind === "COMPUTER" ? "laptop" : "smartphone"} className={className} />;
 }
 
-export const platformName = (p: "ANDROID" | "IOS") => (p === "IOS" ? "iOS" : "Android");
+export const platformName = (p: Platform) => PLATFORM_NAME[p];
 
 export function EmptyState({ icon, title, text, children }: { icon: string; title: string; text?: string; children?: React.ReactNode }) {
   return (

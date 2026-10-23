@@ -17,13 +17,14 @@ export const PATCH = authed<{ id: string }>(async ({ req, user, params }) => {
 });
 
 /**
- * Removes the device from the family. Its token stops working immediately. Needs the parent's password,
+ * Removes the device from the family. Its token stops working immediately. A computer waits instead (`pending: true`):
+ * it uninstalls eGuard on its next sync and is removed then; `now: true` removes it without waiting. Needs the parent's password,
  * and the family gets a "Device removed" alert (emailed), since eGuard stops verifying the device.
  * `deleteHistory: true` also deletes the screen time, app usage and places it recorded; by default they're kept.
  */
 export const DELETE = authed<{ id: string }>(async ({ req, user, params }) => {
   // A missing password gets 403 wrong_password (after the 404 check), like a wrong one
-  const b = await body(req, ConfirmBody.extend({ deleteHistory: z.boolean().optional() }));
-  await removeDevice(user, params.id, { password: b.password, phrase: b.confirm }, { deleteHistory: b.deleteHistory === true });
-  return NextResponse.json({ ok: true });
+  const b = await body(req, ConfirmBody.extend({ deleteHistory: z.boolean().optional(), now: z.boolean().optional() }));
+  const { pending } = await removeDevice(user, params.id, { password: b.password, phrase: b.confirm }, { deleteHistory: b.deleteHistory === true, now: b.now === true });
+  return NextResponse.json({ ok: true, pending });
 });

@@ -1,5 +1,5 @@
 import type { CheckStatus, DeviceProtection, Platform, ProtectionKey } from "@prisma/client";
-import { PROTECTIONS, PROTECTION_BY_KEY, configMatches, describeConfig, isConfigured, type Capability } from "./protections";
+import { PLATFORM_NAME, PROTECTIONS, PROTECTION_BY_KEY, configMatches, describeConfig, isConfigured, type Capability } from "./protections";
 
 export const OFFLINE_AFTER_MS = 24 * 3600_000;
 
@@ -58,8 +58,6 @@ export type HealthCheck = {
   fixDeviceId?: string;
   fixChildId?: string;
 };
-
-const PLATFORM_NAME: Record<Platform, string> = { ANDROID: "Android", IOS: "iOS" };
 
 /** What one device has for a protection, in words (web dialogs, device page and the mobile API). */
 export function reportedLabel(cap: Capability, status: CheckStatus, row: { reported: unknown } | null | undefined) {

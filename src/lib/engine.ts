@@ -108,10 +108,14 @@ export async function processReport(deviceId: string, report: DeviceReport) {
     // A full report covers everything the device can apply. One it leaves out isn't in force (older Android builds
     // drop a protection when its permission is turned off): left alone, it would keep its last "Pass".
     const sent = new Set(entries.map((p) => p.key));
+    // A computer has no permission to turn on: one it leaves out is one its version of eGuard doesn't apply yet
+    const why = device.platform === "WINDOWS" || device.platform === "MACOS"
+      ? "eGuard for this computer doesn't apply it yet. An update to eGuard will."
+      : "eGuard isn't applying it. A permission it needs may be turned off.";
     for (const def of PROTECTIONS) {
       const cap = def.caps[device.platform];
       if (sent.has(def.key) || cap === "UNSUPPORTED" || cap === "PARENT_SET") continue;
-      entries.push({ key: def.key, config: {}, error: "eGuard isn't applying it. A permission it needs may be turned off.", missing: true });
+      entries.push({ key: def.key, config: {}, error: why, missing: true });
     }
   }
   // Read once for the whole report instead of per protection: a full report covers every protection

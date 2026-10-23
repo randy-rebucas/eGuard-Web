@@ -3,6 +3,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { authDevice, badRequest, readJson, unauthorized } from "@/lib/device-auth";
 import { LIMITS, hit } from "@/lib/rate-limit";
+import { AppIds, canonicalNames, rememberIds } from "@/lib/app-identity";
 
 /** Furthest a device's local day can be from the server's UTC day (time zones run from UTC-12 to UTC+14). */
 const MAX_SKEW_MS = 2 * 864e5;
@@ -21,7 +22,8 @@ const Body = z.object({
   date: day,
   totalMinutes: z.number().int().min(0).max(1440),
   // Trimmed so the same app isn't stored twice under " YouTube" and "YouTube" (same as /events)
-  apps: z.array(z.object({ name: z.string().trim().min(1).max(80), minutes: z.number().int().min(0).max(1440) })).max(200).default([]),
+  // `ids`: the desktop agent's stable ids for the app (lib/app-identity), so one game under two names counts once
+  apps: z.array(z.object({ name: z.string().trim().min(1).max(80), minutes: z.number().int().min(0).max(1440), ids: AppIds })).max(200).default([]),
   /** Optional minutes per local hour (index 0 = midnight), for the hourly chart */
   hourly: z.array(z.number().int().min(0).max(60)).length(24).optional(),
 });
@@ -43,10 +45,19 @@ export async function POST(req: Request) {
   if (!parsed.success) return badRequest(parsed.error.issues[0].message);
   const { date: day, totalMinutes, hourly } = parsed.data;
   const date = new Date(`${day}T00:00:00.000Z`);
+  // An app the child's list knows under another name (by id) is stored under that name; two entries that turn out to
+  // be one app are added up
+  const renamed = await canonicalNames(device.childId, device.platform, parsed.data.apps);
+  const merged = new Map<string, { name: string; minutes: number; ids?: z.infer<typeof AppIds> }>();
+  for (const a of parsed.data.apps) {
+    const name = renamed.get(a.name) ?? a.name;
+    const had = merged.get(name);
+    merged.set(name, { name, minutes: Math.min(1440, (had?.minutes ?? 0) + a.minutes), ids: [...(had?.ids ?? []), ...(a.ids ?? [])] });
+  }
   // Each call may name 200 apps: without a cap per day, new names on every call would grow the table without end
   const known = new Set((await db.appUsageDaily.findMany({ where: { deviceId: device.id, date }, select: { app: true } })).map((r) => r.app));
   let room = MAX_APPS_PER_DAY - known.size;
-  const apps = parsed.data.apps.filter((a) => known.has(a.name) || room-- > 0);
+  const apps = [...merged.values()].filter((a) => known.has(a.name) || room-- > 0);
   await db.screenTimeDaily.upsert({
     where: { deviceId_date: { deviceId: device.id, date } },
     create: { deviceId: device.id, childId: device.childId, date, minutes: totalMinutes, hourly: hourly ?? [] },
@@ -72,6 +83,7 @@ export async function POST(req: Request) {
     if (room > 0) {
       await db.childApp.createMany({ data: fresh.slice(0, room).map((name) => ({ childId: device.childId, name })), skipDuplicates: true });
     }
+    await rememberIds(device.childId, device.platform, apps);
   }
   await db.device.update({ where: { id: device.id }, data: { lastSeenAt: new Date() } });
   return NextResponse.json({ ok: true });

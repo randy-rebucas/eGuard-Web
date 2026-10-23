@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { db } from "@/lib/db";
 import { processReport } from "@/lib/engine";
 import { ReportedConfigSchema } from "@/lib/config-service";
 import { authDevice, badRequest, readJson, unauthorized } from "@/lib/device-auth";
@@ -14,6 +15,8 @@ const Body = z.object({
   battery: z.number().int().min(0).max(100).nullable().optional(),
   osVersion: z.string().max(40).optional(),
   appVersion: z.string().max(20).optional(),
+  // Computers: the Windows accounts on it, and whether the child's rules apply in each (the parent's choice at pairing)
+  accounts: z.array(z.object({ name: z.string().trim().min(1).max(64), enforced: z.boolean() })).max(32).optional(),
 });
 
 /**
@@ -39,5 +42,8 @@ export async function POST(req: Request) {
   }
   if (ignored.length) console.warn("[device] report entries ignored", device.id, device.appVersion, ignored);
   await processReport(device.id, { ...parsed.data, protections });
+  if (parsed.data.accounts && device.kind === "COMPUTER") {
+    await db.device.update({ where: { id: device.id }, data: { accounts: parsed.data.accounts } });
+  }
   return NextResponse.json({ ok: true, ...(ignored.length ? { ignored } : {}) });
 }
