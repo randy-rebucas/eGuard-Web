@@ -20,6 +20,7 @@ import { STAFF_IDLE_MS } from "./console-host";
 import { WEB_IDLE_DAYS } from "./auth";
 import { KNOWN_DEVICE_DAYS } from "./sign-in-notice";
 import { runParentCare } from "./parent-care/runner";
+import { finishQuietRemovals } from "./family-service";
 import { CARE_RETENTION_DAYS } from "./parent-care/retention";
 
 /**
@@ -301,6 +302,7 @@ export async function runMaintenance() {
   // After alert emails, so a safety alert never waits behind tips and reminders
   const parentCare = await step("parent care", () => runParentCare());
   const stale = await step("stale checks and changes", () => closeStaleWork());
+  const quietRemovals = await step("quiet computer removals", () => finishQuietRemovals());
   const purged = await step("data retention", () => purgeExpiredData());
-  return { offlineFamilies, unfinishedPairings, offlineBrowsers, purchases, passReminders, codeBatches, codeReminders, orgDigests, emails, weeklyDigests, broadcasts, parentCare, stale, purged, failed };
+  return { offlineFamilies, unfinishedPairings, offlineBrowsers, purchases, passReminders, codeBatches, codeReminders, orgDigests, emails, weeklyDigests, broadcasts, parentCare, stale, quietRemovals, purged, failed };
 }

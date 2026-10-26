@@ -59,6 +59,8 @@ export const LIMITS = {
   deviceEvents: { max: 120, windowMs: 60 * 60_000 },
   // The desktop agent asks every few hours; a looping one mustn't download the whole catalog without limit
   deviceCatalog: { max: 30, windowMs: 60 * 60_000 },
+  // The desktop agent asks every few hours and when its version is too old; a looping one mustn't sign without limit
+  deviceUpdate: { max: 30, windowMs: 60 * 60_000 },
   /** location fixes one child device sends (each is several writes with history on); a real phone sends 12–20 an hour */
   deviceLocation: { max: 240, windowMs: 60 * 60_000 },
   /** daily totals one child device sends (each can write up to 200 app rows); a real phone sends one per sync, plus a backlog after a few days offline */

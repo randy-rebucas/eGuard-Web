@@ -1864,7 +1864,7 @@ resistance) is in [child-app-spec.md](child-app-spec.md). This part is the wire 
 
 **Computers** (eGuard for Windows) use the same API as `platform: "WINDOWS"`, `kind: "COMPUTER"`. They add app `ids`,
 `serverTime`, a signed `uninstall` command on `/sync`, the `APPS_FOUND`, `TAMPER` and `UNINSTALL_ACK` events, and
-`GET /catalog`, and `accounts` on `/report` (the Windows accounts the child's rules apply in). They sync every
+`GET /catalog` and `GET /update`, and `accounts` on `/report` (the Windows accounts the child's rules apply in). They sync every
 minute. See [desktop-agent-spec.md › 12](desktop-agent-spec.md#12-wire-reference-whats-new-for-computers).
 Removing a computer waits for it: `DELETE /devices/{id}` returns `pending: true` (and takes `now: true`), and
 `POST /devices/{id}/keep` cancels the removal.
@@ -2204,7 +2204,7 @@ detected from `/report`.
 | `type` | Extra fields | Send when | Server effect |
 |---|---|---|---|
 | `APP_INSTALLED` | `app`, `ageRating?` (0–21) | A new app appears and App Approval is off | Adds the app to the child's list; INFO alert "New app installed" the first time the name is seen for this child (from any device). If App Approval (or Downloads "parent approval") is on anyway, the new app is added as `PENDING` with an "App approval requested" alert, as `APP_REQUESTED` would (Android 1.0.9 and earlier send both events). On a plan that limits apps (Free), the alert names the app only if the parent's Apps list shows it; otherwise it says "An app was installed" with the upgrade line |
-| `APP_REQUESTED` | `app` | The child taps Ask, or a new app is installed with App Approval on | Marks the app `PENDING` and raises an ATTENTION "App approval requested". One open request per app |
+| `APP_REQUESTED` | `app`; computers also `ids?`, `source?`, `category?` (as `APP_INSTALLED`) | The child taps Ask, or a new app is installed with App Approval on | Marks the app `PENDING` and raises an ATTENTION "App approval requested". One open request per app. A new app keeps the `category` and `source` sent, and its `ids` are remembered (the computer agent sends them for an app its scan hadn't reported) |
 | `APP_BLOCKED` | `app` | The child opens a `BLOCKED` app | INFO "App blocked", at most once per app per device per hour. On Free, an app the Apps list hides isn't named ("tried to open a blocked app"), and those share one alert per hour |
 | `LIMIT_REACHED` | `minutes` (0–1440, the limit) | The daily screen-time limit is hit | INFO "Screen time limit reached", at most once per device per 12 hours |
 | `TIME_REQUESTED` | `app?`, `reason?` (`DAILY_LIMIT`, `APP_LIMIT`, `CATEGORY_LIMIT`, `BEDTIME`) | The child taps "Ask for more time" on a limit or bedtime block screen | ATTENTION "More time requested" (Screen time). One open request per child across devices; after a parent answers it (extra time, or not now), a new one only 10 minutes later. `app` is named only if the plan's Apps list shows it |

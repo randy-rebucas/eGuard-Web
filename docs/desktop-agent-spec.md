@@ -207,6 +207,9 @@ to an allowed one whose signer it doesn't carry.
   their own limit); it lists them with a button each to switch to or start one, since it hides the taskbar. At
   bedtime the overlay covers everything, ALWAYS_ALLOWED apps included. If the overlay keeps getting killed,
   `LockWorkStation` is the backstop.
+- **Exclusive fullscreen** (Q9, open): no window can draw over a program in exclusive fullscreen. Apps on the child's
+  list are ended when their time is up or bedtime starts, so they don't stay in front of the overlay. Anything else
+  that keeps the screen for 15 s while the overlay is due gets the session locked (`LockWorkStation`, above).
 - **Days and bedtime follow eGuard's clock.**
   - `/sync` returns `serverTime`, and the agent keeps the offset from its own clock.
   - Weekends, school nights and bedtime windows follow `timezone`, with the rules in child-app-spec.md section 6.
@@ -218,7 +221,12 @@ to an allowed one whose signer it doesn't carry.
 
 - **Chrome and Edge:** the service writes the HKLM `ExtensionInstallForcelist` policy, so the eGuard extension is
   installed and can't be removed.
-- **Firefox:** the extension is forced through `policies.json`.
+- **Firefox:** the extension is forced through Firefox's registry policies (HKLM `Software\Policies\Mozilla\Firefox`
+  `ExtensionSettings`), not `policies.json`: Firefox reads them in every copy on the computer, portable and Store ones
+  included, and ignores `policies.json` when they exist.
+- **What else is set, so the extension isn't one click from off:** Incognito/InPrivate off and Guest mode off (Chrome,
+  Edge); the extension allowed in private windows and Troubleshoot Mode off (Firefox). The managed policy also says
+  `privateWindows: "off"`, so the extension doesn't ask for "Allow in Incognito" where private windows can't open.
 - The parent pairs the extension once with a browser code (WEB is GUIDED with those steps).
 - **Browsers on the PC take no device slot.** Every `/sync` returns `browserLink: { value, expiresAt }` (30 days).
   The agent writes `value` into the extension's managed policy as `deviceLink` (HKLM
@@ -226,8 +234,9 @@ to an allowed one whose signer it doesn't carry.
   `3rdparty` policy) on every sync. The extension sends it on `/browser/v1/pair`, and the browser is then part of the
   PC: no slot of its own, it moves with the PC and it's removed with it (`src/lib/browser-link.ts`,
   browser-extension-api.md › `POST /pair`).
-- Browsers the extension can't run in (Opera GX, Tor and unknown Chromium forks) are category BROWSERS and are blocked
-  until the parent allows them.
+- Browsers the extension can't run in (Opera GX, Tor and unknown Chromium forks) are category BROWSERS. While web
+  filtering is on (any mode but off) they wait for the parent, with or without App Approval: the agent holds them, and
+  the server creates them PENDING (`APP_INSTALLED`, `APPS_FOUND`). With web filtering off they're apps like any other.
 
 ## 10. Can't be uninstalled
 
@@ -254,8 +263,10 @@ to an allowed one whose signer it doesn't carry.
   - The code is the first 8 bytes of `HMAC-SHA256(removalSecret, "eguard.device.remove:<deviceId>:<window>")`. Each
     byte is mapped to `ABCDEFGHJKLMNPQRSTUVWXYZ23456789[byte % 32]`, and `window = floor(unix ms / 900000)`.
   - The agent accepts the current window and the one before, so a code works for 15 to 30 minutes.
-  - When it's back online it sends `UNINSTALL_ACK` with `code`. The server deletes the device only while a removal
-    waits. A valid code with no removal waiting (the parent chose "Keep this computer" after seeing it) gets 409 and
+  - Online, it sends `UNINSTALL_ACK` with `code` before removing itself. The server deletes the device only while a
+    removal waits. Offline, eGuard is gone before it can tell the server: a removal that has waited 7 days with no
+    check-in from the computer since it was asked is finished by the server ("Device removed": it hasn't checked in
+    since the parent asked; settled 2026-10-24). One that did check in after the request is alive and keeps waiting. A valid code with no removal waiting (the parent chose "Keep this computer" after seeing it) gets 409 and
     raises "A removal code was used after you kept the computer" (Action required), since the PC may have removed
     eGuard already. Online, the agent sends the ack before removing itself and stops on 409.
   - Wrong codes: 5 in a row lock the input for 15 minutes, doubling with each lockout up to 24 hours, kept across
@@ -269,12 +280,44 @@ to an allowed one whose signer it doesn't carry.
 
 | Route | Blocked by |
 |---|---|
-| Settings → Apps → Uninstall | ARP entry with `NoRemove=1`, `NoModify=1` (MSI `ARPNOREMOVE`). The visible "Uninstall" opens eGuard's "Ask your parent" window |
+| Settings → Apps → Uninstall | The package's own entry is hidden (`ARPSYSTEMCOMPONENT`). eGuard's entry (`NoModify=1`, `NoRepair=1`) is visible and its Uninstall opens eGuard's "Remove eGuard" window, where a parent types the code; closed without one, it sends `TAMPER` `UNINSTALL_BLOCKED` (owner's decision, 2026-10-24: Windows 11 can't both hide Uninstall and open a window from it) |
 | `msiexec /x` | A custom action that aborts unless a verified command or code is in the service's state; sends `TAMPER` `UNINSTALL_BLOCKED` |
-| `sc stop` / `sc delete`, Services, Task Manager on the service | Service DACL denies `SERVICE_STOP`, `DELETE`, `WRITE_DAC` and `CHANGE_CONFIG` to Everyone, **Administrators included**. Only SYSTEM can change it, and the service does so itself during an authorized uninstall. Sends `SERVICE_STOP_DENIED` |
+| `sc stop` / `sc delete`, Services, Task Manager on the service | The service DACL grants `DELETE`, `WRITE_DAC`, `WRITE_OWNER` and `CHANGE_CONFIG` to SYSTEM only, **not to Administrators** (by not granting them: a deny entry for Administrators would lock out SYSTEM, which holds that group). A stop request reaches the service, which refuses it outside an authorized removal and sends `SERVICE_STOP_DENIED` (owner's decision, 2026-10-24). A service ended by force (`taskkill /F`, an administrator) is started again by the SCM and the guard, and sends `SERVICE_RESTARTED` |
 | Killing `eguard-agent.exe` | The service starts it again within seconds; `AGENT_RESTARTED` |
-| Deleting or replacing files | SYSTEM-only write ACLs, running binaries held open, and the guard restoring from cache; `FILES_CHANGED` |
+| Deleting or replacing files | SYSTEM-only write ACLs, the program files held open by the service and the guard (no delete, write or rename), and the guard restoring from its cache (`ProgramData\eGuard\cache`, SYSTEM-only) within 10 s; `FILES_CHANGED` |
 | Safe Mode | Service registered under `SafeBoot\Minimal` and `SafeBoot\Network`; `SAFE_MODE` |
+
+**What removal takes out:** the service, the guard's task, the Safe Mode keys, the browser policies, the data
+folder's secrets, state and the guard's cache, then the package (the program folder and the Settings entry). **Left
+behind:** eGuard's log folder (`%ProgramData%\eGuard\logs`) and each user's agent log (`%LOCALAPPDATA%\eGuard\logs`).
+They hold no secrets. Removing them too is open.
+
+**Updates** (Q7, settled 2026-10-24; built 2026-10-24, waiting for the VM test and eGuard's certificate):
+- The service asks `GET /device/v1/update` for a manifest: `{ type: "eguard.desktop.update", version, issuedAt,
+  files: [{ name, size, sha256, url }] }` (all three programs), signed with the catalog's key scheme, or
+  `{ manifest: null }`. A manifest issued before the last one accepted is refused, as catalogs are. The server
+  offers the release in `DESKTOP_RELEASE`.
+- It downloads each file over HTTPS and accepts it only when its size and SHA-256 match the manifest **and** it's
+  Authenticode-signed with eGuard's certificate.
+- It keeps the guard's cache as the previous version (`cache\previous`), puts the new files in the cache, and stops.
+  The guard then puts the cache's files in place of the program files and starts the new version. The guard trusts
+  its cache, so it keeps the new files, not the old ones.
+- If the new version doesn't report healthy (a sync and a saved state) within 10 minutes, the guard puts back the
+  previous version, which doesn't try that version again. **Not built:** the parent's dashboard showing the failed
+  update (it needs a wire addition; open).
+- `/sync` `minAppVersion` (`CHILD_MIN_APP_VERSION`, e.g. `windows:0.2.0`) makes an update due at once; otherwise the
+  service asks every 6 hours.
+
+**Recovery if eGuard goes away** (Q8, settled 2026-10-24; not built yet):
+- **Support removal:** support can issue a removal for one computer after checking the parent's identity: a short
+  text, `{ type: "eguard.device.support-removal", deviceId, issuedAt, expiresAt }` (7 days) signed with an offline
+  support key whose public half is built into the agent (not the server's key). The parent pastes it into the
+  "Remove eGuard" window (or `eguard-agent remove --support FILE`). The agent checks the key, its own device id and
+  the expiry by its own clock, then removes itself as for the dashboard's command.
+- **End of life:** before eGuard's service shuts down, `/sync` sends a signed uninstall command to every computer for
+  at least 90 days, and parents are emailed. If that can't be kept up, a signed end-of-life notice from the offline
+  support key, valid only after a stated date, makes every agent that sees it remove itself; it's published on the
+  website. The terms and the privacy policy say both.
 
 **Limits, stated plainly:** a child with an **administrator** account, or one who reinstalls Windows, can always
 defeat user-mode software in the end. That is why the standard account is a health check, every attempt alerts the
@@ -294,6 +337,7 @@ parent while it happens, and a reinstall shows up as the offline alert after a d
 | `REMOVAL_CODE_GUESSED` | Someone is guessing eGuard's removal code | Action required |
 | `NEW_ACCOUNT` | A new account was added to the computer | Attention |
 | `AGENT_RESTARTED` | eGuard was closed and started again | Attention |
+| `SERVICE_RESTARTED` | eGuard was stopped and started again (the service ended without being asked: killed, or crashed) | Attention |
 | `CLOCK_CHANGED` | The computer's clock was changed | Attention |
 
 **Reports and capabilities** (`/report`, as phones; the capabilities are in `src/lib/protections.ts`):
@@ -316,9 +360,11 @@ Everything in mobile-api.md Part C applies. Added, all optional for phones:
 | `POST /usage` | `apps[].ids` |
 | `POST /events` `APP_INSTALLED` | `ids`, `source` (`CATALOG`, `LAUNCHER`, `UNKNOWN_PUBLISHER`), `category` |
 | `POST /events` `APPS_FOUND` | `{ apps: [{ app, ids?, source?, category? }] }`, 1–200 apps |
+| `POST /events` `APP_REQUESTED` | `ids?`, `source?`, `category?` as `APP_INSTALLED`, for an app the scan hadn't reported ("Ask parent" on a browser or a game in a folder the scan doesn't walk) |
 | `POST /events` `TAMPER` | `{ kind }` (section 11) |
 | `POST /events` `UNINSTALL_ACK` | `{ code? }`. 409 when no removal waits; with a valid code it also raises an alert (section 10) |
 | `GET /catalog?since=<version>` | `{ catalog: { type: "eguard.desktop.catalog", version, issuedAt, entries: [{ kind, matchType, match, displayName, category, trending }] }, signature, keyId }`, or `{ version, unchanged: true }`. `version` is a 16-character hash of the entries, so a removed entry changes it too: compare it as a string. `issuedAt` (ms, signed) says when it was served: refuse a catalog issued before the one you keep, or one without it once yours has it (a replayed older catalog). `503` when signing isn't configured (keep the copy you have). 30 requests an hour |
+| `GET /update` (computers) | `{ manifest: { type: "eguard.desktop.update", version, issuedAt, files: [{ name, size, sha256, url }] }, signature, keyId }` for the release in `DESKTOP_RELEASE`, or `{ manifest: null }`. `issuedAt` (ms, signed) as the catalog's. Compare `version` with your own; install only a newer one, and only files whose size, SHA-256 and Authenticode signer check out (section 10). `404` for a phone; `503` when signing or `DESKTOP_RELEASE` is misconfigured. 30 requests an hour |
 
 On the parent side:
 - `DELETE /mobile/v1/devices/{id}` returns `pending: true` for a computer and takes `now: true`.
@@ -340,6 +386,10 @@ On the parent side:
   a waiting removal, `REMOVAL_CODE_GUESSED` and `NEW_ACCOUNT`, `/report` `accounts` (migration
   `20261023180000_computer_accounts`), computer wording for found apps and protections not applied yet, and four more
   trusted publishers (Epson, LG, Intel's Store name, Zoom's newer name)
+
+- 2026-10-24 (the owner's decisions after Phase 6): a quiet removal finished after 7 days (`finishQuietRemovals`,
+  run by the maintenance cron), BROWSERS apps PENDING while web filtering is on, `APP_REQUESTED` `ids`/`source`/
+  `category`, `TAMPER` `SERVICE_RESTARTED`
 
 **Tests:**
 - `tests/api/desktop-agent.test.ts`: 16 tests covering pairing, the scan, id merging, approval, the signed catalog, tamper and all three
@@ -366,7 +416,9 @@ Run on a Windows 11 VM with a standard child account.
 5. Set Gaming time to 1 minute and play Roblox. The 1-minute warning shows, then the block, then "Gaming time used up".
 6. Move the clock forward an hour. No time is gained, and a CLOCK_CHANGED alert appears.
 7. Kill `eguard-agent.exe`. It comes back, and an AGENT_RESTARTED alert appears.
-8. As the child **and as a local admin**, try each of these. Every one fails and alerts:
+8. Try each of these. **As the standard child, every one fails and alerts. As a local admin, every one alerts the
+   parent while it happens** (or is undone, like deleted files put back); failing is a bonus, since no user-mode
+   software holds against an administrator (Q1, settled 2026-10-24):
    - Settings uninstall
    - `msiexec /x`
    - `sc stop` and `sc delete`

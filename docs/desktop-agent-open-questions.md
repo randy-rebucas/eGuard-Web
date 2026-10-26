@@ -6,15 +6,15 @@ answer into the spec, then mark it **Settled** here with the date and the spec s
 
 | # | Topic | Spec section | Status |
 |---|---|---|---|
-| Q1 | [Admin accounts in acceptance test 8](#q1-admin-accounts-in-acceptance-test-8) | 2, 14 | Open |
+| Q1 | [Admin accounts in acceptance test 8](#q1-admin-accounts-in-acceptance-test-8) | 2, 14 | **Settled** 2026-10-24 (spec 14) |
 | Q2 | [Shared PCs](#q2-shared-pcs) | 1, 4 | **Settled** 2026-10-23 (spec 1, 4, 11, 12) |
 | Q3 | [Anti-cheat and TerminateProcess](#q3-anti-cheat-and-terminateprocess) | 2, 7 | Open |
 | Q4 | [Waking the PC for a removal](#q4-waking-the-pc-for-a-removal) | 10, 12 | **Settled** 2026-10-23 (spec 10, 12) |
 | Q5 | [Guessing the removal code](#q5-guessing-the-removal-code) | 10 | **Settled** 2026-10-23 (spec 10, 11) |
 | Q6 | [Clock changes while offline](#q6-clock-changes-while-offline) | 8 | Open |
-| Q7 | [Self-update](#q7-self-update) | 10, 15 | Open |
-| Q8 | [Recovery if eGuard goes away](#q8-recovery-if-eguard-goes-away) | 10 | Open |
-| Q9 | [Exclusive fullscreen games](#q9-exclusive-fullscreen-games) | 8 | Open |
+| Q7 | [Self-update](#q7-self-update) | 10, 15 | **Settled** 2026-10-24 (spec 10; built 2026-10-24, waits for the VM test and the certificate) |
+| Q8 | [Recovery if eGuard goes away](#q8-recovery-if-eguard-goes-away) | 10 | **Settled** 2026-10-24 (spec 10; not built) |
+| Q9 | [Exclusive fullscreen games](#q9-exclusive-fullscreen-games) | 8 | Open: approved 2026-10-24, not built (spec 8) |
 
 The prompt asks the agent to answer Q2 to Q6 in its first plan.
 
@@ -29,6 +29,8 @@ commands as SYSTEM (a scheduled task, PsExec), or edit the registry offline from
 **Suggestion:** split test 8. As the standard child account, every route fails and alerts. As a local admin, every
 route alerts the parent while it happens; failing is a bonus, not a requirement. Otherwise the agent chases a goal
 it can't reach.
+
+**Settled (2026-10-24):** as suggested. Spec section 14.
 
 ## Q2. Shared PCs
 
@@ -99,6 +101,10 @@ eGuard's certificate **and** listed in a signed manifest (same key scheme as the
 cache first, then the binaries, then restarts. If the new version fails a health check within a set time, it rolls
 back. `/sync` `minAppVersion` already exists to force updates.
 
+**Settled (2026-10-24):** as suggested, with a new `GET /device/v1/update` for the signed manifest (files' SHA-256
+listed in it) and the guard keeping the previous version for the rollback. Spec section 10. Built 2026-10-24; the
+VM test and real signing (the certificate) wait, and the dashboard doesn't show a failed update yet.
+
 ## Q8. Recovery if eGuard goes away
 
 **Problem:** only the parent can remove eGuard, from the dashboard. If the service shuts down, the account is
@@ -109,6 +115,10 @@ risk, and it makes Defender more likely to flag the agent as unwanted software.
 from an offline key, and a written end-of-life plan that signs one last uninstall command for every device. Put
 it in the privacy policy and terms.
 
+**Settled (2026-10-24):** both: a support-issued removal (a signed text bound to one computer, from an offline
+support key built into the agent, pasted into "Remove eGuard") and an end-of-life plan (90 days of signed uninstall
+commands; failing that, a dated end-of-life notice from the offline key). Spec section 10. Not built yet.
+
 ## Q9. Exclusive fullscreen games
 
 **Problem:** a topmost window can't draw over a game running in exclusive fullscreen, so the time-up and bedtime
@@ -116,6 +126,10 @@ overlay won't show while the game is in front.
 
 **Suggestion:** when time runs out or bedtime starts, end the foreground app first (unless it's ALWAYS_ALLOWED),
 then show the overlay. Say so in section 8.
+
+**Still open (2026-10-24):** the suggestion was approved but isn't built. Today apps on the child's list are ended
+when time is up or bedtime starts, and anything else that keeps the screen for 15 s gets the session locked. Spec
+section 8.
 
 ---
 

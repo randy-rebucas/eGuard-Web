@@ -13,7 +13,7 @@ import { profileConfigs, recommendedProfile, type ProfileId } from "./profiles";
 import { EXTRA_TIME_MINUTES, fmtMinutes, type ProtectionConfig } from "./protections";
 import { canonicalTimeZone } from "./format";
 import type { Actor } from "./config-service";
-import { conflict, forbidden, invalid, isUniqueViolation, notFound, planLimit, planRequired } from "./errors";
+import { ServiceError, conflict, forbidden, invalid, isUniqueViolation, notFound, planLimit, planRequired } from "./errors";
 import { requireVerifiedEmail } from "./email-verification";
 import { BASE_PLAN, entitlementsFor, nextPlan, planByName } from "./plans";
 import { CATEGORY_BY_KEY, CATEGORY_KEYS, CATEGORY_UPGRADE, categoryOf, guessCategory } from "./app-categories";
@@ -608,11 +608,37 @@ export async function cancelDeviceRemoval(actor: Actor, deviceId: string) {
   return d;
 }
 
+/** A computer's removal that has waited this long with no check-in from it since is finished without it (quietRemovals). */
+export const QUIET_REMOVAL_DAYS = 7;
+
+/**
+ * Finishes computers' removals that have waited QUIET_REMOVAL_DAYS without the computer checking in since they were
+ * asked. An online computer removes itself within a minute of the request, so one that went quiet was most likely
+ * removed with an offline code (eGuard is gone from it before it can say so: docs/desktop-agent-spec.md, section 10),
+ * or it's lost. One that did check in after the request is alive and still protected: it's left waiting.
+ */
+export async function finishQuietRemovals(now = new Date()) {
+  const due = await db.device.findMany({
+    where: { removalRequestedAt: { lt: new Date(now.getTime() - QUIET_REMOVAL_DAYS * 864e5) } },
+    include: { child: true },
+  });
+  let finished = 0;
+  for (const d of due) {
+    if (d.lastSeenAt && d.lastSeenAt > d.removalRequestedAt!) continue;
+    await deleteDevice(d, d.removalRequestedBy ?? "A parent", d.removalDeletesHistory, "quiet").then(() => finished++, (err) => {
+      // Finished a moment ago by a parent or the computer itself
+      if (!(err instanceof ServiceError && err.status === 404)) throw err;
+    });
+  }
+  return finished;
+}
+
 /**
  * The device delete itself. `how`: "removed" (a phone, or a parent's removal), "uninstalled" (the computer confirmed
- * its removal) or "forced" (a parent finished a computer's removal without it).
+ * its removal), "forced" (a parent finished a computer's removal without it) or "quiet" (a computer's removal finished
+ * after it stayed quiet for QUIET_REMOVAL_DAYS).
  */
-export async function deleteDevice(d: { id: string; familyId: string; childId: string; name: string; isPrimary: boolean; child: { name: string } }, by: string, deleteHistory: boolean, how: "removed" | "uninstalled" | "forced") {
+export async function deleteDevice(d: { id: string; familyId: string; childId: string; name: string; isPrimary: boolean; child: { name: string } }, by: string, deleteHistory: boolean, how: "removed" | "uninstalled" | "forced" | "quiet") {
   const history = { where: { deviceId: d.id, childId: d.childId } };
   const results = await db.$transaction([
     // First, while the rows still carry the device's id: deleting the device sets it to null on them
@@ -640,6 +666,8 @@ export async function deleteDevice(d: { id: string; familyId: string; childId: s
         ? `${d.name} confirmed it uninstalled eGuard, as ${by} asked, and was removed. ${kept}`
         : how === "forced"
           ? `${by} removed ${d.name} without waiting for it. eGuard stays on the computer and keeps its last settings until a removal code from the device page is typed into it. ${kept}`
+          : how === "quiet"
+            ? `${d.name} hasn't checked in since ${by} asked to remove it ${QUIET_REMOVAL_DAYS} days ago, so its removal was finished. If a removal code was typed into it, eGuard is already gone from it; if not, eGuard stays on it with its last settings until one is. ${kept}`
           : `${by} removed ${d.name} from eGuard. The eGuard app on it stops applying your settings, and eGuard no longer checks it. ${kept}`,
     },
   });

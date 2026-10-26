@@ -3,6 +3,9 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { BASE, PASSWORD, call, childDevice, cleanup, db, email, register } from "./helpers";
 import { canonicalJson } from "@/lib/browser-policy";
 import { removalCode } from "@/lib/device-removal";
+import { QUIET_REMOVAL_DAYS, finishQuietRemovals } from "@/lib/family-service";
+import { desktopRelease } from "@/lib/desktop-release";
+import { ServiceError } from "@/lib/errors";
 
 // The server signs with the key in .env.local; read it too, so the signatures can be checked here
 try { process.loadEnvFile(".env.local"); } catch { /* no local env: signatures aren't checked */ }
@@ -149,6 +152,39 @@ describe("apps on the computer", () => {
     // The scan found it; the child didn't ask
     expect(alert?.body).toMatch(/^Shady Shooter was found on Mia's Gaming PC and waits for you\./);
   });
+
+  it("with App Approval off but web filtering on, a browser eGuard can't filter waits; other apps stay allowed", async () => {
+    await db.childPolicy.updateMany({ where: { childId, key: "APP_APPROVAL" }, data: { config: { enabled: false } } });
+    await db.childPolicy.upsert({ where: { childId_key: { childId, key: "WEB" } }, create: { childId, key: "WEB", config: { mode: "FILTER", blockedSites: 0 } }, update: { config: { mode: "FILTER", blockedSites: 0 } } });
+    await pc("/events", { type: "APPS_FOUND", apps: [
+      { app: "Opera", ids: [{ kind: "EXE", value: "opera norway as|opera" }], source: "UNKNOWN_PUBLISHER", category: "BROWSERS" },
+      { app: "Stardew Valley", ids: [{ kind: "STEAM", value: "413150" }], source: "LAUNCHER", category: "GAMES" },
+    ] });
+    const approval = async (name: string) => (await db.childApp.findUnique({ where: { childId_name: { childId, name } } }))?.approval;
+    expect(await approval("Opera")).toBe("PENDING");
+    expect(await approval("Stardew Valley")).toBe("ALLOWED");
+    const found = await db.alert.findFirst({ where: { familyId, title: "Apps found on a computer" }, orderBy: { createdAt: "desc" } });
+    expect(found).toMatchObject({ severity: "ATTENTION" });
+    expect(found?.body).toContain("except a web browser, which waits for you");
+    await pc("/events", { type: "APP_INSTALLED", app: "Brave", ids: [{ kind: "EXE", value: "brave software, inc.|brave" }], source: "UNKNOWN_PUBLISHER", category: "BROWSERS" });
+    expect(await approval("Brave")).toBe("PENDING");
+    // Web filtering off: a browser is an app like any other
+    await db.childPolicy.updateMany({ where: { childId, key: "WEB" }, data: { config: { mode: "OFF", blockedSites: 0 } } });
+    await pc("/events", { type: "APP_INSTALLED", app: "Vivaldi", ids: [{ kind: "EXE", value: "vivaldi technologies as|vivaldi" }], source: "UNKNOWN_PUBLISHER", category: "BROWSERS" });
+    expect(await approval("Vivaldi")).toBe("ALLOWED");
+    await db.childPolicy.updateMany({ where: { childId, key: "APP_APPROVAL" }, data: { config: { enabled: true } } });
+  });
+
+  it("an app the child asks for keeps what the computer knows about it: its category, source and ids", async () => {
+    const r = await pc("/events", { type: "APP_REQUESTED", app: "Other Browser", ids: [{ kind: "EXE", value: "|other browser" }], source: "UNKNOWN_PUBLISHER", category: "BROWSERS" });
+    expect(r.status).toBe(200);
+    expect(await db.childApp.findUnique({ where: { childId_name: { childId, name: "Other Browser" } } })).toMatchObject({ approval: "PENDING", category: "BROWSERS", source: "UNKNOWN_PUBLISHER" });
+    // Its id is known now: the same exe under another name is the same app
+    const s = await pc("/sync");
+    expect(s.data.apps.find((a: { name: string }) => a.name === "Other Browser")).toMatchObject({ ids: [{ kind: "EXE", value: "|other browser" }] });
+    // A phone's request has none of them, as before
+    expect((await pc("/events", { type: "APP_REQUESTED", app: "Plain Request" })).status).toBe(200);
+  });
 });
 
 describe("the catalog", () => {
@@ -188,6 +224,47 @@ describe("the catalog", () => {
   });
 });
 
+describe("updates", () => {
+  const file = (name: string) => ({ name, size: 10, sha256: "a".repeat(64), url: `https://dl.eguard.family/0.2.0/${name}` });
+  const release = { version: "0.2.0", files: [file("eguard-service.exe"), file("eguard-agent.exe"), file("eguard-guard.exe")] };
+
+  it("DESKTOP_RELEASE: unset offers nothing, and a malformed one is refused rather than taken for none", () => {
+    expect(desktopRelease("")).toBeNull();
+    expect(desktopRelease(undefined)).toBeNull();
+    expect(desktopRelease(JSON.stringify(release))).toEqual(release);
+    const bad = [
+      "{",
+      { ...release, version: "0.2.0-beta" },
+      { ...release, files: release.files.slice(0, 2) },
+      { ...release, files: [file("eguard-agent.exe"), file("eguard-agent.exe"), file("eguard-guard.exe")] },
+      { ...release, files: [file("eguard-service.exe"), file("eguard-agent.exe"), file("..\\evil.exe")] },
+      { ...release, files: [{ ...file("eguard-service.exe"), sha256: "A".repeat(64) }, file("eguard-agent.exe"), file("eguard-guard.exe")] },
+      { ...release, files: [{ ...file("eguard-service.exe"), url: "ftp://x/y.exe" }, file("eguard-agent.exe"), file("eguard-guard.exe")] },
+    ];
+    for (const b of bad) expect(() => desktopRelease(typeof b === "string" ? b : JSON.stringify(b))).toThrow(ServiceError);
+  });
+
+  it("a computer gets the release signed with when it was issued, or no manifest when none is set", async () => {
+    const t = (await pairPc("Update PC")).data.token;
+    expect((await call("GET", `${BASE}/api/device/v1/update`)).status).toBe(401);
+    const before = Date.now();
+    const r = await call("GET", `${BASE}/api/device/v1/update`, { token: t });
+    expect(r.status).toBe(200);
+    // The server reads its own environment; this test reads the same .env.local
+    const configured = desktopRelease();
+    if (!configured) {
+      expect(r.data).toEqual({ manifest: null });
+      return;
+    }
+    expect(r.data.manifest).toMatchObject({ type: "eguard.desktop.update", version: configured.version, files: configured.files });
+    expect(r.data.manifest.issuedAt).toBeGreaterThanOrEqual(before);
+    if (process.env.BROWSER_POLICY_SIGNING_KEY) {
+      expect(verifies(r.data.manifest, r.data.signature)).toBe(true);
+      expect(verifies({ ...r.data.manifest, version: "9.9.9" }, r.data.signature)).toBe(false);
+    }
+  });
+});
+
 describe("tampering", () => {
   it("an uninstall attempt raises an action-required alert, once an hour", async () => {
     await pc("/events", { type: "TAMPER", kind: "UNINSTALL_BLOCKED" });
@@ -202,6 +279,13 @@ describe("tampering", () => {
     const alert = await db.alert.findFirst({ where: { familyId, title: "A new account was added to the computer" } });
     expect(alert).toMatchObject({ severity: "ATTENTION", deviceId });
     expect(alert?.body).toContain("isn't limited");
+  });
+
+  it("the service stopped and started again is worth the parent's attention", async () => {
+    await pc("/events", { type: "TAMPER", kind: "SERVICE_RESTARTED" });
+    const alert = await db.alert.findFirst({ where: { familyId, title: "eGuard was stopped and started again" } });
+    expect(alert).toMatchObject({ severity: "ATTENTION", deviceId });
+    expect(alert?.body).toContain("takes an administrator account");
   });
 
   it("someone guessing the removal code raises an action-required alert", async () => {
@@ -314,6 +398,20 @@ describe("removal", () => {
     expect((await pc("/sync")).status).toBe(401);
     // Its browsers went with it
     expect(await db.browserInstallation.count({ where: { familyId, deviceLabel: "Gaming PC" } })).toBe(0);
+  });
+
+  it("a removal that waited a week with no word from the computer is finished; one the computer checked in after waits", async () => {
+    const quiet = await pairPc("Old PC");
+    const alive = await pairPc("Desk PC");
+    const weekAgo = new Date(Date.now() - (QUIET_REMOVAL_DAYS * 864e5 + 60_000));
+    await db.device.update({ where: { id: quiet.data.deviceId }, data: { removalRequestedAt: weekAgo, removalRequestedBy: "Carla", lastSeenAt: new Date(weekAgo.getTime() - 60_000) } });
+    await db.device.update({ where: { id: alive.data.deviceId }, data: { removalRequestedAt: weekAgo, removalRequestedBy: "Carla", lastSeenAt: new Date() } });
+    expect(await finishQuietRemovals()).toBeGreaterThanOrEqual(1);
+    expect(await db.device.count({ where: { id: quiet.data.deviceId } })).toBe(0);
+    expect(await db.device.count({ where: { id: alive.data.deviceId } })).toBe(1);
+    const alert = await db.alert.findFirst({ where: { familyId, title: "Device removed", subject: "Mia's Old PC" } });
+    expect(alert?.body).toContain("hasn't checked in since Carla asked to remove it 7 days ago");
+    await db.device.update({ where: { id: alive.data.deviceId }, data: { removalRequestedAt: null, removalRequestedBy: null } });
   });
 
   it("the computer confirming the signed command finishes the removal", async () => {

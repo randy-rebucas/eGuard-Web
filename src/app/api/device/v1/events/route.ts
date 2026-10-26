@@ -30,7 +30,10 @@ const TAMPER_KINDS = {
   SAFE_MODE: "The computer was started in Safe Mode",
   REMOVAL_CODE_GUESSED: "Someone is guessing eGuard's removal code",
   NEW_ACCOUNT: "A new account was added to the computer",
+  SERVICE_RESTARTED: "eGuard was stopped and started again",
 } as const;
+/** Kinds that need a look rather than action: the rest are someone working against eGuard. */
+const TAMPER_ATTENTION = new Set<keyof typeof TAMPER_KINDS>(["AGENT_RESTARTED", "CLOCK_CHANGED", "NEW_ACCOUNT", "SERVICE_RESTARTED"]);
 const TAMPER_BODY: Record<keyof typeof TAMPER_KINDS, string> = {
   UNINSTALL_BLOCKED: "Someone tried to uninstall eGuard from {d}. eGuard refused and is still running. Only you can remove it, from the device page.",
   SERVICE_STOP_DENIED: "Someone tried to stop eGuard on {d}. eGuard refused and is still running.",
@@ -41,6 +44,7 @@ const TAMPER_BODY: Record<keyof typeof TAMPER_KINDS, string> = {
   SAFE_MODE: "{d} was started in Safe Mode. eGuard runs there too and kept applying your settings.",
   REMOVAL_CODE_GUESSED: "Wrong removal codes were typed on {d} several times. eGuard stopped taking codes for a while and is still running. Only you can remove it, from the device page.",
   NEW_ACCOUNT: "A new Windows account was added on {d}. eGuard applies your rules only in the accounts you chose when pairing, so this one isn't limited. If it's your child's, choose it in eGuard on the computer.",
+  SERVICE_RESTARTED: "eGuard on {d} was stopped without being asked to, and started again within seconds. Limits and app rules kept applying. Stopping it takes an administrator account: if it happens again, check who has one on the computer.",
 };
 
 const Body = z.discriminatedUnion("type", [
@@ -51,7 +55,9 @@ const Body = z.discriminatedUnion("type", [
   z.object({ type: z.literal("TAMPER"), kind: z.enum(Object.keys(TAMPER_KINDS) as [keyof typeof TAMPER_KINDS, ...(keyof typeof TAMPER_KINDS)[]]) }),
   // Desktop agent: it uninstalled itself, after the signed uninstall command (sync) or an offline removal code
   z.object({ type: z.literal("UNINSTALL_ACK"), code: z.string().trim().toUpperCase().length(8).optional() }),
-  z.object({ type: z.literal("APP_REQUESTED"), app: appName }),
+  // `ids`, `source`, `category`: the desktop agent, for an app its scan hadn't reported (a browser, a game in a folder it
+  // doesn't walk), so the parent sees what it is
+  z.object({ type: z.literal("APP_REQUESTED"), app: appName, ids: AppIds, source: AppSourceSchema.optional(), category: z.enum(CATEGORY_KEYS).optional() }),
   // `category`: a category limit (sync's categoryLimits) was used up, rather than the whole day's screen time
   z.object({ type: z.literal("LIMIT_REACHED"), minutes: z.number().int().min(0).max(1440), category: z.enum(CATEGORY_KEYS).optional() }),
   z.object({ type: z.literal("APP_BLOCKED"), app: appName }),
@@ -130,7 +136,7 @@ async function handle(device: Device, e: z.infer<typeof Body>, legacyRequest: bo
     // Whoever creates the row raises it, so two devices reporting the same app at once raise one alert, not two.
     // With approval on, a new app waits for the parent: created PENDING with a request, never ALLOWED (Android
     // 1.0.9 and earlier send APP_INSTALLED before APP_REQUESTED, and an allowed app has nothing to ask for).
-    const pending = await approvalRequired(device.childId);
+    const pending = await approvalRequired(device.childId) || (e.category === "BROWSERS" && await webFilterOn(device.childId));
     const created = await db.childApp.create({ data: { childId: device.childId, name: e.app, source: e.source, category: e.category, ...(pending ? { approval: "PENDING" as const } : {}) } })
       .then(() => true, (err) => {
         if (isUniqueViolation(err)) return false;
@@ -157,7 +163,7 @@ async function handle(device: Device, e: z.infer<typeof Body>, legacyRequest: bo
     const title = TAMPER_KINDS[e.kind];
     await createAlertUnless(`TAMPER:${device.id}:${e.kind}`,
       { ...base, title, createdAt: { gt: new Date(Date.now() - TAMPER_ALERT_WINDOW_MS) } },
-      { ...base, severity: e.kind === "AGENT_RESTARTED" || e.kind === "CLOCK_CHANGED" || e.kind === "NEW_ACCOUNT" ? "ATTENTION" : "ACTION_REQUIRED", category: "DEVICES",
+      { ...base, severity: TAMPER_ATTENTION.has(e.kind) ? "ATTENTION" : "ACTION_REQUIRED", category: "DEVICES",
         icon: "shield-alert", title, body: TAMPER_BODY[e.kind].replace("{d}", who), subject: who });
   } else if (e.type === "UNINSTALL_ACK") {
     return uninstalled(device, e.code);
@@ -182,9 +188,10 @@ async function handle(device: Device, e: z.infer<typeof Body>, legacyRequest: bo
     }
     await db.childApp.upsert({
       where: { childId_name: { childId: device.childId, name: e.app } },
-      create: { childId: device.childId, name: e.app, approval: "PENDING" },
+      create: { childId: device.childId, name: e.app, approval: "PENDING", source: e.source, category: e.category },
       update: { approval: "PENDING" },
     });
+    if (e.ids) await rememberIds(device.childId, device.platform, [{ name: e.app, ids: e.ids }]);
     await raiseAppRequest(device, e.app, `${device.child.name} asked to install ${e.app}.`);
   } else if (e.type === "APP_BLOCKED") {
     // An app the plan's Apps tab hides isn't named; those share one alert per window
@@ -238,23 +245,29 @@ async function appsFound(device: Device, found: z.infer<typeof FoundApp>[]) {
   const room = Math.max(0, MAX_CHILD_APPS - await db.childApp.count({ where: { childId: device.childId } }));
   const fresh = [...new Map(apps.filter((a) => !listed.has(a.app)).map((a) => [a.app, a])).values()].slice(0, room);
   const pending = fresh.length > 0 && await approvalRequired(device.childId);
+  // A browser eGuard can't filter waits for the parent while web filtering is on, whatever App Approval says
+  const browsersWait = !pending && fresh.some((a) => a.category === "BROWSERS") && await webFilterOn(device.childId);
+  const waits = (a: z.infer<typeof FoundApp>) => pending || (browsersWait && a.category === "BROWSERS");
   if (fresh.length) {
     await db.childApp.createMany({ skipDuplicates: true, data: fresh.map((a) => ({
-      childId: device.childId, name: a.app, source: a.source, category: a.category, ...(pending ? { approval: "PENDING" as const } : {}),
+      childId: device.childId, name: a.app, source: a.source, category: a.category, ...(waits(a) ? { approval: "PENDING" as const } : {}),
     })) });
   }
   await rememberIds(device.childId, device.platform, apps.map((a) => ({ name: a.app, ids: a.ids })));
   if (!fresh.length) return;
   const games = fresh.filter((a) => a.category === "GAMES").length;
+  const waitingBrowsers = browsersWait ? fresh.filter((a) => a.category === "BROWSERS").length : 0;
   const unverified = fresh.filter((a) => a.source === "UNKNOWN_PUBLISHER").length;
   const what = games ? `${games} game${games === 1 ? "" : "s"}${fresh.length > games ? ` and ${fresh.length - games} other app${fresh.length - games === 1 ? "" : "s"}` : ""}` : `${fresh.length} app${fresh.length === 1 ? "" : "s"}`;
   const who = `${device.child.name}'s ${device.name}`;
   await db.alert.create({ data: {
-    familyId: device.familyId, childId: device.childId, deviceId: device.id, severity: pending || unverified ? "ATTENTION" : "INFO", category: "APPS",
+    familyId: device.familyId, childId: device.childId, deviceId: device.id, severity: pending || unverified || waitingBrowsers ? "ATTENTION" : "INFO", category: "APPS",
     icon: "gamepad", title: "Apps found on a computer", subject: who,
     body: `eGuard found ${what} on ${who}${unverified ? `, ${unverified} from a publisher eGuard can't verify` : ""}. ${pending
       ? "They're blocked until you allow them in the Apps tab."
-      : "They're allowed for now. Block or limit them in the Apps tab."}`,
+      : waitingBrowsers
+        ? `They're allowed for now, except ${waitingBrowsers === 1 ? "a web browser, which waits" : `${waitingBrowsers} web browsers, which wait`} for you: eGuard can't filter websites in ${waitingBrowsers === 1 ? "it" : "them"}. Allow, block or limit them in the Apps tab.`
+        : "They're allowed for now. Block or limit them in the Apps tab."}`,
   } });
 }
 
@@ -293,6 +306,16 @@ async function approvalRequired(childId: string) {
     const c = (p.config ?? {}) as Record<string, unknown>;
     return p.key === "APP_APPROVAL" ? c.enabled === true : c.requireApproval === true;
   });
+}
+
+/**
+ * Web filtering on (any mode but off). A browser eGuard can't filter (any but Chrome, Edge and Firefox, which the
+ * computer agent sets up) then waits for the parent like an app under App Approval (docs/desktop-agent-spec.md, section 9).
+ */
+async function webFilterOn(childId: string) {
+  const row = await db.childPolicy.findFirst({ where: { childId, key: "WEB" } });
+  const mode = ((row?.config ?? {}) as Record<string, unknown>).mode;
+  return typeof mode === "string" && mode !== "OFF";
 }
 
 /** The parent's "App approval requested" alert. Asking several times in a row (or from two devices) raises one. */
