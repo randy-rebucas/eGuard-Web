@@ -97,15 +97,27 @@ export async function saveBroadcast(_: FormState, form: FormData): Promise<FormS
     await logStaff(staff.id, "broadcast.create", `broadcast:${b.id}`, parsed.data.subject);
     redirect(`/broadcasts/${b.id}`);
   }
-  const { count } = await db.broadcast.updateMany({ where: { id, status: "DRAFT" }, data: parsed.data });
-  if (!count) return { error: "Only a draft can be edited. Move it back to draft first.", fields: echo };
+  // Only over the version this form showed, so a stale tab can't undo another edit
+  const base = draftVersion(form);
+  const { count } = await db.broadcast.updateMany({ where: { id, status: "DRAFT", ...(base ? { updatedAt: base } : {}) }, data: parsed.data });
+  if (!count) {
+    const now = await db.broadcast.findUnique({ where: { id }, select: { status: true } });
+    return { error: now?.status === "DRAFT" ? CHANGED : "Only a draft can be edited. Move it back to draft first.", fields: echo };
+  }
   await logStaff(staff.id, "broadcast.edit", `broadcast:${id}`, parsed.data.subject);
   refresh();
   return { ok: "Saved." };
 }
 
+/** The draft's `updatedAt` as the form showed it (hidden field `version`), or null */
+function draftVersion(form: FormData) {
+  const d = new Date(String(form.get("version") ?? ""));
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+const CHANGED = "This email was changed since you opened it. Reload the page to see the changes, then try again.";
+
 async function draft(id: string) {
-  const b = await db.broadcast.findUnique({ where: { id }, select: { id: true, status: true, audience: true, kind: true, subject: true, body: true, plans: true } });
+  const b = await db.broadcast.findUnique({ where: { id }, select: { id: true, status: true, audience: true, kind: true, subject: true, body: true, plans: true, updatedAt: true } });
   if (!b) throw new ServiceError(404, "Email not found.", "not_found");
   return b;
 }
@@ -134,6 +146,8 @@ export async function sendBroadcast(_: FormState, form: FormData): Promise<FormS
   const staff = await requireStaff();
   const b = await draft(String(form.get("id") ?? ""));
   if (b.status !== "DRAFT") return { error: "This email isn't a draft any more." };
+  // The confirmation was for the draft as shown: an edit since (audience, kind, words) needs a fresh look
+  if (draftVersion(form)?.getTime() !== b.updatedAt.getTime()) return { error: CHANGED };
   const now = form.get("mode") === "now";
   const at = now ? new Date() : parseConsoleTime(String(form.get("when") ?? ""));
   if (!at) return { error: "Choose the date and time to send it." };
@@ -143,7 +157,7 @@ export async function sendBroadcast(_: FormState, form: FormData): Promise<FormS
   if (form.get("confirm") !== "on") return { error: "Tick the box to confirm who it goes to." };
   const n = await countAudience(b);
   if (!n) return { error: "Nobody is in this audience yet." };
-  const { count } = await db.broadcast.updateMany({ where: { id: b.id, status: "DRAFT" }, data: { status: "SCHEDULED", scheduledAt: at } });
+  const { count } = await db.broadcast.updateMany({ where: { id: b.id, status: "DRAFT", updatedAt: b.updatedAt }, data: { status: "SCHEDULED", scheduledAt: at } });
   if (!count) return { error: "This email isn't a draft any more." };
   await logStaff(staff.id, now ? "broadcast.send" : "broadcast.schedule", `broadcast:${b.id}`,
     `${audienceDetail(b, n)}${now ? "" : `, at ${at.toISOString()}`}`);

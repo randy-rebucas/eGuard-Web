@@ -5,7 +5,8 @@ import OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
 import { z } from "zod";
 import { ServiceError } from "./errors";
-import { KIND_LABEL, PLACEHOLDER_RE, type BroadcastKind } from "./broadcasts";
+import { BROADCAST_AUDIENCES, KIND_LABEL, PLACEHOLDER_RE, type BroadcastKind } from "./broadcasts";
+import { LIST_COPY, isMailingList } from "./subscribers";
 
 /**
  * "Write with AI" in console › Email (docs/console.md §8): staff say what they want to tell parents, and an AI model
@@ -41,6 +42,7 @@ const openai = () => (openaiClient ??= new OpenAI({ timeout: 90_000, maxRetries:
 
 export const AiDraftSchema = z.object({
   brief: z.string().trim().min(10, "Say a bit more about what the email should tell parents.").max(4000, "Keep the brief under 4,000 characters."),
+  audience: z.enum(BROADCAST_AUDIENCES).default("PARENTS"),
   kind: z.enum(["UPDATE", "SERVICE"]),
   plans: z.array(z.string()).max(10),
   /** What's in the form now: given, the brief is read as changes to it ("shorter", "add the date") */
@@ -79,7 +81,10 @@ Where the email needs a fact you weren't given, write [TODO: what's missing] so 
 with no marketing in it.`;
 
 function prompt(d: z.output<typeof AiDraftSchema>) {
-  const audience = `${KIND_LABEL[d.kind as BroadcastKind]}, to parents on ${d.plans.length ? d.plans.join(", ") : "every plan"}`;
+  // A mailing list's readers signed up on the public site and may have no account, so no "open Settings" advice
+  const audience = isMailingList(d.audience)
+    ? `${KIND_LABEL.UPDATE}, to the ${LIST_COPY[d.audience].name} mailing list: people without an eGuard account, perhaps, who asked for ${LIST_COPY[d.audience].promise}`
+    : `${KIND_LABEL[d.kind as BroadcastKind]}, to parents on ${d.plans.length ? d.plans.join(", ") : "every plan"}`;
   const current = d.subject.trim() || d.body.trim();
   return current
     ? `Revise this email (${audience}) as asked.\n\n<current_subject>${d.subject}</current_subject>\n<current_body>\n${d.body}\n</current_body>\n\n<request>\n${d.brief}\n</request>`

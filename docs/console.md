@@ -210,6 +210,9 @@ Either can be narrowed to some plans (none ticked: every plan). Unverified addre
 2. **Send me a test** sends one copy, subject marked `[Test]`, to the signed-in staff member.
 3. **Send to N parents** (now) or **Schedule** (a date and time, Philippine time), after ticking the confirmation.
    Only a draft can be edited, sent or deleted. A scheduled email can go **Back to draft**, or be cancelled.
+   Saving and sending carry the version of the draft the page showed: if it was edited since (another tab, another
+   staff member), the save or send is refused with "This email was changed since you opened it", so a confirmation
+   never sends words, a kind or an audience nobody looked at, and a stale form never undoes another edit.
 
 Either way the maintenance job (`/api/cron/maintenance`, every 10 minutes) does the sending, step "broadcast
 emails". "Send now" also starts the first batch straight after the click.
@@ -229,7 +232,8 @@ is saved or sent until staff save the draft, and the test, preview and confirmat
   - **OpenAI:** the Responses API through the OpenAI SDK, model `gpt-5.5` or `OPENAI_MODEL`, with `store: false`.
   - A refusal from either is shown as "The AI wouldn't write this one".
 - **What it's told:** what eGuard is, that the greeting, sign-off and footer are added for it, plain text only, the
-  kind (a service notice gets no marketing), the plans it goes to, and never to invent features, prices, dates or
+  kind (a service notice gets no marketing), who it goes to (the plans, or for a mailing list that its readers may
+  have no account), and never to invent features, prices, dates or
   links. A fact it needs and wasn't given comes back as `[TODO: …]`, and **an email with a `[TODO` in it can't be
   sent or scheduled** until staff fill it in.
 - **Privacy:** only what staff type (the brief and the current subject and message) goes to the provider. No parent's
