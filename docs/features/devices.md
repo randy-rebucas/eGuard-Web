@@ -396,9 +396,9 @@ the move form, the skeletons, the **Browser settings** link and the countdown ar
 - [ ] Get a second code for the same child: the first one's screen says "replaced".
 - [ ] Wait 15 minutes: "This code expired".
 - [ ] Add a browser without a computer name: button disabled. With one: code; pair the extension → card appears.
-- [ ] Free plan with 2 devices: forms disabled, "Remove a device or change your plan"; the app gets 409 if it
+- [ ] Free plan with 1 device: forms disabled, "Remove a device or change your plan"; the app gets 409 if it
       tries anyway, and the code still works after removing one.
-- [ ] Family Pro with 20 devices: "Remove a device to add another.", no plan link.
+- [ ] eGuard Family with 12 devices: "Remove a device to add another.", no plan link.
 - [ ] Set the computer's clock 10 minutes ahead, get a code: the countdown still starts at 15:00.
 - [ ] Remove a child's primary phone when they also have a tablet: the tablet is now first on their card.
 - [ ] Device that hasn't reported location: Location reads "Not reported", not "Off".

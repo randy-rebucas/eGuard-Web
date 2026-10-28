@@ -105,7 +105,7 @@ Sign in with either demo account:
 
 The demo organization ([prisma/demo-organization.ts](prisma/demo-organization.ts)) has join code `SCHL-7K2P`, Randy
 as a second admin, and two paid batches of sponsor codes: eGuard Plus for 3 months (10 codes: 3 redeemed, 1
-cancelled) and Family Pro for 1 month (5 codes). It also has a read-only API key,
+cancelled) and eGuard Family for 1 month (5 codes). It also has a read-only API key,
 `egk_local-demo-key-san-isidro-elementary-school`, for trying the [organization API](docs/organization-api.md). The Cruz family and the three sponsored families
 (`reyes@`, `garcia@`, `bautista@example.com`, same password) joined it, so it shows 4 families. The seed prints an
 unused code of each kind to try redeeming.
@@ -343,7 +343,7 @@ The server exposes four versioned APIs, one per kind of client. All are JSON, an
 | Device API | `/api/device/v1` | eGuard app on the child's phone/tablet | Device token | [docs/mobile-api.md › Part C](docs/mobile-api.md#part-c-child-device-api) |
 | Parent mobile API | `/api/mobile/v1` | Parent app (iOS/Android) | Session token | [docs/mobile-api.md › Part B](docs/mobile-api.md#part-b-parent-api) |
 | Browser extension API | `/api/browser/v1` | eGuard extension in the child's browser | 15-minute access token + rotating refresh token | [docs/browser-extension-api.md](docs/browser-extension-api.md) |
-| Organization API | `/api/org/v1` | A school's or company's own systems | Organization API key (Family Pro) | [docs/organization-api.md](docs/organization-api.md) |
+| Organization API | `/api/org/v1` | A school's or company's own systems | Organization API key (eGuard Family) | [docs/organization-api.md](docs/organization-api.md) |
 
 ### Device API (`/api/device/v1`)
 
@@ -450,7 +450,7 @@ ship an extension that trusts the new public key **before** switching the server
 |---|---|---|---|---|
 | Free | ₱0 | 1 | 2 | All 10 protections and Configuration Health, screen time and per-app limits, 5 apps per child |
 | eGuard Plus | ₱149/month | 5 | 10 | Every app, category limits, location sharing, push alerts |
-| Family Pro | ₱249/month | 10 | 20 | Everything in Plus, advanced reports, API access |
+| eGuard Family | ₱249/month | 10 | 20 | Everything in Plus, advanced reports, API access |
 
 Plans are defined in [src/lib/plans.ts](src/lib/plans.ts). Prices come from `PRICE_PLUS_MONTHLY` and
 `PRICE_PRO_MONTHLY`. Phones, tablets and browsers all count as devices.

@@ -85,9 +85,9 @@ only enforces rules that really came from eGuard.
 
 | Plan | Price | Children | Devices | Includes |
 |---|---|---|---|---|
-| **Free** | ₱0 | 1 | 2 | All 10 protections and Configuration Health, screen time and per-app limits, 5 apps per child |
-| **eGuard Plus** | ₱149/month | 5 | 10 | Every app, category limits, location sharing, push alerts |
-| **Family Pro** | ₱249/month | 10 | 20 | Everything in Plus, advanced reports, API access |
+| **Free** | ₱0 | 1 | 1 | Setup wizard, protection profiles, all 10 protections, basic Configuration Health (run a check any time), tamper and removal alerts |
+| **eGuard Plus** | ₱149/month | 3 | 5 | Alerts when a setting changes on the device, push for every alert, every app, category limits, location sharing |
+| **eGuard Family** | ₱249/month | 6 | 12 | Everything in Plus, advanced reports, API access |
 
 - Phones, tablets and browsers all count as devices.
 - No card needed to start.
@@ -107,7 +107,7 @@ Schools, community groups and businesses can set up an eGuard **organization**:
 
 - **Join code.** Families enter the organization's code to join it.
 - **Sponsor codes.** The organization buys codes in batches, and each one gives a family a paid plan (eGuard Plus or
-  Family Pro) for a set number of months: 1, 3, 6 or 12. Up to 200 codes per batch, and each code can be redeemed
+  eGuard Family) for a set number of months: 1, 3, 6 or 12. Up to 200 codes per batch, and each code can be redeemed
   within 12 months.
 - **Volume discounts.** The more codes in a batch, the less each one costs:
 
@@ -119,7 +119,7 @@ Schools, community groups and businesses can set up an eGuard **organization**:
   | 100–200 | 20% off | ₱1,430.40 per code |
 
 - **Counts only.** The organization sees how many families joined and redeemed codes, **never a family's data**.
-- **Organization API.** With Family Pro, an organization's own systems can read the same counts with an API key.
+- **Organization API.** With eGuard Family, an organization's own systems can read the same counts with an API key.
 
 ---
 

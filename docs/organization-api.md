@@ -27,7 +27,7 @@ rule has no exceptions and no setting that changes it.
 
 ## 1. Getting a key
 
-1. An admin of the organization whose family is on **Family Pro** opens the organization's page in eGuard
+1. An admin of the organization whose family is on **eGuard Family** opens the organization's page in eGuard
    (Settings › Organizations › Open) and goes to **API access**.
 2. They name the key after what will use it ("Enrollment system") and choose its access:
 
@@ -47,7 +47,7 @@ An organization can have **5** working keys. Every admin gets an email when a ke
 |---|---|
 | Any admin revoked it | `401` |
 | The admin who created it stopped managing the organization, or their account was deleted | `401` (the key is revoked) |
-| That admin's family is no longer on a plan with API access | `403 plan_required`. The key works again if the family returns to Family Pro. The page shows it as **Paused** |
+| That admin's family is no longer on a plan with API access | `403 plan_required`. The key works again if the family returns to eGuard Family. The page shows it as **Paused** |
 
 ## 2. Authentication
 
@@ -221,7 +221,7 @@ the daily numbers yourself.
 | `id` | string | Stable |
 | `code` | string | `XXXX-XXXX-XXXX`, what a family types |
 | `status` | string | `AVAILABLE`, `REDEEMED`, `CANCELLED`, `EXPIRED` |
-| `plan`, `planName` | string | `PLUS` / `eGuard Plus`, or `PRO` / `Family Pro` |
+| `plan`, `planName` | string | `PLUS` / `eGuard Plus`, or `PRO` / `eGuard Family` |
 | `months` | number | 1, 3, 6 or 12 |
 | `batchId` | string | |
 | `redeemBy` | ISO time | After this, an unused code is `EXPIRED` |

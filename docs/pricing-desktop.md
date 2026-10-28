@@ -7,6 +7,12 @@ How eGuard's plans and prices change now that a child's Windows PC can be a prot
 PayMongo test mode: a yearly plan's first invoice is ₱1,490), browsers on a PC taking no device slot
 ([section 7](#7-what-changes-in-the-code-and-on-the-site)), and the launch offer, off until `PC_LAUNCH_OFFER_UNTIL` is set.
 
+**Superseded in part, 2026-10-28:** the owner changed the limits to Free 1 child / 1 device, eGuard Plus 3 / 5 and
+eGuard Family (the ₱249 plan, renamed from Family Pro) 6 / 12, with alerts when a setting changes on Plus and up only
+(`driftAlerts`). Families subscribed before then keep their limits while subscribed. The device counts below (Free's
+2 slots: one phone and one PC) are from before that: on Free a family now fits one phone **or** one PC. Tamper and
+removal alerts stay on Free, as section 3 recommends.
+
 **Written:** 2026-10-23. **Current plans:** [subscriptions.md › 2](subscriptions.md#2-plans-products-and-prices),
 [src/lib/plans.ts](../src/lib/plans.ts).
 
@@ -27,7 +33,7 @@ PayMongo test mode: a yearly plan's first invoice is ₱1,490), browsers on a PC
 | | Price | Per month in pesos (approx.) | PCs |
 |---|---|---|---|
 | **eGuard Plus** | ₱149 / month | ₱149 | Included (this proposal) |
-| **eGuard Family Pro** | ₱249 / month | ₱249 | Included (this proposal) |
+| **eGuard Family** | ₱249 / month | ₱249 | Included (this proposal) |
 | Qustodio Basic | $59.95 / year | about ₱290 | Yes |
 | Qustodio Complete | $104.95 / year, unlimited devices | about ₱510 | Yes |
 | Microsoft Family Safety | Free with a Microsoft account | ₱0 | Windows and Xbox app and game limits |
@@ -62,7 +68,7 @@ All of this is covered by a handful of extra Plus subscribers a month. **PCs don
 
 Use the existing limits as they are. Nothing PC-only needs a new entitlement.
 
-| On a PC | Free | eGuard Plus | Family Pro |
+| On a PC | Free | eGuard Plus | eGuard Family |
 |---|---|---|---|
 | Pair a Windows PC | Yes (uses a device slot) | Yes | Yes |
 | Daily screen time, bedtime, extra time | Yes | Yes | Yes |

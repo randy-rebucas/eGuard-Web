@@ -65,9 +65,9 @@ Defined in code in [src/lib/plans.ts](../src/lib/plans.ts). There is no plans ta
 
 | Plan | Price | Children | Devices | Google Play product |
 |---|---|---|---|---|
-| **Free** (base plan) | ₱0 | 1 | 2 | none; every family starts here and falls back here |
-| **eGuard Plus** | ₱149 / month or ₱1,490 / year | 5 | 10 | `eguard_plus` |
-| **Family Pro** | ₱249 / month or ₱2,490 / year | 10 | 20 | `eguard_pro` |
+| **Free** (base plan) | ₱0 | 1 | 1 | none; every family starts here and falls back here |
+| **eGuard Plus** | ₱149 / month or ₱1,490 / year | 3 | 5 | `eguard_plus` |
+| **eGuard Family** | ₱249 / month or ₱2,490 / year | 6 | 12 | `eguard_pro` |
 
 A year costs ten months (added 2026-10-23, [pricing-desktop.md](pricing-desktop.md)). On Google Play each product
 needs a monthly and a yearly **base plan** in Play Console; the server reads the expiry from the purchase, so it needs
@@ -78,23 +78,24 @@ What each plan unlocks is its `entitlements`, checked on the server and returned
 
 | Entitlement | Free | Plus | Pro | Where it's enforced |
 |---|---|---|---|---|
-| `childLimit` | 1 | 5 | 10 | `createChild` (409 `plan_limit`); "Add child" becomes "Upgrade" on the web |
-| `deviceLimit` | 2 | 10 | 20 | Pairing codes and `/device/v1/pair` (stored on `Family.deviceLimit`) |
+| `childLimit` | 1 | 3 | 6 | `createChild` (409 `plan_limit`); "Add child" becomes "Upgrade" on the web. Stored on `Family.childLimit` by `applyEntitlement`; families subscribed before 2026-10-28 keep 5 (Plus) or 10 (eGuard Family) while `legacyLimits` (`LEGACY_LIMITS`), until they are back on Free |
+| `deviceLimit` | 1 | 5 | 12 | Pairing codes and `/device/v1/pair` (stored on `Family.deviceLimit`; legacy families keep 10 or 20, as for `childLimit`) |
 | `locationSharing` | ✗ | ✓ | ✓ | Fixes aren't stored on Free; location pages and `/locations`, `/children/{id}/location…` return 403 `plan_required`; location history can't be turned on |
 | `appMonitoringLimit` | 5 | all | all | Apps lists show apps waiting for approval, then the most used; `limited` says how many are hidden. Blocking or limiting an app by name (`POST /children/{id}/apps`) works on every plan |
 | `realtimeAlerts` | ✗ | ✓ | ✓ | Without it push sends security alerts only (`isSecurityAlert`: eGuard removed, tampered with or a protection off); everything else shows in the app and by email |
 | `advancedReports` | ✗ | ✗ | ✓ | 30-day reports, custom ranges longer than 7 days (other plans keep the last 7 days of a longer range), CSV export (403 otherwise) |
-| `apiAccess` | ✗ | ✗ | ✓ | Organization API keys (`/api/org/v1`, docs/organization-api.md): created only on Family Pro, and a key stops (403) while its admin's family isn't on it |
+| `apiAccess` | ✗ | ✗ | ✓ | Organization API keys (`/api/org/v1`, docs/organization-api.md): created only on eGuard Family, and a key stops (403) while its admin's family isn't on it |
+| `driftAlerts` | ✗ | ✓ | ✓ | `processReport` (lib/engine) raises "Protection setting changed" only with it; without it the status still updates and the change is in history. Every plan still alerts when a protection can't be applied (an error, or a permission off), on location turned off and on uninstall protection off. Browsers: "Browser protection changed" (lib/browser-health) the same way; private windows, site access and Safe Browsing alerts are on every plan |
 
-Configuration verification and health checks run on every plan, so protections stay honest on Free too.
+Verification and Configuration Health run on every plan: a setting is only marked done once the device confirms it, Free included. Free has no alerts on drift (`driftAlerts`); the parent sees it on the health page or by running a check.
 
 **Going to a smaller plan** (a pass ends, a refund, auto-renew lapses) never removes anything: children and devices
 over the new limit stay protected, but no more can be added. Current locations are cleared when location sharing
 ends; location history is kept but hidden until the family upgrades.
 
 **Plans before September 2026** were a free "eGuard Plus" (8 devices, unlimited children) and a paid "eGuard Family"
-(15 devices). Migration `20260928130000_pricing_tiers` moved free families to Free and eGuard Family to Family Pro.
-Old products (`family_*` on the web, `eguard_family` on Google Play) still grant Family Pro for as long as they're
+(15 devices). Migration `20260928130000_pricing_tiers` moved free families to Free and eGuard Family to eGuard Family.
+Old products (`family_*` on the web, `eguard_family` on Google Play) still grant eGuard Family for as long as they're
 paid, at the price they were bought at, but aren't sold.
 
 ### Web products (`WEB_PRODUCTS`)
@@ -105,12 +106,12 @@ By the month or by the year.
 |---|---|---|
 | `plus_monthly` | eGuard Plus | Auto-renew, every month |
 | `plus_pass_month` | eGuard Plus | Pass (one month) |
-| `pro_monthly` | Family Pro | Auto-renew, every month |
-| `pro_pass_month` | Family Pro | Pass (one month) |
+| `pro_monthly` | eGuard Family | Auto-renew, every month |
+| `pro_pass_month` | eGuard Family | Pass (one month) |
 | `plus_yearly` | eGuard Plus | Auto-renew, every year |
 | `plus_pass_year` | eGuard Plus | Pass (one year) |
-| `pro_yearly` | Family Pro | Auto-renew, every year |
-| `pro_pass_year` | Family Pro | Pass (one year) |
+| `pro_yearly` | eGuard Family | Auto-renew, every year |
+| `pro_pass_year` | eGuard Family | Pass (one year) |
 
 Settings › Subscription has a Monthly / Yearly switch; the server actions take the period (`buyPass(plan, "year")`,
 `startAutoRenew(plan, "year")`). A pass of either period over a pass of the same plan starts when the current one
@@ -214,7 +215,7 @@ page load ──► confirmReturn()
                                 GET /v1/checkout_sessions/cs_… ─────────►
                                 ◄───────────────────────── payments[status=paid]
                                 PAID, expiresAt = start + 1 period
-                                applyEntitlement → Family Pro
+                                applyEntitlement → eGuard Family
 ◄── "Payment received …"
                                 ◄── webhook checkout_session.payment.paid (same check; no-op if already PAID)
 ```
@@ -262,7 +263,7 @@ back to /settings/subscription?ref=<row id> ──► confirmReturn()
                                      GET /v1/subscriptions/subs_… ───────────►
                                      active + latest invoice paid →
                                        expiresAt = end of next_billing_schedule (PH time)
-                                     applyEntitlement → Family Pro
+                                     applyEntitlement → eGuard Family
                                      ◄── webhooks subscription.activated, subscription.invoice.paid, …
 ```
 
@@ -324,9 +325,9 @@ This is the only function that changes a family's plan after sign-up.
 2. If there are none, stop. Families that never bought anything are never touched.
 3. Of the purchases that give access, take the one for the highest plan:
    - **found:** the plan comes from its product, and `renewsAt = expiresAt`
-   - **none:** the family goes back to Free (1 child, 2 devices), with `renewsAt = null`
-4. If the plan name changed, write an audit entry and an INFO alert ("Welcome to Family Pro" or
-   "Family Pro ended"). Moving to a plan without location sharing clears current locations.
+   - **none:** the family goes back to Free (1 child, 1 device; `legacyLimits` ends), with `renewsAt = null`
+4. If the plan name changed, write an audit entry and an INFO alert ("Welcome to eGuard Family" or
+   "eGuard Family ended"). Moving to a plan without location sharing clears current locations.
 
 ### One way of paying at a time
 

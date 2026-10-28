@@ -9,7 +9,7 @@ rules apply here: only claim what's true today.
 
 - Android is on Google Play; **iPhone and iPad are coming soon**.
 - Every plan gets email and in-app alerts, and push for security alerts (eGuard removed, tampered with or turned
-  off) in the eGuard parent app. eGuard Plus and Family Pro push every alert.
+  off) in the eGuard parent app. eGuard Plus and eGuard Family push every alert.
 - No ratings, user counts or "trusted by" lines until they're real.
 - The Page is for **parents**. Meta doesn't allow Pages or ads directed at children, so nothing on it speaks to kids.
 
@@ -65,7 +65,7 @@ Some Page layouts show a longer **Details / About** text. Use this one:
 > verified, what needs attention, and what to fix.
 >
 > • Works on Android phones and tablets (Google Play) and in Chrome, Edge and Firefox. iPhone and iPad coming soon.
-> • Free for 1 child and 2 devices. eGuard Plus is ₱149 a month for up to 5 children; Family Pro is ₱249 a month for
+> • Free for 1 child and 1 device. eGuard Plus is ₱149 a month for up to 3 children; eGuard Family is ₱249 a month for
 >   up to 10.
 > • Made in Baybay City, Leyte by DevCom Digital Marketing Services.
 >
@@ -95,7 +95,7 @@ Before posting, check the prices still match the [pricing page](https://www.egua
 
 | Question | Answer |
 |---|---|
-| How much does eGuard cost? | Free for 1 child and 2 devices. eGuard Plus is ₱149/month (up to 5 children) and Family Pro is ₱249/month (up to 10). See https://www.eguard.family/pricing |
+| How much does eGuard cost? | Free for 1 child and 1 device. eGuard Plus is ₱149/month (up to 3 children) and eGuard Family is ₱249/month (up to 6). See https://www.eguard.family/pricing |
 | Does it work on iPhone? | Not yet. Android phones and tablets work now through Google Play, and Chrome, Edge and Firefox through the browser extension. The iPhone and iPad app is coming soon. |
 | How do I set it up? | Make a free account at https://www.eguard.family/register, add your child, then install eGuard from Google Play on their phone and enter the pairing code. |
 | Can my child see what I see? | eGuard tells your child what's on and what you can see. There's a page for them at https://www.eguard.family/for-kids |
