@@ -1,7 +1,7 @@
 /**
  * QA helpers for the dev database (never production). Run from the repo root:
  *   npx tsx --env-file=.env .claude/skills/qa-audit/scripts/qa.mts session <email>
- *   npx tsx --env-file=.env .claude/skills/qa-audit/scripts/qa.mts fixture [plan] [childName]
+ *   npx tsx --env-file=.env .claude/skills/qa-audit/scripts/qa.mts fixture [plan[:legacy]] [childName]
  *   npx tsx --env-file=.env .claude/skills/qa-audit/scripts/qa.mts parent <fixtureFamilyId>   (a non-admin parent, for 403 checks)
  *   npx tsx --env-file=.env .claude/skills/qa-audit/scripts/qa.mts alert <fixtureFamilyId> '{"title":"…","subject":"…"}'
  *   npx tsx --env-file=.env .claude/skills/qa-audit/scripts/qa.mts usage <fixtureFamilyId> '{"apps":12,"changes":500}'
@@ -23,6 +23,9 @@ const FIXTURE = "QA Audit Fixture";
 const MARK = "qa-audit";
 const STAFF_EMAIL = "qa-staff@example.invalid";
 const db = new PrismaClient();
+/** [children, devices] per plan, as lib/plans has them; OLD_LIMITS are its LEGACY_LIMITS */
+const LIMITS: Record<string, [number, number]> = { Free: [1, 1], "eGuard Plus": [3, 5], "eGuard Family": [6, 12] };
+const OLD_LIMITS: Record<string, [number, number]> = { "eGuard Plus": [5, 10], "eGuard Family": [10, 20] };
 
 if (/prod/i.test(process.env.NODE_ENV ?? "") || /prod/i.test(process.env.DATABASE_URL ?? "")) {
   console.error("Refusing to run against what looks like a production database.");
@@ -43,11 +46,13 @@ try {
     const u = await db.user.findUniqueOrThrow({ where: { email: a ?? "randy@example.com" } });
     console.log(`TOKEN=${await session(u.id)}`);
   } else if (cmd === "fixture") {
-    const plan = a ?? "Free";
-    const deviceLimit = plan === "Family Pro" ? 20 : plan === "eGuard Plus" ? 10 : 2;
+    // "eGuard Plus:legacy": subscribed before 2026-10-28, keeping the old limits (lib/plans LEGACY_LIMITS)
+    const [plan, legacy] = (a ?? "Free").split(":");
+    const legacyLimits = legacy === "legacy" && plan !== "Free";
+    const [childLimit, deviceLimit] = (legacyLimits ? OLD_LIMITS : LIMITS)[plan] ?? LIMITS.Free;
     const f = await db.family.create({
       data: {
-        name: FIXTURE, plan, deviceLimit,
+        name: FIXTURE, plan, childLimit, deviceLimit, legacyLimits,
         users: { create: { email: `qa-${Date.now()}@example.invalid`, name: "QA Parent", passwordHash: "x", role: "FAMILY_ADMIN", emailVerifiedAt: new Date() } },
         ...(b ? { children: { create: { name: b, birthYear: new Date().getFullYear() - 10 } } } : {}),
       },
@@ -137,15 +142,15 @@ try {
     console.log(`PLACE=${p.id}`);
   } else if (cmd === "plan") {
     // Moves a fixture family to another plan without billing (downgrade checks: what's kept, paused or removable).
-    // Sets the device limit too, as applyEntitlement does, so slot checks match a real plan change
-    const DEVICE_LIMITS: Record<string, number> = { Free: 2, "eGuard Plus": 10, "Family Pro": 20 };
+    // Sets the limits too, as applyEntitlement does (current ones, not LEGACY_LIMITS), so checks match a real plan change
     const plan = b ?? "Free";
-    const f = await db.family.update({ where: { id: (await db.family.findFirstOrThrow({ where: { id: a, name: FIXTURE } })).id }, data: { plan, deviceLimit: DEVICE_LIMITS[plan] ?? 2 } });
+    const [childLimit, deviceLimit] = LIMITS[plan] ?? [1, 1];
+    const f = await db.family.update({ where: { id: (await db.family.findFirstOrThrow({ where: { id: a, name: FIXTURE } })).id }, data: { plan, childLimit, deviceLimit, legacyLimits: false } });
     console.log(`plan=${f.plan}`);
   } else if (cmd === "plans") {
     // Read-only: families by stored plan and device limit, so a name or limit that doesn't match lib/plans shows up
-    const rows = await db.family.groupBy({ by: ["plan", "deviceLimit"], _count: true });
-    for (const r of rows) console.log(`${r.plan}\tdeviceLimit=${r.deviceLimit}\tfamilies=${r._count}`);
+    const rows = await db.family.groupBy({ by: ["plan", "childLimit", "deviceLimit", "legacyLimits"], _count: true });
+    for (const r of rows) console.log(`${r.plan}\tchildLimit=${r.childLimit}\tdeviceLimit=${r.deviceLimit}\tlegacy=${r.legacyLimits}\tfamilies=${r._count}`);
   } else if (cmd === "staff") {
     // A console session for a QA staff account that can't sign in (no real password or authenticator)
     const s = await db.staffUser.upsert({

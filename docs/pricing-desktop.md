@@ -70,14 +70,14 @@ Use the existing limits as they are. Nothing PC-only needs a new entitlement.
 
 | On a PC | Free | eGuard Plus | eGuard Family |
 |---|---|---|---|
-| Pair a Windows PC | Yes (uses a device slot) | Yes | Yes |
+| Pair a Windows PC | Yes, as its one device (a phone **or** a PC) | Yes | Yes |
 | Daily screen time, bedtime, extra time | Yes | Yes | Yes |
 | Uninstall protection and tamper alerts | Yes | Yes | Yes |
 | App scan (games and unverified publishers) | Yes | Yes | Yes |
 | Apps the parent can see and manage | 5, as on phones | All | All |
 | Block or limit a game | The 5 shown | All | All |
 | **Gaming time across phone and PC** (category limits) | No | **Yes** | Yes |
-| Alerts as push notifications | No (in the app and by email) | Yes | Yes |
+| Alerts as push notifications | Security alerts only (removed, tampered with, protection off) | Every alert | Every alert |
 | 30-day reports and CSV export | No | No | Yes |
 
 Why tamper protection is on Free:
@@ -104,7 +104,7 @@ agent (a Mac or a school laptop) still takes one, as today.
 - `usedDeviceSlots` counts only browsers whose `deviceId` is null.
 - When the PC is removed, its browsers are removed with it.
 
-With this change the device limits (2, 10 and 20) can stay as they are.
+With this change the device limits (2, 10 and 20 then; 1, 5 and 12 since 2026-10-28) don't need to grow for PCs.
 
 ## 5. Prices
 
@@ -171,4 +171,5 @@ The marketing site must not mention PCs until the agent ships (desktop-agent-spe
    Sponsor codes belong to an organization's paid batch, so it's eGuard's own `PROMO` purchase instead
    (subscriptions.md › Windows launch offer).
 5. **The 90-day price review and its thresholds?** Recommended as written. Change the numbers if your current
-   conversion and churn data say otherwise.
+   conversion and churn data say otherwise. Since 2026-10-28 a Free family can't have a phone and a PC, so compare
+   conversion from the 2026-10-28 cohort on, not with families who signed up on the old 2-device Free.

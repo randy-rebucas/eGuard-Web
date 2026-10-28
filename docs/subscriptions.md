@@ -89,12 +89,21 @@ What each plan unlocks is its `entitlements`, checked on the server and returned
 
 Verification and Configuration Health run on every plan: a setting is only marked done once the device confirms it, Free included. Free has no alerts on drift (`driftAlerts`); the parent sees it on the health page or by running a check.
 
+**On every plan, by decision (2026-10-28).** The pricing notes listed these as paid; they stay on Free:
+- **More than one parent.** Taking a co-parent away from families who already share an account would lock real parents
+  out, and a child's limits shouldn't depend on which parent pays.
+- **Configuration history.** On Free it's how a parent sees drift without an alert, and the Free notice
+  ([plan-change-2026-10.md](plan-change-2026-10.md)) promises it. The 30-day reports and CSV export stay eGuard Family.
+
+**In the notes, not built:** family-wide policies (one rule for every child at once) and advanced recommendations.
+Neither is sold anywhere (pricing, help, apps). Add them to a plan card only once they ship.
+
 **Going to a smaller plan** (a pass ends, a refund, auto-renew lapses) never removes anything: children and devices
 over the new limit stay protected, but no more can be added. Current locations are cleared when location sharing
 ends; location history is kept but hidden until the family upgrades.
 
 **Plans before September 2026** were a free "eGuard Plus" (8 devices, unlimited children) and a paid "eGuard Family"
-(15 devices). Migration `20260928130000_pricing_tiers` moved free families to Free and eGuard Family to eGuard Family.
+(15 devices). Migration `20260928130000_pricing_tiers` moved free families to Free and the paid eGuard Family to Family Pro (renamed eGuard Family on 2026-10-28).
 Old products (`family_*` on the web, `eguard_family` on Google Play) still grant eGuard Family for as long as they're
 paid, at the price they were bought at, but aren't sold.
 
