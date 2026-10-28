@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "./db";
 import { audit } from "./audit";
-import { BASE_PLAN, PLANS, entitlementsFor, planByName, planByProduct } from "./plans";
+import { BASE_PLAN, PLANS, entitlementsFor, limitsFor, planByProduct } from "./plans";
 import { clearCurrentLocations } from "./plan-access";
 import { ENTITLED_STATES as PLAY_ENTITLED } from "./google-play";
 
@@ -38,10 +38,14 @@ export async function applyEntitlement(familyId: string) {
   const active = bestPurchase(purchases);
   const plan = active ? planByProduct(active.productId) : null;
   const family = await db.family.findUniqueOrThrow({ where: { id: familyId } });
+  // A family subscribed before the 2026-10-28 limits keeps the old ones while it stays on a paid plan (upgrades
+  // included); once it's back on Free that's over, and a later purchase gets the current limits
+  const legacyLimits = !!plan && family.legacyLimits;
   const next = plan
-    ? { plan: plan.name, deviceLimit: plan.entitlements.deviceLimit, renewsAt: active!.expiresAt }
-    : { plan: BASE_PLAN, deviceLimit: planByName(BASE_PLAN).entitlements.deviceLimit, renewsAt: null };
-  if (family.plan === next.plan && family.deviceLimit === next.deviceLimit && family.renewsAt?.getTime() === next.renewsAt?.getTime()) return;
+    ? { plan: plan.name, ...limitsFor(plan.name, legacyLimits), legacyLimits, renewsAt: active!.expiresAt }
+    : { plan: BASE_PLAN, ...limitsFor(BASE_PLAN, false), legacyLimits, renewsAt: null };
+  if (family.plan === next.plan && family.childLimit === next.childLimit && family.deviceLimit === next.deviceLimit
+    && family.legacyLimits === next.legacyLimits && family.renewsAt?.getTime() === next.renewsAt?.getTime()) return;
   await db.family.update({ where: { id: familyId }, data: next });
   if (entitlementsFor(family.plan).locationSharing && !entitlementsFor(next.plan).locationSharing) await clearCurrentLocations(familyId);
   if (family.plan !== next.plan) {
@@ -51,7 +55,7 @@ export async function applyEntitlement(familyId: string) {
         familyId, severity: "INFO", category: "SYSTEM", icon: "crown",
         title: plan ? `Welcome to ${next.plan}` : `${family.plan} ended`,
         body: plan
-          ? `Your family can now protect up to ${plan.entitlements.childLimit} children on ${plan.entitlements.deviceLimit} devices.`
+          ? `Your family can now protect up to ${next.childLimit} children on ${next.deviceLimit} devices.`
           : `Your family is back on ${next.plan}. Children and devices already added stay protected.`,
         subject: "Subscription",
       },

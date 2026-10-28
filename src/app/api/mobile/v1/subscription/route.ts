@@ -4,7 +4,7 @@ import { usedDeviceSlots } from "@/lib/device-slots";
 import { getFamily } from "@/lib/queries";
 import { shortDate } from "@/lib/format";
 import { authed, clientLabel } from "@/lib/mobile-api";
-import { nextPlan, planByName, planFeatures } from "@/lib/plans";
+import { familyFeatures, nextPlan, planByName } from "@/lib/plans";
 import { currentPurchase, refreshPurchases } from "@/lib/billing";
 import { renewalWord } from "@/lib/entitlement";
 import { sponsorOf } from "@/lib/organizations";
@@ -29,9 +29,10 @@ export const GET = authed(async ({ req, user }) => {
     status: purchase || !family.renewsAt || family.renewsAt > new Date() ? "ACTIVE" : "EXPIRED",
     renewsAt: family.renewsAt,
     renewsLabel: family.renewsAt ? `${renewalWord(purchase)} on ${shortDate(family.renewsAt, family.timezone)}` : null,
-    features: planFeatures(family.plan),
-    entitlements: current.entitlements,
-    usage: { devicesUsed: devices, deviceLimit: family.deviceLimit, children, childLimit: current.entitlements.childLimit },
+    // The family's own limits: one subscribed before 2026-10-28 keeps larger ones than the plan has now
+    features: familyFeatures(family),
+    entitlements: { ...current.entitlements, childLimit: family.childLimit, deviceLimit: family.deviceLimit },
+    usage: { devicesUsed: devices, deviceLimit: family.deviceLimit, children, childLimit: family.childLimit },
     canManage: user.role === "FAMILY_ADMIN",
     /**
      * true when this app can buy or manage the plan in its store (Google Play on Android). Not while the plan is paid

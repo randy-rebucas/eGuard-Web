@@ -10,7 +10,7 @@ Ground rules (the same as [press-release.md](press-release.md)):
 
 - No user counts, ratings or "trusted by" claims until they're real.
 - iPhone and iPad are **coming soon**. eGuard for Windows is **in testing**, with no date.
-- Every plan gets email and in-app alerts, and push for security alerts (eGuard removed, tampered with or turned off). eGuard Plus and Family Pro push every alert.
+- Every plan gets email and in-app alerts, and push for security alerts (eGuard removed, tampered with or turned off). eGuard Plus and eGuard Family push every alert.
 
 **Open question:** whether a browser on a PC takes a device slot. The pricing page's FAQ says Chrome and Edge on one
 laptop count as two devices; [pricing-desktop.md](pricing-desktop.md) says browsers on a PC take no slot since
@@ -83,7 +83,7 @@ reconnect, usually within about 5 minutes.
 
 **What can I control?**
 Daily screen time, bedtime, which apps are allowed, limits on single apps, and age ratings for apps. Plus and
-Family Pro add location sharing and category limits, such as one "gaming time" limit across all games.
+eGuard Family add location sharing and category limits, such as one "gaming time" limit across all games.
 
 **What does the browser extension do?**
 It blocks harmful sites and categories, turns on SafeSearch, and lets your child ask you before opening a blocked
@@ -95,7 +95,7 @@ device reports what it really has, so eGuard shows it as Failed and sends you an
 setting.
 
 **How will I know if something stops working?**
-Every plan gets email and in-app alerts. Plus and Family Pro also get push alerts in the eGuard parent app.
+Every plan gets email and in-app alerts. Plus and eGuard Family also get push alerts in the eGuard parent app.
 
 ## Privacy
 
@@ -122,7 +122,7 @@ the Data Privacy Act of 2012 (RA 10173), and is at eguard.family/privacy.
 |---|---|---|---|
 | **Free** | ₱0 | 1 | Protection setup, screen time, limited app monitoring |
 | **eGuard Plus** | ₱149 / month or ₱1,490 / year | Up to 5 | Everything, plus location sharing, category limits and push alerts |
-| **Family Pro** | ₱249 / month or ₱2,490 / year | Up to 10 | All of Plus, plus advanced reports and API access for schools and organizations |
+| **eGuard Family** | ₱249 / month or ₱2,490 / year | Up to 10 | All of Plus, plus advanced reports and API access for schools and organizations |
 
 **Is verification included on the Free plan?**
 Yes. Every plan checks each protection on the device and shows you Configuration Health. Paying adds capacity and
@@ -151,7 +151,7 @@ again.
 
 **Can schools or organizations use eGuard?**
 Yes. Any parent can create an organization for a school, community group or business, share a join code with
-families, and buy sponsor codes that pay for families' plans. Family Pro adds API keys, so your own systems can
+families, and buy sponsor codes that pay for families' plans. eGuard Family adds API keys, so your own systems can
 read your codes and counts. Organizations only ever see counts, never a family's data. See eguard.family/for-schools.
 
 ## Help

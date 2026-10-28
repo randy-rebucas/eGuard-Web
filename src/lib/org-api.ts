@@ -20,7 +20,7 @@ import { ORG_EVENT_RETENTION_DAYS, notifyApiKeyCreated, notifyApiKeyRevoked } fr
  * about a family: not who joined, not who redeemed a code.
  *
  * Keys belong to the organization and are created by one of its admins. A key works while that admin still
- * manages the organization and their family's plan includes API access (Family Pro).
+ * manages the organization and their family's plan includes API access (eGuard Family).
  */
 
 export const API_KEY_PREFIX = "egk_";

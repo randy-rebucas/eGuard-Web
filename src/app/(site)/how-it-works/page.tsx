@@ -59,7 +59,7 @@ const WHAT_IF: [LucideIcon, string, string][] = [
   [WifiOff, "The phone or laptop goes offline",
     "Protection stays on. Devices keep following the last rules they received and pick up changes when they reconnect. If a browser hasn't checked in for a day, you'll see “eGuard may be off in this browser”, since a closed browser and a turned-off extension look the same from outside."],
   [ToggleLeft, "Someone switches a setting off",
-    "The device reports what it really has, so eGuard notices the difference and alerts you: “Protection setting changed”, with the device and the setting."],
+    "The device reports what it really has, so eGuard notices the difference and shows it. On eGuard Plus and up it alerts you too: “Protection setting changed”, with the device and the setting."],
   [KeyRound, "Someone tries to copy the connection",
     "Each device gets its own key, never your password. If a browser's key turns up in two places, eGuard disconnects it and tells you, and it has to be added again with a new code."],
   [Trash2, "You want to stop protecting a device",
@@ -302,7 +302,7 @@ export default function HowItWorksPage() {
           </ol>
           <div className="hw-track-notes">
             <p><span className="hw-pill fail">Failed</span>If the device reports something different, you see Failed, along with what the device actually has, so you know what to fix.</p>
-            <p><span className="hw-pill ok">Still verified</span>eGuard keeps checking every time the device checks in. If the setting changes later, you get an alert.</p>
+            <p><span className="hw-pill ok">Still verified</span>eGuard keeps checking every time the device checks in. If the setting changes later, it shows here, and on eGuard Plus and up you get an alert.</p>
           </div>
         </Section>
 

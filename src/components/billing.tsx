@@ -100,7 +100,7 @@ export function BuyPlan({ plans, current, methods, payer, autoRenewBlocked, pass
 }
 
 /**
- * `losing`: what the family loses back on Free, e.g. "1 child, 2 devices, no location sharing".
+ * `losing`: what the family loses back on Free, e.g. "1 child, 1 device, no location sharing".
  * `endsOn` null: the last renewal failed, so the plan only runs on while it's retried and ends as soon as it's off.
  */
 export function CancelAutoRenew({ plan, endsOn, losing }: { plan: string; endsOn: string | null; losing: string }) {

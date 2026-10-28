@@ -119,7 +119,7 @@ PRIVACY FIRST
 • Export or delete your family's data at any time
 
 PLANS
-eGuard is free for 1 child and 2 devices. eGuard Plus and Family Pro add more children and devices, location sharing, full app monitoring and advanced reports.
+eGuard is free for 1 child and 1 device. eGuard Plus and eGuard Family add more children and devices, alerts when a setting changes, location sharing, full app monitoring and advanced reports.
 
 eGuard is a parental control app. Your child's device shows that eGuard is active, with a notification whenever it's running.
 ```
@@ -239,7 +239,7 @@ features. When Play Billing is turned on (`GOOGLE_PLAY_*`), create these subscri
 | Product ID | Plan | Base plan | Price |
 |---|---|---|---|
 | `eguard_plus` | eGuard Plus | monthly, auto-renewing | ₱149 |
-| `eguard_pro` | Family Pro | monthly, auto-renewing | ₱249 |
+| `eguard_pro` | eGuard Family | monthly, auto-renewing | ₱249 |
 
 `eguard_family` is a legacy product. Keep it active so existing subscribers keep their plan, but don't offer it.
 
@@ -428,7 +428,7 @@ App Store's "Made for Kids" category: **don't select it**. The customer is the p
 Both stores need working credentials. Don't use the seed accounts (`randy@example.com`), and never run
 `npm run db:seed` against production: it deletes every family.
 
-**Demo account (created).** `review@eguard.family` exists in the production database: Family Pro, with Mia, Lucas
+**Demo account (created).** `review@eguard.family` exists in the production database: eGuard Family, with Mia, Lucas
 and Sophie, 5 devices, two weeks of screen time, alerts and history. Its alert emails are off. The password was
 printed once when it was created; keep it in your password manager. To refresh the data (the demo devices show as
 offline after about a day, because they don't sync) or reset the password, run:
@@ -442,7 +442,7 @@ The script only ever touches the "eGuard Demo Family" and refuses if the email b
 richest review, also pair real test devices as below:
 
 1. Create `review@eguard.family` in production with a strong password, and verify its email.
-2. Give the family **Family Pro** so reviewers can see every feature, location included.
+2. Give the family **eGuard Family** so reviewers can see every feature, location included.
 3. Add one child ("Mia", 11, Protected profile) and pair a test Android phone and a test iPhone, so health, alerts,
    screen time and location have real data.
 4. Leave one app waiting for approval and one open alert, so those screens aren't empty.
@@ -467,7 +467,7 @@ Permissions are requested only in child device mode, after a screen that explain
 eGuard never reads messages, browsing content or files. A persistent notification on the child's device shows eGuard is active.
 
 PURCHASES
-The app has no purchases. Plans are managed on our website. The demo family is on Family Pro so every feature can be reviewed.
+The app has no purchases. Plans are managed on our website. The demo family is on eGuard Family so every feature can be reviewed.
 
 Demo account: review@eguard.family / {password}
 Contact: support@devcomdigital.com, {phone}

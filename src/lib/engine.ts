@@ -6,6 +6,7 @@ import { evaluate, isPassing } from "./health";
 import { ServiceError } from "./errors";
 import { LIMITS, enforce } from "./rate-limit";
 import { wakeDevices } from "./push";
+import { entitlementsFor } from "./plans";
 
 /** `error`: the device tried to apply it and couldn't, and says why (e.g. "Choose at least one app or category first.") */
 export type ReportedProtection = { key: ProtectionKey; config: Record<string, unknown>; error?: string };
@@ -99,9 +100,10 @@ export async function processReport(deviceId: string, report: DeviceReport) {
       ...(report.osVersion ? { osVersion: report.osVersion } : {}),
       ...(report.appVersion ? { appVersion: report.appVersion } : {}),
     },
-    include: { child: true, protections: true },
+    include: { child: true, protections: true, family: { select: { plan: true } } },
   });
   const label = deviceLabel(device);
+  const { driftAlerts } = entitlementsFor(device.family.plan);
   // The device can't read a protection the parent sets in another app (older Android builds echoed the policy back)
   const entries: (ReportedProtection & { missing?: boolean })[] = report.protections.filter((p) => PROTECTION_BY_KEY[p.key]?.caps[device.platform] !== "PARENT_SET");
   if (report.full) {
@@ -192,6 +194,19 @@ export async function processReport(deviceId: string, report: DeviceReport) {
     if (prev && isPassing(prev.status) && !open.some((r) => now.getTime() - r.createdAt.getTime() < CHANGE_GRACE_MS)) {
       const prevCfg = prev.reported;
       const isLocation = rp.key === "LOCATION" && !isConfigured(reported);
+      // Drift (a setting changed on the device) alerts on plans with driftAlerts. Everywhere: eGuard stopped applying a
+      // protection (an error, or left out of a full report: a permission turned off), location turned off, and
+      // uninstall protection, which is tampering. Without the alert the status above and the history still say so
+      if (!driftAlerts && !rp.error && !isLocation && rp.key !== "UNINSTALL_PROTECTION") {
+        await db.configChange.create({
+          data: {
+            familyId: device.familyId, childId: device.childId, key: rp.key,
+            title: `${def.name} changed on device`, actor: `Changed on ${device.name}`,
+            fromValue: describeConfig(prevCfg), toValue: describeConfig(reported),
+          },
+        });
+        continue;
+      }
       // Two reports arriving together both see the earlier passing state: raise it (and record it) once
       const raised = await createAlertUnless(rk, { familyId: device.familyId, resolveKey: rk, resolvedAt: null }, {
         familyId: device.familyId, childId: device.childId, deviceId,

@@ -2,7 +2,7 @@ import type { ProtectionKey } from "@prisma/client";
 import { PLANS, type Entitlements } from "./plans";
 import { fmtMinutes, describeConfig, type ProtectionConfig } from "./protections";
 
-/** "eGuard Plus and Family Pro": the plans that include a feature, from the catalogue so the copy follows it. */
+/** "eGuard Plus and eGuard Family": the plans that include a feature, from the catalogue so the copy follows it. */
 const plansWith = (has: (e: Entitlements) => boolean) => PLANS.filter((p) => has(p.entitlements)).map((p) => p.name).join(" and ");
 
 /**
@@ -52,7 +52,7 @@ export const PROTECTION_PAGES: Record<ProtectionKey, ProtectionPage> = {
       "Choose every night, or school nights only (Sunday to Thursday), so weekends can run a little later.",
     ],
     childSees: "A calm bedtime screen when they open an app, with the time bedtime ends. The eGuard home screen always shows tonight's bedtime.",
-    check: "The device reports the schedule it has registered. If bedtime is switched off or changed on the phone, eGuard alerts you with “Protection setting changed”.",
+    check: "The device reports the schedule it has registered. If bedtime is switched off or changed on the phone, eGuard shows it, and on eGuard Plus and up alerts you with “Protection setting changed”.",
     android: "On Android, pair bedtime with Notification Controls to keep the phone quiet overnight too.",
     byAge: true,
     faqs: [

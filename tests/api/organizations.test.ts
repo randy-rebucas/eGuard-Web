@@ -281,7 +281,7 @@ describe("sponsor codes", () => {
     const r = await redeemCode(helper, a.toLowerCase().replace(/(.{4})/g, "$1 "));
     expect(r).toMatchObject({ plan: "eGuard Plus", months: 3, sponsor: "Acme Foods" });
     const f = await fam(helper);
-    expect(f).toMatchObject({ plan: "eGuard Plus", deviceLimit: 10 });
+    expect(f).toMatchObject({ plan: "eGuard Plus", childLimit: 3, deviceLimit: 5 });
     const days = (r.expiresAt.getTime() - Date.now()) / DAY;
     expect(days).toBeGreaterThan(88);
     expect(days).toBeLessThan(93);
@@ -309,7 +309,7 @@ describe("sponsor codes", () => {
     await expect(redeemCode(renewing, pro)).rejects.toMatchObject({ status: 409 });
 
     // A free family can use it
-    expect((await redeemCode(outsider, pro)).plan).toBe("Family Pro");
+    expect((await redeemCode(outsider, pro)).plan).toBe("eGuard Family");
   });
 
   it("won't redeem a cancelled or expired code", async () => {

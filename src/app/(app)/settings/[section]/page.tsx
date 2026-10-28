@@ -22,7 +22,7 @@ import { shareMessage } from "@/lib/share";
 import { ShareEguard } from "@/components/share";
 import { currentPurchase, refreshPurchases } from "@/lib/billing";
 import { renewalWord } from "@/lib/entitlement";
-import { BASE_PLAN, PLANS, entitlementsFor, planByName, planByProduct, webPrice, webProduct, type Entitlements } from "@/lib/plans";
+import { BASE_PLAN, PLANS, entitlementsFor, familyFeatures, planByName, planByProduct, webPrice, webProduct, type Entitlements } from "@/lib/plans";
 import { LOCATION_UPGRADE, SECURITY_PUSH_NOTE } from "@/lib/plan-access";
 import { confirmReturn, paidTimeName, passMethods, webBillingAvailable } from "@/lib/web-billing";
 import { status as twoFactorStatus } from "@/lib/two-factor";
@@ -312,7 +312,7 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
             </div>
           </div>
           <div className="form-grid" style={{ marginTop: 20 }}>
-            {usage("Children", childrenUsed, current.entitlements.childLimit)}
+            {usage("Children", childrenUsed, fam.childLimit)}
             {usage("Devices", devicesUsed, fam.deviceLimit)}
           </div>
           {current.entitlements.apiAccess ? (
@@ -339,11 +339,11 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
           ) : purchase?.autoRenewing && nextCharge ? (
             <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
               <div><div className="t-title">Auto-renew is on</div><div className="t-meta">{purchase.state === "past_due" ? "The last renewal payment failed. PayMongo will try again; check your card or Maya balance." : `Next charge${nextAmount ? ` ${nextAmount}` : ""} on ${paidUntil ?? "your next billing date"}. To switch plans, turn auto-renew off; you keep ${fam.plan} until then.`}</div></div>
-              <CancelAutoRenew plan={fam.plan} endsOn={purchase.state === "past_due" ? null : paidUntil ?? "the end of this period"} losing={freePlanLimits(current.entitlements)} />
+              <CancelAutoRenew plan={fam.plan} endsOn={purchase.state === "past_due" ? null : paidUntil ?? "the end of this period"} losing={freePlanLimits(current.entitlements, fam.legacyLimits)} />
             </div>
           ) : (
             <BuyPlan
-              plans={PLANS.map((p) => ({ id: p.id, name: p.name, blurb: p.blurb, price: p.id === "FREE" ? 0 : webPrice(p.id), yearly: p.id === "FREE" ? 0 : webPrice(p.id, process.env, "year"), features: p.features.map((f) => f.label) }))}
+              plans={PLANS.map((p) => ({ id: p.id, name: p.name, blurb: p.blurb, price: p.id === "FREE" ? 0 : webPrice(p.id), yearly: p.id === "FREE" ? 0 : webPrice(p.id, process.env, "year"), features: (p.id === current.id ? familyFeatures(fam) : p.features).map((f) => f.label) }))}
               current={current.id}
               methods={passMethodLabel()}
               payer={{ name: user.name, email: user.email }}
@@ -464,8 +464,8 @@ function timeZones(current: string) {
   return [...new Set([current, "UTC", ...zones])].sort((a, b) => (a === "UTC" ? -1 : b === "UTC" ? 1 : a.localeCompare(b)));
 }
 
-/** What Free allows, and the features of `from` it doesn't have: "1 child, 2 devices, no location sharing, …" */
-function freePlanLimits(from: Entitlements) {
+/** What Free allows, and the features of `from` it doesn't have: "1 child, 1 device, no location sharing, …" */
+function freePlanLimits(from: Entitlements, legacyLimits: boolean) {
   const free = entitlementsFor(BASE_PLAN);
   return [
     `${free.childLimit} ${free.childLimit === 1 ? "child" : "children"}`,
@@ -474,8 +474,11 @@ function freePlanLimits(from: Entitlements) {
     from.locationSharing && !free.locationSharing ? "no location sharing" : null,
     from.categoryLimits && !free.categoryLimits ? "no category limits" : null,
     from.advancedReports && !free.advancedReports ? "reports up to a week" : null,
+    from.driftAlerts && !free.driftAlerts ? "no alerts when a setting changes on the device" : null,
     from.realtimeAlerts && !free.realtimeAlerts ? "push only for security alerts" : null,
     from.apiAccess && !free.apiAccess ? "organization API keys paused" : null,
+    // limitsFor: back on Free the older limits are over, and a new subscription gets the current ones
+    legacyLimits ? "and the larger limits you subscribed with won't come back if you subscribe again" : null,
   ].filter(Boolean).join(", ");
 }
 

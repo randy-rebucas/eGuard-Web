@@ -18,8 +18,9 @@ const LOCATION_LABEL = { available: "Available", waiting: "Waiting for first loc
 export default async function ChildrenPage() {
   const u = await requireUser();
   const [family, { children }, browsers] = await Promise.all([getFamily(u.familyId), getFamilyGraph(u.familyId), listBrowsers(u.familyId)]);
-  const { childLimit, locationSharing } = entitlementsFor(family.plan);
-  const full = childLimitReached(family.plan, children.length);
+  const { locationSharing } = entitlementsFor(family.plan);
+  const { childLimit } = family;
+  const full = childLimitReached(family, children.length);
   // Full on the top plan: nothing to upgrade to, so no button and no "See plans"
   const upgrade = !!nextPlan(family.plan);
   // After a move to a smaller plan the family can have more children than it covers: say so, as Settings does

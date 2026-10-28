@@ -81,7 +81,7 @@ export default function AboutPage() {
 
         <div className="st-block">
           <h2>Made for families in the Philippines</h2>
-          <p>Prices are in pesos, and you can pay with GCash, Maya, a card or QR Ph. Schools and communities can use eGuard too: Family Pro includes API access for organizations.</p>
+          <p>Prices are in pesos, and you can pay with GCash, Maya, a card or QR Ph. Schools and communities can use eGuard too: eGuard Family includes API access for organizations.</p>
           <div className="st-facts">
             <div><b>10</b><span>protections, each checked on the device</span></div>
             <div><b>Android &amp; browsers</b><span>phones, tablets, Chrome, Edge and Firefox, managed from one dashboard. <Link href="/iphone">iPhone and iPad coming soon</Link></span></div>

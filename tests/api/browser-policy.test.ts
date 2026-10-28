@@ -1,7 +1,7 @@
 import { createPrivateKey, createPublicKey, verify } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { canonicalJson, defaultCategories, normalizeDomain, parseDomainList } from "@/lib/browser-policy";
+import { WEB_CATEGORIES, canonicalJson, defaultCategories, normalizeDomain, parseDomainList } from "@/lib/browser-policy";
 import { BASE, PASSWORD, call, cleanup, db, email, register, verifyInbox } from "./helpers";
 
 /**
@@ -52,6 +52,8 @@ beforeAll(async () => {
   const r = await register({ name: "Paz Ramos", email: email("paz"), password: PASSWORD, guardian: true });
   token = r.data.token;
   familyId = r.data.user.family.id;
+  // Pairs more than one browser: more than Free's one device slot
+  await db.family.update({ where: { id: familyId }, data: { plan: "eGuard Plus", childLimit: 3, deviceLimit: 5 } });
   await verifyInbox(email("paz"));
   childId = (await call("POST", "/children", { token, body: { name: "Lia", age: 7 } })).data.id;
 });
@@ -84,7 +86,7 @@ describe("editing", () => {
     expect(r.status).toBe(200);
     expect(r.data).toMatchObject({ version: 1, safeSearch: true, unknownSitesPolicy: "ALLOW", updatedBy: "eGuard defaults" });
     expect(r.data.blockedCategories).toContain("SOCIAL_MEDIA");
-    expect(r.data.categories).toHaveLength(14);
+    expect(r.data.categories).toHaveLength(WEB_CATEGORIES.length);
   });
 
   it("saves a change as a new version, normalising the lists", async () => {

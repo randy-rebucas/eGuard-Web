@@ -28,7 +28,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     !user.emailVerified && hasPendingVerification(user.id, user.email),
   ]);
   const attention = Object.values(graph.deviceStates).filter((s) => s.key !== "healthy").length;
-  const plan = { plan: family.plan, used: graph.children.length, limit: entitlementsFor(family.plan).childLimit, upgrade: !!nextPlan(family.plan) };
+  const plan = { plan: family.plan, used: graph.children.length, limit: family.childLimit, upgrade: !!nextPlan(family.plan) };
   return (
     <FlowProvider>
       <div className="app">

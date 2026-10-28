@@ -227,7 +227,7 @@ never put ad pixels on signed-in pages, where children's names and locations app
 2. Account → **email verified**
 3. Verified → **first child added**
 4. Child → **first device paired**: the moment eGuard delivers value
-5. Paired → **upgrade** to Plus or Family Pro
+5. Paired → **upgrade** to Plus or eGuard Family
 
 You can count all five from your own database, so this funnel needs no third-party tracking:
 `DATABASE_URL=<production url> npm run funnel` shows families created in the last 30 days (`-- --days 7` for a
@@ -244,7 +244,7 @@ share shows the new share image.
 
 - Facebook parenting and homeschool groups: read each group's rules and ask the admin before posting. Share a blog
   post or help article first; mention eGuard only as the tool that checks the settings.
-- Mom and parenting creators on Facebook and TikTok: offer a Family Pro plan for an honest walkthrough. Any
+- Mom and parenting creators on Facebook and TikTok: offer a eGuard Family plan for an honest walkthrough. Any
   sponsored post must be labeled as sponsored.
 
 **Schools and communities**

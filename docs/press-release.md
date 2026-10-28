@@ -9,7 +9,7 @@ Ground rules (see [launch-visibility.md](launch-visibility.md#7-where-to-announc
 - No user counts, ratings or "trusted by" claims until they're real.
 - iPhone and iPad are **coming soon**. Don't let a headline say "Android and iOS".
 - Every plan gets email and in-app alerts, and push for security alerts (eGuard removed, tampered with or turned
-  off) in the eGuard parent app. eGuard Plus and Family Pro push every alert.
+  off) in the eGuard parent app. eGuard Plus and eGuard Family push every alert.
 - Screenshots show the demo family only. No real child's name, photo or location.
 
 ---
@@ -95,8 +95,8 @@ settings, not the child's behavior.
 
 **Made for Filipino families**
 
-- **Free for one child**, with no card needed to start. eGuard Plus costs ₱149 a month for up to 5 children and
-  adds location sharing and full app management. Family Pro costs ₱249 a month for up to 10 children and adds
+- **Free for one child**, with no card needed to start. eGuard Plus costs ₱149 a month for up to 3 children and
+  adds location sharing and full app management. eGuard Family costs ₱249 a month for up to 6 children and adds
   advanced reports and API access for schools and organizations.
 - **Pay with GCash, Maya, QR Ph or a card**, either as a monthly subscription or as a one-month pass that doesn't
   renew.

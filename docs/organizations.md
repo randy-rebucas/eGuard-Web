@@ -60,7 +60,7 @@ Act (RA 10173) obligations for data they never receive.
 - Any signed-in parent with a verified email can **create an organization** (a school, a community group or a
   business) and becomes its owner. Owners add other eGuard users as admins by email.
 - Each organization has a **join code**. A family admin enters it to join; any family admin can leave.
-- Organization admins **buy sponsor codes** in batches: a plan (eGuard Plus or Family Pro), a length (1, 3, 6 or
+- Organization admins **buy sponsor codes** in batches: a plan (eGuard Plus or eGuard Family), a length (1, 3, 6 or
   12 months) and a quantity, paid once through PayMongo Checkout (GCash, Maya, QR Ph, card).
 - Organization admins see each batch's codes and whether each has been redeemed, copy or download them, and
   cancel a code that hasn't been used.

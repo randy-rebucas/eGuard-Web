@@ -7,6 +7,12 @@ How eGuard's plans and prices change now that a child's Windows PC can be a prot
 PayMongo test mode: a yearly plan's first invoice is ₱1,490), browsers on a PC taking no device slot
 ([section 7](#7-what-changes-in-the-code-and-on-the-site)), and the launch offer, off until `PC_LAUNCH_OFFER_UNTIL` is set.
 
+**Superseded in part, 2026-10-28:** the owner changed the limits to Free 1 child / 1 device, eGuard Plus 3 / 5 and
+eGuard Family (the ₱249 plan, renamed from Family Pro) 6 / 12, with alerts when a setting changes on Plus and up only
+(`driftAlerts`). Families subscribed before then keep their limits while subscribed. The device counts below (Free's
+2 slots: one phone and one PC) are from before that: on Free a family now fits one phone **or** one PC. Tamper and
+removal alerts stay on Free, as section 3 recommends.
+
 **Written:** 2026-10-23. **Current plans:** [subscriptions.md › 2](subscriptions.md#2-plans-products-and-prices),
 [src/lib/plans.ts](../src/lib/plans.ts).
 
@@ -27,7 +33,7 @@ PayMongo test mode: a yearly plan's first invoice is ₱1,490), browsers on a PC
 | | Price | Per month in pesos (approx.) | PCs |
 |---|---|---|---|
 | **eGuard Plus** | ₱149 / month | ₱149 | Included (this proposal) |
-| **eGuard Family Pro** | ₱249 / month | ₱249 | Included (this proposal) |
+| **eGuard Family** | ₱249 / month | ₱249 | Included (this proposal) |
 | Qustodio Basic | $59.95 / year | about ₱290 | Yes |
 | Qustodio Complete | $104.95 / year, unlimited devices | about ₱510 | Yes |
 | Microsoft Family Safety | Free with a Microsoft account | ₱0 | Windows and Xbox app and game limits |
@@ -62,16 +68,16 @@ All of this is covered by a handful of extra Plus subscribers a month. **PCs don
 
 Use the existing limits as they are. Nothing PC-only needs a new entitlement.
 
-| On a PC | Free | eGuard Plus | Family Pro |
+| On a PC | Free | eGuard Plus | eGuard Family |
 |---|---|---|---|
-| Pair a Windows PC | Yes (uses a device slot) | Yes | Yes |
+| Pair a Windows PC | Yes, as its one device (a phone **or** a PC) | Yes | Yes |
 | Daily screen time, bedtime, extra time | Yes | Yes | Yes |
 | Uninstall protection and tamper alerts | Yes | Yes | Yes |
 | App scan (games and unverified publishers) | Yes | Yes | Yes |
 | Apps the parent can see and manage | 5, as on phones | All | All |
 | Block or limit a game | The 5 shown | All | All |
 | **Gaming time across phone and PC** (category limits) | No | **Yes** | Yes |
-| Alerts as push notifications | No (in the app and by email) | Yes | Yes |
+| Alerts as push notifications | Security alerts only (removed, tampered with, protection off) | Every alert | Every alert |
 | 30-day reports and CSV export | No | No | Yes |
 
 Why tamper protection is on Free:
@@ -98,7 +104,7 @@ agent (a Mac or a school laptop) still takes one, as today.
 - `usedDeviceSlots` counts only browsers whose `deviceId` is null.
 - When the PC is removed, its browsers are removed with it.
 
-With this change the device limits (2, 10 and 20) can stay as they are.
+With this change the device limits (2, 10 and 20 then; 1, 5 and 12 since 2026-10-28) don't need to grow for PCs.
 
 ## 5. Prices
 
@@ -165,4 +171,5 @@ The marketing site must not mention PCs until the agent ships (desktop-agent-spe
    Sponsor codes belong to an organization's paid batch, so it's eGuard's own `PROMO` purchase instead
    (subscriptions.md › Windows launch offer).
 5. **The 90-day price review and its thresholds?** Recommended as written. Change the numbers if your current
-   conversion and churn data say otherwise.
+   conversion and churn data say otherwise. Since 2026-10-28 a Free family can't have a phone and a PC, so compare
+   conversion from the 2026-10-28 cohort on, not with families who signed up on the old 2-device Free.

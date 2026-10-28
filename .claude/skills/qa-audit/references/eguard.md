@@ -50,6 +50,12 @@ to the server log ("Mailpit unreachable"). Start a server for the API suite with
 CRON_SECRET=test-cron-secret RATE_LIMIT_IP_ALLOWLIST="::1,127.0.0.1,::ffff:127.0.0.1" npx next dev
 ```
 
+Run the suite with the same secret: `CRON_SECRET=test-cron-secret npx vitest run --config vitest.api.config.ts`.
+The tests load `.env`, whose `CRON_SECRET` differs, so without it every maintenance-job test gets 401 (2026-10-28).
+The sign-in lockout test uses fixed test addresses (203.0.113.x) and `loginIp` allows 30 per 15 minutes: a third
+full run within 15 minutes fails it with 429. That's the limiter working; wait 15 minutes and rerun that file.
+Last full run: 2026-10-28, 346 tests, all passing.
+
 Still prove it before the suite: register one throwaway account (`@mobile-test.example`), check it arrived in Mailpit
 (`http://localhost:8025/api/v1/search?query=to:"<address>"`). A server started with `next start` (production mode)
 uses Resend. To test against one (needed when the user's `next dev` holds :3000: `npx next build`, then

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { PROFILES, ageReview, profileConfig, profileConfigs, recommendedProfile } from "../profiles";
 import { PROTECTIONS, defaultConfig, isConfigured } from "../protections";
-import { entitlementsFor, nextPlan, planByProduct, planFeatures } from "../plans";
+import { entitlementsFor, familyFeatures, limitsFor, nextPlan, planByName, planByProduct, planFeatures } from "../plans";
 import { HELP_ARTICLES, searchHelp } from "../help";
 import { distanceM } from "../location";
 
@@ -70,33 +70,41 @@ describe("protection profiles", () => {
 
 describe("plans", () => {
   it("lists what each plan includes, as the pricing page does", () => {
-    expect(planFeatures("Free").map((f) => f.label)).toEqual(["Up to 1 child and 2 devices", "All 10 protections and Configuration Health", "Screen time and per-app limits", "5 apps per child", "Push for security alerts", "Email support"]);
-    expect(planFeatures("eGuard Plus")[0].label).toBe("Up to 5 children and 10 devices");
-    expect(planFeatures("Family Pro").map((f) => f.label)).toContain("API access (schools/organizations)");
-  });
-
-  it("doesn't sell what every plan has: protections and verification are on Free", () => {
-    for (const plan of ["eGuard Plus", "Family Pro"]) {
-      expect(planFeatures(plan).map((f) => f.label).join(" ")).not.toMatch(/verif|protection/i);
-    }
+    expect(planFeatures("Free").map((f) => f.label)).toEqual(["Up to 1 child and 1 device", "Setup wizard and protection profiles", "Basic Configuration Health", "Run a check any time", "Screen time and per-app limits", "Alerts if eGuard is removed or tampered with", "Email support"]);
+    expect(planFeatures("eGuard Plus")[0].label).toBe("Up to 3 children and 5 devices");
+    expect(planFeatures("eGuard Family")[0].label).toBe("Up to 6 children and 12 devices");
+    expect(planFeatures("eGuard Family").map((f) => f.label)).toContain("API access (schools/organizations)");
   });
 
   it("gates features by plan, and unknown or retired plans get Free", () => {
-    expect(entitlementsFor("Free")).toMatchObject({ childLimit: 1, locationSharing: false, appMonitoringLimit: 5, realtimeAlerts: false, advancedReports: false });
-    expect(entitlementsFor("eGuard Plus")).toMatchObject({ childLimit: 5, locationSharing: true, appMonitoringLimit: null, realtimeAlerts: true, advancedReports: false, apiAccess: false, categoryLimits: true });
-    expect(entitlementsFor("Family Pro")).toMatchObject({ childLimit: 10, advancedReports: true, apiAccess: true });
-    expect(entitlementsFor("eGuard Family").childLimit).toBe(1);
+    expect(entitlementsFor("Free")).toMatchObject({ childLimit: 1, deviceLimit: 1, locationSharing: false, appMonitoringLimit: 5, realtimeAlerts: false, advancedReports: false, driftAlerts: false });
+    expect(entitlementsFor("eGuard Plus")).toMatchObject({ childLimit: 3, deviceLimit: 5, locationSharing: true, appMonitoringLimit: null, realtimeAlerts: true, advancedReports: false, apiAccess: false, categoryLimits: true, driftAlerts: true });
+    expect(entitlementsFor("eGuard Family")).toMatchObject({ childLimit: 6, deviceLimit: 12, advancedReports: true, apiAccess: true, driftAlerts: true });
+    expect(entitlementsFor("Gold").childLimit).toBe(1);
   });
 
-  it("maps store products to plans, keeping the retired eGuard Family products as Family Pro", () => {
+  it("still reads the plan's old name, Family Pro", () => {
+    expect(planByName("Family Pro").id).toBe("PRO");
+    expect(entitlementsFor("Family Pro").apiAccess).toBe(true);
+  });
+
+  it("keeps the old limits for families subscribed before 2026-10-28, never on Free", () => {
+    expect(limitsFor("eGuard Plus", true)).toEqual({ childLimit: 5, deviceLimit: 10 });
+    expect(limitsFor("eGuard Family", true)).toEqual({ childLimit: 10, deviceLimit: 20 });
+    expect(limitsFor("eGuard Plus", false)).toEqual({ childLimit: 3, deviceLimit: 5 });
+    expect(limitsFor("Free", true)).toEqual({ childLimit: 1, deviceLimit: 1 });
+    expect(familyFeatures({ plan: "eGuard Plus", childLimit: 5, deviceLimit: 10 })[0].label).toBe("Up to 5 children and 10 devices");
+  });
+
+  it("maps store products to plans, keeping the retired eGuard Family products as the PRO plan", () => {
     expect(planByProduct("plus_monthly")?.name).toBe("eGuard Plus");
-    expect(planByProduct("pro_pass_month")?.name).toBe("Family Pro");
-    expect(planByProduct("family_yearly")?.name).toBe("Family Pro");
-    expect(planByProduct("eguard_family")?.name).toBe("Family Pro");
+    expect(planByProduct("pro_pass_month")?.name).toBe("eGuard Family");
+    expect(planByProduct("family_yearly")?.id).toBe("PRO");
+    expect(planByProduct("eguard_family")?.id).toBe("PRO");
     expect(planByProduct("eguard_plus")?.name).toBe("eGuard Plus");
     expect(planByProduct("nope")).toBeNull();
     expect(nextPlan("Free")?.name).toBe("eGuard Plus");
-    expect(nextPlan("Family Pro")).toBeNull();
+    expect(nextPlan("eGuard Family")).toBeNull();
   });
 });
 

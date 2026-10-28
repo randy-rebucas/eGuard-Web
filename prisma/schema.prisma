@@ -116,7 +116,12 @@ model Family {
   name          String
   timezone      String   @default("Asia/Manila")
   plan          String   @default("Free")
-  deviceLimit   Int      @default(2)
+  /// Set by applyEntitlement from the plan, like deviceLimit (lib/plans LEGACY_LIMITS while legacyLimits)
+  childLimit    Int      @default(1)
+  deviceLimit   Int      @default(1)
+  /// Subscribed before the 2026-10-28 limits: keeps the old ones (Plus 5/10, eGuard Family 10/20) until the
+  /// family is back on Free
+  legacyLimits  Boolean  @default(false)
   renewsAt      DateTime?
   /// PayMongo customer (cus_…) that web subscriptions bill
   paymongoCustomerId String? @unique

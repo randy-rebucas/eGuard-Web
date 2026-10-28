@@ -68,6 +68,15 @@ describe("health reports", () => {
 });
 
 describe("drift", () => {
+  // Alerts when a setting changes are eGuard Plus and up (driftAlerts); tamper and offline alerts stay on Free
+  it("on Free isn't an alert", async () => {
+    const v = await currentVersion();
+    await report(v, { rules_installed: "ACTION_REQUIRED" }, "NEEDS_ATTENTION");
+    expect(await openAlert("BROWSER_DRIFT")).toBeNull();
+    await report(v);
+    await db.family.update({ where: { id: familyId }, data: { plan: "eGuard Plus", childLimit: 3, deviceLimit: 5 } });
+  });
+
   it("rules that aren't in place alert the family at once, and a good report resolves it", async () => {
     const v = await currentVersion();
     await report(v, { rules_installed: "ACTION_REQUIRED" }, "NEEDS_ATTENTION");
@@ -127,7 +136,7 @@ describe("other alerts", () => {
     await cron();
     const alerts = await db.alert.findMany({ where: { familyId, resolveKey: `BROWSER_OFFLINE:${installationId}` } });
     expect(alerts).toHaveLength(1);
-    expect(alerts[0]).toMatchObject({ title: "eGuard can't verify this browser", category: "DEVICES", resolvedAt: null });
+    expect(alerts[0]).toMatchObject({ title: "eGuard may be off in this browser", category: "DEVICES", resolvedAt: null });
 
     await ext("/policy", { token: access }); // any check-in
     expect(await openAlert("BROWSER_OFFLINE")).toBeNull();

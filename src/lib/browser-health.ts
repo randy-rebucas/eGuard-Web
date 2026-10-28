@@ -7,6 +7,7 @@ import { createAlertUnless, resolveAlerts } from "./engine";
 import { OFFLINE_AFTER_MS } from "./health";
 import { browserLabel, browserOfflineKey as offlineKey } from "./browser-service";
 import { ServiceError } from "./errors";
+import { entitlementsFor } from "./plans";
 
 /**
  * Browser health (/api/browser/v1/health and /events). The extension checks its own setup and reports the
@@ -84,7 +85,10 @@ export async function recordHealth(inst: Inst, report: HealthReport, now = new D
   const inFlight = behind && now.getTime() - current.updatedAt.getTime() < DRIFT_GRACE_MS;
   const rules = status("rules_installed");
   const rulesBroken = rules === "ACTION_REQUIRED" || rules === "WARNING";
-  if ((behind && !inFlight) || rulesBroken) {
+  // Drift alerts are for plans with driftAlerts; the browser's state above still shows it. Private windows, site access
+  // and Safe Browsing turned off below are tampering with the browser, and alert on every plan
+  const plan = (await db.family.findUnique({ where: { id: inst.familyId }, select: { plan: true } }))?.plan ?? "";
+  if (((behind && !inFlight) || rulesBroken) && entitlementsFor(plan).driftAlerts) {
     await raiseOnce(inst, driftKey(inst.id), {
       icon: "shield-alert",
       title: "Browser protection changed",

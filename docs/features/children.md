@@ -63,8 +63,8 @@ browsers; see [dashboard.md §3.3](dashboard.md#33-your-children)), then an **At
 | Location | Available / Waiting for first location / Sharing off / No device / Not on your plan | |
 
 **Header button:** **Add child**, or **Upgrade to add more** (→ `/settings/subscription`) once the plan is full.
-Full on the top plan (Family Pro, 10 children), there's no button and the note only explains ("Family Pro covers
-10 children."), with no "See plans" link. `/children/new` does the same.
+Full on the top plan (eGuard Family, 6 children, or 10 for a family keeping the older limits), there's no button and the note only explains ("eGuard Family covers
+6 children."), with no "See plans" link. `/children/new` does the same.
 **Over the limit** (after moving to a smaller plan): a note says "You have 3 children, 2 more than Free covers.
 They stay protected; to add more, remove some or upgrade." Nobody is removed.
 **Empty:** "No children yet" with Add child.
@@ -105,7 +105,7 @@ The profile then shows "*Mia* is added with age-appropriate protections. Next, p
 with **Pair a device**, until a device is paired.
 
 **Plan full:** the page shows "Your plan is full" with the reason ("Free covers 1 child. Upgrade to eGuard Plus to
-add up to 5.") instead of the form.
+add up to 3.") instead of the form.
 
 ## 4. Child profile
 
@@ -324,7 +324,7 @@ All seven issues from the first review were fixed on 2026-10-04:
 
 | # | Issue | Fix |
 |---|---|---|
-| 1 | Full on Family Pro, the list still offered "Upgrade to add more" | No button; `UpgradeNote` takes `plans={false}` and drops "See plans" when `nextPlan()` is null (list and `/children/new`) |
+| 1 | Full on eGuard Family, the list still offered "Upgrade to add more" | No button; `UpgradeNote` takes `plans={false}` and drops "See plans" when `nextPlan()` is null (list and `/children/new`) |
 | 2 | Overview alerts newest first | `getAlerts(…, { bySeverity: true })`, as on the dashboard |
 | 3 | Browser tab wrote its own browser status | Uses `browserStatus()` with the same status pill as the browser cards |
 | 4 | Over the limit, the Overview bar stayed amber | Red bar, "Over by *x*" / "Limit reached", `aria-valuetext`, as on the dashboard |
@@ -375,7 +375,7 @@ browser: the in-browser resize (`createImageBitmap` + canvas) is untested.
 **Manual checklist**
 
 - [ ] Free family with one child: header shows **Upgrade to add more**; `/children/new` shows "Your plan is full".
-- [ ] Family Pro with 10 children: no header button; the note has no "See plans"; `/children/new` has no See plans.
+- [ ] eGuard Family with 6 children: no header button; the note has no "See plans"; `/children/new` has no See plans.
 - [ ] Change a 12-year-old's birth year to make them 13: the save message names Screen Time, Bedtime, App
       Restrictions and Content Restrictions. Change it within the same band (9 → 10): just "Saved."
 - [ ] Screen time over the limit on the Overview: red bar, "Over by *x*".

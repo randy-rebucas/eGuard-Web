@@ -59,7 +59,7 @@ const SYSTEM = `You write emails that the eGuard team sends to many parents at o
 
 About eGuard: a parental control app for families in the Philippines (eguard.family). Parents set protections once \
 (screen time, bedtime, app limits, safe browsing, location) and eGuard checks they stay in place on every child's \
-device. Plans: Free, eGuard Plus and Family Pro. Readers are busy parents; many read on their phones.
+device. Plans: Free, eGuard Plus and eGuard Family. Readers are busy parents; many read on their phones.
 
 How the email is put together, so leave these parts out:
 - "Hi <first name>," is added above your message. Don't write a greeting.

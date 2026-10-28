@@ -43,7 +43,9 @@ beforeAll(async () => {
   token = r.data.token;
   familyId = r.data.user.family.id;
   await db.user.update({ where: { id: r.data.user.id }, data: { emailVerifiedAt: new Date() } });
-  await db.family.update({ where: { id: familyId }, data: { plan: "eGuard Plus", deviceLimit: 10 } });
+  // Room for many PCs and browsers: Plus as subscribed before 2026-10-28 (legacyLimits), which a purchase later in
+  // the file (the launch offer) keeps
+  await db.family.update({ where: { id: familyId }, data: { plan: "eGuard Plus", childLimit: 5, deviceLimit: 10, legacyLimits: true } });
   childId = (await call("POST", "/children", { token, body: { name: "Mia", age: 12 } })).data.id;
   const pair = await pairPc();
   expect(pair.status).toBe(201);
@@ -315,8 +317,10 @@ describe("browsers on the computer", () => {
   });
 
   it("a browser paired with it is part of the computer and takes no device slot, even on a full plan", async () => {
-    const used = (await db.device.count({ where: { familyId } })) + (await db.browserInstallation.count({ where: { familyId, deviceId: null } }));
-    await db.family.update({ where: { id: familyId }, data: { deviceLimit: used } });
+    // Full for real: the family's limit follows its purchase (the launch offer), so fill today's Plus limit
+    const used = async () => (await db.device.count({ where: { familyId } })) + (await db.browserInstallation.count({ where: { familyId, deviceId: null } }));
+    await db.family.update({ where: { id: familyId }, data: { legacyLimits: false, childLimit: 3, deviceLimit: 5 } });
+    for (let n = 1; await used() < 5; n++) expect((await pairPc(`Spare PC ${n}`)).status).toBe(201);
     const r = await ext(pairBody(await browserCode(), link));
     expect(r.status).toBe(201);
     expect(await db.browserInstallation.findUnique({ where: { id: r.data.installationId } })).toMatchObject({ deviceId, deviceLabel: "Gaming PC" });
@@ -325,7 +329,7 @@ describe("browsers on the computer", () => {
     // A forged or tampered link is just an ordinary browser
     const forged = `${link.slice(0, -4)}AAAA`;
     expect((await ext(pairBody(await browserCode(), forged))).status).toBe(409);
-    await db.family.update({ where: { id: familyId }, data: { deviceLimit: 10 } });
+    await db.family.update({ where: { id: familyId }, data: { legacyLimits: true, childLimit: 5, deviceLimit: 10 } });
   });
 
   it("a link for another child's computer doesn't count", async () => {

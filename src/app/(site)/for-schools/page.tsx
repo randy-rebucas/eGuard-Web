@@ -28,7 +28,7 @@ const WHO: [LucideIcon, string, string][] = [
 const STEPS: [LucideIcon, string, React.ReactNode][] = [
   [Hash, "Create your organization", <>Free, from any eGuard parent account with a verified email, in Settings › Organizations. Add co-workers as admins by email.</>],
   [Share2, "Share your join code", <>Families enter your code to join. They can leave whenever they like, and joining never shares anything about them.</>],
-  [Gift, "Sponsor plans, if you'd like", <>Buy a batch of sponsor codes: eGuard Plus or Family Pro, for 1, 3, 6 or 12 months. Pay once with GCash, Maya, QR Ph or a card.</>],
+  [Gift, "Sponsor plans, if you'd like", <>Buy a batch of sponsor codes: eGuard Plus or eGuard Family, for 1, 3, 6 or 12 months. Pay once with GCash, Maya, QR Ph or a card.</>],
   [KeyRound, "Hand out codes, see the counts", <>A family redeems a code in Settings › Subscription and gets the plan straight away. You see which codes are used and how many families joined.</>],
 ];
 
@@ -41,7 +41,7 @@ const FAQS: [string, React.ReactNode][] = [
   ["What happens when a sponsored plan ends?", <>The family gets a reminder 3 days before. Then they move to the Free plan unless they buy their own, or you give them another code. Their children and devices stay protected; <Link href="/pricing#pc-faq">see what changes on a smaller plan</Link>.</>],
   ["What if a family already pays for eGuard?", <>A code for the plan they already have adds its months on the end. They can&apos;t redeem a code for a different plan while paid time is left, or while auto-renew or Google Play billing is on.</>],
   ["Do unused codes expire?", <>Codes can be redeemed for 12 months after you buy them. You can see each code&apos;s status, download them as a list, and cancel one that hasn&apos;t been used.</>],
-  ["Can our own systems read the numbers?", <>Yes, on Family Pro: organization admins can create API keys that read your codes, batches and counts, never a family&apos;s data.</>],
+  ["Can our own systems read the numbers?", <>Yes, on eGuard Family: organization admins can create API keys that read your codes, batches and counts, never a family&apos;s data.</>],
   ["How much does it cost to set up?", <>Nothing. Creating an organization and sharing a join code is free. You only pay for sponsor codes, if you buy any.</>],
 ];
 

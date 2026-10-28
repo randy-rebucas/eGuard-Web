@@ -332,8 +332,8 @@ Per device: Checking… → **All verified** / **n to review** / **Couldn't reac
 
 | Entitlement | Free | Plus | Pro | Effect on the dashboard |
 |---|---|---|---|---|
-| `childLimit` | 1 | 5 | 10 | Active Plan card text |
-| `deviceLimit` | 2 | 10 | 20 | Active Plan card text (from `family.deviceLimit`) |
+| `childLimit` | 1 | 3 | 6 | Active Plan card text (from `family.childLimit`) |
+| `deviceLimit` | 1 | 5 | 12 | Active Plan card text (from `family.deviceLimit`) |
 | `locationSharing` | no | yes | yes | Location tab shows "Not on your plan"; View Location shows a plan badge |
 | `appMonitoringLimit` | 5 apps | all | all | App names beyond the limit are folded into "Others" |
 

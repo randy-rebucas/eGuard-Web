@@ -5,7 +5,7 @@ import { PLANS, webPrice } from "@/lib/plans";
 import { googlePlayConfig, obfuscatedAccountId } from "@/lib/google-play";
 
 /**
- * Plans to show on the upgrade screen: Free, eGuard Plus and Family Pro. Store prices come from Play Billing
+ * Plans to show on the upgrade screen: Free, eGuard Plus and eGuard Family. Store prices come from Play Billing
  * ProductDetails (a monthly and a yearly base plan per product); `monthlyPesos` and `yearlyPesos` are the web prices,
  * for display where the store has none. Pass
  * `googlePlay.obfuscatedAccountId` to BillingFlowParams.setObfuscatedAccountId().

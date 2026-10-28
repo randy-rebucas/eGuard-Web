@@ -5,10 +5,10 @@ import { requestedApps } from "./family-service";
 import { entitlementsFor, planWith, type Entitlements } from "./plans";
 import { appMinutesOn, dateFromKey, dayKey } from "./queries";
 
-/** What the family's plan includes, from Family.plan (kept current by applyEntitlement). */
+/** What the family's plan includes, from Family.plan, with the family's own limits (all kept current by applyEntitlement). */
 export async function familyEntitlements(familyId: string): Promise<Entitlements & { plan: string }> {
-  const f = await db.family.findUniqueOrThrow({ where: { id: familyId }, select: { plan: true } });
-  return { plan: f.plan, ...entitlementsFor(f.plan) };
+  const f = await db.family.findUniqueOrThrow({ where: { id: familyId }, select: { plan: true, childLimit: true, deviceLimit: true } });
+  return { ...entitlementsFor(f.plan), plan: f.plan, childLimit: f.childLimit, deviceLimit: f.deviceLimit };
 }
 
 export { planWith };

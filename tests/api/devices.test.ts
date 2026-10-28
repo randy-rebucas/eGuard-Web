@@ -25,7 +25,7 @@ beforeAll(async () => {
   familyId = r.data.user.family.id;
   // Pairing needs a verified email; two children and three devices need more than Free
   await db.user.update({ where: { id: r.data.user.id }, data: { emailVerifiedAt: new Date() } });
-  await db.family.update({ where: { id: familyId }, data: { plan: "eGuard Plus", deviceLimit: 10 } });
+  await db.family.update({ where: { id: familyId }, data: { plan: "eGuard Plus", childLimit: 5, deviceLimit: 10 } });
   miaId = (await call("POST", "/children", { token, body: { name: "Mia", age: 9 } })).data.id;
   leoId = (await call("POST", "/children", { token, body: { name: "Leo", age: 15 } })).data.id;
   phone = await pairDevice(token, miaId, "ANDROID", "Mia's Phone");

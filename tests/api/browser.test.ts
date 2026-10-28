@@ -168,10 +168,15 @@ describe("tokens", () => {
     await db.browserInstallation.delete({ where: { id: p.installationId } });
   });
 
-  it("an unknown installation or token gets a plain 401", async () => {
+  it("an unknown installation is revoked (a removed browser's row is deleted); a wrong token is a plain 401", async () => {
     const r = await ext("/token", { body: { installationId: "nope", refreshToken: "x".repeat(43) } });
     expect(r.status).toBe(401);
-    expect(r.data.code).toBe("unauthorized");
+    expect(r.data.code).toBe("installation_revoked");
+    const p = await pairBrowser("Lia's desktop");
+    const wrong = await ext("/token", { body: { installationId: p.installationId, refreshToken: "x".repeat(43) } });
+    expect(wrong.status).toBe(401);
+    expect(wrong.data.code).toBe("unauthorized");
+    await db.browserInstallation.delete({ where: { id: p.installationId } });
   });
 });
 
@@ -197,14 +202,13 @@ describe("removal and plan limits", () => {
     await db.browserInstallation.delete({ where: { id: p.installationId } });
   });
 
-  it("browsers count toward the plan's device limit (Free: 2)", async () => {
+  it("browsers count toward the plan's device limit (Free: 1)", async () => {
     await pairBrowser();
-    await pairDevice(token, childId, "ANDROID", "Lia's Phone");
-    const full = await call("POST", `/children/${childId}/pairing-code`, { token, body: { kind: "BROWSER", deviceLabel: "Another" } });
+    const full = await call("POST", `/children/${childId}/pairing-code`, { token, body: {} });
     expect(full.status).toBe(409);
     expect(full.data.code).toBe("plan_limit");
     const sub = await call("GET", "/subscription", { token });
-    expect(sub.data.usage).toMatchObject({ devicesUsed: 2, deviceLimit: 2 });
+    expect(sub.data.usage).toMatchObject({ devicesUsed: 1, deviceLimit: 1 });
   });
 
   it("a browser disconnected for security frees its slot", async () => {

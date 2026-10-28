@@ -1158,7 +1158,7 @@ rest of a setup batch keeps going. An unknown key is `400`.
 ##### `GET /children/{id}/screen-time?period=today|7d|30d`
 
 `period` defaults to `today`. Any other value returns `400`. `30d` is an advanced report: without
-`entitlements.advancedReports` (Family Pro) it returns `403 plan_required`, so lock the 30-day tab on other plans.
+`entitlements.advancedReports` (eGuard Family) it returns `403 plan_required`, so lock the 30-day tab on other plans.
 Every response says which tabs are locked (`locked`), so the first Today load is enough to lock it before a tap.
 
 ```json
@@ -1172,7 +1172,7 @@ Every response says which tabs are locked (`locked`), so the first Today load is
   "completeDays": 0,
   "limitMinutes": 240,
   "deviceCount": 1,
-  "locked": { "periods": ["30d"], "message": "30-day reports are included with Family Pro." },
+  "locked": { "periods": ["30d"], "message": "30-day reports are included with eGuard Family." },
   "days": [ { "date": "2026-09-27", "minutes": 134, "limitMinutes": 240 } ],
   "hourly": [0,0,0,0,0,0,0,7,7,7,7,7,3,3,3,3,12,12,12,27,12,12,0,0],
   "apps": [
@@ -1567,18 +1567,18 @@ Sponsor codes, which pay for a plan, are redeemed on the website only (see [Know
   ],
   "entitlements": {
     "childLimit": 5, "deviceLimit": 10, "locationSharing": true, "appMonitoringLimit": null,
-    "realtimeAlerts": true, "advancedReports": false, "apiAccess": false, "categoryLimits": true
+    "realtimeAlerts": true, "advancedReports": false, "apiAccess": false, "categoryLimits": true, "driftAlerts": true
   },
   "usage": { "devicesUsed": 5, "deviceLimit": 10, "children": 3, "childLimit": 5 },
   "canManage": true,
   "billingAvailable": false,
   "store": null,
-  "upgrade": { "planId": "PRO", "name": "Family Pro", "googlePlayProductId": "eguard_pro" }
+  "upgrade": { "planId": "PRO", "name": "eGuard Family", "googlePlayProductId": "eguard_pro" }
 }
 ```
 
-- Plans are **Free** (1 child), **eGuard Plus** (₱149/month, 5 children) and **Family Pro** (₱249/month, 10 children).
-  `upgrade` is the next plan up, or `null` on Family Pro.
+- Plans are **Free** (1 child, 1 device), **eGuard Plus** (₱149/month, 3 children, 5 devices) and **eGuard Family** (₱249/month, 6 children, 12 devices). Families subscribed before 2026-10-28 keep 5/10 or 10/20: always show `usage.childLimit` and `usage.deviceLimit`, never a number from the plan.
+  `upgrade` is the next plan up, or `null` on eGuard Family.
 - `status` is `ACTIVE` or `EXPIRED`. A failed auto-renew payment that is being retried stays `ACTIVE` (the plan has a
   grace period). `renewsLabel` then reads "Renewal failed on …".
 - Plan Usage "3 of 5 children" comes from `usage.children` / `usage.childLimit`; devices from `usage.devicesUsed` / `usage.deviceLimit`.
@@ -1591,6 +1591,7 @@ Sponsor codes, which pay for a plan, are redeemed on the website only (see [Know
     most used) and `limited: { hidden, message }` says how many more there are; `/children/{id}/screen-time`
     names only apps that list shows today, for every period, and sums the rest as Others (`hiddenApps`)
   - without `realtimeAlerts`, push sends security alerts only (`pushScope: "security"` on `/me/notifications`)
+  - without `driftAlerts` (Free), a protection changed on the device raises no "Protection setting changed" alert; its status and the history still show it. Alerts that a protection can't be applied, location was turned off or uninstall protection was turned off come on every plan
   - without `advancedReports`, `/children/{id}/screen-time?period=30d` → `403 plan_required`
 - **Plans are paid for on the web for now** (PayMongo, in Settings › Subscription on the website). The apps show the
   plan and usage but **don't sell it and don't link to the website**: store policies forbid steering users to
@@ -1620,7 +1621,7 @@ Sponsor codes, which pay for a plan, are redeemed on the website only (see [Know
 
 ##### `GET /subscription/plans`
 
-The upgrade screen: Free, eGuard Plus and Family Pro, in that order. Where Play Billing is available, show the
+The upgrade screen: Free, eGuard Plus and eGuard Family, in that order. Where Play Billing is available, show the
 localized price from `ProductDetails`; `monthlyPesos` is the web price.
 
 ```json
@@ -1631,7 +1632,7 @@ localized price from `ProductDetails`; `monthlyPesos` is the web price.
       "features": [ { "key": "children", "included": true, "label": "Up to 1 child" } ], "googlePlayProductId": null },
     { "id": "PLUS", "name": "eGuard Plus", "monthlyPesos": 149, "current": true, "childLimit": 5, "deviceLimit": 10, "…": "…",
       "googlePlayProductId": "eguard_plus" },
-    { "id": "PRO", "name": "Family Pro", "monthlyPesos": 249, "current": false, "childLimit": 10, "deviceLimit": 20, "…": "…",
+    { "id": "PRO", "name": "eGuard Family", "monthlyPesos": 249, "current": false, "childLimit": 10, "deviceLimit": 20, "…": "…",
       "googlePlayProductId": "eguard_pro" }
   ],
   "googlePlay": { "packageName": "app.eguard.android", "obfuscatedAccountId": "9f2c…(64 hex chars)" },
@@ -1649,16 +1650,16 @@ Send the purchase to eGuard after Play Billing reports it.
 { "productId": "eguard_pro", "purchaseToken": "<Purchase.getPurchaseToken()>" }
 ```
 
-→ `200 { "plan": "Family Pro", "expiresAt": "2026-10-27T…Z", "autoRenewing": true, "test": false }`
+→ `200 { "plan": "eGuard Family", "expiresAt": "2026-10-27T…Z", "autoRenewing": true, "test": false }`
 
-`eguard_family`, sold before these plans, is still accepted and grants Family Pro.
+`eguard_family`, sold before these plans, is still accepted and grants eGuard Family.
 
 The server does the following:
 - verifies the token with Google
 - checks the purchase was made for this family
-- upgrades the plan (Family Pro: 10 children, 20 devices)
+- upgrades the plan (eGuard Family: 6 children, 12 devices)
 - **acknowledges the purchase**, so the app must **not** call `acknowledgePurchase` itself
-- raises an INFO alert "Welcome to Family Pro"
+- raises an INFO alert "Welcome to eGuard Family"
 
 The call is idempotent: send it again for "Restore purchases" or after a network error.
 
@@ -1836,7 +1837,7 @@ protections the parent set this way: show "Set by you" for it.
 | request `mode` | `APPLY`, `GUIDED` |
 | alert `severity` | `INFO`, `ATTENTION`, `ACTION_REQUIRED`, `CRITICAL` |
 | alert `category` | `PROTECTION`, `DEVICES`, `APPS`, `SCREEN_TIME`, `LOCATION`, `SYSTEM` |
-| alert titles you'll see | "Protection setting changed", "Location sharing turned off", "Device hasn't synced in over a day", "New device synchronized", "Device removed", "New app installed", "App approval requested", "App blocked", "Screen time limit reached", "Welcome to eGuard Plus" / "Welcome to Family Pro", "eGuard Plus ended" / "Family Pro ended" |
+| alert titles you'll see | "Protection setting changed", "Location sharing turned off", "Device hasn't synced in over a day", "New device synchronized", "Device removed", "New app installed", "App approval requested", "App blocked", "Screen time limit reached", "Welcome to eGuard Plus" / "Welcome to eGuard Family", "eGuard Plus ended" / "eGuard Family ended" |
 | app `approval` | `ALLOWED`, `ALWAYS_ALLOWED`, `FILTERED`, `BLOCKED`, `PENDING` |
 | child `status` | `protected`, `attention`, `notconfigured` |
 | device `state` | `healthy`, `issues`, `offline` |
