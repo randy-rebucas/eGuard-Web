@@ -27,6 +27,8 @@ const COLLECTED: [string, string][] = [
   ["Support", "The messages you send us and any details you include."],
   ["Signing in", "The browser or app you signed in from, so you can see and end your sessions. Your IP address is used briefly to limit repeated sign-in attempts."],
   ["Push alerts", "If you allow notifications in the eGuard parent app: the token your phone gives us to deliver them, until you sign out of the app or the token stops working."],
+  ["Tips and reminders", "Your choices in Settings › Notifications › Tips and reminders (which messages, on which channels, which days and time, quiet hours, language) and when you turned email or push on or off for them. The tips, weekly plans and check-ins we sent you and whether they were delivered, when you open a link in one (emails have no tracking pixels), and the safety-plan activities you start, finish or set aside."],
+  ["How you use eGuard", "When you signed up and when you take an action such as changing a protection, answering a child's request or adding a device: the kind of action and when, nothing more. We use it to time check-ins and to measure whether eGuard helps families keep their protections in place."],
 ];
 
 function Contact() {
@@ -88,6 +90,9 @@ export default function PrivacyPage() {
             <li>apply the protections you choose to your children&apos;s devices, and check that each one is really on;</li>
             <li>show you screen time, apps, location and Configuration Health;</li>
             <li>send you alerts, a weekly summary if you keep it on, sign-in and verification emails, and reminders about your plan;</li>
+            <li>send you tips, weekly safety plans and check-ins, only on the channels you turn on in Settings › Notifications › Tips and reminders;</li>
+            <li>send you product updates unless you turn them off in Settings › Notifications, and service notices about your account, our terms or security, which go to every parent;</li>
+            <li>measure, in totals across families, whether eGuard and its tips help families keep protections in place;</li>
             <li>process payments and manage your subscription;</li>
             <li>answer your support requests;</li>
             <li>keep eGuard secure, prevent abuse, and fix problems.</li>
@@ -149,6 +154,7 @@ export default function PrivacyPage() {
           <li><strong>Security records</strong> of account changes: one year.</li>
           <li><strong>Sessions</strong>: until you sign out, or 30 days. Email verification links expire after 24 hours and password-reset links after one hour.</li>
           <li><strong>Your account, children and settings</strong>: until you delete them.</li>
+          <li><strong>Tips and reminders</strong>: the record of your actions and of the messages you opened, and your weekly plans, 400 days; the messages we sent, 365 days. Your choices and your progress on activities are kept until you delete your account.</li>
           <li><strong>Mailing-list addresses</strong>: until you unsubscribe, which deletes them. Unconfirmed sign-ups: 7 days.</li>
           <li><strong>Payment records</strong>: until you delete your account. PayMongo keeps its own record of your payments, as the law requires of it.</li>
         </ul>

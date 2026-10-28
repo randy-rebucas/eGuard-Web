@@ -33,8 +33,9 @@ export default async function ReportPage(props: PageProps<"/plan/report">) {
   ];
   return (
     <>
-      <PageHead title={`${name} summary`} text="What your family did with eGuard this month, counted from your own activity." crumbs={[{ href: "/plan", label: "Safety plan" }]}>
-        <Link className="btn btn-ghost" href={`/plan/report?month=${shift(r.month, -1)}`}><Icon name="chevron-left" />Earlier</Link>
+      <PageHead title={`${name} summary`} text={`What your family did with eGuard ${r.month === thisMonth ? "so far this month" : `in ${name}`}, counted from your own activity.`} crumbs={[{ href: "/plan", label: "Safety plan" }]}>
+        {/* Nothing to go back to before the parent joined */}
+        {r.joinedAfter ? null : <Link className="btn btn-ghost" href={`/plan/report?month=${shift(r.month, -1)}`}><Icon name="chevron-left" />Earlier</Link>}
         {next <= thisMonth ? <Link className="btn btn-ghost" href={`/plan/report?month=${next}`}>Later<Icon name="chevron-right" /></Link> : null}
       </PageHead>
       {r.joinedAfter ? (
@@ -47,7 +48,7 @@ export default async function ReportPage(props: PageProps<"/plan/report">) {
                 <div key={s.label} className="metric"><div className="usage-big num">{s.value}</div><div className="t-meta">{s.label}</div></div>
               ))}
             </div>
-            <p className="t-meta" style={{ marginTop: 16 }}>Protection changes count every change your family confirmed on a device or in the browser this month, by any parent.</p>
+            <p className="t-meta" style={{ marginTop: 16 }}>Protection changes count every change your family confirmed on a device or in the browser in {name}, by any parent.</p>
           </section>
           <section className="card card-pad">
             <div className="card-head"><h2>Done this month</h2></div>

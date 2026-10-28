@@ -28,7 +28,9 @@ const form = (fields: Record<string, string | string[]>) => {
   for (const [k, v] of Object.entries(fields)) for (const x of [v].flat()) f.append(k, x);
   return f;
 };
-const draft = { id: "b1", status: "DRAFT", kind: "UPDATE", subject: "Hello", body: "News", plans: ["Free"] };
+const updatedAt = new Date("2026-10-28T02:00:00.000Z");
+const version = updatedAt.toISOString();
+const draft = { id: "b1", status: "DRAFT", kind: "UPDATE", subject: "Hello", body: "News", plans: ["Free"], updatedAt };
 
 describe("sendBroadcast", () => {
   beforeEach(() => {
@@ -39,40 +41,49 @@ describe("sendBroadcast", () => {
   });
 
   it("sends a confirmed draft now: scheduled for now, first batch after the response, logged", async () => {
-    expect(await sendBroadcast(undefined, form({ id: "b1", mode: "now", confirm: "on" }))).toMatchObject({ ok: expect.stringContaining("Sending") });
-    expect(db.broadcast.updateMany).toHaveBeenCalledWith({ where: { id: "b1", status: "DRAFT" }, data: { status: "SCHEDULED", scheduledAt: expect.any(Date) } });
+    expect(await sendBroadcast(undefined, form({ id: "b1", version, mode: "now", confirm: "on" }))).toMatchObject({ ok: expect.stringContaining("Sending") });
+    expect(db.broadcast.updateMany).toHaveBeenCalledWith({ where: { id: "b1", status: "DRAFT", updatedAt }, data: { status: "SCHEDULED", scheduledAt: expect.any(Date) } });
     expect(after).toHaveBeenCalledOnce();
     expect(staff.logStaff).toHaveBeenCalledWith("s1", "broadcast.send", "broadcast:b1", "Product update, Free, 3 parents");
   });
 
   it("schedules for a future Philippine time, without sending anything yet", async () => {
     const when = new Date(Date.now() + 2 * 864e5 + 8 * 3600_000).toISOString().slice(0, 16);
-    expect(await sendBroadcast(undefined, form({ id: "b1", mode: "later", when, confirm: "on" }))).toEqual({ ok: "Scheduled." });
+    expect(await sendBroadcast(undefined, form({ id: "b1", version, mode: "later", when, confirm: "on" }))).toEqual({ ok: "Scheduled." });
     expect(db.broadcast.updateMany.mock.calls[0][0].data.scheduledAt.toISOString()).toBe(new Date(`${when}:00+08:00`).toISOString());
     expect(after).not.toHaveBeenCalled();
     expect(staff.logStaff.mock.calls[0][1]).toBe("broadcast.schedule");
   });
 
   it("refuses without the confirmation, a time in the past, an empty audience or a non-draft", async () => {
-    expect(await sendBroadcast(undefined, form({ id: "b1", mode: "now" }))).toHaveProperty("error");
-    expect(await sendBroadcast(undefined, form({ id: "b1", mode: "later", when: "2020-01-01T09:00", confirm: "on" }))).toHaveProperty("error");
+    expect(await sendBroadcast(undefined, form({ id: "b1", version, mode: "now" }))).toHaveProperty("error");
+    expect(await sendBroadcast(undefined, form({ id: "b1", version, mode: "later", when: "2020-01-01T09:00", confirm: "on" }))).toHaveProperty("error");
     lib.countAudience.mockResolvedValueOnce(0);
-    expect(await sendBroadcast(undefined, form({ id: "b1", mode: "now", confirm: "on" }))).toEqual({ error: "Nobody is in this audience yet." });
+    expect(await sendBroadcast(undefined, form({ id: "b1", version, mode: "now", confirm: "on" }))).toEqual({ error: "Nobody is in this audience yet." });
     db.broadcast.findUnique.mockResolvedValueOnce({ ...draft, status: "SENT" });
-    expect(await sendBroadcast(undefined, form({ id: "b1", mode: "now", confirm: "on" }))).toHaveProperty("error");
+    expect(await sendBroadcast(undefined, form({ id: "b1", version, mode: "now", confirm: "on" }))).toHaveProperty("error");
     expect(db.broadcast.updateMany).not.toHaveBeenCalled();
     expect(after).not.toHaveBeenCalled();
   });
 
   it("won't send while an AI draft still has [TODO: …] gaps", async () => {
     db.broadcast.findUnique.mockResolvedValue({ ...draft, body: "Live on [TODO: launch date]." });
-    expect(await sendBroadcast(undefined, form({ id: "b1", mode: "now", confirm: "on" }))).toEqual({ error: expect.stringContaining("[TODO") });
+    expect(await sendBroadcast(undefined, form({ id: "b1", version, mode: "now", confirm: "on" }))).toEqual({ error: expect.stringContaining("[TODO") });
     expect(db.broadcast.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("won't send a draft changed since the page showed it (or a form without its version)", async () => {
+    db.broadcast.findUnique.mockResolvedValue({ ...draft, kind: "SERVICE", plans: [], updatedAt: new Date("2026-10-28T02:05:00.000Z") });
+    expect(await sendBroadcast(undefined, form({ id: "b1", version, mode: "now", confirm: "on" }))).toEqual({ error: expect.stringContaining("changed since you opened it") });
+    db.broadcast.findUnique.mockResolvedValue(draft);
+    expect(await sendBroadcast(undefined, form({ id: "b1", mode: "now", confirm: "on" }))).toEqual({ error: expect.stringContaining("changed since you opened it") });
+    expect(db.broadcast.updateMany).not.toHaveBeenCalled();
+    expect(after).not.toHaveBeenCalled();
   });
 
   it("sends nothing when another staff member sent it first", async () => {
     db.broadcast.updateMany.mockResolvedValue({ count: 0 });
-    expect(await sendBroadcast(undefined, form({ id: "b1", mode: "now", confirm: "on" }))).toHaveProperty("error");
+    expect(await sendBroadcast(undefined, form({ id: "b1", version, mode: "now", confirm: "on" }))).toHaveProperty("error");
     expect(after).not.toHaveBeenCalled();
     expect(staff.logStaff).not.toHaveBeenCalled();
   });
@@ -83,9 +94,18 @@ describe("saveBroadcast", () => {
 
   it("edits only a draft, and keeps what was typed on an error", async () => {
     db.broadcast.updateMany.mockResolvedValue({ count: 0 });
+    db.broadcast.findUnique.mockResolvedValue({ status: "SENT" });
     const r = await saveBroadcast(undefined, form({ id: "b1", kind: "UPDATE", subject: "Hi", body: "Body", plans: ["Free", "eGuard Family"] }));
     expect(r).toMatchObject({ error: expect.stringContaining("Only a draft"), fields: { plans: "Free\neGuard Family" } });
     expect(db.broadcast.updateMany).toHaveBeenCalledWith({ where: { id: "b1", status: "DRAFT" }, data: { audience: "PARENTS", kind: "UPDATE", subject: "Hi", body: "Body", plans: ["Free", "eGuard Family"] } });
+  });
+
+  it("saves only over the version the form showed, and says so when another edit came first", async () => {
+    db.broadcast.updateMany.mockResolvedValue({ count: 0 });
+    db.broadcast.findUnique.mockResolvedValue({ status: "DRAFT" });
+    const r = await saveBroadcast(undefined, form({ id: "b1", version, kind: "UPDATE", subject: "Hi", body: "Body" }));
+    expect(r).toMatchObject({ error: expect.stringContaining("changed since you opened it"), fields: { subject: "Hi" } });
+    expect(db.broadcast.updateMany.mock.calls[0][0].where).toEqual({ id: "b1", status: "DRAFT", updatedAt });
   });
 
   it("saves a mailing-list email as a product update with no plans", async () => {

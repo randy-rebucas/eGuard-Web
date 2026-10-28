@@ -43,7 +43,7 @@ export default function IphonePage() {
       <div className="pr">
         <section className="pr-sec ip-first" aria-labelledby="ip-plan">
           <h2 id="ip-plan">What it will do on iPhone and iPad</h2>
-          <p className="pr-lede">The same ten protections as Android. Apple lets apps do slightly different things, so here&apos;s how each one is planned to work.</p>
+          <p className="pr-lede">The same {PROTECTIONS.length} protections as Android. Apple lets apps do slightly different things, so here&apos;s how each one is planned to work.</p>
           <ul className="ip-table">
             {PROTECTIONS.map((p) => {
               const cap = CAPABILITY_COPY[p.caps.IOS];

@@ -86,12 +86,12 @@ export default async function BroadcastPage(props: PageProps<"/console/broadcast
                 <div className="card-head"><h2>Send</h2></div>
                 <div className="cn-stack">
                   <TestForm id={b.id} />
-                  <SendForm id={b.id} audience={audience ?? 0} noun={audienceNoun(b.audience, audience ?? 0)} minTime={consoleTimeValue(new Date())} />
+                  <SendForm id={b.id} version={b.updatedAt.toISOString()} audience={audience ?? 0} noun={audienceNoun(b.audience, audience ?? 0)} minTime={consoleTimeValue(new Date())} />
                 </div>
               </section>
               <section className="card card-pad">
                 <div className="card-head"><h2>Edit</h2></div>
-                <BroadcastEditor draft={{ id: b.id, audience: b.audience, kind: b.kind, subject: b.subject, body: b.body, plans: b.plans }} planNames={PLAN_NAMES} audiences={AUDIENCE_OPTIONS} ai={aiLabel()} />
+                <BroadcastEditor draft={{ id: b.id, version: b.updatedAt.toISOString(), audience: b.audience, kind: b.kind, subject: b.subject, body: b.body, plans: b.plans }} planNames={PLAN_NAMES} audiences={AUDIENCE_OPTIONS} ai={aiLabel()} />
               </section>
             </>
           ) : null}

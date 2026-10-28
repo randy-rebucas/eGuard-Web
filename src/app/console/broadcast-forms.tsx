@@ -2,9 +2,10 @@
 
 import { useActionState, useRef, useState, useTransition } from "react";
 import { draftBroadcastWithAi, saveBroadcast, sendBroadcast, testBroadcast } from "@/app/actions/console";
+import type { AiDraftInput } from "@/lib/broadcast-ai";
 import { Feedback } from "@/components/feedback";
 
-type Draft = { id: string; audience: string; kind: string; subject: string; body: string; plans: string[] };
+type Draft = { id: string; version: string; audience: string; kind: string; subject: string; body: string; plans: string[] };
 type AudienceOption = { id: string; label: string; hint: string };
 
 /**
@@ -24,7 +25,7 @@ export function BroadcastEditor({ draft, planNames, audiences, ai }: { draft?: D
     // The key resets the fields to what was typed (or saved) each time the action returns
     <form ref={formRef} key={JSON.stringify(state ?? draft?.id ?? "new")} action={action} className="cn-form" noValidate>
       <Feedback state={state} />
-      {draft ? <input type="hidden" name="id" value={draft.id} /> : null}
+      {draft ? <><input type="hidden" name="id" value={draft.id} /><input type="hidden" name="version" value={draft.version} /></> : null}
       <fieldset className="cn-fieldset">
         <legend className="cn-legend">To</legend>
         {audiences.map((a) => (
@@ -96,7 +97,7 @@ function AiWriter({ formRef, provider }: { formRef: React.RefObject<HTMLFormElem
     if (!form) return;
     const data = new FormData(form);
     const r = await draftBroadcastWithAi({
-      brief, kind: String(data.get("kind") ?? "UPDATE") as "UPDATE" | "SERVICE", plans: data.getAll("plans").map(String),
+      brief, audience: String(data.get("audience") ?? "PARENTS") as AiDraftInput["audience"], kind: String(data.get("kind") ?? "UPDATE") as "UPDATE" | "SERVICE", plans: data.getAll("plans").map(String),
       subject: String(data.get("subject") ?? ""), body: String(data.get("body") ?? ""),
     });
     if ("error" in r) return setNote({ error: r.error });
@@ -135,8 +136,11 @@ export function TestForm({ id }: { id: string }) {
   );
 }
 
-/** Now or at a time (Philippine time, like every time in the console), confirmed with the audience size. */
-export function SendForm({ id, audience, noun, minTime }: { id: string; audience: number; noun: string; minTime: string }) {
+/**
+ * Now or at a time (Philippine time, like every time in the console), confirmed with the audience size. `version`:
+ * the draft as shown, so a change made since in another tab isn't sent on this confirmation.
+ */
+export function SendForm({ id, version, audience, noun, minTime }: { id: string; version: string; audience: number; noun: string; minTime: string }) {
   const [state, action, pending] = useActionState(sendBroadcast, undefined);
   const [mode, setMode] = useState<"now" | "later">("now");
   const parents = `${audience.toLocaleString("en-US")} ${noun}`;
@@ -144,6 +148,7 @@ export function SendForm({ id, audience, noun, minTime }: { id: string; audience
     <form action={action} className="cn-form">
       <Feedback state={state} />
       <input type="hidden" name="id" value={id} />
+      <input type="hidden" name="version" value={version} />
       <fieldset className="cn-fieldset">
         <legend className="cn-legend">When</legend>
         <label className="check"><input type="radio" name="mode" value="now" checked={mode === "now"} onChange={() => setMode("now")} /><span>Now</span></label>

@@ -65,6 +65,14 @@ describe("draftBroadcast", () => {
     expect(content).toContain("<request>\nMake it shorter please\n</request>");
   });
 
+  it("tells the writer a mailing list isn't parents with an account", async () => {
+    parse.mockResolvedValue(reply());
+    await draftBroadcast({ ...input, audience: "IOS_LAUNCH", plans: [] });
+    const content = parse.mock.calls[0][0].messages[0].content;
+    expect(content).toContain("to the iPhone launch mailing list");
+    expect(content).not.toContain("to parents on");
+  });
+
   it("flags gaps it left for staff", async () => {
     parse.mockResolvedValue(reply({ parsed_output: { subject: "New", body: "It launches on [TODO: launch date]." } }));
     expect((await draftBroadcast(input)).placeholders).toBe(true);

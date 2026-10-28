@@ -160,6 +160,7 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
 
     case "notifications": {
       const push = pushAvailable();
+      const care = await carePreferences(u);
       return (
         <>
           {head}
@@ -181,7 +182,8 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
           </p>
           <hr className="divider" style={{ margin: "24px 0 8px" }} />
           <h3 className="org-sub" id="tips">Tips and reminders</h3>
-          <CareSettings initial={await carePreferences(u)} zones={timeZones(tz)} />
+          {/* The parent's own zone too (it can be chosen in the app), so the select never shows another in its place */}
+          <CareSettings initial={care} zones={timeZones(tz, care.timezone)} />
           <p className="t-meta" style={{ marginTop: 12 }}>See your activities and messages on your <Link className="inline-link" href="/plan">Safety plan</Link>.</p>
         </>
       );
@@ -403,7 +405,7 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
       return (
         <>
           {head}
-          <div className="setting-row"><div className="grow"><div className="t-title">Export family data</div><div className="t-meta">One JSON file with your family&apos;s parents, children, devices and browsers, settings and change history, activity, alerts, places and billing records. Any parent in the family can download it. Passwords and sign-in tokens are never included.</div></div><form method="post" action="/api/account/export"><button className="btn btn-secondary btn-sm"><Icon name="download" />Download</button></form></div>
+          <div className="setting-row"><div className="grow"><div className="t-title">Export family data</div><div className="t-meta">One JSON file with your family&apos;s parents, children, devices and browsers, settings and change history, activity, alerts, places and billing records, plus your own tips and reminders history (never another parent&apos;s). Any parent in the family can download it. Passwords and sign-in tokens are never included.</div></div><form method="post" action="/api/account/export"><button className="btn btn-secondary btn-sm"><Icon name="download" />Download</button></form></div>
           {/* Only the family admin can delete a child (deleteChildData uses requireAdmin) */}
           <div className="setting-row"><div className="grow"><div className="t-title">Delete a child&apos;s data</div><div className="t-meta">{admin
             ? `Open the child's page, then Profile. ${user.passwordSet ? "Needs your password." : "You'll type DELETE to confirm."}`
@@ -459,9 +461,9 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
  * older names ("Asia/Calcutta", not "Asia/Kolkata"), while phones send the modern ones. A zone missing
  * from the list would leave the select on its first option, and saving would move the family there.
  */
-function timeZones(current: string) {
+function timeZones(...current: (string | null)[]) {
   const zones = Intl.supportedValuesOf("timeZone");
-  return [...new Set([current, "UTC", ...zones])].sort((a, b) => (a === "UTC" ? -1 : b === "UTC" ? 1 : a.localeCompare(b)));
+  return [...new Set([...current.filter((z) => z !== null), "UTC", ...zones])].sort((a, b) => (a === "UTC" ? -1 : b === "UTC" ? 1 : a.localeCompare(b)));
 }
 
 /** What Free allows, and the features of `from` it doesn't have: "1 child, 1 device, no location sharing, …" */

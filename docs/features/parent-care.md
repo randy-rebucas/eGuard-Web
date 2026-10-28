@@ -239,7 +239,7 @@ Rollback:
 | Rate limits and ownership checks on parent endpoints | Done, tested |
 | Retention policy for new data | Done |
 | Pre-existing API test failures (12) | **Open, not caused by this feature** |
-| Legal/DPO review, privacy policy update | **Open** |
+| Legal/DPO review, privacy policy update | Policy updated 2026-10-28 (what is collected, uses, retention; the export includes the parent's own care data). **DPO review open**; the holdout cohort isn't described yet |
 | Filipino copy review | **Open** |
 | Browser click-through and accessibility check | **Open** |
 | Mobile app support for care pushes and screens | **Open** |
