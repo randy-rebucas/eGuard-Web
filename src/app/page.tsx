@@ -60,7 +60,7 @@ const FEATURES: [Feature, string, string, string][] = [
   ["apps", "App & Content Controls", "Approve new apps, set daily limits per app, and choose age ratings for apps and films.", "/protections/apps"],
   ["location", "Location Sharing", "See where your child's phone is, only when your family turns sharing on. On paid plans.", "/protections/location"],
   // Alert emails go out with the maintenance run (every few minutes), so not "instant"
-  ["alerts", "Alerts", "An email and in-app alert when a setting is changed on the device, naming the device and the setting.", "/how-it-works#what-if"],
+  ["alerts", "Alerts", "An alert if eGuard is removed or tampered with, on every plan. On eGuard Plus and up, also when a setting is changed on the device, naming the device and the setting.", "/how-it-works#what-if"],
 ];
 
 /** Concrete routines eGuard supports, not general benefits: each line maps to a real setting. */
@@ -96,7 +96,7 @@ const START_HERE = ["how-to-protect-kids-online", "first-phone-checklist", "how-
 const PLAN_LOOK = {
   FREE: { cta: "Get Started", style: "lp-btn-soft", featured: false },
   PLUS: { cta: "Get eGuard Plus", style: "lp-btn-primary", featured: true },
-  PRO: { cta: "Get Family Pro", style: "lp-btn-outline", featured: false },
+  PRO: { cta: "Get eGuard Family", style: "lp-btn-outline", featured: false },
 } as const;
 const pesos = (centavos: number) => (centavos % 100 ? (centavos / 100).toFixed(2) : String(centavos / 100));
 const PLANS = PLAN_CATALOG.map((p) => ({
@@ -134,7 +134,7 @@ const FAQS = [
   ["Will my child know eGuard is on?",
     "Yes. eGuard is never hidden: your child can always open it and see which rules are on and how much screen time is left. On Android it also shows a notification while it's active. There's a page that explains eGuard to children, at eguard.family/for-kids."],
   ["Can my child switch it off or uninstall it?",
-    "Uninstall protection keeps eGuard from being removed without you. If a setting is changed on the device anyway, the device reports what it really has, so eGuard shows it as Failed and sends you an alert naming the device and the setting."],
+    "Uninstall protection keeps eGuard from being removed without you. If a setting is changed on the device anyway, the device reports what it really has, so eGuard shows it as Failed. On eGuard Plus and up it also sends you an alert naming the device and the setting."],
   ["What happens when the phone is offline?",
     "Protection stays on. Devices keep following the last rules they received and pick up any changes as soon as they reconnect, usually within about 5 minutes."],
   ["What can I see, and what stays private?",
@@ -142,7 +142,7 @@ const FAQS = [
   ["How is my family's data protected?",
     "eGuard only collects what it needs to verify your protections, and it does not sell your children's data. You can export or delete your account data at any time from Settings."],
   ["Can schools or organizations use eGuard?",
-    "Yes. eGuard is built for schools, communities and employers as well as families. The Family Pro plan includes API access for schools and organizations."],
+    "Yes. eGuard is built for schools, communities and employers as well as families. The eGuard Family plan includes API access for schools and organizations."],
 ] as const;
 
 const BROWSERS = [

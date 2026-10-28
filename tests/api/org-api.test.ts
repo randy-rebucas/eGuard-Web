@@ -68,7 +68,7 @@ async function paidBatch(org: string, n: number) {
 
 beforeAll(async () => {
   owner = await family("Delacruz");
-  helper = await family("Ramos", "Family Pro");
+  helper = await family("Ramos", "eGuard Family");
   joiner = await family("Mendoza");
   const org = await createOrganization(owner, { name: "Mabini High School", kind: "SCHOOL" });
   orgId = org.id;
@@ -129,7 +129,7 @@ describe("authentication", () => {
     await db.family.update({ where: { id: helper.familyId }, data: { plan: "eGuard Plus" } });
     expect(await call(organizationRoute, "/organization", { key: readKey })).toMatchObject({ status: 403, body: { code: "plan_required" } });
     expect((await listApiKeys(owner, orgId))[0].state).toBe("PAUSED");
-    await db.family.update({ where: { id: helper.familyId }, data: { plan: "Family Pro" } });
+    await db.family.update({ where: { id: helper.familyId }, data: { plan: "eGuard Family" } });
     expect((await call(organizationRoute, "/organization", { key: readKey })).status).toBe(200);
   });
 });

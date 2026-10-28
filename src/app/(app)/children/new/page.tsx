@@ -11,7 +11,7 @@ export const metadata = { title: "Add child" };
 export default async function NewChildPage() {
   const u = await requireUser();
   const [family, count] = await Promise.all([getFamily(u.familyId), db.child.count({ where: { familyId: u.familyId } })]);
-  const full = childLimitReached(family.plan, count);
+  const full = childLimitReached(family, count);
   return (
     <>
       <PageHead title="Add a child" crumbs={[{ href: "/children", label: "Children" }]}

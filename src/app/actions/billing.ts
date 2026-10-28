@@ -10,7 +10,7 @@ import * as web from "@/lib/web-billing";
 const PaidPlan = z.enum(["PLUS", "PRO"]);
 /** One month or one year; anything else is a month */
 const period = (v: unknown) => (v === "year" ? "year" : "month") as "month" | "year";
-const CHOOSE_PLAN = { error: "Choose eGuard Plus or Family Pro." };
+const CHOOSE_PLAN = { error: "Choose eGuard Plus or eGuard Family." };
 
 /** Settings › Subscription › Pay once (one month or one year): off to PayMongo's hosted checkout. */
 export async function buyPass(plan: string, interval?: string): Promise<{ error: string }> {

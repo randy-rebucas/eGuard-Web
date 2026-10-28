@@ -263,7 +263,7 @@ describe("4–6. Add child, protection profile, recommended setup", () => {
     const fam = (await call("GET", "/family", { token })).data;
     expect(fam).toMatchObject({ plan: "Free", childCount: 1, childLimit: 1, entitlements: { locationSharing: false, appMonitoringLimit: 5 } });
     // As if the family bought Plus (purchases themselves are covered in billing.test.ts and web-billing.test.ts)
-    await db.family.update({ where: { id: fam.id }, data: { plan: "eGuard Plus", deviceLimit: 10 } });
+    await db.family.update({ where: { id: fam.id }, data: { plan: "eGuard Plus", childLimit: 5, deviceLimit: 10 } });
   });
 
   it("offers profiles with Protected recommended for a 12 year old", async () => {
@@ -308,7 +308,9 @@ describe("7–9. Pair a device, setup progress, configuration health", () => {
     expect(sync.fullReportRequested).toBe(true);
     expect(sync.policy).toHaveLength(10);
     const h = await call("GET", `/health?childId=${miaId}`, { token });
-    expect(h.data).toMatchObject({ score: 10, total: 10, label: "Fully protected", toFix: [] });
+    // App and content restrictions are set in Google Play on Android (PARENT_SET): steps for the parent until they say so
+    expect(h.data).toMatchObject({ score: 8, total: 10 });
+    expect(h.data.toFix.map((f: { key: string }) => f.key).sort()).toEqual(["APP_RESTRICTIONS", "CONTENT"]);
   });
 
   it("Review & Configure sends the whole profile as one batch, verified by the device", async () => {
@@ -317,14 +319,18 @@ describe("7–9. Pair a device, setup progress, configuration health", () => {
     });
     expect(r.status).toBe(201);
     expect(r.data.requested).toHaveLength(10);
-    expect(r.data.progress.summary).toMatchObject({ total: 10, verified: 0, inProgress: 10 });
+    // Web filtering is guided on Android, app and content restrictions are set in Google Play: those wait for the parent
+    expect(r.data.progress.summary).toMatchObject({ total: 10, verified: 0, inProgress: 7 });
     const batchId = r.data.batchId;
 
     // Nothing is reported as done before the device answers
     expect((await call("GET", `/batches/${batchId}`, { token })).data.done).toBe(false);
     await applyAndReport(android.send);
+    expect((await call("GET", `/batches/${batchId}`, { token })).data.done).toBe(false);
+    expect((await call("POST", `/batches/${batchId}/confirm`, { token })).data.confirmed).toBe(3);
+    await applyAndReport(android.send);
     const done = await call("GET", `/batches/${batchId}`, { token });
-    expect(done.data).toMatchObject({ done: true, summary: { verified: 10, failed: 0 }, health: { score: 10 } });
+    expect(done.data).toMatchObject({ done: true, summary: { verified: 10, failed: 0 }, health: { score: 10, total: 10 } });
 
     const kid = await call("GET", `/children/${miaId}`, { token });
     expect(kid.data.child.dailyLimitMinutes).toBe(150); // mirrors the verified Screen Time policy
@@ -344,14 +350,14 @@ describe("7–9. Pair a device, setup progress, configuration health", () => {
   });
 
   it("marks a change FAILED when the device reports something else", async () => {
-    const r = await call("PUT", `/children/${miaId}/protections/CONTENT`, { token, body: { maxAgeRating: 9 } });
+    const r = await call("PUT", `/children/${miaId}/protections/BEDTIME`, { token, body: { enabled: true, start: "20:30", end: "06:30", days: "SCHOOL_NIGHTS" } });
     await android.send("/sync");
-    await android.send("/report", { protections: [{ key: "CONTENT", config: { maxAgeRating: 13 } }] });
+    await android.send("/report", { protections: [{ key: "BEDTIME", config: { enabled: false, start: "20:30", end: "06:30", days: "SCHOOL_NIGHTS" } }] });
     const b = await call("GET", `/batches/${r.data.batchId}`, { token });
     expect(b.data.items[0]).toMatchObject({ status: "FAILED" });
-    expect(b.data.items[0].devices[0].failureReason).toMatch(/Rated 13\+/);
+    expect(b.data.items[0].devices[0].failureReason).toMatch(/Off/);
     const h = await call("GET", `/health?childId=${miaId}`, { token });
-    expect(h.data.toFix).toEqual([expect.objectContaining({ key: "CONTENT", childId: miaId, deviceId: android.deviceId })]);
+    expect(h.data.toFix).toEqual([expect.objectContaining({ key: "BEDTIME", childId: miaId, deviceId: android.deviceId })]);
   });
 
   it("validates protection configs", async () => {
@@ -366,7 +372,7 @@ describe("7–9. Pair a device, setup progress, configuration health", () => {
     await call("PUT", `/children/${miaId}/protections/APP_APPROVAL`, { token, body: { enabled: false } });
     await applyAndReport(android.send);
     expect(await statusOf("APP_APPROVAL")).toMatchObject({ policyLabel: "Off", status: "PASS", devices: [expect.objectContaining({ status: "PASS", reportedLabel: "Off" })] });
-    // (Content still fails from the test above)
+    // (Bedtime still fails from the test above)
     expect((await call("GET", `/health?childId=${miaId}`, { token })).data.toFix).not.toContainEqual(expect.objectContaining({ key: "APP_APPROVAL" }));
     // Back on, as the rest of the suite expects
     await call("PUT", `/children/${miaId}/protections/APP_APPROVAL`, { token, body: { enabled: true } });
@@ -376,7 +382,9 @@ describe("7–9. Pair a device, setup progress, configuration health", () => {
 
   it("web filtering verifies whatever number of sites the device loaded", async () => {
     const r = await call("PUT", `/children/${miaId}/protections/WEB`, { token, body: { mode: "FILTER" } });
-    expect(r.data.items[0]).toMatchObject({ status: "PENDING", to: "Adult and unsafe sites filtered" });
+    // Guided on Android: the parent does the steps, then the device checks
+    expect(r.data.items[0]).toMatchObject({ status: "AWAITING_PARENT", to: "Adult and unsafe sites filtered" });
+    await call("POST", `/batches/${r.data.batchId}/confirm`, { token });
     await android.send("/sync");
     await android.send("/report", { protections: [{ key: "WEB", config: { mode: "FILTER", blockedSites: 81_244 } }] });
     expect((await call("GET", `/batches/${r.data.batchId}`, { token })).data.items[0].status).toBe("VERIFIED");
@@ -398,14 +406,15 @@ describe("7–9. Pair a device, setup progress, configuration health", () => {
     const first = await applyAndReport(ipad.send);
     expect(first.policy).toContainEqual(expect.objectContaining({ key: "BEDTIME", config: expect.objectContaining({ start: "20:00", end: "07:00" }) }));
 
-    const r = await call("PUT", `/children/${leo.data.id}/protections/WEB`, { token, body: { mode: "FILTER", blockedSites: 50 } });
+    // Location is guided on iOS (the parent turns sharing on in Settings)
+    const r = await call("PUT", `/children/${leo.data.id}/protections/LOCATION`, { token, body: { sharing: true } });
     expect(r.data.items[0].status).toBe("AWAITING_PARENT");
     expect(r.data.items[0].devices[0].guide.length).toBeGreaterThan(0);
 
     const confirm = await call("POST", `/batches/${r.data.batchId}/confirm`, { token });
     expect(confirm.data.confirmed).toBe(1);
     expect(confirm.data.items[0].status).toBe("DELIVERED");
-    await ipad.send("/report", { protections: [{ key: "WEB", config: { mode: "FILTER", blockedSites: 50 } }], full: false });
+    await ipad.send("/report", { protections: [{ key: "LOCATION", config: { sharing: true } }], full: false });
     expect((await call("GET", `/batches/${r.data.batchId}`, { token })).data.items[0].status).toBe("VERIFIED");
 
     // Notification controls don't exist on iOS: a single change is refused, not silently "done"
@@ -459,11 +468,11 @@ describe("12. Screen time", () => {
     expect(w.data.days).toHaveLength(7);
     expect(w.data.hourly).toBeNull();
     expect(w.data.days[6].minutes).toBe(134);
-    // 30 days is an advanced report: refused on eGuard Plus, allowed on Family Pro
+    // 30 days is an advanced report: refused on eGuard Plus, allowed on eGuard Family
     const locked = await call("GET", `/children/${miaId}/screen-time?period=30d`, { token });
     expect(locked).toMatchObject({ status: 403, data: { code: "plan_required" } });
     const famId = (await call("GET", "/family", { token })).data.id;
-    await db.family.update({ where: { id: famId }, data: { plan: "Family Pro" } });
+    await db.family.update({ where: { id: famId }, data: { plan: "eGuard Family" } });
     expect((await call("GET", `/children/${miaId}/screen-time?period=30d`, { token })).data.days).toHaveLength(30);
     await db.family.update({ where: { id: famId }, data: { plan: "eGuard Plus" } });
     expect((await call("GET", `/children/${miaId}/screen-time?period=year`, { token })).status).toBe(400);
@@ -504,7 +513,8 @@ describe("13. App management", () => {
   });
 
   it("apps have a category (guessed, or the parent's), and a category limit reaches the device", async () => {
-    const add = await call("POST", `/children/${miaId}/apps`, { token, body: { name: "Roblox" } });
+    // (Roblox is on Mia's list already, from her usage report)
+    const add = await call("POST", `/children/${miaId}/apps`, { token, body: { name: "Fortnite" } });
     expect(add.data).toMatchObject({ category: "GAMES", categoryLabel: "Games", categoryAuto: true });
     const moved = await call("PATCH", `/apps/${add.data.id}`, { token, body: { category: "EDUCATION" } });
     expect(moved.data).toMatchObject({ category: "EDUCATION", categoryAuto: false });
@@ -516,7 +526,7 @@ describe("13. App management", () => {
     const sync = await android.send("/sync");
     expect(sync.data.categoryLimits).toEqual([{ category: "GAMES", dailyLimitMinutes: 45 }]);
     expect(sync.data.features.categoryLimits).toBe(true);
-    expect(sync.data.apps).toEqual(expect.arrayContaining([expect.objectContaining({ name: "Roblox", category: "GAMES" })]));
+    expect(sync.data.apps).toEqual(expect.arrayContaining([expect.objectContaining({ name: "Fortnite", category: "GAMES" })]));
 
     // The device says gaming time is used up
     await android.send("/events", { type: "LIMIT_REACHED", minutes: 45, category: "GAMES" });
@@ -611,7 +621,12 @@ describe("14. Location", () => {
 
 describe("15. Alerts", () => {
   it("filters, marks read and dismisses", async () => {
+    // With approval on, a new app is a request; off, it's news the parent can dismiss
+    const approval = { childId: miaId, key: { in: ["APP_APPROVAL" as const, "DOWNLOADS" as const] } };
+    const saved = await db.childPolicy.findMany({ where: approval });
+    await db.childPolicy.deleteMany({ where: approval });
     await android.send("/events", { type: "APP_INSTALLED", app: "Duolingo" });
+    for (const p of saved) await db.childPolicy.create({ data: { childId: p.childId, key: p.key, config: p.config ?? {} } });
     await android.send("/events", { type: "APP_REQUESTED", app: "Discord" });
     const all = await call("GET", "/alerts", { token });
     expect(all.data.alerts.length).toBeGreaterThanOrEqual(2);
@@ -745,7 +760,7 @@ describe("16–17. Settings and subscription", () => {
     expect(r.data).toMatchObject({ plan: "eGuard Plus", planId: "PLUS", status: "ACTIVE", usage: { devicesUsed: 2, deviceLimit: 10, children: 2, childLimit: 5 } });
     // Set directly in this test, so there's no purchase and no renewal date
     expect(r.data).toMatchObject({ renewsAt: null, renewsLabel: null });
-    expect(r.data.features.find((f: { key: string }) => f.key === "children").label).toBe("Up to 5 children");
+    expect(r.data.features.find((f: { key: string }) => f.key === "children").label).toBe("Up to 5 children and 10 devices");
     expect(r.data.entitlements).toMatchObject({ locationSharing: true, realtimeAlerts: true, advancedReports: false });
   });
 
@@ -838,12 +853,12 @@ describe("Android design additions (public/android.png)", () => {
     expect(r.data.articles.map((a: { slug: string }) => a.slug)).toContain("android-family-link");
   });
 
-  it("17. lists Free, Plus and Family Pro with the Google Play product for the upgrade", async () => {
+  it("17. lists Free, Plus and eGuard Family with the Google Play product for the upgrade", async () => {
     const r = await call("GET", "/subscription/plans", android_(token));
     expect(r.data.plans.map((p: { id: string; current: boolean }) => [p.id, p.current])).toEqual([["FREE", false], ["PLUS", true], ["PRO", false]]);
     const pro = r.data.plans.find((p: { id: string }) => p.id === "PRO");
-    expect(pro).toMatchObject({ name: "Family Pro", monthlyPesos: 249, childLimit: 10, googlePlayProductId: "eguard_pro" });
-    expect(pro.features.map((f: { label: string }) => f.label)).toContain("Advanced reports");
+    expect(pro).toMatchObject({ name: "eGuard Family", monthlyPesos: 249, childLimit: 6, googlePlayProductId: "eguard_pro" });
+    expect(pro.features.map((f: { label: string }) => f.label)).toContain("30-day reports and CSV export");
 
     const sub = await call("GET", "/subscription", android_(token));
     expect(sub.data).toMatchObject({ plan: "eGuard Plus", store: null, upgrade: { planId: "PRO", googlePlayProductId: "eguard_pro" } });

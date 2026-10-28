@@ -15,7 +15,7 @@ import { canonicalTimeZone } from "./format";
 import type { Actor } from "./config-service";
 import { ServiceError, conflict, forbidden, invalid, isUniqueViolation, notFound, planLimit, planRequired } from "./errors";
 import { requireVerifiedEmail } from "./email-verification";
-import { BASE_PLAN, entitlementsFor, nextPlan, planByName } from "./plans";
+import { BASE_PLAN, entitlementsFor, limitsFor, nextPlan } from "./plans";
 import { CATEGORY_BY_KEY, CATEGORY_KEYS, CATEGORY_UPGRADE, categoryOf, guessCategory } from "./app-categories";
 import { LIMITS, enforce } from "./rate-limit";
 import { sendSecurityNotice } from "./security-notice";
@@ -82,11 +82,12 @@ export const ChildSchema = z.object({
 const HUES = [205, 160, 330, 28, 265, 190];
 
 /** Why the family can't add another child, or null if it can. Families over the limit keep the children they have. */
-export function childLimitReached(plan: string, count: number) {
-  const limit = planByName(plan).entitlements.childLimit;
+export function childLimitReached(family: { plan: string; childLimit: number; legacyLimits: boolean }, count: number) {
+  const limit = family.childLimit;
   if (count < limit) return null;
-  const up = nextPlan(plan);
-  return `${plan} covers ${limit} ${limit === 1 ? "child" : "children"}.${up ? ` Upgrade to ${up.name} to add up to ${up.entitlements.childLimit}.` : ""}`;
+  // What the next plan would give this family: one keeping older limits keeps them when it moves up (applyEntitlement)
+  const up = nextPlan(family.plan), upLimit = up ? limitsFor(up.name, family.legacyLimits).childLimit : 0;
+  return `${family.plan} covers ${limit} ${limit === 1 ? "child" : "children"}.${up && upLimit > limit ? ` Upgrade to ${up.name} to add up to ${upLimit}.` : ""}`;
 }
 
 /**
@@ -107,9 +108,9 @@ export async function createChild(actor: Actor, input: { name: string; birthYear
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`child.create:${actor.familyId}`}))`;
     const [existing, family] = await Promise.all([
       tx.child.findMany({ where: { familyId: actor.familyId }, select: { name: true } }),
-      tx.family.findUniqueOrThrow({ where: { id: actor.familyId }, select: { plan: true } }),
+      tx.family.findUniqueOrThrow({ where: { id: actor.familyId }, select: { plan: true, childLimit: true, legacyLimits: true } }),
     ]);
-    const full = childLimitReached(family.plan, existing.length);
+    const full = childLimitReached(family, existing.length);
     if (full) throw planLimit(full);
     // Most often the same child added twice (two tabs, web and app); a nickname tells real namesakes apart
     if (existing.some((e) => e.name.trim().toLowerCase() === input.name.trim().toLowerCase())) {
@@ -436,8 +437,9 @@ export async function createPairingCode(actor: Actor, childId: string, opts: Pai
   // that turns out not to be on it is refused when it pairs
   const onComputer = opts.kind === "BROWSER" && count >= family.deviceLimit && await db.device.count({ where: { childId, kind: "COMPUTER", removalRequestedAt: null } }) > 0;
   if (count >= family.deviceLimit && !onComputer) {
-    const up = nextPlan(family.plan);
-    throw planLimit(`${family.plan} covers ${family.deviceLimit} devices. Remove a device${up ? ` or upgrade to ${up.name}` : ""} to add another.`);
+    // Only offer a plan that adds devices for this family (one keeping older limits keeps them when it moves up)
+    const next = nextPlan(family.plan), up = next && limitsFor(next.name, family.legacyLimits).deviceLimit > family.deviceLimit ? next : null;
+    throw planLimit(`${family.plan} covers ${family.deviceLimit} ${family.deviceLimit === 1 ? "device" : "devices"}. Remove a device${up ? ` or upgrade to ${up.name}` : ""} to add another.`);
   }
   await enforce(`paircode:${actor.id}`, LIMITS.pairCodeUser, "You've made several pairing codes. Wait a few minutes before making another.");
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -826,7 +828,7 @@ export async function createFamily(input: { name: string; familyName: string; em
   // The base plan is free and has no renewal date; a store purchase sets one.
   const family = await db.family.create({
     data: {
-      name: input.familyName, plan: BASE_PLAN, deviceLimit: planByName(BASE_PLAN).entitlements.deviceLimit, renewsAt: null,
+      name: input.familyName, plan: BASE_PLAN, ...limitsFor(BASE_PLAN, false), renewsAt: null,
       users: { create: {
         name: input.name, email: input.email, passwordHash: input.passwordHash, role: "FAMILY_ADMIN",
         emailVerifiedAt: input.emailVerified ? new Date() : null, passwordSet: input.passwordSet ?? true,

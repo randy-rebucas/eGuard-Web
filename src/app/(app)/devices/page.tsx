@@ -30,7 +30,7 @@ export default async function DevicesPage(props: PageProps<"/devices">) {
     <>
       <PageHead title="Devices" text={used > family.deviceLimit
         ? `${used} devices, more than the ${family.deviceLimit} your plan covers now. They stay protected; remove some${upgrade ? " or change your plan" : ""} to add more.`
-        : `${used} of ${family.deviceLimit} devices on your plan, counting browsers. Each device reports its configuration back to eGuard when it syncs.`} />
+        : `${used} of ${family.deviceLimit} ${family.deviceLimit === 1 ? "device" : "devices"} on your plan, counting browsers. Each device reports its configuration back to eGuard when it syncs.`} />
       {children.map((c) => {
         const own = browsers.filter((b) => b.childId === c.id);
         return (

@@ -83,9 +83,9 @@ describe("saveBroadcast", () => {
 
   it("edits only a draft, and keeps what was typed on an error", async () => {
     db.broadcast.updateMany.mockResolvedValue({ count: 0 });
-    const r = await saveBroadcast(undefined, form({ id: "b1", kind: "UPDATE", subject: "Hi", body: "Body", plans: ["Free", "Family Pro"] }));
-    expect(r).toMatchObject({ error: expect.stringContaining("Only a draft"), fields: { plans: "Free\nFamily Pro" } });
-    expect(db.broadcast.updateMany).toHaveBeenCalledWith({ where: { id: "b1", status: "DRAFT" }, data: { audience: "PARENTS", kind: "UPDATE", subject: "Hi", body: "Body", plans: ["Free", "Family Pro"] } });
+    const r = await saveBroadcast(undefined, form({ id: "b1", kind: "UPDATE", subject: "Hi", body: "Body", plans: ["Free", "eGuard Family"] }));
+    expect(r).toMatchObject({ error: expect.stringContaining("Only a draft"), fields: { plans: "Free\neGuard Family" } });
+    expect(db.broadcast.updateMany).toHaveBeenCalledWith({ where: { id: "b1", status: "DRAFT" }, data: { audience: "PARENTS", kind: "UPDATE", subject: "Hi", body: "Body", plans: ["Free", "eGuard Family"] } });
   });
 
   it("saves a mailing-list email as a product update with no plans", async () => {

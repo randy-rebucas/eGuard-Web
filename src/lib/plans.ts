@@ -1,6 +1,7 @@
 /**
- * Plans, what each includes, and the products that sell them. Family.plan holds the plan's name and
- * Family.deviceLimit its device cap (both set by applyEntitlement); everything else comes from here.
+ * Plans, what each includes, and the products that sell them. Family.plan holds the plan's name, and
+ * Family.childLimit and Family.deviceLimit its caps (all set by applyEntitlement, which keeps LEGACY_LIMITS for
+ * families subscribed before 2026-10-28); everything else comes from here.
  */
 export type PlanId = "FREE" | "PLUS" | "PRO";
 export type PaidPlanId = Exclude<PlanId, "FREE">;
@@ -21,6 +22,12 @@ export type Entitlements = {
   categoryLimits: boolean;
   /** Organization API keys (/api/org/v1, docs/organization-api.md) for organizations this family's parents manage */
   apiAccess: boolean;
+  /**
+   * Alerts when a protection changes on the device and no longer matches the parent's setting (lib/engine), or a
+   * browser stops enforcing its policy (lib/browser-health). Without it the status still updates and checks can be
+   * run any time; alerts that eGuard was removed, tampered with or stopped applying a protection are on every plan.
+   */
+  driftAlerts: boolean;
 };
 
 export type PlanFeature = { key: string; label: string; included: boolean };
@@ -42,44 +49,56 @@ export type Plan = {
 
 export const FREE_APP_LIMIT = 5;
 
-const FREE: Entitlements = { childLimit: 1, deviceLimit: 2, locationSharing: false, appMonitoringLimit: FREE_APP_LIMIT, realtimeAlerts: false, advancedReports: false, apiAccess: false, categoryLimits: false };
-const PLUS: Entitlements = { childLimit: 5, deviceLimit: 10, locationSharing: true, appMonitoringLimit: null, realtimeAlerts: true, advancedReports: false, apiAccess: false, categoryLimits: true };
-const PRO: Entitlements = { childLimit: 10, deviceLimit: 20, locationSharing: true, appMonitoringLimit: null, realtimeAlerts: true, advancedReports: true, apiAccess: true, categoryLimits: true };
-/** "Up to 5 children and 10 devices", from the limits, so the card can't drift from what pairing allows */
-const capacity = (e: Entitlements) => `Up to ${e.childLimit} ${e.childLimit === 1 ? "child" : "children"} and ${e.deviceLimit} devices`;
+const FREE: Entitlements = { childLimit: 1, deviceLimit: 1, locationSharing: false, appMonitoringLimit: FREE_APP_LIMIT, realtimeAlerts: false, advancedReports: false, apiAccess: false, categoryLimits: false, driftAlerts: false };
+const PLUS: Entitlements = { childLimit: 3, deviceLimit: 5, locationSharing: true, appMonitoringLimit: null, realtimeAlerts: true, advancedReports: false, apiAccess: false, categoryLimits: true, driftAlerts: true };
+const PRO: Entitlements = { childLimit: 6, deviceLimit: 12, locationSharing: true, appMonitoringLimit: null, realtimeAlerts: true, advancedReports: true, apiAccess: true, categoryLimits: true, driftAlerts: true };
+/** "Up to 3 children and 5 devices", from the limits, so the card can't drift from what pairing allows */
+const capacity = (e: Pick<Entitlements, "childLimit" | "deviceLimit">) => `Up to ${e.childLimit} ${e.childLimit === 1 ? "child" : "children"} and ${e.deviceLimit} ${e.deviceLimit === 1 ? "device" : "devices"}`;
 
-// Every protection and its verification are on every plan (the comparison table says so): cards list only what differs
+/**
+ * The limits before 2026-10-28. Families paying then keep them (Family.legacyLimits) for as long as they stay on a
+ * paid plan; back on Free, they get the current limits from then on.
+ */
+export const LEGACY_LIMITS: Record<PaidPlanId, Pick<Entitlements, "childLimit" | "deviceLimit">> = {
+  PLUS: { childLimit: 5, deviceLimit: 10 },
+  PRO: { childLimit: 10, deviceLimit: 20 },
+};
+
+// Every protection is on every plan; Free verifies when the parent runs a check, paid plans also alert on drift
 export const PLANS: Plan[] = [
   {
-    id: "FREE", name: "Free", blurb: "Get started with essential protection tools.", monthlyPesos: 0, yearlyPesos: 0, googlePlayProductId: null,
+    id: "FREE", name: "Free", blurb: "Set up eGuard and check your child's protections.", monthlyPesos: 0, yearlyPesos: 0, googlePlayProductId: null,
     entitlements: FREE,
     features: [
       { key: "children", label: capacity(FREE), included: true },
-      { key: "protection", label: "All 10 protections and Configuration Health", included: true },
+      { key: "setup", label: "Setup wizard and protection profiles", included: true },
+      { key: "health", label: "Basic Configuration Health", included: true },
+      { key: "verification", label: "Run a check any time", included: true },
       { key: "screen_time", label: "Screen time and per-app limits", included: true },
-      { key: "apps", label: `${FREE_APP_LIMIT} apps per child`, included: true },
-      { key: "alerts", label: "Push for security alerts", included: true },
+      { key: "alerts", label: "Alerts if eGuard is removed or tampered with", included: true },
       { key: "support", label: "Email support", included: true },
     ],
   },
   {
-    id: "PLUS", name: "eGuard Plus", blurb: "Complete protection for growing families.", monthlyPesos: 149, yearlyPesos: 1490, googlePlayProductId: "eguard_plus",
+    id: "PLUS", name: "eGuard Plus", blurb: "Don't just configure parental controls. Know when they're no longer configured correctly.", monthlyPesos: 149, yearlyPesos: 1490, googlePlayProductId: "eguard_plus",
     entitlements: PLUS,
     features: [
       { key: "children", label: capacity(PLUS), included: true },
+      { key: "drift", label: "Alerts when a setting changes on the device", included: true },
+      { key: "alerts", label: "Push for every alert", included: true },
       { key: "apps", label: "See and manage every app", included: true },
       { key: "category_limits", label: "Category limits, like gaming time", included: true },
       { key: "location", label: "Location sharing", included: true },
-      { key: "alerts", label: "Push for every alert", included: true },
       { key: "support", label: "Priority support", included: true },
     ],
   },
   {
-    id: "PRO", name: "Family Pro", blurb: "Advanced features for larger families.", monthlyPesos: 249, yearlyPesos: 2490, googlePlayProductId: "eguard_pro",
+    // "eGuard Family" was also the name of a plan retired before these (planByName's RENAMED says how names map)
+    id: "PRO", name: "eGuard Family", blurb: "For larger families.", monthlyPesos: 249, yearlyPesos: 2490, googlePlayProductId: "eguard_pro",
     entitlements: PRO,
     features: [
       { key: "children", label: capacity(PRO), included: true },
-      { key: "plus", label: "All Plus features", included: true },
+      { key: "plus", label: "Everything in Plus", included: true },
       { key: "reports", label: "30-day reports and CSV export", included: true },
       { key: "api", label: "API access (schools/organizations)", included: true },
       // Answered before Plus and Free (the plan is on every ticket: lib/support, the console list)
@@ -93,9 +112,17 @@ export const BASE_PLAN = "Free";
 
 const byId = (id: PlanId) => PLANS.find((p) => p.id === id)!;
 export const planById = byId;
-/** Unknown names (including plans retired before these) fall back to Free. */
-export const planByName = (name: string) => PLANS.find((p) => p.name === name) ?? byId("FREE");
+/** Names a plan had before: "Family Pro" until 2026-10-28 (migration 20261028120000_plan_limits renamed stored ones). */
+const RENAMED: Record<string, PlanId> = { "Family Pro": "PRO" };
+/** Unknown names (plans retired before these) fall back to Free. */
+export const planByName = (name: string) => PLANS.find((p) => p.name === name) ?? (RENAMED[name] ? byId(RENAMED[name]) : byId("FREE"));
 export const entitlementsFor = (planName: string) => planByName(planName).entitlements;
+
+/** The caps a family gets on a plan: the current ones, or LEGACY_LIMITS for a family that keeps them. */
+export function limitsFor(planName: string, legacy: boolean) {
+  const p = planByName(planName);
+  return legacy && p.id !== "FREE" ? LEGACY_LIMITS[p.id] : { childLimit: p.entitlements.childLimit, deviceLimit: p.entitlements.deviceLimit };
+}
 
 const NUMBER_WORDS = ["no", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
 /** "one child", "five children"; `digits`: "1 child". For copy that states a plan's child limit. */
@@ -111,7 +138,7 @@ export function nextPlan(planName: string) {
 
 /**
  * Google Play products that grant a plan. `eguard_family` was sold before these plans (15 devices);
- * its subscribers keep what they paid for as Family Pro.
+ * its subscribers keep what they paid for as eGuard Family (PRO).
  */
 const LEGACY_GOOGLE_PLAY: Record<string, PaidPlanId> = { eguard_family: "PRO" };
 export function planByGoogleProduct(productId: string) {
@@ -125,7 +152,7 @@ export type Interval = "month" | "year";
 /**
  * What the web sells through PayMongo, by the month or by the year. Auto-renew charges a card or Maya every period
  * (PayMongo Subscriptions); a pass is paid once with any method (GCash, QR Ph, …) and doesn't renew.
- * `legacy` products were sold before these plans; purchases of them still grant Family Pro but they aren't sold.
+ * `legacy` products were sold before these plans; purchases of them still grant eGuard Family (PRO) but they aren't sold.
  */
 export type WebProduct = { id: string; plan: PaidPlanId; interval: Interval; autoRenew: boolean; legacy?: true };
 
@@ -171,6 +198,11 @@ export function planByProduct(productId: string) {
 
 export function planFeatures(planName: string): PlanFeature[] {
   return planByName(planName).features;
+}
+
+/** What a family's plan includes, with the family's own limits (a family keeping LEGACY_LIMITS has more than the card). */
+export function familyFeatures(family: { plan: string; childLimit: number; deviceLimit: number }): PlanFeature[] {
+  return planFeatures(family.plan).map((f) => (f.key === "children" ? { ...f, label: capacity(family) } : f));
 }
 
 /** The cheapest plan whose entitlements pass `has`, for "Upgrade to …". */

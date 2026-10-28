@@ -197,7 +197,7 @@ export default async function Dashboard() {
         <Link className="card metric interactive" href="/settings/subscription">
           <div className="m-top"><span className="m-label">Active Plan</span><span className="ico-tile"><Icon name="crown" /></span></div>
           <div className="m-value m-plan">{family.plan}</div>
-          <div className="t-meta">Up to {ent.childLimit} {ent.childLimit === 1 ? "child" : "children"} · {family.deviceLimit} devices</div>
+          <div className="t-meta">Up to {family.childLimit} {family.childLimit === 1 ? "child" : "children"} · {family.deviceLimit} {family.deviceLimit === 1 ? "device" : "devices"}</div>
           <div className="m-foot"><span className="muted num">{family.renewsAt ? `${renewalWord(purchase)} ${shortDate(family.renewsAt, tz)}` : upgrade ? `Upgrade to ${upgrade.name}` : "No renewal date"}</span></div>
         </Link>
       </section>

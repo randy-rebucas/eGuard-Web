@@ -132,11 +132,11 @@ describe("passes (pay once)", () => {
     const p = await row(first);
     expect(p).toMatchObject({ state: "PAID", paymentId, autoRenewing: false });
     expect(Math.abs(p.expiresAt!.getTime() - addInterval(p.checkedAt, "month").getTime())).toBeLessThan(5000);
-    expect(await fam()).toMatchObject({ plan: "Family Pro", deviceLimit: 20 });
+    expect(await fam()).toMatchObject({ plan: "eGuard Family", childLimit: 6, deviceLimit: 12 });
     expect((await fam()).renewsAt!.getTime()).toBe(p.expiresAt!.getTime());
     await handlePaymongoEvent(event("checkout_session.payment.paid", { id: first, type: "checkout_session" }), opts);
     expect((await row(first)).expiresAt!.getTime()).toBe(p.expiresAt!.getTime());
-    expect(await db.alert.count({ where: { familyId: admin.familyId, title: "Welcome to Family Pro" } })).toBe(1);
+    expect(await db.alert.count({ where: { familyId: admin.familyId, title: "Welcome to eGuard Family" } })).toBe(1);
     expect(await confirmReturn(admin.familyId, p.id, opts)).toMatchObject({ status: "paid", kind: "pass" });
   });
 
@@ -152,7 +152,7 @@ describe("passes (pay once)", () => {
 
   it("won't start auto-renew, or sell another plan, while paid time is left", async () => {
     await expect(startAutoRenew(admin, "PRO", opts)).rejects.toMatchObject({ status: 409 });
-    await expect(buyPass(admin, "PLUS", opts)).rejects.toMatchObject({ status: 409, message: expect.stringContaining("Family Pro pass runs until") });
+    await expect(buyPass(admin, "PLUS", opts)).rejects.toMatchObject({ status: 409, message: expect.stringContaining("eGuard Family pass runs until") });
   });
 
   it("a partial refund leaves the pass running; once refunds add up to the payment, it ends", async () => {
@@ -160,7 +160,7 @@ describe("passes (pay once)", () => {
     // A goodwill credit of ₱50 out of ₱249
     expect(await handlePaymongoEvent(event("refund.succeeded", pm.refund(b.paymentId!, 5000)), opts)).toEqual({ handled: true, partial: true });
     expect((await row(second)).state).toBe("PAID");
-    expect((await fam()).plan).toBe("Family Pro");
+    expect((await fam()).plan).toBe("eGuard Family");
     // The rest refunded later: together that's the whole payment
     expect(await handlePaymongoEvent(event("refund.succeeded", pm.refund(b.paymentId!, 24900 - 5000)), opts)).toEqual({ handled: true });
     expect((await row(second)).state).toBe("VOIDED");
@@ -169,7 +169,7 @@ describe("passes (pay once)", () => {
   it("a full refund ends that pass right away", async () => {
     expect((await fam()).renewsAt!.getTime()).toBe((await row(first)).expiresAt!.getTime());
     expect(await handlePaymongoEvent(event("refund.succeeded", pm.refund((await row(first)).paymentId!)), opts)).toEqual({ handled: true });
-    expect(await fam()).toMatchObject({ plan: "Free", deviceLimit: 2, renewsAt: null });
+    expect(await fam()).toMatchObject({ plan: "Free", childLimit: 1, deviceLimit: 1, renewsAt: null });
   });
 
   it("a Plus pass gives eGuard Plus", async () => {
@@ -178,7 +178,7 @@ describe("passes (pay once)", () => {
     expect(pm.sessions.get(cs)!.amount).toBe(14900);
     pm.pay(cs);
     await confirmReturn(other.familyId, r.purchaseId, opts);
-    expect(await fam(other)).toMatchObject({ plan: "eGuard Plus", deviceLimit: 10 });
+    expect(await fam(other)).toMatchObject({ plan: "eGuard Plus", childLimit: 3, deviceLimit: 5 });
     // Refunded again, so the auto-renew tests below start from Free
     await handlePaymongoEvent(event("refund.succeeded", pm.refund((await row(cs)).paymentId!)), opts);
     expect((await fam(other)).plan).toBe("Free");
@@ -202,7 +202,7 @@ describe("passes (pay once)", () => {
     await handlePaymongoEvent(event("checkout_session.payment.paid", { id: plus, type: "checkout_session" }), opts);
     const [a, b] = [await row(pro), await row(plus)];
     expect(b.expiresAt!.getTime()).toBe(addInterval(a.expiresAt!, "month").getTime());
-    expect((await fam(cruz)).plan).toBe("Family Pro");
+    expect((await fam(cruz)).plan).toBe("eGuard Family");
   });
 
   it("doesn't sell over a Google Play plan", async () => {
@@ -228,7 +228,7 @@ describe("auto-renew", () => {
     expect(r).toMatchObject({ productId: "pro_monthly", state: "incomplete", autoRenewing: false });
     const f = await fam();
     expect(f.paymongoCustomerId).toMatch(/^cus_/);
-    expect(pm.plans[0].attributes).toMatchObject({ name: "Family Pro monthly 249.00 PHP", amount: 24900, interval: "monthly", interval_count: 1, currency: "PHP" });
+    expect(pm.plans[0].attributes).toMatchObject({ name: "eGuard Family monthly 249.00 PHP", amount: 24900, interval: "monthly", interval_count: 1, currency: "PHP" });
   });
 
   it("retrying picks up the unfinished subscription instead of creating another", async () => {
@@ -244,7 +244,7 @@ describe("auto-renew", () => {
     await expect(startAutoRenew(admin, "PLUS", opts)).rejects.toMatchObject({ status: 409, message: expect.stringContaining("Auto-renew is already on") });
     expect(pm.subs.get(sub)!.status).toBe("active");
     expect(await row(sub)).toMatchObject({ state: "active", autoRenewing: true });
-    expect((await fam()).plan).toBe("Family Pro");
+    expect((await fam()).plan).toBe("eGuard Family");
     await expect(startAutoRenew(admin, "PRO", opts)).rejects.toMatchObject({ status: 409 });
   });
 
@@ -265,7 +265,7 @@ describe("auto-renew", () => {
     await handlePaymongoEvent(event("subscription.activated", { id: sub, type: "subscription" }), opts);
     expect(await row(sub)).toMatchObject({ state: "active", autoRenewing: true });
     expect((await row(sub)).expiresAt!.toISOString()).toBe(endOfBillingDay("2099-01-15").toISOString());
-    expect(await fam()).toMatchObject({ plan: "Family Pro", deviceLimit: 20 });
+    expect(await fam()).toMatchObject({ plan: "eGuard Family", childLimit: 6, deviceLimit: 12 });
     expect(await confirmReturn(admin.familyId, purchaseId, opts)).toMatchObject({ status: "paid", kind: "autorenew" });
   });
 
@@ -288,14 +288,14 @@ describe("auto-renew", () => {
     // Just past the paid-through date, still within the retry window
     await db.storePurchase.update({ where: { id: r.id }, data: { expiresAt: new Date(Date.now() - DAY) } });
     await handlePaymongoEvent(event("subscription.updated", { id: sub, type: "subscription" }), opts);
-    expect((await fam()).plan).toBe("Family Pro");
+    expect((await fam()).plan).toBe("eGuard Family");
   });
 
   it("drops to the base plan when renewals stay unpaid", async () => {
     pm.setSub(sub, { status: "unpaid" });
     await handlePaymongoEvent(event("subscription.unpaid", { id: sub, type: "subscription" }), opts);
-    expect(await fam()).toMatchObject({ plan: "Free", deviceLimit: 2 });
-    expect(await db.alert.count({ where: { familyId: admin.familyId, title: "Family Pro ended" } })).toBeGreaterThanOrEqual(1);
+    expect(await fam()).toMatchObject({ plan: "Free", childLimit: 1, deviceLimit: 1 });
+    expect(await db.alert.count({ where: { familyId: admin.familyId, title: "eGuard Family ended" } })).toBeGreaterThanOrEqual(1);
   });
 
   it("starting again closes the unpaid subscription at PayMongo", async () => {
@@ -358,7 +358,7 @@ describe("renewal wording", () => {
   it("names paid time by what it is", () => {
     expect(paidTimeName({ store: "PAYMONGO", productId: "plus_pass_month" })).toBe("eGuard Plus pass");
     expect(paidTimeName({ store: "PAYMONGO", productId: "plus_monthly" })).toBe("eGuard Plus");
-    expect(paidTimeName({ store: "VOUCHER", productId: "pro_pass_month" })).toBe("sponsored Family Pro");
+    expect(paidTimeName({ store: "VOUCHER", productId: "pro_pass_month" })).toBe("sponsored eGuard Family");
   });
 });
 
@@ -378,7 +378,7 @@ describe("yearly", () => {
     expect(await confirmReturn(yearPass.familyId, r.purchaseId, opts)).toMatchObject({ status: "paid" });
     const p = await row(cs);
     expect(Math.abs(p.expiresAt!.getTime() - addInterval(p.checkedAt, "year").getTime())).toBeLessThan(5000);
-    expect(await fam(yearPass)).toMatchObject({ plan: "eGuard Plus", deviceLimit: 10 });
+    expect(await fam(yearPass)).toMatchObject({ plan: "eGuard Plus", childLimit: 3, deviceLimit: 5 });
   });
 
   it("a month added to a yearly pass of the same plan starts when the year ends", async () => {
@@ -394,7 +394,7 @@ describe("yearly", () => {
     const p = await startAutoRenew(yearRenew, "PRO", { ...opts, interval: "year" });
     expect(p.amount).toBe(249000);
     expect(await db.storePurchase.findUniqueOrThrow({ where: { id: p.purchaseId } })).toMatchObject({ productId: "pro_yearly", state: "incomplete" });
-    expect(pm.plans.find((x) => x.attributes.name === "Family Pro yearly 2490.00 PHP")?.attributes).toMatchObject({ amount: 249000, interval: "yearly", interval_count: 1 });
+    expect(pm.plans.find((x) => x.attributes.name === "eGuard Family yearly 2490.00 PHP")?.attributes).toMatchObject({ amount: 249000, interval: "yearly", interval_count: 1 });
   });
 
   it("asking for monthly instead replaces the unfinished yearly one", async () => {

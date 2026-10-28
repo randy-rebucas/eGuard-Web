@@ -19,7 +19,7 @@ beforeAll(async () => {
   token = r.data.token;
   familyId = r.data.user.family.id;
   // eGuard Plus: these tests pair more devices than Free covers
-  await db.family.update({ where: { id: familyId }, data: { plan: "eGuard Plus", deviceLimit: 10 } });
+  await db.family.update({ where: { id: familyId }, data: { plan: "eGuard Plus", childLimit: 5, deviceLimit: 10 } });
   await verifyInbox(email("sam"));
   childId = (await call("POST", "/children", { token, body: { name: "Lia", age: 9 } })).data.id;
 });
@@ -95,7 +95,8 @@ describe("app usage on two devices", () => {
     await phone.send("/usage", { date, totalMinutes: 45, apps: [{ name: "YouTube", minutes: 35 }] });
     const rows = await db.appUsageDaily.findMany({ where: { childId, app: "YouTube" } });
     expect(rows.reduce((s, r) => s + r.minutes, 0)).toBe(55);
-    await db.childApp.create({ data: { childId, name: "YouTube" } });
+    // An app first seen in usage joins the child's list, allowed as it is
+    expect(await db.childApp.findUnique({ where: { childId_name: { childId, name: "YouTube" } } })).toMatchObject({ approval: "ALLOWED" });
     const apps = await call("GET", `/children/${childId}/apps`, { token });
     expect(apps.data.apps.find((a: { name: string }) => a.name === "YouTube").todayMinutes).toBe(55);
   });
@@ -114,8 +115,10 @@ describe("device events", () => {
   it("asking again and again raises one alert", async () => {
     for (let i = 0; i < 5; i++) await send("/events", { type: "APP_REQUESTED", app: "Roblox" });
     expect(await db.alert.count({ where: { familyId, title: "App approval requested", subject: { startsWith: "Roblox" } } })).toBe(1);
+    // With approval on (Lia's profile), a new app waits for the parent: one request, however often it's reported
     for (let i = 0; i < 3; i++) await send("/events", { type: "APP_INSTALLED", app: "Minecraft" });
-    expect(await db.alert.count({ where: { familyId, title: "New app installed", subject: { startsWith: "Minecraft" } } })).toBe(1);
+    expect(await db.alert.count({ where: { familyId, title: "App approval requested", subject: { startsWith: "Minecraft" } } })).toBe(1);
+    expect(await db.alert.count({ where: { familyId, title: "New app installed", subject: { startsWith: "Minecraft" } } })).toBe(0);
   });
 });
 

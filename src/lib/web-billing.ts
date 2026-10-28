@@ -20,7 +20,7 @@ import {
 /**
  * Web payments through PayMongo, the only way to buy a plan for now (the apps show the plan but don't sell it).
  *
- * Plans are eGuard Plus and Family Pro, monthly.
+ * Plans are eGuard Plus and eGuard Family, monthly.
  *
  * - Pass: one payment through PayMongo's hosted Checkout, any method (GCash, Maya, QR Ph, card, …).
  *   Adds a month; buying another of the same plan while one runs extends it. Reminded by email before it ends.

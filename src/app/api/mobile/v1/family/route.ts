@@ -26,7 +26,7 @@ async function familyJson(user: { id: string; familyId: string; role: string }) 
     children: await childrenJson(graph, family.timezone),
     // deviceLimit counts browsers too: compare it with devicesUsed, not deviceCount (phones and tablets only)
     deviceCount: graph.devices.length, devicesUsed, deviceLimit: family.deviceLimit,
-    childCount: graph.children.length, childLimit: entitlementsFor(family.plan).childLimit,
+    childCount: graph.children.length, childLimit: family.childLimit,
     plan: family.plan, entitlements: entitlementsFor(family.plan),
     canManage: user.role === "FAMILY_ADMIN",
   };

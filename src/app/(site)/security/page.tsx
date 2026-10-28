@@ -63,7 +63,7 @@ const SECURITY: { title: string; icon: LucideIcon; items: string[] }[] = [
   { title: "The rules themselves", icon: FileSignature, items: [
     "Browser rules are digitally signed by eGuard. The extension ignores any rule that isn't, so no one can feed it fake settings.",
     "Devices keep following the last rules they received if they go offline, instead of switching protection off.",
-    "If a setting is changed on the device, the device reports it and you get an alert.",
+    "If a setting is changed on the device, the device reports it and eGuard shows it. On eGuard Plus and eGuard Family you also get an alert; on every plan you get one if eGuard is removed or tampered with.",
   ] },
   { title: "Inside your family", icon: UserCog, items: [
     "Only a family admin can add or remove a parent.",
