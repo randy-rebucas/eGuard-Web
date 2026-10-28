@@ -27,13 +27,15 @@ export default async function TicketsPage(props: PageProps<"/console/tickets">) 
         {rows.length ? (
           <div className="table-scroll">
             <table className="data-table cn-table">
-              <thead><tr><th>Subject</th><th>From</th><th>Family</th><th>Category</th><th>Status</th><th>Sent</th></tr></thead>
+              <thead><tr><th>Subject</th><th>From</th><th>Family</th><th>Plan</th><th>Category</th><th>Status</th><th>Sent</th></tr></thead>
               <tbody>
                 {rows.map((t) => (
                   <tr key={t.id}>
                     <td><Link prefetch={false} className="inline-link" href={`/tickets/${t.id}`}>{t.subject}</Link></td>
                     <td>{t.user?.email ?? "—"}</td>
                     <td><Link prefetch={false} className="inline-link" href={`/families/${t.family.id}`}>{t.family.name}</Link></td>
+                    {/* Paid plans are sold with priority (Plus) and top-priority (Pro) support: staff answer those first */}
+                    <td>{t.family.plan}</td>
                     <td>{t.category}</td>
                     <td><TicketPill status={t.status} /></td>
                     <td>{stamp(t.createdAt)}</td>

@@ -50,9 +50,9 @@ const ROWS: [string, string | null, (p: Plan) => Cell][] = [
   ["Limits for a kind of app", "Like gaming time or social media", (p) => p.entitlements.categoryLimits],
   ["Location sharing and history", null, (p) => p.entitlements.locationSharing],
   ["Reports", null, (p) => p.entitlements.advancedReports ? "Today to 30 days, custom ranges up to a year, CSV export" : "Today, 7 days, custom ranges up to a week"],
-  ["Push alerts", "On your phone, with the eGuard parent app", (p) => p.entitlements.realtimeAlerts],
+  ["Push alerts", "On your phone, with the eGuard parent app", (p) => p.entitlements.realtimeAlerts ? "Every alert" : "Security alerts: eGuard removed, tampered with or turned off"],
   ["API access for schools and organizations", "API keys for your organization", (p) => p.entitlements.apiAccess],
-  ["Support", null, (p) => p.id === "FREE" ? "Email" : p.id === "PLUS" ? "Priority" : "Dedicated"],
+  ["Support", "By email. Paid plans are answered first", (p) => p.id === "FREE" ? "Email" : p.id === "PLUS" ? "Priority" : "Top priority"],
 ];
 
 const FAQS: [string, React.ReactNode][] = [
@@ -112,7 +112,7 @@ export default function PricingPage() {
             links={Object.fromEntries(PLANS.map((p) => [p.id, <SignedIn key={p.id} signedIn={<PlanLink id={p.id} signedIn />} signedOut={<PlanLink id={p.id} signedIn={false} />} />]))}
             plans={PLANS.map((p) => ({
               id: p.id, name: p.name, price: pesos(p), children: p.entitlements.childLimit, devices: p.entitlements.deviceLimit,
-              location: p.entitlements.locationSharing, categoryLimits: p.entitlements.categoryLimits,
+              location: p.entitlements.locationSharing, categoryLimits: p.entitlements.categoryLimits, appLimit: p.entitlements.appMonitoringLimit,
             }))}
           />
         </section>

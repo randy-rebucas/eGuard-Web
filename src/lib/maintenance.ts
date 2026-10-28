@@ -45,6 +45,13 @@ export const worthEmail = (a: Pick<Alert, "severity" | "category" | "resolveKey"
   a.severity === "ACTION_REQUIRED" || a.severity === "CRITICAL" || isChildRequest(a) || isPlaceNotice(a)
   || (a.severity === "ATTENTION" && (a.category === "PROTECTION" || a.category === "DEVICES" || a.category === "LOCATION"));
 
+/**
+ * eGuard removed, tampered with, or a protection turned off: pushed on every plan (lib/plan-access PUSH_SCOPE), since
+ * a parent on Free who only checks email may not hear of it for days. Real-time alerts push everything else too.
+ */
+export const isSecurityAlert = (a: Pick<Alert, "severity" | "category">) =>
+  (a.category === "PROTECTION" || a.category === "DEVICES") && (a.severity === "ACTION_REQUIRED" || a.severity === "CRITICAL");
+
 /** Only families with a quiet device can need an alert, so the rest aren't visited. */
 export async function raiseOfflineAlerts() {
   const families = await db.device.findMany({ where: offlineDeviceWhere(), distinct: ["familyId"], select: { familyId: true } });
@@ -238,7 +245,8 @@ function alertEmail(a: Alert, name: string) {
 
 /**
  * Sends each new important alert, once: by email to the family's parents with "Email alerts" on and a verified
- * address, and by push (when FCM is set up) to those with "Push notifications" on, on plans with real-time alerts.
+ * address, and by push (when FCM is set up) to those with "Push notifications" on: every alert on plans with
+ * real-time alerts, security alerts (isSecurityAlert) on every plan.
  * A child's request also needs "App approval requests". Alerts that resolved before we got to them aren't sent.
  */
 export async function notifyNewAlerts() {
@@ -267,7 +275,7 @@ export async function notifyNewAlerts() {
       }
     }
     const pushTo = parents.filter((p) => p.notifyPush).map((p) => p.id);
-    if (push && pushTo.length && (await familyEntitlements(a.familyId)).realtimeAlerts) {
+    if (push && pushTo.length && (isSecurityAlert(a) || (await familyEntitlements(a.familyId)).realtimeAlerts)) {
       try {
         pushed += await pushToUsers(pushTo, alertPush(a, mobileAlertAction(a)));
       } catch (e) {

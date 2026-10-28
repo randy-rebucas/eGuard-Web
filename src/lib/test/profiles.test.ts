@@ -70,9 +70,15 @@ describe("protection profiles", () => {
 
 describe("plans", () => {
   it("lists what each plan includes, as the pricing page does", () => {
-    expect(planFeatures("Free").map((f) => f.label)).toEqual(["Up to 1 child", "Basic protection setup", "Screen time management", "App monitoring (limited)", "Email support"]);
-    expect(planFeatures("eGuard Plus")[0].label).toBe("Up to 5 children");
+    expect(planFeatures("Free").map((f) => f.label)).toEqual(["Up to 1 child and 2 devices", "All 10 protections and Configuration Health", "Screen time and per-app limits", "5 apps per child", "Push for security alerts", "Email support"]);
+    expect(planFeatures("eGuard Plus")[0].label).toBe("Up to 5 children and 10 devices");
     expect(planFeatures("Family Pro").map((f) => f.label)).toContain("API access (schools/organizations)");
+  });
+
+  it("doesn't sell what every plan has: protections and verification are on Free", () => {
+    for (const plan of ["eGuard Plus", "Family Pro"]) {
+      expect(planFeatures(plan).map((f) => f.label).join(" ")).not.toMatch(/verif|protection/i);
+    }
   });
 
   it("gates features by plan, and unknown or retired plans get Free", () => {

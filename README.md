@@ -448,8 +448,8 @@ ship an extension that trusts the new public key **before** switching the server
 
 | Plan | Price | Children | Devices | Highlights |
 |---|---|---|---|---|
-| Free | ₱0 | 1 | 2 | Basic protection setup, screen time, limited app monitoring |
-| eGuard Plus | ₱149/month | 5 | 10 | Full protections, configuration verification, location sharing |
+| Free | ₱0 | 1 | 2 | All 10 protections and Configuration Health, screen time and per-app limits, 5 apps per child |
+| eGuard Plus | ₱149/month | 5 | 10 | Every app, category limits, location sharing, push alerts |
 | Family Pro | ₱249/month | 10 | 20 | Everything in Plus, advanced reports, API access |
 
 Plans are defined in [src/lib/plans.ts](src/lib/plans.ts). Prices come from `PRICE_PLUS_MONTHLY` and

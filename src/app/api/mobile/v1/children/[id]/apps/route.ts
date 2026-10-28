@@ -7,7 +7,7 @@ import { APPROVAL_LABEL, audit, requestedApps } from "@/lib/family-service";
 import { conflict, isUniqueViolation } from "@/lib/errors";
 import { appMinutesOn, dateFromKey, dayKey, getFamily } from "@/lib/queries";
 import { authed, body, clientLabel, query } from "@/lib/mobile-api";
-import { APPS_UPGRADE, familyEntitlements, visibleApps } from "@/lib/plan-access";
+import { APPS_UPGRADE, familyEntitlements, nameableApps, visibleApps } from "@/lib/plan-access";
 import { CATEGORY_BY_KEY, categoryOf } from "@/lib/app-categories";
 import { wakeChildDevices } from "@/lib/push";
 
@@ -65,15 +65,29 @@ const Body = z.object({
 /**
  * "Request to Install App": the parent adds an app to the child's list ahead of time (pre-approved,
  * limited, or blocked). Devices pick up app rules on their next sync.
+ *
+ * On a plan that limits apps, naming one the Apps tab hides still applies the rule: blocking or limiting an app is
+ * a safety step every plan gets. The answer, status and history then read as for a new app, so a guessed name
+ * can't confirm which apps the plan hides (a 409 only for apps the tab shows).
  */
 export const POST = authed<{ id: string }>(async ({ req, user, params }) => {
   const b = await body(req, Body);
   const child = await childFor(user.familyId, params.id);
   const taken = () => conflict(`${b.name} is already on ${child.name}'s list.`);
-  if (await db.childApp.findUnique({ where: { childId_name: { childId: child.id, name: b.name } } })) throw taken();
-  // A double tap (or the device reporting the app at the same moment) passes the check above twice
-  const app = await db.childApp.create({ data: { childId: child.id, name: b.name, approval: b.approval, dailyLimitMinutes: b.dailyLimitMinutes ?? null } })
-    .catch((e) => { throw isUniqueViolation(e) ? taken() : e; });
+  const rule = { approval: b.approval, dailyLimitMinutes: b.dailyLimitMinutes ?? null };
+  const existing = await db.childApp.findUnique({ where: { childId_name: { childId: child.id, name: b.name } } });
+  let app;
+  if (existing) {
+    const family = await getFamily(user.familyId);
+    const usage = await appMinutesOn([child.id], dateFromKey(dayKey(new Date(), family.timezone)));
+    const shown = await nameableApps(child.id, (await familyEntitlements(user.familyId)).appMonitoringLimit, (n) => usage.find((u) => u.app === n)?.minutes ?? 0);
+    if (shown(existing.name)) throw taken();
+    app = await db.childApp.update({ where: { id: existing.id }, data: rule });
+  } else {
+    // A double tap (or the device reporting the app at the same moment) passes the check above twice
+    app = await db.childApp.create({ data: { childId: child.id, name: b.name, ...rule } })
+      .catch((e) => { throw isUniqueViolation(e) ? taken() : e; });
+  }
   await db.configChange.create({
     data: {
       familyId: user.familyId, childId: child.id, key: "APP_RESTRICTIONS", title: `${app.name} added as ${APPROVAL_LABEL[app.approval]}`,
@@ -82,7 +96,9 @@ export const POST = authed<{ id: string }>(async ({ req, user, params }) => {
   });
   await audit(user.familyId, user.name, "app.added", `${app.name} for ${child.name}`);
   await wakeChildDevices([child.id], "apps");
-  return NextResponse.json({ id: app.id, name: app.name, approval: app.approval, approvalLabel: APPROVAL_LABEL[app.approval], dailyLimitMinutes: app.dailyLimitMinutes, ...categoryJson(app) }, { status: 201 });
+  // A hidden app's category as a new one's (the guess from its name): one its device reported would give it away
+  const category = categoryJson(existing ? { name: app.name, category: null } : app);
+  return NextResponse.json({ id: app.id, name: app.name, approval: app.approval, approvalLabel: APPROVAL_LABEL[app.approval], dailyLimitMinutes: app.dailyLimitMinutes, ...category }, { status: 201 });
 });
 
 /** The app's category: `categoryAuto` is true while it's eGuard's guess from the name, not the parent's choice. */

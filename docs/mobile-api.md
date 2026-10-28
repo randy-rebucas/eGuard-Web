@@ -776,11 +776,13 @@ Ends this session only. Pass the device's push token so this phone stops receivi
 | `GET /me/identities` | none | `{ identities: [{ id, provider, email, createdAt }] }`: linked sign-ins. `provider` is `apple`, `google` or `linkedin` (LinkedIn is linked on the website only; show any other value as is) |
 | `DELETE /me/identities/{id}` | none | `{ ok }`. `409` if it's the only way to sign in (no password set) |
 | `POST /me/password` | `{ current, next }` | `{ ok, message }`. `403 wrong_password`, `400` if `next` < 10 chars. **Signs out every other session**; this one stays. The parent is emailed that it changed (as for an email change, to the old address, and for turning off two-step verification) |
-| `GET /me/notifications` | none | `{ notifyPush, notifyEmail, notifyApproval, weeklySummary, productUpdates }`. `notifyEmail` emails alerts that need attention; `notifyPush` pushes the same alerts to this parent's phones (plans with `realtimeAlerts`); `notifyApproval` also sends a child's requests for an app or a blocked website, by whichever of email and push is on; `productUpdates` is the eGuard team's emails about new features (notices about the account, privacy or security are sent regardless) |
-| `PATCH /me/notifications` | any subset of those booleans | Same object, updated. Send only what changed. `notifyPush: true` is `403 plan_required` only when it turns push on without `realtimeAlerts` |
+| `GET /me/notifications` | none | `{ notifyPush, notifyEmail, notifyApproval, weeklySummary, productUpdates }`. `notifyEmail` emails alerts that need attention; `notifyPush` pushes the same alerts to this parent's phones (every plan: all of them with `realtimeAlerts`, security alerts only otherwise, see `pushScope`); `notifyApproval` also sends a child's requests for an app or a blocked website, by whichever of email and push is on; `productUpdates` is the eGuard team's emails about new features (notices about the account, privacy or security are sent regardless) |
+| `PATCH /me/notifications` | any subset of those booleans | Same object, updated. Send only what changed. Push can be turned on on every plan |
 
-Both answers also carry `pushIncluded` (the plan's `realtimeAlerts`). When it's false, show the push switch off and locked
-("Push alerts aren't on your plan"), whatever `notifyPush` says: it's on by default, Free included.
+Both answers also carry `pushScope`: `"all"` with `realtimeAlerts`, `"security"` otherwise (only alerts that eGuard was
+removed, tampered with or a protection turned off: category `PROTECTION` or `DEVICES` with severity `ACTION_REQUIRED`
+or `CRITICAL`). With `"security"`, say so under the switch ("Security alerts only") and leave it usable.
+`pushIncluded` is now always `true`; apps that lock the switch when it's false keep working.
 | `POST /me/push-tokens` | `{ token, platform: "IOS" \| "ANDROID" }` | `201 { ok }`. `token` is an **FCM registration token** on both platforms (iOS: from the Firebase Messaging SDK, not the raw APNs token). Call it after sign-in and whenever FCM rotates the token. Re-registering the same token under another parent moves it. Tokens FCM reports as uninstalled are removed |
 | `DELETE /me/push-tokens` | `{ token }` | `{ ok }` |
 | `GET /me/sessions` | none | `{ sessions: [{ id, userAgent, createdAt, lastSeenAt, current }] }` |
@@ -1248,7 +1250,10 @@ about 5 minutes).
 
 `name` is 1–80 characters; `approval` is any app `approval` value and defaults to `ALLOWED`; `dailyLimitMinutes` is
 1–1440 or `null`. Response: `201 { id, name, approval, approvalLabel, dailyLimitMinutes, category, categoryLabel, categoryAuto }`,
-the same shape as `PATCH /apps/{id}`. Returns `409` if an app with that name is already on the child's list.
+the same shape as `PATCH /apps/{id}`. Returns `409` if an app with that name is already on the child's apps list as
+`GET /children/{id}/apps` shows it. With an `appMonitoringLimit`, naming an app that list hides applies the rule to it
+and answers `201` as for a new app (blocking or limiting an app works on every plan, and the answer doesn't confirm
+which apps are hidden).
 
 ##### `GET /children/{id}/category-limits` and `PUT`
 
@@ -1553,16 +1558,16 @@ Sponsor codes, which pay for a plan, are redeemed on the website only (see [Know
   "renewsAt": "2026-10-11T16:00:00.000Z",
   "renewsLabel": "Renews on Oct 12, 2026",
   "features": [
-    { "key": "children", "included": true, "label": "Up to 5 children" },
-    { "key": "protection", "included": true, "label": "Full protection features" },
-    { "key": "verification", "included": true, "label": "Configuration verification" },
-    { "key": "alerts", "included": true, "label": "Real-time alerts" },
+    { "key": "children", "included": true, "label": "Up to 5 children and 10 devices" },
+    { "key": "apps", "included": true, "label": "See and manage every app" },
+    { "key": "category_limits", "included": true, "label": "Category limits, like gaming time" },
     { "key": "location", "included": true, "label": "Location sharing" },
+    { "key": "alerts", "included": true, "label": "Push alerts" },
     { "key": "support", "included": true, "label": "Priority support" }
   ],
   "entitlements": {
     "childLimit": 5, "deviceLimit": 10, "locationSharing": true, "appMonitoringLimit": null,
-    "realtimeAlerts": true, "advancedReports": false, "apiAccess": false
+    "realtimeAlerts": true, "advancedReports": false, "apiAccess": false, "categoryLimits": true
   },
   "usage": { "devicesUsed": 5, "deviceLimit": 10, "children": 3, "childLimit": 5 },
   "canManage": true,
@@ -1585,7 +1590,7 @@ Sponsor codes, which pay for a plan, are redeemed on the website only (see [Know
   - with an `appMonitoringLimit`, `GET /children/{id}/apps` lists that many (apps waiting for approval first, then the
     most used) and `limited: { hidden, message }` says how many more there are; `/children/{id}/screen-time`
     names only apps that list shows today, for every period, and sums the rest as Others (`hiddenApps`)
-  - without `realtimeAlerts`, turning on `notifyPush` → `403 plan_required`
+  - without `realtimeAlerts`, push sends security alerts only (`pushScope: "security"` on `/me/notifications`)
   - without `advancedReports`, `/children/{id}/screen-time?period=30d` → `403 plan_required`
 - **Plans are paid for on the web for now** (PayMongo, in Settings › Subscription on the website). The apps show the
   plan and usage but **don't sell it and don't link to the website**: store policies forbid steering users to

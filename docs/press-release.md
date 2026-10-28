@@ -8,8 +8,8 @@ Ground rules (see [launch-visibility.md](launch-visibility.md#7-where-to-announc
 
 - No user counts, ratings or "trusted by" claims until they're real.
 - iPhone and iPad are **coming soon**. Don't let a headline say "Android and iOS".
-- Push alerts are included with eGuard Plus and Family Pro, in the eGuard parent app. Every plan gets email and
-  in-app alerts.
+- Every plan gets email and in-app alerts, and push for security alerts (eGuard removed, tampered with or turned
+  off) in the eGuard parent app. eGuard Plus and Family Pro push every alert.
 - Screenshots show the demo family only. No real child's name, photo or location.
 
 ---

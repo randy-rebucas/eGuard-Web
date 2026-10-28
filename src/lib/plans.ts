@@ -42,40 +42,48 @@ export type Plan = {
 
 export const FREE_APP_LIMIT = 5;
 
+const FREE: Entitlements = { childLimit: 1, deviceLimit: 2, locationSharing: false, appMonitoringLimit: FREE_APP_LIMIT, realtimeAlerts: false, advancedReports: false, apiAccess: false, categoryLimits: false };
+const PLUS: Entitlements = { childLimit: 5, deviceLimit: 10, locationSharing: true, appMonitoringLimit: null, realtimeAlerts: true, advancedReports: false, apiAccess: false, categoryLimits: true };
+const PRO: Entitlements = { childLimit: 10, deviceLimit: 20, locationSharing: true, appMonitoringLimit: null, realtimeAlerts: true, advancedReports: true, apiAccess: true, categoryLimits: true };
+/** "Up to 5 children and 10 devices", from the limits, so the card can't drift from what pairing allows */
+const capacity = (e: Entitlements) => `Up to ${e.childLimit} ${e.childLimit === 1 ? "child" : "children"} and ${e.deviceLimit} devices`;
+
+// Every protection and its verification are on every plan (the comparison table says so): cards list only what differs
 export const PLANS: Plan[] = [
   {
     id: "FREE", name: "Free", blurb: "Get started with essential protection tools.", monthlyPesos: 0, yearlyPesos: 0, googlePlayProductId: null,
-    entitlements: { childLimit: 1, deviceLimit: 2, locationSharing: false, appMonitoringLimit: FREE_APP_LIMIT, realtimeAlerts: false, advancedReports: false, apiAccess: false, categoryLimits: false },
+    entitlements: FREE,
     features: [
-      { key: "children", label: "Up to 1 child", included: true },
-      { key: "protection", label: "Basic protection setup", included: true },
-      { key: "screen_time", label: "Screen time management", included: true },
-      { key: "apps", label: "App monitoring (limited)", included: true },
+      { key: "children", label: capacity(FREE), included: true },
+      { key: "protection", label: "All 10 protections and Configuration Health", included: true },
+      { key: "screen_time", label: "Screen time and per-app limits", included: true },
+      { key: "apps", label: `${FREE_APP_LIMIT} apps per child`, included: true },
+      { key: "alerts", label: "Push for security alerts", included: true },
       { key: "support", label: "Email support", included: true },
     ],
   },
   {
     id: "PLUS", name: "eGuard Plus", blurb: "Complete protection for growing families.", monthlyPesos: 149, yearlyPesos: 1490, googlePlayProductId: "eguard_plus",
-    entitlements: { childLimit: 5, deviceLimit: 10, locationSharing: true, appMonitoringLimit: null, realtimeAlerts: true, advancedReports: false, apiAccess: false, categoryLimits: true },
+    entitlements: PLUS,
     features: [
-      { key: "children", label: "Up to 5 children", included: true },
-      { key: "protection", label: "Full protection features", included: true },
-      { key: "verification", label: "Configuration verification", included: true },
-      { key: "alerts", label: "Push alerts", included: true },
-      { key: "location", label: "Location sharing", included: true },
+      { key: "children", label: capacity(PLUS), included: true },
+      { key: "apps", label: "See and manage every app", included: true },
       { key: "category_limits", label: "Category limits, like gaming time", included: true },
+      { key: "location", label: "Location sharing", included: true },
+      { key: "alerts", label: "Push for every alert", included: true },
       { key: "support", label: "Priority support", included: true },
     ],
   },
   {
     id: "PRO", name: "Family Pro", blurb: "Advanced features for larger families.", monthlyPesos: 249, yearlyPesos: 2490, googlePlayProductId: "eguard_pro",
-    entitlements: { childLimit: 10, deviceLimit: 20, locationSharing: true, appMonitoringLimit: null, realtimeAlerts: true, advancedReports: true, apiAccess: true, categoryLimits: true },
+    entitlements: PRO,
     features: [
-      { key: "children", label: "Up to 10 children", included: true },
+      { key: "children", label: capacity(PRO), included: true },
       { key: "plus", label: "All Plus features", included: true },
-      { key: "reports", label: "Advanced reports", included: true },
+      { key: "reports", label: "30-day reports and CSV export", included: true },
       { key: "api", label: "API access (schools/organizations)", included: true },
-      { key: "support", label: "Dedicated support", included: true },
+      // Answered before Plus and Free (the plan is on every ticket: lib/support, the console list)
+      { key: "support", label: "Top-priority support", included: true },
     ],
   },
 ];

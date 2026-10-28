@@ -136,9 +136,16 @@ try {
     const p = await db.place.create({ data: { familyId: f.id, name: b ?? "QA Home", lat: 14.6, lng: 121.0 } });
     console.log(`PLACE=${p.id}`);
   } else if (cmd === "plan") {
-    // Moves a fixture family to another plan without billing (downgrade checks: what's kept, paused or removable)
-    const f = await db.family.update({ where: { id: (await db.family.findFirstOrThrow({ where: { id: a, name: FIXTURE } })).id }, data: { plan: b ?? "Free" } });
+    // Moves a fixture family to another plan without billing (downgrade checks: what's kept, paused or removable).
+    // Sets the device limit too, as applyEntitlement does, so slot checks match a real plan change
+    const DEVICE_LIMITS: Record<string, number> = { Free: 2, "eGuard Plus": 10, "Family Pro": 20 };
+    const plan = b ?? "Free";
+    const f = await db.family.update({ where: { id: (await db.family.findFirstOrThrow({ where: { id: a, name: FIXTURE } })).id }, data: { plan, deviceLimit: DEVICE_LIMITS[plan] ?? 2 } });
     console.log(`plan=${f.plan}`);
+  } else if (cmd === "plans") {
+    // Read-only: families by stored plan and device limit, so a name or limit that doesn't match lib/plans shows up
+    const rows = await db.family.groupBy({ by: ["plan", "deviceLimit"], _count: true });
+    for (const r of rows) console.log(`${r.plan}\tdeviceLimit=${r.deviceLimit}\tfamilies=${r._count}`);
   } else if (cmd === "staff") {
     // A console session for a QA staff account that can't sign in (no real password or authenticator)
     const s = await db.staffUser.upsert({

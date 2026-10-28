@@ -81,10 +81,10 @@ What each plan unlocks is its `entitlements`, checked on the server and returned
 | `childLimit` | 1 | 5 | 10 | `createChild` (409 `plan_limit`); "Add child" becomes "Upgrade" on the web |
 | `deviceLimit` | 2 | 10 | 20 | Pairing codes and `/device/v1/pair` (stored on `Family.deviceLimit`) |
 | `locationSharing` | ✗ | ✓ | ✓ | Fixes aren't stored on Free; location pages and `/locations`, `/children/{id}/location…` return 403 `plan_required`; location history can't be turned on |
-| `appMonitoringLimit` | 5 | all | all | Apps lists show apps waiting for approval, then the most used; `limited` says how many are hidden |
-| `realtimeAlerts` | ✗ | ✓ | ✓ | Push notifications can't be turned on (alerts still show in the app and by email) |
+| `appMonitoringLimit` | 5 | all | all | Apps lists show apps waiting for approval, then the most used; `limited` says how many are hidden. Blocking or limiting an app by name (`POST /children/{id}/apps`) works on every plan |
+| `realtimeAlerts` | ✗ | ✓ | ✓ | Without it push sends security alerts only (`isSecurityAlert`: eGuard removed, tampered with or a protection off); everything else shows in the app and by email |
 | `advancedReports` | ✗ | ✗ | ✓ | 30-day reports, custom ranges longer than 7 days (other plans keep the last 7 days of a longer range), CSV export (403 otherwise) |
-| `apiAccess` | ✗ | ✗ | ✓ | Listed only: Pro admins get a "Request access" link to support. There's no organization API yet. |
+| `apiAccess` | ✗ | ✗ | ✓ | Organization API keys (`/api/org/v1`, docs/organization-api.md): created only on Family Pro, and a key stops (403) while its admin's family isn't on it |
 
 Configuration verification and health checks run on every plan, so protections stay honest on Free too.
 

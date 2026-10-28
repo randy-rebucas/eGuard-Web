@@ -15,7 +15,7 @@ import * as invitations from "@/lib/invitations";
 import * as browsers from "@/lib/browser-service";
 import * as browserPolicy from "@/lib/browser-policy";
 import * as browserAccess from "@/lib/browser-access";
-import { LOCATION_UPGRADE, familyEntitlements, planWith } from "@/lib/plan-access";
+import { LOCATION_UPGRADE, familyEntitlements } from "@/lib/plan-access";
 import { PROFILE_IDS, ageReview } from "@/lib/profiles";
 import { isDismissible } from "@/lib/health";
 import { signOutSession } from "@/lib/sessions";
@@ -384,7 +384,7 @@ export async function setToggle(key: string, value: boolean): Promise<Result> {
   return toResult(async () => {
     if (typeof value !== "boolean") throw invalid("Choose on or off.");
     const plan = await familyEntitlements(u.familyId);
-    if (value && key === "notifyPush" && !plan.realtimeAlerts) throw planRequired(`Push alerts are included with ${planWith((e) => e.realtimeAlerts).name}.`);
+    // Push can be on on every plan: without real-time alerts it sends only security alerts (plan-access pushScope)
     if (value && key === "keepLocationHistory" && !plan.locationSharing) throw planRequired(LOCATION_UPGRADE);
     if ((USER_TOGGLES as readonly string[]).includes(key)) {
       await db.user.update({ where: { id: u.id }, data: { [key]: value } });

@@ -102,7 +102,7 @@ export async function listTickets(status: TicketStatus | null, before?: Date) {
       take,
       select: {
         id: true, subject: true, category: true, status: true, createdAt: true,
-        family: { select: { id: true, name: true } }, user: { select: { email: true } },
+        family: { select: { id: true, name: true, plan: true } }, user: { select: { email: true } },
       },
     }),
     (t) => t.createdAt,

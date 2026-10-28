@@ -23,7 +23,7 @@ import { ShareEguard } from "@/components/share";
 import { currentPurchase, refreshPurchases } from "@/lib/billing";
 import { renewalWord } from "@/lib/entitlement";
 import { BASE_PLAN, PLANS, entitlementsFor, planByName, planByProduct, webPrice, webProduct, type Entitlements } from "@/lib/plans";
-import { LOCATION_UPGRADE, planWith } from "@/lib/plan-access";
+import { LOCATION_UPGRADE, SECURITY_PUSH_NOTE } from "@/lib/plan-access";
 import { confirmReturn, paidTimeName, passMethods, webBillingAvailable } from "@/lib/web-billing";
 import { status as twoFactorStatus } from "@/lib/two-factor";
 import { pushAvailable } from "@/lib/push";
@@ -164,10 +164,10 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
         <>
           {head}
           <SettingSwitch setting="notifyPush" title="Push notifications"
-            desc={!plan.realtimeAlerts ? `Push alerts are included with ${planWith((e) => e.realtimeAlerts).name}. Alerts still show in eGuard and by email.`
+            desc={!plan.realtimeAlerts ? `${SECURITY_PUSH_NOTE}${push ? " On phones signed in to the eGuard app." : ""}`
               : push ? "Protection changes, devices that need attention and children's requests, on phones signed in to the eGuard app"
               : "Protection changes and devices that need attention"}
-            checked={user.notifyPush && plan.realtimeAlerts} disabled={!plan.realtimeAlerts} />
+            checked={user.notifyPush} />
           <SettingSwitch setting="notifyEmail" title="Email alerts" desc="Protection changes, devices that stop syncing, anything that needs action, and organization activity" checked={user.notifyEmail} />
           <SettingSwitch setting="notifyApproval" title="App approval requests" desc="When a child asks for an app or a blocked website. Sent by email and push, for whichever of those is on." checked={user.notifyApproval} />
           {/* What sendWeeklyDigests needs: a paired device, and the family's own Sunday evening */}
@@ -422,7 +422,7 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
           {head}
           <div className="setting-row"><span className="ico-tile"><Icon name="book-open" /></span><div className="grow"><div className="t-title">Setup guides</div><div className="t-meta">Step-by-step help is built into each guided setup, and the help center covers pairing, offline devices, plans and privacy</div></div><Link className="btn btn-secondary btn-sm" href="/help">Help center</Link></div>
           <div className="setting-row" style={{ flexDirection: "column", alignItems: "stretch", gap: 12 }}>
-            <div><div className="t-title">Contact support</div><div className="t-meta">We reply by email within 1 business day. You can also write to <a className="link-btn" href={`mailto:${supportEmail()}`}>{supportEmail()}</a>.</div></div>
+            <div><div className="t-title">Contact support</div><div className="t-meta">We reply by email within 1 business day{family.plan !== BASE_PLAN ? `, and ${family.plan} requests are answered first` : ""}. You can also write to <a className="link-btn" href={`mailto:${supportEmail()}`}>{supportEmail()}</a>.</div></div>
             <SupportTicketForm categories={Object.entries(TICKET_CATEGORIES)} email={user.email} />
           </div>
           {tickets.length ? (
@@ -474,6 +474,8 @@ function freePlanLimits(from: Entitlements) {
     from.locationSharing && !free.locationSharing ? "no location sharing" : null,
     from.categoryLimits && !free.categoryLimits ? "no category limits" : null,
     from.advancedReports && !free.advancedReports ? "reports up to a week" : null,
+    from.realtimeAlerts && !free.realtimeAlerts ? "push only for security alerts" : null,
+    from.apiAccess && !free.apiAccess ? "organization API keys paused" : null,
   ].filter(Boolean).join(", ");
 }
 

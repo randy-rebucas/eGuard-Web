@@ -18,6 +18,13 @@ export const LOCATION_UPGRADE = `Location sharing is included with ${planWith((e
 export const APP_REPORTS_UPGRADE = `30-day reports are included with ${planWith((e) => e.advancedReports).name}.`;
 export const REPORTS_UPGRADE =`30-day reports, custom ranges longer than a week and CSV export are included with ${planWith((e) => e.advancedReports).name}.`;
 
+/**
+ * What push sends on a plan: "all" alerts with real-time alerts, "security" (eGuard removed, tampered with or a
+ * protection turned off, maintenance isSecurityAlert) on every other plan. Push can be turned on on every plan.
+ */
+export const pushScope = (e: Pick<Entitlements, "realtimeAlerts">) => (e.realtimeAlerts ? "all" as const : "security" as const);
+export const SECURITY_PUSH_NOTE = `Sends security alerts: eGuard removed, tampered with or a protection turned off. ${planWith((e) => e.realtimeAlerts).name} pushes every alert, like children's requests and devices that need attention.`;
+
 export async function requireLocationSharing(familyId: string) {
   if (!(await familyEntitlements(familyId)).locationSharing) throw planRequired(LOCATION_UPGRADE);
 }

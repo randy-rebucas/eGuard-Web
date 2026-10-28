@@ -3,7 +3,8 @@
 import { useState, type ReactNode } from "react";
 import { Minus, Plus } from "lucide-react";
 
-export type FinderPlan = { id: string; name: string; price: string; children: number; devices: number; location: boolean; categoryLimits: boolean };
+/** `appLimit`: apps shown per child, null for all */
+export type FinderPlan = { id: string; name: string; price: string; children: number; devices: number; location: boolean; categoryLimits: boolean; appLimit: number | null };
 
 /**
  * "Which plan fits?": the smallest plan whose limits cover the family. Limits come from the plan catalogue
@@ -15,8 +16,11 @@ export function PlanFinder({ plans, links, contact }: { plans: FinderPlan[]; lin
   const [browsers, setBrowsers] = useState(0);
   const [location, setLocation] = useState(false);
   const [gaming, setGaming] = useState(false);
+  const [allApps, setAllApps] = useState(false);
   const devices = phones + browsers;
-  const fit = plans.find((p) => p.children >= children && p.devices >= devices && (!location || p.location) && (!gaming || p.categoryLimits));
+  const fit = plans.find((p) => p.children >= children && p.devices >= devices && (!location || p.location) && (!gaming || p.categoryLimits) && (!allApps || p.appLimit === null));
+  // The smallest app limit any plan has, for the question's wording ("more than 5")
+  const fewest = Math.min(...plans.map((p) => p.appLimit ?? Infinity));
 
   return (
     <div className="pf">
@@ -26,6 +30,7 @@ export function PlanFinder({ plans, links, contact }: { plans: FinderPlan[]; lin
         <Stepper label="Browsers on computers" hint="Chrome and Edge on one laptop count as two" value={browsers} set={setBrowsers} min={0} max={40} />
         <label className="pf-check"><input type="checkbox" checked={location} onChange={(e) => setLocation(e.target.checked)} />I want to see where my child&apos;s phone is</label>
         <label className="pf-check"><input type="checkbox" checked={gaming} onChange={(e) => setGaming(e.target.checked)} />I want one limit for all games together</label>
+        {Number.isFinite(fewest) ? <label className="pf-check"><input type="checkbox" checked={allApps} onChange={(e) => setAllApps(e.target.checked)} />I want to see and manage more than {fewest} of my child&apos;s apps</label> : null}
       </div>
       <div className="pf-result" aria-live="polite">
         {fit ? (

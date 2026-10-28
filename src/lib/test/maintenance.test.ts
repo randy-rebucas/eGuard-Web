@@ -16,13 +16,26 @@ vi.mock("../weekly-digest", () => ({}));
 vi.mock("../parent-care/runner", () => ({}));
 
 type Fn = ReturnType<typeof vi.fn>;
-const { isChildRequest, worthEmail, closeStaleWork, OPEN_CHANGE_DAYS, groupProtectionAlerts, combineAlerts } = await import("../maintenance");
+const { isChildRequest, isSecurityAlert, worthEmail, closeStaleWork, OPEN_CHANGE_DAYS, groupProtectionAlerts, combineAlerts } = await import("../maintenance");
 const { isDismissible } = await import("../health");
 const { db } = (await import("../db")) as unknown as { db: { checkRun: { findMany: Fn }; configRequest: { findMany: Fn; updateMany: Fn }; alert: { create: Fn } } };
 const { finalizeCheckRun } = (await import("../engine")) as unknown as { finalizeCheckRun: Fn };
 
 const alert = (a: Partial<{ severity: string; category: string; resolveKey: string | null }>) =>
   ({ severity: "INFO", category: "SYSTEM", resolveKey: null, ...a }) as Parameters<typeof worthEmail>[0];
+
+describe("security alerts (pushed on every plan)", () => {
+  it("covers tampering, removal and protections turned off", () => {
+    expect(isSecurityAlert(alert({ severity: "ACTION_REQUIRED", category: "DEVICES" }))).toBe(true);
+    expect(isSecurityAlert(alert({ severity: "CRITICAL", category: "PROTECTION" }))).toBe(true);
+  });
+
+  it("leaves the rest to plans with real-time alerts", () => {
+    expect(isSecurityAlert(alert({ severity: "ATTENTION", category: "DEVICES" }))).toBe(false);
+    expect(isSecurityAlert(alert({ severity: "ACTION_REQUIRED", category: "APPS", resolveKey: "APPREQ:c1:Roblox" }))).toBe(false);
+    expect(isSecurityAlert(alert({ severity: "CRITICAL", category: "SYSTEM" }))).toBe(false);
+  });
+});
 
 describe("alert emails", () => {
   it("emails a child's app request, which is in the APPS category", () => {

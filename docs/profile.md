@@ -85,8 +85,8 @@ only enforces rules that really came from eGuard.
 
 | Plan | Price | Children | Devices | Includes |
 |---|---|---|---|---|
-| **Free** | ₱0 | 1 | 2 | Basic protection setup, screen time, limited app monitoring |
-| **eGuard Plus** | ₱149/month | 5 | 10 | All protections, configuration verification, location sharing |
+| **Free** | ₱0 | 1 | 2 | All 10 protections and Configuration Health, screen time and per-app limits, 5 apps per child |
+| **eGuard Plus** | ₱149/month | 5 | 10 | Every app, category limits, location sharing, push alerts |
 | **Family Pro** | ₱249/month | 10 | 20 | Everything in Plus, advanced reports, API access |
 
 - Phones, tablets and browsers all count as devices.

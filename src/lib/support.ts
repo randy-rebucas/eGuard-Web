@@ -34,15 +34,19 @@ export const listTickets = (user: { id: string; familyId: string }) =>
     select: { id: true, category: true, subject: true, message: true, status: true, createdAt: true },
   });
 
-/** Forwards a new ticket to the support inbox, with Reply-To set to the parent. */
+/**
+ * Forwards a new ticket to the support inbox, with Reply-To set to the parent. The family's plan is in the subject:
+ * paid plans are sold with priority (Plus) and top-priority (Pro) support, so the inbox has to show who comes first.
+ */
 export async function forwardTicket(t: SupportTicket, from: { name: string; email: string; familyId: string }) {
+  const plan = (await db.family.findUnique({ where: { id: t.familyId }, select: { plan: true } }))?.plan ?? "unknown plan";
   await sendMail({
     to: supportEmail(),
     // The name is the parent's own text: quoted, so a comma or "<…>" in it can't add a second Reply-To address
     replyTo: `"${from.name.replace(/["\\\r\n<>]/g, "")}" <${from.email}>`,
-    subject: `[eGuard ${t.category}] ${t.subject.replace(/[\r\n]+/g, " ")}`,
-    text: `From: ${from.name} <${from.email}>\nFamily: ${from.familyId}\nTicket: ${t.id}\nCategory: ${t.category}\n\n${t.message}`,
-    html: `<p><b>From:</b> ${escapeHtml(from.name)} &lt;${escapeHtml(from.email)}&gt;<br><b>Family:</b> ${escapeHtml(from.familyId)}<br><b>Ticket:</b> ${escapeHtml(t.id)}<br><b>Category:</b> ${escapeHtml(t.category)}</p>`
+    subject: `[eGuard ${t.category} · ${plan}] ${t.subject.replace(/[\r\n]+/g, " ")}`,
+    text: `From: ${from.name} <${from.email}>\nFamily: ${from.familyId}\nPlan: ${plan}\nTicket: ${t.id}\nCategory: ${t.category}\n\n${t.message}`,
+    html: `<p><b>From:</b> ${escapeHtml(from.name)} &lt;${escapeHtml(from.email)}&gt;<br><b>Family:</b> ${escapeHtml(from.familyId)}<br><b>Plan:</b> ${escapeHtml(plan)}<br><b>Ticket:</b> ${escapeHtml(t.id)}<br><b>Category:</b> ${escapeHtml(t.category)}</p>`
       + `<pre style="white-space:pre-wrap;font:inherit">${escapeHtml(t.message)}</pre>`,
   });
 }

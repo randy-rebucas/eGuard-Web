@@ -1,5 +1,8 @@
 /** Help & Support content for the apps. Static for now; a CMS can replace `HELP_ARTICLES` later. */
-import { childCount, planById, webPrice, type PaidPlanId } from "./plans";
+import { FREE_APP_LIMIT, childCount, planById, webPrice, type PaidPlanId } from "./plans";
+
+/** What Free covers. Every protection and Configuration Health are on every plan, so it's not "basic" */
+const FREE_LINE = `Free covers ${childCount(planById("FREE").entitlements.childLimit, { digits: true })} and ${planById("FREE").entitlements.deviceLimit} devices with all 10 protections and Configuration Health, screen time and per-app limits, ${FREE_APP_LIMIT} apps per child, push for security alerts (eGuard removed, tampered with or turned off) and email support.`;
 
 /** Price and limits from the plan catalogue, since prices can change without a release (PRICE_*_MONTHLY). */
 function planLine(id: PaidPlanId) {
@@ -79,8 +82,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
     slug: "upgrade-plan", category: "FAQ", title: "Plans: Free, eGuard Plus and Family Pro",
     summary: "What each plan includes, and how to upgrade.",
     body: [
-      `Free covers ${childCount(planById("FREE").entitlements.childLimit, { digits: true })} with basic protection setup, screen time management, limited app monitoring and email support.`,
-      `${planLine("PLUS")}, and adds location sharing, full app monitoring, push alerts, category limits like gaming time, and priority support. ${planLine("PRO")}, and adds advanced reports, API access for schools and organizations, and dedicated support.`,
+      FREE_LINE,
+      `${planLine("PLUS")}, and adds location sharing, full app monitoring, push for every alert, category limits like gaming time, and priority support. ${planLine("PRO")}, and adds advanced reports, API access for schools and organizations, and top-priority support.`,
       "Upgrade in Settings › Subscription on the web, with a card, Maya, GCash or QR Ph. If you move to a smaller plan, children and devices you already added stay protected; you just can't add more until you upgrade.",
       "You can cancel any time. Your plan stays active until the end of the paid period.",
       "Only the family admin can change the plan.",
@@ -88,8 +91,8 @@ export const HELP_ARTICLES: HelpArticle[] = [
     iosApp: {
       summary: "What each plan includes.",
       body: [
-        `Free covers ${childCount(planById("FREE").entitlements.childLimit, { digits: true })} with basic protection setup, screen time management, limited app monitoring and email support.`,
-        `${planLimits("PLUS")}, and adds location sharing, full app monitoring, push alerts, category limits like gaming time, and priority support. ${planLimits("PRO")}, and adds advanced reports, API access for schools and organizations, and dedicated support.`,
+        FREE_LINE,
+        `${planLimits("PLUS")}, and adds location sharing, full app monitoring, push for every alert, category limits like gaming time, and priority support. ${planLimits("PRO")}, and adds advanced reports, API access for schools and organizations, and top-priority support.`,
         "If your family moves to a smaller plan, children and devices you already added stay protected; you just can't add more.",
         "Only the family admin can change the plan.",
       ],

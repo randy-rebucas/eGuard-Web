@@ -95,8 +95,9 @@ export function childLimitReached(plan: string, count: number) {
  * stops in between.
  */
 export async function createChild(actor: Actor, input: { name: string; birthYear: number; profile?: ProfileId }) {
-  // The limit comes from the plan; make sure a lapsed or refunded subscription is reflected first
-  await refreshPurchases(actor.familyId);
+  // The limit comes from the plan; make sure a lapsed or refunded subscription is reflected first. A store that can't
+  // be reached right now mustn't stop adding a child: the plan as last known decides (as for pairing codes)
+  await refreshPurchases(actor.familyId).catch((e) => console.error("[add child] refreshing purchases failed", actor.familyId, e));
   const age = new Date().getFullYear() - input.birthYear;
   const configs = profileConfigs(input.profile ?? recommendedProfile(age), age);
   const screen = configs.find((c) => c.key === "SCREEN_TIME") as Extract<ProtectionConfig, { key: "SCREEN_TIME" }>;

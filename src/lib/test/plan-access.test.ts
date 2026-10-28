@@ -10,7 +10,16 @@ vi.mock("../queries", () => ({
   appMinutesOn: async () => apps.map(([app, , minutes]) => ({ childId: "c1", app, minutes })),
 }));
 
-const { capAppUsage, mayNameApp, nameableApps, visibleApps } = await import("../plan-access");
+const { capAppUsage, mayNameApp, nameableApps, pushScope, visibleApps } = await import("../plan-access");
+const { entitlementsFor } = await import("../plans");
+
+describe("pushScope", () => {
+  it("pushes security alerts on Free and every alert on paid plans", () => {
+    expect(pushScope(entitlementsFor("Free"))).toBe("security");
+    expect(pushScope(entitlementsFor("eGuard Plus"))).toBe("all");
+    expect(pushScope(entitlementsFor("Family Pro"))).toBe("all");
+  });
+});
 
 describe("visibleApps", () => {
   it("picks the same apps whatever order they were loaded in (ties go by name)", () => {

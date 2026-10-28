@@ -8,8 +8,8 @@ This builds on [launch-visibility.md](launch-visibility.md), which covers the we
 rules apply here: only claim what's true today.
 
 - Android is on Google Play; **iPhone and iPad are coming soon**.
-- Push alerts are included with eGuard Plus and Family Pro, in the eGuard parent app. Every plan gets email and
-  in-app alerts.
+- Every plan gets email and in-app alerts, and push for security alerts (eGuard removed, tampered with or turned
+  off) in the eGuard parent app. eGuard Plus and Family Pro push every alert.
 - No ratings, user counts or "trusted by" lines until they're real.
 - The Page is for **parents**. Meta doesn't allow Pages or ads directed at children, so nothing on it speaks to kids.
 
