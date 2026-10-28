@@ -26,8 +26,10 @@ export async function activityAction(key: string, action: ActivityAction): Promi
   const u = await requireUser();
   return toResult(async () => {
     await enforce(`care:${u.id}`, LIMITS.careUser);
-    const run = { start: care.startActivity, complete: care.completeActivity, dismiss: care.dismissActivity, restore: care.restoreActivity }[action];
-    if (!run || typeof key !== "string" || key.length > 64) throw invalid("Choose an activity and what to do with it.");
+    const runs = { start: care.startActivity, complete: care.completeActivity, dismiss: care.dismissActivity, restore: care.restoreActivity };
+    // Own keys only: "toString" or "constructor" would otherwise find Object's and fail as an error, not a 400
+    if (!Object.hasOwn(runs, action) || typeof key !== "string" || key.length > 64) throw invalid("Choose an activity and what to do with it.");
+    const run = runs[action];
     await run(u, key);
     revalidatePath("/plan", "layout");
     return {};

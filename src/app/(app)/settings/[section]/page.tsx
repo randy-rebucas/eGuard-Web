@@ -160,6 +160,7 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
 
     case "notifications": {
       const push = pushAvailable();
+      const care = await carePreferences(u);
       return (
         <>
           {head}
@@ -181,7 +182,8 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
           </p>
           <hr className="divider" style={{ margin: "24px 0 8px" }} />
           <h3 className="org-sub" id="tips">Tips and reminders</h3>
-          <CareSettings initial={await carePreferences(u)} zones={timeZones(tz)} />
+          {/* The parent's own zone too (it can be chosen in the app), so the select never shows another in its place */}
+          <CareSettings initial={care} zones={timeZones(tz, care.timezone)} />
           <p className="t-meta" style={{ marginTop: 12 }}>See your activities and messages on your <Link className="inline-link" href="/plan">Safety plan</Link>.</p>
         </>
       );
@@ -459,9 +461,9 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
  * older names ("Asia/Calcutta", not "Asia/Kolkata"), while phones send the modern ones. A zone missing
  * from the list would leave the select on its first option, and saving would move the family there.
  */
-function timeZones(current: string) {
+function timeZones(...current: (string | null)[]) {
   const zones = Intl.supportedValuesOf("timeZone");
-  return [...new Set([current, "UTC", ...zones])].sort((a, b) => (a === "UTC" ? -1 : b === "UTC" ? 1 : a.localeCompare(b)));
+  return [...new Set([...current.filter((z) => z !== null), "UTC", ...zones])].sort((a, b) => (a === "UTC" ? -1 : b === "UTC" ? 1 : a.localeCompare(b)));
 }
 
 /** What Free allows, and the features of `from` it doesn't have: "1 child, 1 device, no location sharing, …" */

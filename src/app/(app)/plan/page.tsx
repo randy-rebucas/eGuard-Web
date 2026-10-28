@@ -13,7 +13,8 @@ function PlanCard({ a }: { a: ActivityView }) {
     <article className="care-activity">
       <div className="row" style={{ gap: 8, justifyContent: "space-between", flexWrap: "wrap" }}>
         <span className="pill tone-accent"><Icon name="hourglass" />About {a.minutes} min</span>
-        {a.status === "STARTED" ? <span className="pill tone-warn">In progress</span> : a.status === "COMPLETED" ? <span className="pill tone-ok"><Icon name="check" />Done</span> : null}
+        {a.status === "STARTED" ? <span className="pill tone-warn">In progress</span> : a.status === "COMPLETED" ? <span className="pill tone-ok"><Icon name="check" />Done</span>
+          : a.status === "DISMISSED" ? <span className="pill tone-muted">Set aside</span> : null}
       </div>
       <h3 style={{ fontSize: 17, margin: 0 }}><Link className="inline-link" href={`/plan/${a.key}`}>{a.title}</Link></h3>
       <p className="t-meta" style={{ margin: 0 }}>{a.why}</p>

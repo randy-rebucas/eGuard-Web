@@ -17,6 +17,11 @@ export type CarePrefsView = {
   languages: { code: string; name: string }[];
 };
 
+const SAVED_FIELDS = [
+  "enabled", "inApp", "push", "email", "briefings", "followUps", "weeklyPlan", "checkIns", "monthlyReport",
+  "briefingDays", "deliveryTime", "quietStart", "quietEnd", "language", "timezone",
+] as const satisfies readonly (keyof CarePrefsView)[];
+
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -46,11 +51,8 @@ export function CareSettings({ initial, zones }: { initial: CarePrefsView; zones
   const set = <K extends keyof CarePrefsView>(k: K, v: CarePrefsView[K]) => setP((x) => ({ ...x, [k]: v }));
   const dirty = JSON.stringify(p) !== JSON.stringify(initial);
   const off = !p.enabled;
-  const save = () => run(() => saveCarePreferences({
-    enabled: p.enabled, inApp: p.inApp, push: p.push, email: p.email,
-    briefings: p.briefings, followUps: p.followUps, weeklyPlan: p.weeklyPlan, checkIns: p.checkIns, monthlyReport: p.monthlyReport,
-    briefingDays: p.briefingDays, deliveryTime: p.deliveryTime, quietStart: p.quietStart, quietEnd: p.quietEnd, language: p.language as "en" | "fil", timezone: p.timezone,
-  }), { ok: "Saved." });
+  // Only what changed here: a tab left open mustn't undo a change made since in the app (or withdraw consent given there)
+  const save = () => run(() => saveCarePreferences(Object.fromEntries(SAVED_FIELDS.filter((k) => JSON.stringify(p[k]) !== JSON.stringify(initial[k])).map((k) => [k, p[k]]))), { ok: "Saved." });
   const toggleDay = (d: number) => set("briefingDays", p.briefingDays.includes(d) ? p.briefingDays.filter((x) => x !== d) : [...p.briefingDays, d].sort());
   const tzName = p.effectiveTimezone.replace(/_/g, " ");
 
