@@ -15,12 +15,19 @@ export function SponsorEstimator({ plans, months, maxCodes }: {
   const [plan, setPlan] = useState(plans[0].id);
   const [term, setTerm] = useState(12);
   const [codes, setCodes] = useState(50);
+  // What's in the box while typing: clearing it to type a new number mustn't snap it to 1 first ("50" → "150")
+  const [typed, setTyped] = useState<string | null>(null);
   const monthly = plans.find((p) => p.id === plan)!.monthly;
   const each = discountedCodePrice(monthly * term, codes);
   const total = each * codes;
   const off = batchDiscount(codes);
   const next = [...BATCH_DISCOUNTS].reverse().find((t) => t.minQuantity > codes);
-  const set = (n: number) => setCodes(Math.max(1, Math.min(maxCodes, Math.round(n) || 1)));
+  const set = (n: number) => { setTyped(null); setCodes(Math.max(1, Math.min(maxCodes, Math.round(n) || 1))); };
+  const type = (v: string) => {
+    setTyped(v);
+    const n = Number(v);
+    if (v.trim() && Number.isFinite(n)) setCodes(Math.max(1, Math.min(maxCodes, Math.round(n) || 1)));
+  };
 
   return (
     <div className="se">
@@ -41,7 +48,7 @@ export function SponsorEstimator({ plans, months, maxCodes }: {
           <label htmlFor="se-codes">Families (one code each)</label>
           <div className="se-step">
             <button type="button" onClick={() => set(codes - 10)} disabled={codes <= 1} aria-label="10 fewer"><Minus /></button>
-            <input id="se-codes" type="number" inputMode="numeric" min={1} max={maxCodes} value={codes} onChange={(e) => set(Number(e.target.value))} />
+            <input id="se-codes" type="number" inputMode="numeric" min={1} max={maxCodes} value={typed ?? codes} onChange={(e) => type(e.target.value)} onBlur={() => setTyped(null)} />
             <button type="button" onClick={() => set(codes + 10)} disabled={codes >= maxCodes} aria-label="10 more"><Plus /></button>
           </div>
           <small>Up to {maxCodes} codes in one batch; buy another batch for more.</small>

@@ -405,7 +405,7 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
       return (
         <>
           {head}
-          <div className="setting-row"><div className="grow"><div className="t-title">Export family data</div><div className="t-meta">One JSON file with your family&apos;s parents, children, devices and browsers, settings and change history, activity, alerts, places and billing records. Any parent in the family can download it. Passwords and sign-in tokens are never included.</div></div><form method="post" action="/api/account/export"><button className="btn btn-secondary btn-sm"><Icon name="download" />Download</button></form></div>
+          <div className="setting-row"><div className="grow"><div className="t-title">Export family data</div><div className="t-meta">One JSON file with your family&apos;s parents, children, devices and browsers, settings and change history, activity, alerts, places and billing records, plus your own tips and reminders history (never another parent&apos;s). Any parent in the family can download it. Passwords and sign-in tokens are never included.</div></div><form method="post" action="/api/account/export"><button className="btn btn-secondary btn-sm"><Icon name="download" />Download</button></form></div>
           {/* Only the family admin can delete a child (deleteChildData uses requireAdmin) */}
           <div className="setting-row"><div className="grow"><div className="t-title">Delete a child&apos;s data</div><div className="t-meta">{admin
             ? `Open the child's page, then Profile. ${user.passwordSet ? "Needs your password." : "You'll type DELETE to confirm."}`

@@ -93,7 +93,7 @@ export default function ForSchoolsPage() {
 
         <div className="st-block" id="cost">
           <h2>What would sponsoring cost?</h2>
-          <p>Each sponsor code is a prepaid plan for one family. It costs what the family would pay, {discountSummary()}.</p>
+          <p>Each sponsor code is a prepaid plan for one family. It costs the plan&apos;s monthly price for each month it covers, {discountSummary()}.</p>
           <SponsorEstimator
             plans={PLANS.filter((p) => p.id !== "FREE").map((p) => ({ id: p.id, name: p.name, monthly: webPrice(p.id as "PLUS" | "PRO") }))}
             months={CODE_MONTHS}
