@@ -6,7 +6,10 @@ with its own sign-in.
 
 **Status:** v1 built, 2026-10-07 (migration `20261007120000_staff_console`, `src/lib/staff-auth.ts`,
 `src/lib/console-queries.ts`, pages in `src/app/console/`, tests `src/lib/test/staff-auth.test.ts` and
-`src/lib/test/console-host.test.ts`).
+`src/lib/test/console-host.test.ts`). Operations pages (parents, children, subscriptions, devices and diagnostics,
+policies, configuration health, alerts, security, feature flags, system status) added 2026-11-11 (migration
+`20261111120000_console_ops`, rollback `prisma/rollbacks/20261111120000_console_ops.down.sql`, `src/lib/feature-flags.ts`,
+tests `src/lib/test/console-ops.test.ts`, `src/lib/test/feature-flags.test.ts` and `src/app/actions/console-ops.test.ts`).
 
 ## Contents
 
@@ -30,10 +33,18 @@ Staff see **accounts**, not **children's activity**. The console shows:
 - how many children, devices and browsers a family has
 - support tickets
 - organizations
+- children's first name and age, and what's paired to them
+- devices' and browsers' technical state: model, OS and app versions, last seen, each protection check's result and
+  message, whether parents' changes were delivered (and why one failed), whether a push token is registered (never
+  the token)
+- which rules families use and families' alerts, **as counts only** (Policies, Alerts)
 
-It never shows a child's location, places visited, browsing, app use, screen time, alerts or photos. Those stay
+It never shows a child's location, places visited, browsing, app use, screen time, photos, what a rule says (sites,
+apps, times, limits, config values), what a protection check reported, or an alert's title or text. Those stay
 between the family and its devices, as the privacy policy promises. New console pages must keep to this. Queries
-live in `src/lib/console-queries.ts`, so the rule can be checked in one file.
+live in `src/lib/console-queries.ts`, so the rule can be checked in one file, and
+`src/lib/test/console-ops.test.ts` fails if that file reads an activity table or selects a field like `title`,
+`config`, `reported` or `blockedDomains`.
 
 ## 2. How the subdomain works
 
@@ -43,7 +54,7 @@ decides by the request's Host:
 | Host | Request | Result |
 | --- | --- | --- |
 | console.eguard.family | `/families` | rewritten to `/console/families` |
-| console.eguard.family | anything, no staff cookie (except `/login`, `/robots.txt`) | 307 to `/login` |
+| console.eguard.family | anything, no staff cookie (except `/login`, `/robots.txt`, `/manifest.webmanifest`) | 307 to `/login` |
 | console.eguard.family | `/dashboard`, `/api/…` (any site page or API) | the console's 404: the rewrite finds no console page |
 | www.eguard.family (any other host) | `/console…` | the site's 404 |
 
@@ -57,7 +68,7 @@ Hosts that count as the console (`src/lib/console-host.ts`):
 - `CONSOLE_HOST` when set (a preview deployment's own console host)
 
 The console host also gets `X-Robots-Tag: noindex, nofollow`, a robots.txt that disallows everything, and
-`noindex` metadata.
+`noindex` metadata. It serves its own `manifest.webmanifest` (`src/app/console/manifest.webmanifest/route.ts`): every page links one, and the site's isn't served on this host.
 
 ## 3. Staff accounts and signing in
 
@@ -102,8 +113,17 @@ script uses the development key and warns, and those codes only work locally.
 
 | Path | What it shows |
 | --- | --- |
-| `/` | Totals: families (and new in 7 and 30 days), parents, children, devices, browsers, open tickets, organizations. Families by plan. |
+| `/` | Dashboard. Totals: families (and new in 7 and 30 days), parents, children, devices (and offline over 24 hours), browsers, active subscriptions, changes stuck over 24 hours, open tickets, organizations, flags on. Families by plan. A banner when the maintenance job stopped or its last run had failed steps. |
 | `/families` | Search by parent email or name, family name or id. Newest first, 50 per page. |
+| `/parents` | Every parent, newest first: email, family, role, verified, how they sign in, two-step, last active. Search by email, name, user id or family id (logged as `parent.search`). |
+| `/children` | First name, age, family, devices and browsers paired. Search by first name, family name or id (logged as `child.search`). |
+| `/subscriptions` | Every Google Play and PayMongo purchase: product, state, renews, ends, last re-checked. Filter by Active, Ending in 7 days (not renewing), Lapsed, Closed, and by store. Active counts by product. |
+| `/devices` | Phones, tablets and computers (filter by Offline over 24 h, Never synced, Being removed, and platform), or browsers (Offline, Disconnected for security). App versions below `CHILD_MIN_APP_VERSION` are marked. |
+| `/devices/[id]` | Device diagnostics: status, versions, battery, push registered, Windows accounts covered (counts), each protection check's result and message, changes waiting or failed (with why), recent health checks, browsers on it and whether they run the latest rules. |
+| `/diagnostics` | The fleet: app, OS and extension versions in use, offline, never synced, no push token, browsers behind on their rules, devices that went quiet in the last 30 days. |
+| `/policies` | How many children have each protection set, and browser-rule adoption (Safe Search, schedule, blocked sites, YouTube level, unknown sites). Counts only. |
+| `/config-health` | Check results by protection × status across every device, parents' changes by state, changes waiting over 24 hours (linked to the device), failures in 7 days by reason. |
+| `/alerts` | What needs staff: maintenance job stopped or steps failing, parent care jobs failed or retrying, broadcast emails failed, purchases not re-checked in 2 days, stuck changes, browsers disconnected for security, tickets open over 2 days. Then families' alerts as counts by category and severity. |
 | `/families/[id]` | Account, parents, purchases, support tickets, organizations joined and sponsor codes redeemed. The plan says "renews" or "ends" as the parent's Settings does, and device slots count phones, tablets and connected browsers, as pairing does. |
 | `/tickets` | Support tickets, filtered by Open, Closed or All. Parents file them from the app's Contact Support or the web's Settings › Support (both through `createTicket` in `src/lib/support.ts`), and see each one's Open/Closed status there. |
 | `/tickets/[id]` | The message, who sent it, and a Close/Reopen button. Replies still go out from the support inbox, where tickets are forwarded with Reply-To set to the parent. |
@@ -116,6 +136,9 @@ script uses the development key and warns, and those codes only work locally.
 | `/care/delivery` | The job queue, reliability, provider errors, duplicate guards, failed and retrying jobs; retry one, or all from the last 7 days (with confirmation). |
 | `/care/trust` | Consent and preference counts, opt-outs and suppressions, channel readiness, contact limits, template approval, staff changes (`care.*` audit entries). |
 | `/audit` | The staff audit log. |
+| `/security` | Staff signed in now (with **End session** for another browser), staff accounts, failed staff sign-ins in the current 15-minute window, parents' two-step adoption and sign-in methods, rate limits in force by scope. |
+| `/flags` | Feature flags: turn on or off, edit description and rollout %, create, delete (with confirmation). Code reads them with `isEnabled(key, familyId)` from `src/lib/feature-flags.ts`; a missing flag is off, and below 100% a flag is on for that share of families (by a hash of flag and family, so the same families stay in as it grows). |
+| `/status` | Database reachable and its latency, the last 30 maintenance runs (time, duration, failed steps, what each step did), the latest migration, deployment (environment, commit, region), and whether each setting the server needs is present (never the value). |
 
 A page or action that fails shows the console's own error panel (`(signed-in)/error.tsx`), with the bar and nav
 kept.
@@ -127,8 +150,12 @@ view.
 
 `StaffAuditLog` records each of these with who did it and when:
 - `staff.login`
-- opening a family, ticket or organization (`family.view`, `ticket.view`, `organization.view`)
-- searching families (`family.search`, with the search text as the detail; paging through results logs each page)
+- opening a family, ticket, organization or device (`family.view`, `ticket.view`, `organization.view`, `device.view`)
+- searching families, parents or children (`family.search`, `parent.search`, `child.search`, with the search text as
+  the detail; paging through results logs each page)
+- ending another staff browser's session (`security.session_end`, with that staff member's email)
+- feature flags: `flag.create` (with the rollout), `flag.edit` (the rollout change, or "description"), `flag.set`
+  ("off → on" / "on → off"), `flag.delete`
 - each change (`ticket.status`, with "OPEN → CLOSED" as the detail)
 - email broadcasts: `broadcast.create`, `broadcast.edit`, `broadcast.test`, `broadcast.send` / `broadcast.schedule`
   (with the kind, plans and how many parents), `broadcast.unschedule`, `broadcast.cancel`, `broadcast.delete`, `broadcast.ai_draft` (with the start of the brief), and

@@ -1,6 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse, connection } from "next/server";
-import { runMaintenance } from "@/lib/maintenance";
+import { recordMaintenanceRun, runMaintenance } from "@/lib/maintenance";
 
 /**
  * Background upkeep: offline-device alerts, alert emails, subscription re-checks and data retention.
@@ -25,6 +25,8 @@ async function run(req: Request) {
   if (!authorized(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const started = Date.now();
   const result = await runMaintenance();
+  // For console › System status and Alerts
+  await recordMaintenanceRun(new Date(started), Date.now() - started, result);
   // The other steps still ran; a 500 makes the failed ones visible in the scheduler's run history
   return NextResponse.json({ ok: !result.failed.length, ms: Date.now() - started, ...result }, { status: result.failed.length ? 500 : 200 });
 }

@@ -31,6 +31,22 @@ import { CARE_RETENTION_DAYS } from "./parent-care/retention";
 /** Audit entries are kept longer than activity: they're the security record. */
 const AUDIT_RETENTION_DAYS = 365;
 
+/** How long console › System status keeps each run of this job. */
+export const MAINTENANCE_RUN_RETENTION_DAYS = 30;
+
+/**
+ * Records a run for console › System status. Best effort: the run already happened, so a failed insert is only logged
+ * and never fails the job.
+ */
+export async function recordMaintenanceRun(startedAt: Date, ms: number, result: { failed: string[] } & Record<string, unknown>) {
+  try {
+    const { failed, ...steps } = result;
+    await db.maintenanceRun.create({ data: { startedAt, ms, failed, result: JSON.parse(JSON.stringify(steps)) } });
+  } catch (e) {
+    console.error("[maintenance] recording the run failed", e);
+  }
+}
+
 /** A child asking for something (an app, a blocked website): emailed only to parents with "App approval requests" on. */
 export const isChildRequest = (a: Pick<Alert, "resolveKey">) => !!a.resolveKey && /^(APPREQ|WEBREQ):/.test(a.resolveKey);
 
@@ -160,6 +176,7 @@ export async function purgeExpiredData(now = new Date()) {
     careJobs: await db.parentCareJob.deleteMany({ where: { status: { in: ["DONE", "SKIPPED", "CANCELLED", "DEAD"] }, updatedAt: { lt: new Date(now.getTime() - CARE_RETENTION_DAYS.jobs * 864e5) } } }).then((r) => r.count),
     carePlans: await db.parentCarePlan.deleteMany({ where: { createdAt: { lt: new Date(now.getTime() - CARE_RETENTION_DAYS.plans * 864e5) } } }).then((r) => r.count),
     careSuppressions: await db.parentCareSuppression.deleteMany({ where: { until: { lt: now } } }).then((r) => r.count),
+    maintenanceRuns: await db.maintenanceRun.deleteMany({ where: { startedAt: { lt: new Date(now.getTime() - MAINTENANCE_RUN_RETENTION_DAYS * 864e5) } } }).then((r) => r.count),
   };
   return counts;
 }

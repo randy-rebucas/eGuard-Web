@@ -12,7 +12,7 @@ import { ENTITLED_STATES as PLAY_ENTITLED } from "./google-play";
 
 /** PayMongo states that keep access until expiresAt: a paid pass, and subscriptions that were paid for the period. */
 const PAYMONGO_ENTITLED = ["PAID", "active", "past_due", "cancelled"];
-const ENTITLED_STATES = [...PLAY_ENTITLED, ...PAYMONGO_ENTITLED];
+export const ENTITLED_STATES = [...PLAY_ENTITLED, ...PAYMONGO_ENTITLED];
 
 /** PayMongo retries a failed renewal once a day, 3 times; the family keeps access meanwhile. */
 export const PAST_DUE_GRACE_MS = 3 * 864e5;

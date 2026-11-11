@@ -16,7 +16,7 @@ export const STAFF_COOKIE = process.env.NODE_ENV === "production" ? "__Host-eg_s
 export const STAFF_IDLE_MS = 30 * 60_000;
 
 /** Console paths a signed-out visitor may open; anything else without the cookie is sent to /login by the proxy. */
-export const CONSOLE_PUBLIC = ["/login", "/robots.txt"];
+export const CONSOLE_PUBLIC = ["/login", "/robots.txt", "/manifest.webmanifest"];
 
 /**
  * Whether a request's Host header is the console: console.eguard.family, console.localhost (any port) in

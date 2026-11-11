@@ -12,6 +12,7 @@ import { draftBroadcast, type AiDraftInput } from "@/lib/broadcast-ai";
 import { db } from "@/lib/db";
 import { ServiceError } from "@/lib/errors";
 import { isTicketStatus } from "@/lib/console-queries";
+import { FLAG_KEY_RE } from "@/lib/feature-flags";
 import {
   AUDIENCE_LABEL, BroadcastSchema, KIND_LABEL, audienceNoun, type BroadcastAudience, PLACEHOLDER_RE, cancelBroadcast as cancel, countAudience, deliverBroadcasts, parseConsoleTime, sendTestBroadcast,
   type BroadcastKind,
@@ -252,4 +253,87 @@ export async function retryCareJobs(_: FormState, form: FormData): Promise<FormS
   await logStaff(staff.id, id ? "care.job.retry" : "care.job.retry_all", id ? `care-job:${id}` : `care:${automation || "all"}`, `${count} jobs`);
   refresh();
   return { ok: `${count} ${count === 1 ? "job" : "jobs"} queued again. The next maintenance run (within 10 minutes) delivers ${count === 1 ? "it" : "them"}.` };
+}
+
+/* Security (console › Security): end another staff browser's session */
+
+export async function endStaffSessionById(form: FormData) {
+  await consoleRequest();
+  const staff = await requireStaff();
+  const id = String(form.get("id") ?? "");
+  if (!id) throw new ServiceError(400, "Choose a session.", "invalid");
+  // This browser's own session ends with Sign out, which also clears the cookie
+  if (id === staff.sessionId) throw new ServiceError(400, "Use Sign out to end your own session.", "invalid");
+  const s = await db.staffSession.findUnique({ where: { id }, select: { staff: { select: { email: true } } } });
+  if (s && (await db.staffSession.deleteMany({ where: { id } })).count) {
+    await logStaff(staff.id, "security.session_end", `staff-session:${id}`, s.staff.email);
+  }
+  refresh();
+}
+
+/* Feature flags (console › Feature flags, lib/feature-flags) */
+
+const FlagSchema = z.object({
+  key: z.string().trim().regex(FLAG_KEY_RE, "A key is 2–48 lowercase letters, digits and underscores, starting with a letter."),
+  description: z.string().trim().min(1, "Say what the flag controls.").max(300, "Keep the description under 300 characters."),
+  rollout: z.coerce.number({ error: "Rollout is a number from 0 to 100." }).int("Rollout is a whole number.").min(0, "Rollout is 0 to 100.").max(100, "Rollout is 0 to 100."),
+});
+
+/**
+ * Creates a flag (off), or edits one's description and rollout. An edit carries the `version` (updatedAt) the page
+ * showed, so a stale form never undoes another staff member's change.
+ */
+export async function saveFlag(_: FormState, form: FormData): Promise<FormState> {
+  await consoleRequest();
+  const staff = await requireStaff();
+  const parsed = FlagSchema.safeParse({ key: form.get("key"), description: form.get("description"), rollout: form.get("rollout") ?? 100 });
+  if (!parsed.success) return { error: parsed.error.issues[0].message };
+  const { key, description, rollout } = parsed.data;
+  const version = String(form.get("version") ?? "");
+  if (!version) {
+    if (await db.featureFlag.findUnique({ where: { key }, select: { key: true } })) return { error: "A flag with that key already exists." };
+    try {
+      await db.featureFlag.create({ data: { key, description, rollout, enabled: false, updatedById: staff.id } });
+    } catch (e) {
+      if ((e as { code?: string }).code === "P2002") return { error: "A flag with that key already exists." };
+      throw e;
+    }
+    await logStaff(staff.id, "flag.create", `flag:${key}`, `${rollout}%`);
+    refresh();
+    return { ok: `Created ${key}. It's off until you turn it on.` };
+  }
+  const at = new Date(version);
+  if (Number.isNaN(at.getTime())) return { error: "Reload the page and try again." };
+  const before = await db.featureFlag.findUnique({ where: { key }, select: { rollout: true } });
+  if (!before) return { error: "That flag was deleted." };
+  const { count } = await db.featureFlag.updateMany({ where: { key, updatedAt: at }, data: { description, rollout, updatedById: staff.id } });
+  if (!count) return { error: "This flag was changed since you opened it. Reload the page to see the change." };
+  await logStaff(staff.id, "flag.edit", `flag:${key}`, before.rollout !== rollout ? `rollout ${before.rollout}% → ${rollout}%` : "description");
+  refresh();
+  return { ok: "Saved." };
+}
+
+/** Turns a flag on or off, only from the state the page showed, so a double click logs one change. */
+export async function setFlag(form: FormData) {
+  await consoleRequest();
+  const staff = await requireStaff();
+  const key = String(form.get("key") ?? "");
+  const enable = form.get("enabled") === "true";
+  if (!FLAG_KEY_RE.test(key)) throw new ServiceError(400, "Unknown flag.", "invalid");
+  if ((await db.featureFlag.updateMany({ where: { key, enabled: !enable }, data: { enabled: enable, updatedById: staff.id } })).count) {
+    await logStaff(staff.id, "flag.set", `flag:${key}`, enable ? "off → on" : "on → off");
+  }
+  refresh();
+}
+
+/** Deletes a flag after the confirmation box: code checking it then sees it as off. */
+export async function deleteFlag(_: FormState, form: FormData): Promise<FormState> {
+  await consoleRequest();
+  const staff = await requireStaff();
+  const key = String(form.get("key") ?? "");
+  if (form.get("confirm") !== "on") return { error: "Tick the box to confirm deleting it." };
+  if (!(await db.featureFlag.deleteMany({ where: { key } })).count) return { error: "That flag was already deleted." };
+  await logStaff(staff.id, "flag.delete", `flag:${key}`);
+  refresh();
+  return { ok: `Deleted ${key}.` };
 }

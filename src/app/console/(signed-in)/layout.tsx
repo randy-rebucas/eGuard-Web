@@ -1,6 +1,7 @@
 import { requireStaff } from "@/lib/staff-auth";
 import { consoleLogout } from "@/app/actions/console";
 import { ConsoleNav } from "../nav";
+import { ChartTooltip } from "../chart-tooltip";
 
 /** Every page here is read per request behind the staff session: no static shell to validate. */
 export const instant = false;
@@ -20,6 +21,7 @@ export default async function SignedInLayout({ children }: { children: React.Rea
         <ConsoleNav />
       </header>
       <main className="cn-main" id="main">{children}</main>
+      <ChartTooltip />
     </>
   );
 }

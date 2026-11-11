@@ -1172,6 +1172,7 @@ model StaffUser {
   sessions   StaffSession[]
   auditLogs  StaffAuditLog[]
   broadcasts Broadcast[]
+  flags      FeatureFlag[]
 }
 
 /// A signed-in console browser. Only the SHA-256 of the cookie's token is stored.
@@ -1203,6 +1204,33 @@ model StaffAuditLog {
 
   @@index([createdAt])
   @@index([staffId, createdAt])
+}
+
+/// A switch staff turn on or off in the console (console › Feature flags, lib/feature-flags). An unknown key is off.
+model FeatureFlag {
+  /// e.g. "ios_launch": lowercase letters, digits and underscores
+  key         String     @id
+  description String
+  enabled     Boolean    @default(false)
+  /// 0–100: the share of families it is on for while enabled, bucketed by a hash of the family id
+  rollout     Int        @default(100)
+  updatedById String?
+  updatedBy   StaffUser? @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedAt   DateTime   @updatedAt
+  createdAt   DateTime   @default(now())
+}
+
+/// One run of the maintenance job (/api/cron/maintenance), for console › System status. Kept 30 days.
+model MaintenanceRun {
+  id        String   @id @default(cuid())
+  startedAt DateTime @default(now())
+  ms        Int
+  /// Names of the steps that threw
+  failed    String[]
+  /// runMaintenance()'s per-step results (counts only)
+  result    Json
+
+  @@index([startedAt])
 }
 
 /// An email the eGuard team sends to many parents at once (console › Email, docs/console.md §8)

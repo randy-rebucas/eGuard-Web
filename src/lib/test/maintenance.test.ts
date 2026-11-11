@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
-vi.mock("../db", () => ({ db: { checkRun: { findMany: vi.fn() }, configRequest: { findMany: vi.fn(), updateMany: vi.fn() }, alert: { create: vi.fn() } } }));
+vi.mock("../db", () => ({ db: { checkRun: { findMany: vi.fn() }, configRequest: { findMany: vi.fn(), updateMany: vi.fn() }, alert: { create: vi.fn() }, maintenanceRun: { create: vi.fn() } } }));
 vi.mock("../engine", () => ({ finalizeCheckRun: vi.fn() }));
 vi.mock("../browser-health", () => ({}));
 vi.mock("../billing", () => ({}));
@@ -16,9 +16,9 @@ vi.mock("../weekly-digest", () => ({}));
 vi.mock("../parent-care/runner", () => ({}));
 
 type Fn = ReturnType<typeof vi.fn>;
-const { isChildRequest, isSecurityAlert, worthEmail, closeStaleWork, OPEN_CHANGE_DAYS, groupProtectionAlerts, combineAlerts } = await import("../maintenance");
+const { isChildRequest, isSecurityAlert, worthEmail, closeStaleWork, OPEN_CHANGE_DAYS, groupProtectionAlerts, combineAlerts, recordMaintenanceRun } = await import("../maintenance");
 const { isDismissible } = await import("../health");
-const { db } = (await import("../db")) as unknown as { db: { checkRun: { findMany: Fn }; configRequest: { findMany: Fn; updateMany: Fn }; alert: { create: Fn } } };
+const { db } = (await import("../db")) as unknown as { db: { checkRun: { findMany: Fn }; configRequest: { findMany: Fn; updateMany: Fn }; alert: { create: Fn }; maintenanceRun: { create: Fn } } };
 const { finalizeCheckRun } = (await import("../engine")) as unknown as { finalizeCheckRun: Fn };
 
 const alert = (a: Partial<{ severity: string; category: string; resolveKey: string | null }>) =>
@@ -142,5 +142,20 @@ describe("notifying protection alerts raised together", () => {
     expect(a.body).toMatch(/^Screen Time, Bedtime and App Approval changed/);
     const one = alert("SCREEN_TIME", "d1");
     expect(combineAlerts([one])).toBe(one);
+  });
+});
+
+describe("recordMaintenanceRun (console › System status)", () => {
+  it("stores the failed steps apart from the counts", async () => {
+    const at = new Date("2026-11-11T00:00:00Z");
+    await recordMaintenanceRun(at, 1234, { failed: ["purchase refresh"], purged: { sessions: 2 }, emails: null });
+    expect(db.maintenanceRun.create).toHaveBeenCalledWith({ data: { startedAt: at, ms: 1234, failed: ["purchase refresh"], result: { purged: { sessions: 2 }, emails: null } } });
+  });
+
+  it("never throws: the run already happened", async () => {
+    db.maintenanceRun.create.mockRejectedValueOnce(new Error("db down"));
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(recordMaintenanceRun(new Date(), 1, { failed: [] })).resolves.toBeUndefined();
+    err.mockRestore();
   });
 });
