@@ -22,6 +22,14 @@ enum Platform {
   MACOS
 }
 
+/// iPhone: how the eGuard child app got its Screen Time (FamilyControls) permission
+enum ScreenTimeAuthorization {
+  /// A parent approved it with their Apple ID through Family Sharing; the child can't take it back
+  CHILD
+  /// The child approved it on the phone and can turn it off in Settings › Screen Time
+  INDIVIDUAL
+}
+
 enum DeviceKind {
   PHONE
   TABLET
@@ -651,6 +659,9 @@ model Device {
   /// reported (`/report` `accounts`: [{ name, enforced }]). The parent picks them when pairing; the rest (a parent's
   /// own account on a family PC) aren't limited or counted. Null until the agent reports them.
   accounts              Json?
+  /// iPhones only: the Screen Time authorization the app last reported on /sync (lib/screen-time-authorization).
+  /// Null on other platforms, and until an app that reports it has synced.
+  screenTimeAuthorization ScreenTimeAuthorization?
   createdAt   DateTime   @default(now())
 
   protections DeviceProtection[]

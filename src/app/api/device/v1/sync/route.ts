@@ -40,7 +40,7 @@ export async function POST(req: Request) {
   const withIds = computer || device.platform === "ANDROID";
   // Written only when it changes, so a heartbeat doesn't rewrite the row
   const authorization = screenTimeAuthorizationUpdate(device, screenTimeAuthorization);
-  if (authorization) await db.device.update({ where: { id: device.id }, data: { accounts: authorization } });
+  if (authorization) await db.device.update({ where: { id: device.id }, data: { screenTimeAuthorization: authorization } });
   const [sync, apps, family, categoryLimits, ids] = await Promise.all([
     deviceSync(device.id, info),
     db.childApp.findMany({ where: { childId: device.childId }, select: { name: true, approval: true, dailyLimitMinutes: true, category: true } }),

@@ -125,3 +125,28 @@ describe("removing the primary device", () => {
     expect(await primaries(leoId)).toEqual([phone.deviceId]);
   });
 });
+
+describe("iPhone Screen Time authorization", () => {
+  it("a self-approved iPhone shows as such to parents until it reports a parent's approval", async () => {
+    const iphone = await pairDevice(token, leoId, "IOS", "Leo's iPhone");
+    const shown = async () => (await call("GET", "/devices", { token })).data.devices.find((d: { id: string }) => d.id === iphone.deviceId)?.selfApproved;
+    const stored = () => db.device.findUniqueOrThrow({ where: { id: iphone.deviceId }, select: { screenTimeAuthorization: true, accounts: true } });
+
+    expect(await shown()).toBe(false);
+    expect((await iphone.send("/sync", { screenTimeAuthorization: "individual" })).status).toBe(200);
+    expect(await shown()).toBe(true);
+    // Its own column: nothing in the computers' accounts
+    expect(await stored()).toEqual({ screenTimeAuthorization: "INDIVIDUAL", accounts: null });
+    // An unknown value or none at all keeps the last report, without failing the heartbeat
+    expect((await iphone.send("/sync", { screenTimeAuthorization: "family" })).status).toBe(200);
+    expect((await iphone.send("/sync", { battery: 50 })).status).toBe(200);
+    expect(await shown()).toBe(true);
+    await iphone.send("/sync", { screenTimeAuthorization: "child" });
+    expect(await shown()).toBe(false);
+    expect((await stored()).screenTimeAuthorization).toBe("CHILD");
+
+    // Only iPhones report it
+    await phone.send("/sync", { screenTimeAuthorization: "individual" });
+    expect((await db.device.findUniqueOrThrow({ where: { id: phone.deviceId } })).screenTimeAuthorization).toBeNull();
+  });
+});

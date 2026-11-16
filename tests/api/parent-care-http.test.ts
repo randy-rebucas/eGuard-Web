@@ -1,6 +1,7 @@
 import { request } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { BASE, PASSWORD, call, cleanup, db, email, register } from "./helpers";
+import { syncAutomations } from "@/lib/parent-care/runner";
 
 /**
  * Parent care through the mobile API, end to end against a running server (docs/features/parent-care.md):
@@ -10,7 +11,14 @@ import { BASE, PASSWORD, call, cleanup, db, email, register } from "./helpers";
 
 let token = "", userId = "", other = "";
 
+let switches: { key: string; enabled: boolean }[] = [];
+
 beforeAll(async () => {
+  // The automations are switched on and off by staff for everyone (console › Parent care): this file needs them on,
+  // and puts them back as it found them, so it doesn't depend on what ran before it in this database
+  await syncAutomations();
+  switches = await db.parentCareAutomation.findMany({ select: { key: true, enabled: true } });
+  await db.parentCareAutomation.updateMany({ data: { enabled: true } });
   const r = await register({ name: "Rosa Lim", email: email("care"), password: PASSWORD, guardian: true });
   if (r.status !== 201) throw new Error(`register failed: ${JSON.stringify(r.data)}`);
   token = r.data.token;
@@ -19,7 +27,10 @@ beforeAll(async () => {
   other = o.data.token;
 });
 
-afterAll(cleanup);
+afterAll(async () => {
+  for (const { key, enabled } of switches) await db.parentCareAutomation.update({ where: { key }, data: { enabled } });
+  await cleanup();
+});
 
 describe("parent care API", () => {
   it("needs a session", async () => {
