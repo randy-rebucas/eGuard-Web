@@ -54,7 +54,7 @@ Run the suite with the same secret: `CRON_SECRET=test-cron-secret npx vitest run
 The tests load `.env`, whose `CRON_SECRET` differs, so without it every maintenance-job test gets 401 (2026-10-28).
 The sign-in lockout test uses fixed test addresses (203.0.113.x) and `loginIp` allows 30 per 15 minutes: a third
 full run within 15 minutes fails it with 429. That's the limiter working; wait 15 minutes and rerun that file.
-Last full run: 2026-10-28, 346 tests, all passing.
+Last full run: 2026-11-16, 346 tests, all passing (own `next dev` on :3000).
 
 Still prove it before the suite: register one throwaway account (`@mobile-test.example`), check it arrived in Mailpit
 (`http://localhost:8025/api/v1/search?query=to:"<address>"`). A server started with `next start` (production mode)
@@ -71,7 +71,7 @@ Never print `.env` lines; check whether a variable is set with `grep -qE "^NAME=
 
 ```bash
 npx tsx --env-file=.env .claude/skills/qa-audit/scripts/qa.mts session randy@example.com   # TOKEN=… for the seed admin
-npx tsx --env-file=.env .claude/skills/qa-audit/scripts/qa.mts fixture [Free|"eGuard Plus"|"Family Pro"] [childName]
+npx tsx --env-file=.env .claude/skills/qa-audit/scripts/qa.mts fixture [Free|"eGuard Plus"|"eGuard Family"][:legacy] [childName]   # plan names as lib/plans has them; an old name gets Free limits
 npx tsx --env-file=.env .claude/skills/qa-audit/scripts/qa.mts parent <fixtureFamilyId>     # non-admin parent in a fixture family
 npx tsx --env-file=.env .claude/skills/qa-audit/scripts/qa.mts alert <fixtureFamilyId> '<json>'   # ALERT=… with any Alert fields
 npx tsx --env-file=.env .claude/skills/qa-audit/scripts/qa.mts usage <fixtureFamilyId> '{"apps":12,"changes":500}'  # report data for the first child

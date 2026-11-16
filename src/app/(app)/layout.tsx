@@ -8,7 +8,7 @@ import { FlowProvider } from "@/components/flow";
 import { VerifyEmailBanner } from "@/components/verify-email-banner";
 import { Tour } from "@/components/tour";
 import { hasPendingVerification } from "@/lib/email-verification";
-import { entitlementsFor, nextPlan } from "@/lib/plans";
+import { nextPlan } from "@/lib/plans";
 
 /** Signed-in pages never belong in search results (signed-out visitors are sent to sign in anyway). */
 export const metadata = { robots: { index: false, follow: false } };

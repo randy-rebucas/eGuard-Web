@@ -3,7 +3,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { fmtMinutes } from "@/lib/protections";
 import { createAlertUnless, resolveAlerts } from "@/lib/engine";
-import { authDevice, badRequest, readJson, unauthorized } from "@/lib/device-auth";
+import { authDevice, badRequest, readJson, TOO_LARGE, tooLarge, tooMany, unauthorized } from "@/lib/device-auth";
 import { LIMITS, clearLimit, hit } from "@/lib/rate-limit";
 import { ServiceError, isUniqueViolation } from "@/lib/errors";
 import { CATEGORY_BY_KEY, CATEGORY_KEYS } from "@/lib/app-categories";
@@ -99,10 +99,10 @@ export async function POST(req: Request) {
   const device = await authDevice(req);
   if (!device) return unauthorized();
   // A device token must not be able to fill the family's app list and alert feed without limit
-  if ((await hit(`deviceevents:${device.id}`, LIMITS.deviceEvents)).limited) {
-    return NextResponse.json({ error: "Too many events. eGuard will accept the next one shortly." }, { status: 429 });
-  }
+  const rate = await hit(`deviceevents:${device.id}`, LIMITS.deviceEvents);
+  if (rate.limited) return tooMany("Too many events. eGuard will accept the next one shortly.", rate.retryAfter);
   const raw = await readJson(req);
+  if (raw === TOO_LARGE) return tooLarge();
   const legacy = raw && typeof raw === "object" && "type" in raw && typeof raw.type === "string" ? LEGACY_TYPES[raw.type] : undefined;
   const parsed = Body.safeParse(legacy ? { ...(raw as object), type: legacy } : raw);
   if (!parsed.success) return badRequest(parsed.error.issues[0].message);
@@ -112,7 +112,11 @@ export async function POST(req: Request) {
   const seenKey = id.data.eventId ? `deviceevent:${device.id}:${id.data.eventId}` : null;
   if ((await hit(seenKey, LIMITS.deviceEventId)).limited) return NextResponse.json({ ok: true, duplicate: true });
   try {
-    return await handle(device, parsed.data, legacy === "APP_REQUESTED");
+    const res = await handle(device, parsed.data, legacy === "APP_REQUESTED");
+    // Refused (e.g. 409 from an UNINSTALL_ACK the server can't accept yet): a retry with the same id must be judged
+    // again, not answered `duplicate`
+    if (seenKey && res.status >= 400) await clearLimit(seenKey).catch(() => {});
+    return res;
   } catch (err) {
     // Not handled after all: let the device's retry through
     if (seenKey) await clearLimit(seenKey).catch(() => {});

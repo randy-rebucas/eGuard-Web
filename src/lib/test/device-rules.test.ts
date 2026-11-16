@@ -46,6 +46,10 @@ describe("minChildAppVersion", () => {
   });
   it("takes one version for both platforms, or one per platform", () => {
     expect(minChildAppVersion("IOS", "1.2.0")).toBe("1.2.0");
+    // A bare version is the phone apps': computers need their own "windows:" entry
+    expect(minChildAppVersion("WINDOWS", "1.2.0")).toBeNull();
+    expect(minChildAppVersion("MACOS", "1.2.0")).toBeNull();
+    expect(minChildAppVersion("WINDOWS", "android:1.3.0, windows:0.2.0")).toBe("0.2.0");
     expect(minChildAppVersion("ANDROID", "android:1.3.0, ios:1.1.0")).toBe("1.3.0");
     expect(minChildAppVersion("IOS", "android:1.3.0, ios:1.1.0")).toBe("1.1.0");
     expect(minChildAppVersion("IOS", "android:1.3.0")).toBeNull();

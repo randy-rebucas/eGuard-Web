@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { authDevice, badRequest, readJson, unauthorized } from "@/lib/device-auth";
+import { authDevice, badRequest, readJson, TOO_LARGE, tooLarge, tooMany, unauthorized } from "@/lib/device-auth";
 import { LIMITS, hit } from "@/lib/rate-limit";
 import { AppIds, canonicalNames, rememberIds } from "@/lib/app-identity";
 
@@ -38,10 +38,11 @@ export async function POST(req: Request) {
   const device = await authDevice(req);
   if (!device) return unauthorized();
   // A looping or tampered device must not be able to write app rows without limit
-  if ((await hit(`deviceusage:${device.id}`, LIMITS.deviceUsage)).limited) {
-    return NextResponse.json({ error: "Too many usage reports. Send the next one in a few minutes." }, { status: 429 });
-  }
-  const parsed = Body.safeParse(await readJson(req));
+  const rate = await hit(`deviceusage:${device.id}`, LIMITS.deviceUsage);
+  if (rate.limited) return tooMany("Too many usage reports. Send the next one in a few minutes.", rate.retryAfter);
+  const raw = await readJson(req);
+  if (raw === TOO_LARGE) return tooLarge();
+  const parsed = Body.safeParse(raw);
   if (!parsed.success) return badRequest(parsed.error.issues[0].message);
   const { date: day, totalMinutes, hourly } = parsed.data;
   const date = new Date(`${day}T00:00:00.000Z`);

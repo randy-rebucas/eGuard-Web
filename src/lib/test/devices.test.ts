@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
-// Each write returns a tag, so the test can see what ran inside the transaction and in which order
-const op = (name: string, count = 1) => vi.fn((args: unknown) => ({ op: name, args, count }));
+// Each write is logged and returns a count, so the test can see what ran inside the transaction and in which order
+const log: string[] = [];
+const op = (name: string, count = 1) => vi.fn((args: unknown) => { log.push(name); return { op: name, args, count }; });
 const db = vi.hoisted(() => ({
   device: { findFirst: vi.fn(), deleteMany: vi.fn(), updateMany: vi.fn(), update: vi.fn() },
   screenTimeDaily: { deleteMany: vi.fn() },
@@ -12,7 +13,8 @@ const db = vi.hoisted(() => ({
   alert: { updateMany: vi.fn(), create: vi.fn() },
   browserInstallation: { findMany: vi.fn(async () => [] as { appliedPolicyVersion: number | null }[]) },
   browserPolicy: { findUnique: vi.fn() },
-  $transaction: vi.fn(async (ops: unknown[]) => ops),
+  // deleteDevice's interactive transaction runs against the same mock
+  $transaction: vi.fn(async (arg: unknown) => (typeof arg === "function" ? arg(db) : arg)),
 }));
 // The transaction client moveDevice works with, inside the (mocked) family device lock
 const tx = vi.hoisted(() => ({
@@ -51,12 +53,13 @@ const { removeDevice, cancelDeviceRemoval, renameDevice, setPrimaryDevice, moveD
 
 const actor = { id: "u1", familyId: "fam1", name: "Ana", role: "FAMILY_ADMIN" } as Parameters<typeof removeDevice>[0];
 const confirm = { password: "pw", phrase: "" };
-const ops = () => (db.$transaction.mock.calls[0][0] as { op: string }[]).map((o) => o.op);
+const ops = () => [...log];
 const alertBody = () => (db.alert.create.mock.calls[0][0] as { data: { body: string } }).data.body;
 
 describe("removeDevice", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    log.length = 0;
     db.device.findFirst.mockResolvedValue({ id: "d1", familyId: "fam1", name: "Old phone", kind: "PHONE", childId: "c1", child: { name: "Mia" } });
     db.device.deleteMany.mockImplementation(op("device"));
     db.screenTimeDaily.deleteMany.mockImplementation(op("screenTime"));
@@ -104,6 +107,7 @@ describe("removeDevice on a computer", () => {
   const pc = { id: "d1", familyId: "fam1", name: "Gaming PC", kind: "COMPUTER", childId: "c1", child: { name: "Mia" }, removalRequestedAt: null };
   beforeEach(() => {
     vi.clearAllMocks();
+    log.length = 0;
     db.device.findFirst.mockResolvedValue(pc);
     db.device.deleteMany.mockImplementation(op("device"));
     db.device.updateMany.mockResolvedValue({ count: 1 });

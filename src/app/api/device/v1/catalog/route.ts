@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { authDevice, unauthorized } from "@/lib/device-auth";
+import { authDevice, tooMany, unauthorized } from "@/lib/device-auth";
 import { canonicalJson, signPolicy } from "@/lib/browser-policy";
 import { ServiceError } from "@/lib/errors";
 import { LIMITS, hit } from "@/lib/rate-limit";
@@ -15,9 +15,8 @@ import { LIMITS, hit } from "@/lib/rate-limit";
 export async function GET(req: Request) {
   const device = await authDevice(req);
   if (!device) return unauthorized();
-  if ((await hit(`devicecatalog:${device.id}`, LIMITS.deviceCatalog)).limited) {
-    return NextResponse.json({ error: "Too many catalog requests. Try again later." }, { status: 429 });
-  }
+  const rate = await hit(`devicecatalog:${device.id}`, LIMITS.deviceCatalog);
+  if (rate.limited) return tooMany("Too many catalog requests. Try again later.", rate.retryAfter);
   const entries = await db.desktopCatalogEntry.findMany({
     orderBy: [{ kind: "asc" }, { matchType: "asc" }, { match: "asc" }],
     select: { kind: true, matchType: true, match: true, displayName: true, category: true, trending: true },

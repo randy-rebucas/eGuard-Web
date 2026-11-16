@@ -4,11 +4,11 @@ import { db } from "./db";
 import { confirmDestructive, newToken, sha256 } from "./auth";
 import { audit } from "./audit";
 import { refreshPurchases } from "./billing";
-import { withDeviceSlot } from "./device-slots";
+import { withDeviceLock, withDeviceSlot } from "./device-slots";
 import { ServiceError, notFound } from "./errors";
 import { OFFLINE_AFTER_MS } from "./health";
 import { signRevocation } from "./browser-policy";
-import { computerFromLink } from "./browser-link";
+import { MAX_BROWSERS_PER_COMPUTER, computerFromLink } from "./browser-link";
 import type { Actor } from "./config-service";
 
 /**
@@ -63,16 +63,20 @@ export async function pairBrowser(input: PairInput) {
     family = await db.family.findUniqueOrThrow({ where: { id: code.familyId } });
     // On the child's paired computer: part of it, so no slot of its own, and named after it
     const computer = await computerFromLink(input.deviceLink, code, input.platform);
-    const create = (tx: Pick<typeof db, "browserInstallation">) => tx.browserInstallation.create({
+    const create = (tx: Pick<typeof db, "browserInstallation">, on: typeof computer) => tx.browserInstallation.create({
       data: {
-        familyId: code.familyId, childId: code.childId, deviceLabel: computer?.name ?? code.deviceLabel ?? "Computer", deviceId: computer?.id,
+        familyId: code.familyId, childId: code.childId, deviceLabel: on?.name ?? code.deviceLabel ?? "Computer", deviceId: on?.id,
         browser: input.browser, browserVersion: input.browserVersion, extensionVersion: input.extensionVersion, platform: input.platform,
         ...hashes, lastSeenAt: new Date(),
       },
       include: { child: true },
     });
+    // The computer's room is counted again under the family's device lock: two browsers pairing with the same link at
+    // once can't both take its last place. Full by then: it pairs as an ordinary browser and takes a slot.
+    const onComputer = computer && await withDeviceLock(code.familyId, async (tx) =>
+      await tx.browserInstallation.count({ where: { deviceId: computer.id, revokedAt: null } }) < MAX_BROWSERS_PER_COMPUTER ? create(tx, computer) : null);
     // Same slot lock as device pairing: a phone and a browser can't both take the last slot
-    inst = computer ? await create(db) : await withDeviceSlot(code.familyId, family.deviceLimit, create);
+    inst = onComputer || await withDeviceSlot(code.familyId, family.deviceLimit, (tx) => create(tx, null));
   } catch (e) {
     await release().catch(() => {});
     throw e;

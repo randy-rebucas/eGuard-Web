@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { newToken, sha256 } from "@/lib/auth";
-import { badRequest, readJson } from "@/lib/device-auth";
+import { badRequest, readJson, TOO_LARGE, tooLarge, tooMany } from "@/lib/device-auth";
 import { refreshPurchases } from "@/lib/billing";
 import { LIMITS, clientIpFrom, hit, ipKey } from "@/lib/rate-limit";
 import { withDeviceSlot } from "@/lib/device-slots";
@@ -24,10 +24,11 @@ const Body = z.object({
 
 /** Exchange a one-time pairing code (shown in the parent dashboard) for a device token. */
 export async function POST(req: Request) {
-  if ((await hit(ipKey("pair", clientIpFrom(req.headers)), LIMITS.pairIp)).limited) {
-    return NextResponse.json({ error: "Too many attempts. Wait a few minutes and try again." }, { status: 429 });
-  }
-  const parsed = Body.safeParse(await readJson(req));
+  const rate = await hit(ipKey("pair", clientIpFrom(req.headers)), LIMITS.pairIp);
+  if (rate.limited) return tooMany("Too many attempts. Wait a few minutes and try again.", rate.retryAfter);
+  const raw = await readJson(req);
+  if (raw === TOO_LARGE) return tooLarge();
+  const parsed = Body.safeParse(raw);
   if (!parsed.success) return badRequest(parsed.error.issues[0].message);
   const b = parsed.data;
   const invalidCode = () => NextResponse.json({ error: "Pairing code is invalid or expired" }, { status: 400 });

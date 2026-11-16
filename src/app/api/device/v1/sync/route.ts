@@ -5,11 +5,12 @@ import { deviceSync } from "@/lib/engine";
 import { entitlementsFor } from "@/lib/plans";
 import { minChildAppVersion } from "@/lib/child-app";
 import { categoryOf } from "@/lib/app-categories";
-import { authDevice, readJson, unauthorized } from "@/lib/device-auth";
+import { authDevice, readJson, TOO_LARGE, tooLarge, unauthorized } from "@/lib/device-auth";
 import { activeExtraTime } from "@/lib/family-service";
 import { idsByApp } from "@/lib/app-identity";
 import { signUninstall } from "@/lib/device-removal";
 import { browserLink } from "@/lib/browser-link";
+import { ScreenTimeAuthorization, screenTimeAuthorizationUpdate } from "@/lib/screen-time-authorization";
 
 const Body = z.object({
   battery: z.number().int().min(0).max(100).nullable().optional(),
@@ -17,6 +18,9 @@ const Body = z.object({
   appVersion: z.string().max(20).optional(),
   // FCM registration token for silent "sync now" wakes; null when the device can't receive push any more
   pushToken: z.string().min(1).max(4096).nullable().optional(),
+  // iOS: how its Screen Time permission was granted ("individual": the child approved it and can revoke it).
+  // An unknown value is dropped rather than failing the heartbeat
+  screenTimeAuthorization: ScreenTimeAuthorization.optional().catch(undefined),
 }).default({});
 
 /**
@@ -27,15 +31,22 @@ const Body = z.object({
 export async function POST(req: Request) {
   const device = await authDevice(req);
   if (!device) return unauthorized();
-  const body = Body.safeParse((await readJson(req)) ?? {});
-  const info = body.success ? body.data : {};
+  const raw = await readJson(req);
+  if (raw === TOO_LARGE) return tooLarge();
+  const body = Body.safeParse(raw ?? {});
+  const { screenTimeAuthorization, ...info } = body.success ? body.data : {};
   const computer = device.kind === "COMPUTER";
+  // Android matches app rules by package (`packageName` below); computers by all their ids
+  const withIds = computer || device.platform === "ANDROID";
+  // Written only when it changes, so a heartbeat doesn't rewrite the row
+  const authorization = screenTimeAuthorizationUpdate(device, screenTimeAuthorization);
+  if (authorization) await db.device.update({ where: { id: device.id }, data: { screenTimeAuthorization: authorization } });
   const [sync, apps, family, categoryLimits, ids] = await Promise.all([
     deviceSync(device.id, info),
     db.childApp.findMany({ where: { childId: device.childId }, select: { name: true, approval: true, dailyLimitMinutes: true, category: true } }),
     db.family.findUniqueOrThrow({ where: { id: device.familyId }, select: { plan: true, timezone: true } }),
     db.childCategoryLimit.findMany({ where: { childId: device.childId }, select: { category: true, dailyLimitMinutes: true } }),
-    computer ? idsByApp(device.childId, device.platform) : null,
+    withIds ? idsByApp(device.childId, device.platform) : null,
   ]);
   const ent = entitlementsFor(family.plan);
   const extraTime = activeExtraTime(device.child);
@@ -47,7 +58,13 @@ export async function POST(req: Request) {
     requests: sync.requests,
     // The category is the parent's choice or eGuard's guess; the device counts each app toward its category's limit
     // Computers also get each app's ids on their platform, to match the processes they see against
-    apps: apps.map((a) => ({ name: a.name, approval: a.approval, dailyLimitMinutes: a.dailyLimitMinutes, category: categoryOf(a).category, ...(ids ? { ids: ids.get(a.name) ?? [] } : {}) })),
+    // Android gets `packageName`: the app's package as Android reported it in `ids` (kind PACKAGE, stored lowercase),
+    // null when it never did, so the device matches by package and falls back to the name
+    apps: apps.map((a) => ({
+      name: a.name, approval: a.approval, dailyLimitMinutes: a.dailyLimitMinutes, category: categoryOf(a).category,
+      ...(computer && ids ? { ids: ids.get(a.name) ?? [] } : {}),
+      ...(!computer && ids ? { packageName: ids.get(a.name)?.find((i) => i.kind === "PACKAGE")?.value ?? null } : {}),
+    })),
     // Kept, not deleted, when a plan without them ends; only not sent (nor enforced) until the family upgrades again
     categoryLimits: ent.categoryLimits ? categoryLimits : [],
     // Extra time a parent gave: until then, limits and bedtime don't pause apps (blocked apps stay blocked). null when none

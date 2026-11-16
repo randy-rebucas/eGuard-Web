@@ -4,13 +4,16 @@
 			"path": "."
 		},
 		{
-			"path": "../AndroidStudioProjects/eGuard"
-		},
-		{
-			"path": "../projects/eGuard-iOS"
-		},
-		{
 			"path": "../eguard-browser"
+		},
+		{
+			"path": "../eguard-desktop"
+		},
+		{
+			"path": "../eGuard-iOS"
+		},
+		{
+			"path": "../../AndroidStudioProjects/eGuard"
 		}
 	],
 	"settings": {}

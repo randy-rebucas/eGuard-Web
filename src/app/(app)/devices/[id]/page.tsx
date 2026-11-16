@@ -13,6 +13,7 @@ import { CheckBadge, DeviceIcon, StatusBadge, Timeline, platformName } from "@/c
 import { CheckButton, FlowButton } from "@/components/flow";
 import { MoveDeviceForm, PrimaryDevice, RemovalPending, RemoveDeviceButton, RenameDeviceForm } from "@/components/device-forms";
 import { removalCode, removalWaits } from "@/lib/device-removal";
+import { SELF_APPROVED_NOTE, isSelfApproved } from "@/lib/screen-time-authorization";
 
 const REQUESTS_SHOWN = 6;
 
@@ -86,6 +87,15 @@ export default async function DevicePage(props: PageProps<"/devices/[id]">) {
           <RemovalPending deviceId={d.id} name={d.name} code={removal?.code ?? null} until={removal ? dayTime(removal.expiresAt, tz) : null} requestedBy={d.removalRequestedBy} />
           <div style={{ marginTop: 12 }}><RemoveDeviceButton deviceId={d.id} name={d.name} hasPassword={u.hasPassword} computer now /></div>
         </section>
+      ) : null}
+
+      {isSelfApproved(d) ? (
+        // iPhone: Screen Time access approved on the phone, not by a parent's Apple ID (Family Sharing)
+        <div className="card card-pad row" style={{ background: "var(--warn-soft)", borderColor: "transparent" }}>
+          <span className="ico-tile warn"><Icon name="shield-alert" /></span>
+          <div className="grow"><div className="t-title">{SELF_APPROVED_NOTE}</div>
+            <div className="t-meta" style={{ color: "var(--ink-2)" }}>{child.name} approved eGuard&apos;s Screen Time access on this iPhone, so they can turn it off in Settings › Screen Time, and eGuard&apos;s limits stop applying until it&apos;s on again. To prevent that, add {child.name} to your Family Sharing group as a child and approve eGuard from your own iPhone.</div></div>
+        </div>
       ) : null}
 
       {offline ? (

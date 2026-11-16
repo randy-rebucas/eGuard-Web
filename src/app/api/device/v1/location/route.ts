@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { recordLocation } from "@/lib/location";
-import { authDevice, badRequest, readJson, unauthorized } from "@/lib/device-auth";
+import { authDevice, badRequest, readJson, TOO_LARGE, tooLarge, tooMany, unauthorized } from "@/lib/device-auth";
 import { LIMITS, hit } from "@/lib/rate-limit";
 
 const Body = z.object({
@@ -23,10 +23,11 @@ export async function POST(req: Request) {
   const device = await authDevice(req);
   if (!device) return unauthorized();
   // A looping or misbehaving device must not be able to write without limit
-  if ((await hit(`devicelocation:${device.id}`, LIMITS.deviceLocation)).limited) {
-    return NextResponse.json({ error: "Too many locations. Send the next one in a few minutes." }, { status: 429 });
-  }
-  const parsed = Body.safeParse(await readJson(req));
+  const rate = await hit(`devicelocation:${device.id}`, LIMITS.deviceLocation);
+  if (rate.limited) return tooMany("Too many locations. Send the next one in a few minutes.", rate.retryAfter);
+  const raw = await readJson(req);
+  if (raw === TOO_LARGE) return tooLarge();
+  const parsed = Body.safeParse(raw);
   if (!parsed.success) return badRequest(parsed.error.issues[0].message);
   await recordLocation(device, parsed.data);
   await db.device.update({ where: { id: device.id }, data: { lastSeenAt: new Date() } });

@@ -160,7 +160,7 @@ parent reads out. `201` returns `{ deviceId, token, childName }`. Store the toke
 
 | Step | Needed for |
 |---|---|
-| `AuthorizationCenter.requestAuthorization(for: .child)` | Every Screen Time protection. A parent approves with their Apple ID |
+| `AuthorizationCenter.requestAuthorization(for: .child)` | Every Screen Time protection. A parent approves with their Apple ID. If the app falls back to `.individual` (no Family Sharing), the child approves it and can revoke it: send `screenTimeAuthorization: "individual"` on `/sync` so the parent is told (section 10) |
 | Location "While Using", then "Always" | Location |
 | Notifications | Limit and bedtime warnings |
 | Guided steps for Web, Downloads and Location | Shown to the parent in the parent app; the child app just reports (section 6) |
@@ -367,7 +367,10 @@ Mode, a force-quit app, a budget of a few per hour). Polling stays the guarantee
   newest `/location`.
 - Retry `5xx` and network errors with exponential backoff from 30 seconds to 15 minutes, with jitter.
 - `400`: log it locally and drop the item. It's a bug; don't retry.
-- `401`: the device was removed (section 5 › Removal). Stop everything.
+- `401`: the device was removed (section 5 › Removal). Stop everything. (Computers are the exception: a `401` never
+  lowers protection there; desktop-agent-spec.md section 2.)
+- `413`: the body was over 64 KB. Split it (e.g. one `/usage` day per call); resending the same body fails again.
+- `429`: wait at least the `Retry-After` header's seconds, keep the item queued, then send it.
 
 ## 9. Screen time, location and events
 
@@ -438,6 +441,9 @@ a new one.
 | Changes the device clock | Use `SystemClock.elapsedRealtime` / monotonic time for counting usage; trust the server response `Date` header for day boundaries when they disagree by more than 1 hour | Usage stays correct |
 | Uninstalls (Uninstall Protection off) | n/a | Device goes silent, then the offline alert |
 | Factory reset | n/a | Same |
+| Restarts in Android safe mode | Nothing possible: safe mode runs no third-party app, so neither the accessibility service nor the app runs, and nothing is enforced or sent | The device looks offline ("Device hasn't synced in over a day"); there's no separate "safe mode" alert. Back in normal mode the app resumes and syncs |
+| Draws a floating overlay window over a block screen (another app with "Display over other apps") | Keep the block screen on top: re-show it when it loses focus, and treat an app holding the overlay permission like any other app (App Approval, limits). Report the overlay permission state with App Restrictions | Nothing distinct; an app that does this shows in the Apps tab and can be blocked |
+| iOS: approves Screen Time access themselves (`.individual`), then turns it off in Settings › Screen Time | Send `screenTimeAuthorization` on every `/sync` (`"child"` or `"individual"`, Part C › `/sync`). When access is revoked, report the Screen Time protections as they now are | The device shows "Self-approved: the child can turn this off in Settings" (`selfApproved: true` in the parent API), with the fix (Family Sharing, approved from the parent's iPhone). Once turned off: "Protection setting changed" for each protection |
 
 ## 11. Privacy
 

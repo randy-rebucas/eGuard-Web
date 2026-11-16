@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { authDevice, unauthorized } from "@/lib/device-auth";
+import { authDevice, tooMany, unauthorized } from "@/lib/device-auth";
 import { signPolicy } from "@/lib/browser-policy";
 import { desktopRelease } from "@/lib/desktop-release";
 import { ServiceError } from "@/lib/errors";
@@ -15,9 +15,8 @@ export async function GET(req: Request) {
   const device = await authDevice(req);
   if (!device) return unauthorized();
   if (device.kind !== "COMPUTER") return NextResponse.json({ error: "Updates are for computers." }, { status: 404 });
-  if ((await hit(`deviceupdate:${device.id}`, LIMITS.deviceUpdate)).limited) {
-    return NextResponse.json({ error: "Too many update requests. Try again later." }, { status: 429 });
-  }
+  const rate = await hit(`deviceupdate:${device.id}`, LIMITS.deviceUpdate);
+  if (rate.limited) return tooMany("Too many update requests. Try again later.", rate.retryAfter);
   try {
     const release = desktopRelease();
     if (!release) return NextResponse.json({ manifest: null });

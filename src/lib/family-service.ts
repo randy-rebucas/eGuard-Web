@@ -365,16 +365,39 @@ function withExtraTimeLock<T>(actor: Actor, childId: string, fn: (tx: Prisma.Tra
   });
 }
 
-/** `addedMinutes` can be less than `minutes` when the 4-hour cap applies; say what was actually given. */
-export async function grantExtraTime(actor: Actor, childId: string, minutes: number, via: string) {
-  const { child, until, added } = await withExtraTimeLock(actor, childId, async (tx, child) => {
+/** How long a grant's `requestId` is remembered at least, so a retry answers the first grant's result (grantExtraTime). */
+export const EXTRA_TIME_REQUEST_MS = 24 * 3600_000;
+
+/**
+ * `addedMinutes` can be less than `minutes` when the 4-hour cap applies; say what was actually given.
+ * `requestId` (optional, from the app): a retry of a grant whose answer was lost. Once a grant with that id went
+ * through for this child, the same id within EXTRA_TIME_REQUEST_MS gives nothing more: it answers the first grant's
+ * `addedMinutes`, the extra time running now as `until` (now, if a parent ended it since) and `replayed: true`.
+ * Remembered without a table of its own: a RateLimit row (`count` = minutes added, `resetAt` = when it's forgotten,
+ * deleted by the maintenance job).
+ */
+export async function grantExtraTime(actor: Actor, childId: string, minutes: number, via: string, requestId?: string) {
+  const key = requestId ? `extratime-req:${childId}:${requestId}` : null;
+  const result = await withExtraTimeLock(actor, childId, async (tx, child) => {
     const now = Date.now();
+    // Under the per-child lock: of two copies of one request, only the first grants
+    const seen = key ? await tx.rateLimit.findUnique({ where: { key } }) : null;
+    if (seen && seen.resetAt.getTime() > now) {
+      return { child, until: activeExtraTime(child, new Date(now)) ?? new Date(now), added: seen.count, replayed: true };
+    }
     const from = activeExtraTime(child, new Date(now))?.getTime() ?? now;
     const until = new Date(Math.min(from + minutes * 60_000, now + EXTRA_TIME_MAX_MS));
     await tx.child.update({ where: { id: child.id }, data: { extraTimeUntil: until } });
     await tx.alert.updateMany({ where: { familyId: actor.familyId, resolveKey: timeRequestKey(child.id), resolvedAt: null }, data: { resolvedAt: new Date() } });
-    return { child, until, added: Math.max(0, Math.round((until.getTime() - from) / 60_000)) };
+    const added = Math.max(0, Math.round((until.getTime() - from) / 60_000));
+    if (key) {
+      const expires = new Date(now + EXTRA_TIME_REQUEST_MS);
+      await tx.rateLimit.upsert({ where: { key }, create: { key, count: added, resetAt: expires }, update: { count: added, resetAt: expires } });
+    }
+    return { child, until, added, replayed: false };
   });
+  const { child, until, added, replayed } = result;
+  if (replayed) return { extraTimeUntil: until, addedMinutes: added, replayed: true };
   // Already at the cap: nothing changed (beyond answering a request), so no "0m given" in the history
   if (added) {
     await db.configChange.create({
@@ -384,7 +407,7 @@ export async function grantExtraTime(actor: Actor, childId: string, minutes: num
     await wakeChildDevices([child.id], "extra_time");
   }
   await noteActivitySafely(actor, "extra_time");
-  return { extraTimeUntil: until, addedMinutes: added };
+  return { extraTimeUntil: until, addedMinutes: added, replayed: false };
 }
 
 /** Ends running extra time and answers an open request with "not now". */
@@ -628,9 +651,10 @@ export async function finishQuietRemovals(now = new Date()) {
   let finished = 0;
   for (const d of due) {
     if (d.lastSeenAt && d.lastSeenAt > d.removalRequestedAt!) continue;
-    await deleteDevice(d, d.removalRequestedBy ?? "A parent", d.removalDeletesHistory, "quiet").then(() => finished++, (err) => {
-      // Finished a moment ago by a parent or the computer itself
-      if (!(err instanceof ServiceError && err.status === 404)) throw err;
+    // Only while lastSeenAt is what was just read: a computer that checks in meanwhile is alive and is left waiting
+    await deleteDevice(d, d.removalRequestedBy ?? "A parent", d.removalDeletesHistory, "quiet", { ifLastSeenAt: d.lastSeenAt }).then(() => finished++, (err) => {
+      // 404: finished a moment ago by a parent or the computer itself. 409: it checked in just now
+      if (!(err instanceof ServiceError && (err.status === 404 || err.status === 409))) throw err;
     });
   }
   return finished;
@@ -639,19 +663,31 @@ export async function finishQuietRemovals(now = new Date()) {
 /**
  * The device delete itself. `how`: "removed" (a phone, or a parent's removal), "uninstalled" (the computer confirmed
  * its removal), "forced" (a parent finished a computer's removal without it) or "quiet" (a computer's removal finished
- * after it stayed quiet for QUIET_REMOVAL_DAYS).
+ * after it stayed quiet for QUIET_REMOVAL_DAYS). `ifLastSeenAt`: delete only while the device's lastSeenAt is still
+ * that value (a quiet removal must not delete a computer that checked in a moment ago); otherwise a 409, nothing done.
  */
-export async function deleteDevice(d: { id: string; familyId: string; childId: string; name: string; isPrimary: boolean; child: { name: string } }, by: string, deleteHistory: boolean, how: "removed" | "uninstalled" | "forced" | "quiet") {
+export async function deleteDevice(d: { id: string; familyId: string; childId: string; name: string; isPrimary: boolean; child: { name: string } }, by: string, deleteHistory: boolean, how: "removed" | "uninstalled" | "forced" | "quiet", opts: { ifLastSeenAt?: Date | null } = {}) {
   const history = { where: { deviceId: d.id, childId: d.childId } };
-  const results = await db.$transaction([
+  const gone = await db.$transaction(async (tx) => {
+    // Compare-and-swap that also locks the row: a check-in (which moves lastSeenAt) either landed first and this stops,
+    // or waits for this transaction to end
+    if (opts.ifLastSeenAt !== undefined
+      && !(await tx.device.updateMany({ where: { id: d.id, lastSeenAt: opts.ifLastSeenAt }, data: { lastSeenAt: opts.ifLastSeenAt } })).count) {
+      return null;
+    }
     // First, while the rows still carry the device's id: deleting the device sets it to null on them
-    ...(deleteHistory ? [db.screenTimeDaily.deleteMany(history), db.appUsageDaily.deleteMany(history), db.locationVisit.deleteMany(history)] : []),
+    if (deleteHistory) {
+      await tx.screenTimeDaily.deleteMany(history);
+      await tx.appUsageDaily.deleteMany(history);
+      await tx.locationVisit.deleteMany(history);
+    }
     // deleteMany: another parent removing it at the same moment is a 404 here, not a Prisma error
-    db.device.deleteMany({ where: { id: d.id } }),
+    const deleted = await tx.device.deleteMany({ where: { id: d.id } });
     // Alerts only hold the device's id, so its open ones (offline, protection changed) would never resolve
-    db.alert.updateMany({ where: { familyId: d.familyId, deviceId: d.id, resolvedAt: null }, data: { resolvedAt: new Date() } }),
-  ]);
-  const gone = results.at(-2)!; // the device delete: last comes the alerts update
+    await tx.alert.updateMany({ where: { familyId: d.familyId, deviceId: d.id, resolvedAt: null }, data: { resolvedAt: new Date() } });
+    return deleted;
+  }, { timeout: 60_000 }); // not Prisma's 5 s default: a year of a phone's history is tens of thousands of rows
+  if (!gone) throw conflict("The device checked in again, so it wasn't removed.");
   if (!gone.count) throw notFound("Device");
   if (d.isPrimary) await ensurePrimary(d.familyId, d.childId);
   const label = `${d.child.name}'s ${d.name}`;
