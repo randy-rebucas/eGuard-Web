@@ -41,7 +41,12 @@ export const ConfigSchema = z.discriminatedUnion("key", [
 const minutes = z.number().int().min(0).max(1440);
 const rating = z.number().int().min(0).max(21);
 export const ReportedConfigSchema = z.discriminatedUnion("key", [
-  z.strictObject({ key: z.literal("SCREEN_TIME"), dailyMinutes: minutes, weekendMinutes: minutes }),
+  // `counts`: iPhone only. Its limit counts the apps chosen on the phone (Apple shows eGuard no names), so the parent
+  // sees how many: a child who chose a single app shows up. Not compared with the policy (protections.configMatches)
+  z.strictObject({
+    key: z.literal("SCREEN_TIME"), dailyMinutes: minutes, weekendMinutes: minutes,
+    counts: z.strictObject({ apps: z.number().int().min(0).max(10_000), categories: z.number().int().min(0).max(1_000), sites: z.number().int().min(0).max(10_000) }).optional(),
+  }),
   z.strictObject({ key: z.literal("BEDTIME"), enabled: z.boolean(), start: time, end: time, days: z.enum(["EVERY_DAY", "SCHOOL_NIGHTS"]) }),
   z.strictObject({ key: z.literal("APP_RESTRICTIONS"), maxAgeRating: rating }),
   z.strictObject({ key: z.literal("APP_APPROVAL"), enabled: z.boolean() }),

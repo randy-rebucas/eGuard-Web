@@ -155,6 +155,9 @@ describe("what the extension downloads", () => {
     expect(ok(policy)).toBe(true);
     expect(ok({ ...policy, blockedDomains: [] })).toBe(false);
     expect(ok({ ...policy, installationId: "someone-else" })).toBe(false);
+    // The signed time the extension's clock follows: this copy's, and part of the signature
+    expect(Math.abs(Date.parse(policy.issuedAt) - Date.now())).toBeLessThan(60_000);
+    expect(ok({ ...policy, issuedAt: "2020-01-01T00:00:00.000Z" })).toBe(false);
   });
 
   it("a parent's change reaches the extension as the next version", async () => {

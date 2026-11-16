@@ -534,6 +534,12 @@ describe("13. App management", () => {
     const alerts = await call("GET", "/alerts?filter=SCREEN_TIME", { token });
     expect(alerts.data.alerts.find((a: { title: string }) => a.title === "Gaming time used up")?.body).toBe("Mia reached the 45m daily limit for games. Those apps were paused as scheduled.");
 
+    // One app's own limit is its own alert: never "Screen time limit reached" (nor deduped with it)
+    await android.send("/events", { type: "LIMIT_REACHED", minutes: 30, app: "YouTube" });
+    const appAlerts = (await call("GET", "/alerts?filter=SCREEN_TIME", { token })).data.alerts as { title: string; body: string }[];
+    expect(appAlerts.find((a) => a.title === "YouTube time used up")?.body).toBe("Mia reached the 30m daily limit for YouTube. It was paused as scheduled.");
+    expect(appAlerts.some((a) => a.title === "Screen time limit reached")).toBe(false);
+
     // On Free, a limit can't be set, and the one kept isn't sent
     const famId = (await call("GET", "/family", { token })).data.id;
     await db.family.update({ where: { id: famId }, data: { plan: "Free" } });

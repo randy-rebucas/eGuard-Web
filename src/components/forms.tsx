@@ -8,7 +8,7 @@ import { Feedback } from "./feedback";
 import { ConfirmField } from "./confirm-field";
 import { useAction } from "./flow";
 import {
-  addParent, changePassword, deleteAccount, removeParent, resendInvitation, setToggle, signOutOneSession, signOutOthers, unlinkIdentity, updateAccount,
+  addParent, changePassword, deleteAccount, removeParent, resendInvitation, setDevicePin, setToggle, signOutOneSession, signOutOthers, unlinkIdentity, updateAccount,
 } from "@/app/actions/family";
 import { submitTicket } from "@/app/actions/support";
 
@@ -132,6 +132,28 @@ export function AddParentForm() {
       </div>
       <p className="t-meta">We email them an invitation. They see your family&apos;s name, choose their own password, and join once they accept.</p>
       <div><button className="btn btn-secondary" disabled={pending}>{pending ? "Sending…" : <><Icon name="user-plus" />Send invitation</>}</button></div>
+    </form>
+  );
+}
+
+/** Settings › Family › Child device PIN: opens Parent settings on a child's iPhone, where app rules are chosen. */
+export function DevicePinForm({ isSet }: { isSet: boolean }) {
+  const [state, action, pending] = useActionState(setDevicePin, undefined);
+  return (
+    <form action={action} className="dash-col" style={{ gap: 14 }}>
+      <Feedback state={state} />
+      <p className="t-meta">
+        Apple doesn&apos;t let eGuard see app names on an iPhone, so apps are blocked or given a daily time on your child&apos;s
+        iPhone itself: eGuard › Parent settings, opened with this PIN. {isSet ? "A PIN is set." : "No PIN is set yet."}
+      </p>
+      <div className="field" style={{ maxWidth: 220 }}>
+        <label htmlFor="dp-pin">{isSet ? "New PIN" : "PIN"}</label>
+        <input className="input" id="dp-pin" name="pin" inputMode="numeric" pattern="[0-9]{4,8}" maxLength={8} autoComplete="new-password" placeholder="4 to 8 digits" />
+      </div>
+      <div className="row" style={{ gap: 8 }}>
+        <button className="btn btn-secondary" disabled={pending}>{pending ? "Saving…" : isSet ? "Change PIN" : "Set PIN"}</button>
+        {isSet ? <button className="btn btn-ghost" name="clear" value="1" disabled={pending}>Remove PIN</button> : null}
+      </div>
     </form>
   );
 }

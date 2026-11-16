@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { rememberAppleToken } from "@/lib/apple-tokens";
 import { clientIp, signInResponse } from "@/lib/mobile-account";
 import { body, open } from "@/lib/mobile-api";
 import { LIMITS, enforce, ipKey } from "@/lib/rate-limit";
@@ -17,6 +18,11 @@ const Body = z.object({
   guardian: z.boolean().optional(),
   /** The raw one-time nonce whose SHA-256 the app put in the Apple request (or the nonce given to Google) */
   nonce: z.string().min(16).max(128).optional(),
+  /**
+   * Apple only: the credential's one-time authorizationCode. Exchanged for a refresh token so deleting the account
+   * (or unlinking Apple) can revoke eGuard at Apple. Optional for older builds; ignored for Google.
+   */
+  authorizationCode: z.string().min(1).max(4096).optional(),
 });
 
 /**
@@ -28,5 +34,9 @@ export const POST = open(async ({ req }) => {
   const b = await body(req, Body);
   const id = await verifyIdToken(b.provider, b.idToken, { nonce: b.nonce });
   const r = await signInWithIdentity(id, { name: b.name, guardian: b.guardian });
+  // Best-effort: never fails the sign-in (logged instead)
+  if (b.provider === "apple" && b.authorizationCode) {
+    await rememberAppleToken({ subject: id.subject, idToken: b.idToken, authorizationCode: b.authorizationCode });
+  }
   return signInResponse(req, r.userId, r.isNew ? 201 : 200, { isNew: r.isNew });
 });

@@ -9,7 +9,7 @@ import { ageLabel, dayTime, peso, shortDate } from "@/lib/format";
 import { Icon } from "@/components/icon";
 import { Avatar, DeviceIcon } from "@/components/ui";
 import {
-  AccountForm, AddParentForm, DeleteAccountForm, PasswordForm, PendingInviteActions, RemoveParentButton, SettingSwitch, SignOutOthersButton, SignOutSessionButton, SupportTicketForm, UnlinkIdentityButton,
+  AccountForm, AddParentForm, DeleteAccountForm, DevicePinForm, PasswordForm, PendingInviteActions, RemoveParentButton, SettingSwitch, SignOutOthersButton, SignOutSessionButton, SupportTicketForm, UnlinkIdentityButton,
 } from "@/components/forms";
 import { pendingInvites } from "@/lib/invitations";
 import { BuyPlan, CancelAutoRenew } from "@/components/billing";
@@ -101,6 +101,9 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
               <hr className="divider" style={{ margin: "18px 0" }} />
               <h3 style={{ fontSize: 16, marginBottom: 12 }}>Invite another parent</h3>
               <AddParentForm />
+              <hr className="divider" style={{ margin: "18px 0" }} />
+              <h3 style={{ fontSize: 16, marginBottom: 12 }}>Child device PIN</h3>
+              <DevicePinForm isSet={!!family.devicePinHash} />
             </>
           ) : <p className="t-meta" style={{ marginTop: 14 }}>Only the family admin can add or remove parents.</p>}
         </>

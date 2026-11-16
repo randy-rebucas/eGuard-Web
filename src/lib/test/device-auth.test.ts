@@ -4,7 +4,7 @@ vi.mock("server-only", () => ({}));
 vi.mock("../db", () => ({ db: {} }));
 vi.mock("../auth", () => ({ sha256: (s: string) => s }));
 
-const { TOO_LARGE, readJson, tooMany } = await import("../device-auth");
+const { TOO_LARGE, readJson, tooMany, unauthorized } = await import("../device-auth");
 
 const post = (body: string) => new Request("http://localhost/api/device/v1/report", { method: "POST", body });
 
@@ -14,6 +14,12 @@ describe("device API responses", () => {
     expect(res.status).toBe(429);
     expect(res.headers.get("Retry-After")).toBe("43");
     expect(tooMany("x", 0).headers.get("Retry-After")).toBe("1");
+  });
+
+  it("a 401 for an unknown token says so (device_unknown), so only that unpairs a phone", async () => {
+    const res = unauthorized();
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "Invalid or missing device token", code: "device_unknown" });
   });
 
   it("an oversized body is TOO_LARGE (413), malformed JSON is null (400)", async () => {

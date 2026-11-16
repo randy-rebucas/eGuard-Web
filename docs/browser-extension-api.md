@@ -208,8 +208,10 @@ The old refresh token and the old access token stop working.
 `429 rate_limited` after 20 refreshes in 15 minutes for one installation, or 600 from one IP address (many families
 can share one address behind carrier-grade NAT).
 
-Every answer carries the HTTP `Date` header. The extension keeps the offset between it and the computer's clock, and
-ends approvals, "Continue" and focus hours by eGuard's time, so moving the computer's clock back doesn't stretch them.
+Every answer carries the HTTP `Date` header. The extension keeps the offset between eGuard's time and the computer's
+clock, and ends approvals, "Continue" and focus hours by eGuard's time, so moving the computer's clock back doesn't
+stretch them. Once a policy carries a signed `issuedAt` (below), the offset comes from that alone: a `Date` header
+isn't signed.
 
 ### `GET /policy`
 
@@ -239,7 +241,8 @@ Response `200`:
       "GAMBLING": ["bet365.com", "pokerstars.com", "…"],
       "DATING": ["tinder.com", "bumble.com", "…"]
     },
-    "updatedAt": "2026-09-29T06:59:02.114Z"
+    "updatedAt": "2026-09-29T06:59:02.114Z",
+    "issuedAt": "2026-09-29T07:02:41.507Z"
   },
   "signature": "<base64, 64 bytes>",
   "keyId": "3f9a1c0d7e2b4a65",
@@ -262,6 +265,7 @@ ones you show from here. They're outside the signed `policy`, so use them only a
 | `schedule?` | Focus hours: while `enabled` and the local time in `timezone` is between `startTime` and `endTime` (`HH:MM`, 24 h; may cross midnight), block everything not on the allowed list. `null` when the parent never set them |
 | `temporaryAllows` | Sites a parent approved for a while (from an access request). The server lists only those still in force when it signs, so **the extension must also drop each one at `until`** |
 | `categoryDomains` | Domain lists for the blocked categories only. Categories without a list are left out |
+| `issuedAt` | When eGuard signed this copy (every answer is signed afresh). Take the clock offset from it rather than the `Date` header, never let your time fall below the newest one you accepted, and refuse a copy older than the one you have: a proxy between the browser and eGuard can forge a `Date` header or replay an older answer, but can't sign. Sent since 2026-11-16; older servers leave it out |
 
 Category keys: `ADULT`, `GAMBLING`, `MALWARE`, `PHISHING`, `VIOLENCE`, `DRUGS`, `WEAPONS`, `HATE`, `DATING`,
 `SOCIAL_MEDIA`, `GAMING`, `STREAMING`, `SHOPPING`, `DOWNLOADS`, `PROXY` (web proxies, page translators such as

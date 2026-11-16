@@ -16,6 +16,7 @@ import { requestedApps } from "./family-service";
 import { forClient } from "./store-neutral";
 import { removalCode } from "./device-removal";
 import { isSelfApproved } from "./screen-time-authorization";
+import { appRulesOf, describeAppRules } from "./device-app-rules";
 
 /**
  * JSON shapes for the parent mobile app. Values are raw (ISO dates, minutes) with a
@@ -58,6 +59,9 @@ export function deviceJson(d: DeviceView, graph: FamilyGraph, tz: string) {
     removalRequestedAt: d.removalRequestedAt,
     // iPhone: the child approved eGuard's Screen Time access themselves and can turn it off in Settings. false elsewhere
     selfApproved: isSelfApproved(d),
+    // iPhone: the app rules chosen on the phone in Parent settings, as counts (lib/device-app-rules); null elsewhere
+    appRules: d.platform === "IOS" ? appRulesOf(d.appRules) : null,
+    appRulesLabel: d.platform === "IOS" ? describeAppRules(appRulesOf(d.appRules)) : null,
   };
 }
 

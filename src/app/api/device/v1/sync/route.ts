@@ -9,8 +9,10 @@ import { authDevice, readJson, TOO_LARGE, tooLarge, unauthorized } from "@/lib/d
 import { activeExtraTime } from "@/lib/family-service";
 import { idsByApp } from "@/lib/app-identity";
 import { signUninstall } from "@/lib/device-removal";
+import { removedComputerFor } from "@/lib/removed-computers";
 import { browserLink } from "@/lib/browser-link";
 import { ScreenTimeAuthorization, screenTimeAuthorizationUpdate } from "@/lib/screen-time-authorization";
+import { DeviceAppRules, appRulesUpdate } from "@/lib/device-app-rules";
 
 const Body = z.object({
   battery: z.number().int().min(0).max(100).nullable().optional(),
@@ -21,6 +23,8 @@ const Body = z.object({
   // iOS: how its Screen Time permission was granted ("individual": the child approved it and can revoke it).
   // An unknown value is dropped rather than failing the heartbeat
   screenTimeAuthorization: ScreenTimeAuthorization.optional().catch(undefined),
+  // iOS: what the app rules chosen on the phone cover, as counts (lib/device-app-rules). A bad shape is dropped
+  appRules: DeviceAppRules.optional().catch(undefined),
 }).default({});
 
 /**
@@ -30,21 +34,30 @@ const Body = z.object({
  */
 export async function POST(req: Request) {
   const device = await authDevice(req);
-  if (!device) return unauthorized();
+  if (!device) {
+    // A computer removed without confirming it still has eGuard on it: its 401 carries eGuard's signed uninstall
+    // command, which the agent checks itself (a 401 alone never switches its protection off)
+    const removed = await removedComputerFor(req);
+    const uninstall = removed ? signUninstall(removed.deviceId, removed.removedAt) : null;
+    return uninstall ? NextResponse.json({ error: "Invalid or missing device token", code: "device_unknown", uninstall }, { status: 401 }) : unauthorized();
+  }
   const raw = await readJson(req);
   if (raw === TOO_LARGE) return tooLarge();
   const body = Body.safeParse(raw ?? {});
-  const { screenTimeAuthorization, ...info } = body.success ? body.data : {};
+  const { screenTimeAuthorization, appRules, ...info } = body.success ? body.data : {};
   const computer = device.kind === "COMPUTER";
   // Android matches app rules by package (`packageName` below); computers by all their ids
   const withIds = computer || device.platform === "ANDROID";
   // Written only when it changes, so a heartbeat doesn't rewrite the row
   const authorization = screenTimeAuthorizationUpdate(device, screenTimeAuthorization);
-  if (authorization) await db.device.update({ where: { id: device.id }, data: { screenTimeAuthorization: authorization } });
+  const rules = device.platform === "IOS" ? appRulesUpdate(device.appRules, appRules) : undefined;
+  if (authorization || rules) {
+    await db.device.update({ where: { id: device.id }, data: { ...(authorization ? { screenTimeAuthorization: authorization } : {}), ...(rules ? { appRules: rules } : {}) } });
+  }
   const [sync, apps, family, categoryLimits, ids] = await Promise.all([
     deviceSync(device.id, info),
     db.childApp.findMany({ where: { childId: device.childId }, select: { name: true, approval: true, dailyLimitMinutes: true, category: true } }),
-    db.family.findUniqueOrThrow({ where: { id: device.familyId }, select: { plan: true, timezone: true } }),
+    db.family.findUniqueOrThrow({ where: { id: device.familyId }, select: { plan: true, timezone: true, devicePinHash: true } }),
     db.childCategoryLimit.findMany({ where: { childId: device.childId }, select: { category: true, dailyLimitMinutes: true } }),
     withIds ? idsByApp(device.childId, device.platform) : null,
   ]);
@@ -78,6 +91,8 @@ export async function POST(req: Request) {
     timezone: family.timezone,
     // Location fixes are dropped on plans without location sharing, so the device shouldn't collect or send them
     features: { locationSharing: ent.locationSharing, categoryLimits: ent.categoryLimits },
+    // Whether "Parent settings" can open on the phone (lib/device-pin); the PIN itself never leaves the server
+    parentPinSet: !!family.devicePinHash,
     // Below this, the app shows an update screen; null when no minimum is set (CHILD_MIN_APP_VERSION)
     minAppVersion: minChildAppVersion(device.platform),
     // Computers count days and bedtime by eGuard's clock, so changing the computer's clock doesn't buy time

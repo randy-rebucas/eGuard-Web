@@ -13,7 +13,12 @@ export async function authDevice(req: Request) {
   return db.device.findUnique({ where: { tokenHash: sha256(token) }, include: { child: true } });
 }
 
-export const unauthorized = () => NextResponse.json({ error: "Invalid or missing device token" }, { status: 401 });
+/**
+ * `code: "device_unknown"`: no device has this token (a parent removed it, or it was never paired). Apps unpair only
+ * on this code, so a 401 without it (a proxy, an outage) never wipes a child's phone.
+ */
+export const unauthorized = () =>
+  NextResponse.json({ error: "Invalid or missing device token", code: "device_unknown" }, { status: 401 });
 export const badRequest = (message: string) => NextResponse.json({ error: message }, { status: 400 });
 
 /** A 429 with `Retry-After` (seconds until the limit's window resets), so a device backs off instead of retrying at once. */

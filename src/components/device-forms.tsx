@@ -264,7 +264,7 @@ export function RemoveDeviceButton({ deviceId, name, hasPassword, computer = fal
       {now ? <input type="hidden" name="now" value="1" /> : null}
       <p className="t-meta" style={{ color: "var(--ink-2)" }}>
         {now
-          ? <>Only if {name} is lost or was reset. eGuard stops checking it now, but eGuard stays on the computer with its last settings until the removal code above is typed into it, so type it in first if you can. </>
+          ? <>Only if {name} is lost or was reset. eGuard stops checking it now, but eGuard stays on the computer with its last settings until it next connects (it removes itself then) or the removal code is typed into it. The code stays on the Devices page for 30 days. </>
           : computer
             ? <>Your child can&apos;t remove eGuard from {name}, so eGuard uninstalls itself the next time the computer is online, then it&apos;s removed here. Until then it stays protected. Other parents in your family are told. </>
             : <>Removing {name} disconnects eGuard from it: the eGuard app there stops applying your settings, and eGuard stops checking it. Other parents in your family are told. </>}

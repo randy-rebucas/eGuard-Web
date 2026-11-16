@@ -36,20 +36,29 @@ export type PushMessage = { title: string; body: string; data?: Record<string, s
 /** "sent", "gone" (the app was uninstalled or the token replaced: forget it) or "failed" (try another time). */
 export type PushOutcome = "sent" | "gone" | "failed";
 
-export async function sendPush(cfg: NonNullable<ReturnType<typeof pushConfig>>, token: string, m: PushMessage, f: Fetch = fetch): Promise<PushOutcome> {
+/**
+ * `platform` "ANDROID": data-only (`title` and `body` in `data`, high priority), so the Android app always shows the
+ * alert itself, even in the background: only to a signed-in parent, and hidden on the lock screen. With a
+ * `notification` part the system would show it without the app. Other platforms (and an unknown one) get the
+ * notification part; iOS needs it.
+ */
+export async function sendPush(
+  cfg: NonNullable<ReturnType<typeof pushConfig>>, token: string, m: PushMessage, f: Fetch = fetch, platform?: string,
+): Promise<PushOutcome> {
   const auth = await accessToken(cfg.account, f, Date.now(), SCOPE);
-  const res = await f(`https://fcm.googleapis.com/v1/projects/${encodeURIComponent(cfg.projectId)}/messages:send`, {
-    method: "POST",
-    headers: { authorization: `Bearer ${auth}`, "content-type": "application/json" },
-    body: JSON.stringify({
-      message: {
+  const message = platform === "ANDROID"
+    ? { token, data: { ...(m.data ?? {}), title: m.title, body: m.body }, android: { priority: "HIGH" } }
+    : {
         token,
         notification: { title: m.title, body: m.body },
         data: m.data ?? {},
         android: { priority: "HIGH", notification: { channel_id: "parent_alerts" } }, // the Android app's alert channel
         apns: { payload: { aps: { sound: "default" } } },
-      },
-    }),
+      };
+  const res = await f(`https://fcm.googleapis.com/v1/projects/${encodeURIComponent(cfg.projectId)}/messages:send`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${auth}`, "content-type": "application/json" },
+    body: JSON.stringify({ message }),
   });
   return outcome(res);
 }
@@ -161,7 +170,7 @@ export async function pushToUsers(userIds: string[], m: PushMessage, f: Fetch = 
   for (const t of tokens) {
     try {
       // iPhones get the alert without sentences about buying a plan, as in the app (storeNeutral)
-      const r = await sendPush(cfg, t.token, t.platform === "IOS" ? { ...m, body: storeNeutral(m.body) } : m, f);
+      const r = await sendPush(cfg, t.token, t.platform === "IOS" ? { ...m, body: storeNeutral(m.body) } : m, f, t.platform);
       if (r === "sent") sent++;
       else if (r === "gone") await db.pushToken.deleteMany({ where: { id: t.id } });
     } catch (e) {

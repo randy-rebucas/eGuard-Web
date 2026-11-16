@@ -14,6 +14,7 @@ import { CheckButton, FlowButton } from "@/components/flow";
 import { MoveDeviceForm, PrimaryDevice, RemovalPending, RemoveDeviceButton, RenameDeviceForm } from "@/components/device-forms";
 import { removalCode, removalWaits } from "@/lib/device-removal";
 import { SELF_APPROVED_NOTE, isSelfApproved } from "@/lib/screen-time-authorization";
+import { appRulesOf, describeAppRules } from "@/lib/device-app-rules";
 
 const REQUESTS_SHOWN = 6;
 
@@ -95,6 +96,15 @@ export default async function DevicePage(props: PageProps<"/devices/[id]">) {
           <span className="ico-tile warn"><Icon name="shield-alert" /></span>
           <div className="grow"><div className="t-title">{SELF_APPROVED_NOTE}</div>
             <div className="t-meta" style={{ color: "var(--ink-2)" }}>{child.name} approved eGuard&apos;s Screen Time access on this iPhone, so they can turn it off in Settings › Screen Time, and eGuard&apos;s limits stop applying until it&apos;s on again. To prevent that, add {child.name} to your Family Sharing group as a child and approve eGuard from your own iPhone.</div></div>
+        </div>
+      ) : null}
+
+      {d.platform === "IOS" ? (
+        // iPhone: app rules are chosen on the phone (Parent settings, with the family's PIN); eGuard sees only counts
+        <div className="card card-pad row">
+          <span className="ico-tile"><Icon name="lock" /></span>
+          <div className="grow"><div className="t-title">App rules on this iPhone</div>
+            <div className="t-meta">{describeAppRules(appRulesOf(d.appRules)) ?? "None yet."} Apple doesn&apos;t let eGuard see app names on an iPhone, so apps are blocked or given a daily time on the phone itself: eGuard › Parent settings, opened with the PIN from Settings › Family.</div></div>
         </div>
       ) : null}
 

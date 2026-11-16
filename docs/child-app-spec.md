@@ -292,9 +292,18 @@ The answer reaches the device on a later sync (up to 5 minutes, or longer on iOS
 
 **iOS note.** The Screen Time API gives opaque app tokens and no app names, even inside extensions. Showing app
 names to parents, `APP_INSTALLED` events and name-based rules all depend on this. **Decide** (D4) how iOS maps the
-server's names to tokens, for example by having the parent pick apps with `FamilyActivityPicker` in parent mode.
-Until then the iOS app enforces none of the per-app rules in `apps` (approval, `dailyLimitMinutes`, `category`) nor
-`categoryLimits`, sends `/usage` without `apps`, and has no `TIME_REQUESTED` or `extraTimeUntil` (checked 2026-10-13).
+server's names to tokens. **Decided 2026-11-16:** the parent chooses them on the child's iPhone, in "Parent settings"
+(opened with the family's parent PIN, `PUT /mobile/v1/family/device-pin`, checked by `POST /device/v1/parent-unlock`):
+blocked apps (a `ManagedSettingsStore` of their own, shielded all day, extra time included) and up to 5 groups of apps
+with a daily time (events on one whole-day Device Activity schedule; paused by extra time like the daily limit). The
+phone reports them as counts (`/sync` `appRules`), which the parent apps show on the device. So the iOS app still
+enforces none of the server's per-app rules in `apps` (approval, `dailyLimitMinutes`, `category`) nor
+`categoryLimits`, which apply on Android and computers, and sends `/usage` without `apps` (checked 2026-11-16). It does follow `extraTimeUntil` (bedtime and
+the daily limit stop pausing apps until then, and a one-off Device Activity interval starting at that moment puts the
+shields back, with or without the app), and the child home screen sends `TIME_REQUESTED` (`DAILY_LIMIT` or `BEDTIME`)
+while either has paused apps. Its `SCREEN_TIME` report adds `counts: { apps, categories, sites }`: the child picks the
+counted apps on the phone, so the parent sees how many ("2h / day · counts 1 app"); the server leaves `counts` out
+of the comparison with the policy.
 It does read `FILTERED` as blocked when answering a child's request.
 
 ## 8. Sync and reporting
@@ -368,7 +377,8 @@ Mode, a force-quit app, a budget of a few per hour). Polling stays the guarantee
 - Retry `5xx` and network errors with exponential backoff from 30 seconds to 15 minutes, with jitter.
 - `400`: log it locally and drop the item. It's a bug; don't retry.
 - `401`: the device was removed (section 5 › Removal). Stop everything. (Computers are the exception: a `401` never
-  lowers protection there; desktop-agent-spec.md section 2.)
+  lowers protection there; desktop-agent-spec.md section 2. The iPhone app also waits for eGuard's signed `uninstall`
+  in the `401`, or 7 days of `401`s: mobile-api.md › Device API.)
 - `413`: the body was over 64 KB. Split it (e.g. one `/usage` day per call); resending the same body fails again.
 - `429`: wait at least the `Retry-After` header's seconds, keep the item queued, then send it.
 
@@ -413,6 +423,7 @@ the last threshold crossed and no `apps`, and change the listing copy.
 | `APP_BLOCKED` `{ app }` | The child opens a `BLOCKED` app | One alert per app per hour |
 | `LIMIT_REACHED` `{ minutes }` | The daily screen-time limit is hit (`minutes` is the limit) | One alert per 12 hours |
 | `LIMIT_REACHED` `{ minutes, category }` | A category limit is used up (`category` from `categoryLimits`, `minutes` its limit) | One alert per category per 12 hours ("Gaming time used up") |
+| `LIMIT_REACHED` `{ minutes, app }` | One app's own daily limit is used up (an app rule's `dailyLimitMinutes`, `app` its name) | One alert per app per 12 hours ("YouTube time used up"), separate from the day's limit |
 | `USER_LEFT` `{}` / `USER_RETURNED` `{ awayMinutes }` | Android: the phone switched to another user or guest profile (`ACTION_USER_BACKGROUND`, registered at runtime) and back (`ACTION_USER_FOREGROUND`). Queue them with an `eventId`: the network may not be reachable from a background user | Parents see "Switched to another user" while away and "Used on another user for N min" after |
 | `TIME_REQUESTED` `{ app?, reason? }` | The child taps Ask for more time on a limit or bedtime block screen (`reason`: `DAILY_LIMIT`, `APP_LIMIT`, `CATEGORY_LIMIT`, `BEDTIME`) | One open request per child; the parent answers with extra time (`extraTimeUntil` on the next sync: limits and bedtime stop blocking until then) or not now |
 

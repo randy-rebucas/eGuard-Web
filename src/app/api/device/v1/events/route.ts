@@ -11,6 +11,7 @@ import { APPS_UPGRADE, mayNameApp } from "@/lib/plan-access";
 import { deleteDevice, timeRequestKey } from "@/lib/family-service";
 import { AppIds, canonicalNames, rememberIds } from "@/lib/app-identity";
 import { removalCode, REMOVAL_CODE_WINDOW_MS } from "@/lib/device-removal";
+import { forgetRemovedComputer, removedComputerFor } from "@/lib/removed-computers";
 
 /** Trimmed, so " YouTube" and "YouTube" are one app, and a blank name is refused */
 const appName = z.string().trim().min(1, "app is required").max(80);
@@ -58,8 +59,9 @@ const Body = z.discriminatedUnion("type", [
   // `ids`, `source`, `category`: the desktop agent, for an app its scan hadn't reported (a browser, a game in a folder it
   // doesn't walk), so the parent sees what it is
   z.object({ type: z.literal("APP_REQUESTED"), app: appName, ids: AppIds, source: AppSourceSchema.optional(), category: z.enum(CATEGORY_KEYS).optional() }),
-  // `category`: a category limit (sync's categoryLimits) was used up, rather than the whole day's screen time
-  z.object({ type: z.literal("LIMIT_REACHED"), minutes: z.number().int().min(0).max(1440), category: z.enum(CATEGORY_KEYS).optional() }),
+  // `category`: a category limit (sync's categoryLimits) was used up, rather than the whole day's screen time;
+  // `app`: one app's own daily limit (an app rule's `dailyLimitMinutes`). Neither: the whole day's screen time
+  z.object({ type: z.literal("LIMIT_REACHED"), minutes: z.number().int().min(0).max(1440), category: z.enum(CATEGORY_KEYS).optional(), app: appName.optional() }),
   z.object({ type: z.literal("APP_BLOCKED"), app: appName }),
   // "Ask for more time" on a block screen: `app` is the app the child was in, `reason` why it was paused
   z.object({ type: z.literal("TIME_REQUESTED"), app: appName.optional(), reason: z.enum(["DAILY_LIMIT", "APP_LIMIT", "CATEGORY_LIMIT", "BEDTIME"]).optional() }),
@@ -97,20 +99,28 @@ const MAX_CHILD_APPS = 1000;
 /** Notable things that happened on the device. Protection changes are detected from /report instead. */
 export async function POST(req: Request) {
   const device = await authDevice(req);
-  if (!device) return unauthorized();
+  if (!device) return removedComputerAck(req);
+  const raw = await readJson(req);
+  // Before the allowance below: a body too large was never handled, and its smaller halves are what counts
+  if (raw === TOO_LARGE) return tooLarge();
+  // A retry of an event already handled (the response was lost): same answer, nothing done twice, and it doesn't use
+  // up the allowance either. An id that isn't valid is refused below, with the rest of the body
+  const eventId = EventId.safeParse(raw);
+  const seenKey = eventId.success && eventId.data.eventId ? `deviceevent:${device.id}:${eventId.data.eventId}` : null;
+  if ((await hit(seenKey, LIMITS.deviceEventId)).limited) return NextResponse.json({ ok: true, duplicate: true });
   // A device token must not be able to fill the family's app list and alert feed without limit
   const rate = await hit(`deviceevents:${device.id}`, LIMITS.deviceEvents);
-  if (rate.limited) return tooMany("Too many events. eGuard will accept the next one shortly.", rate.retryAfter);
-  const raw = await readJson(req);
-  if (raw === TOO_LARGE) return tooLarge();
+  if (rate.limited) {
+    // Not handled: its retry must be, not answered `duplicate`
+    if (seenKey) await clearLimit(seenKey).catch(() => {});
+    return tooMany("Too many events. eGuard will accept the next one shortly.", rate.retryAfter);
+  }
   const legacy = raw && typeof raw === "object" && "type" in raw && typeof raw.type === "string" ? LEGACY_TYPES[raw.type] : undefined;
   const parsed = Body.safeParse(legacy ? { ...(raw as object), type: legacy } : raw);
-  if (!parsed.success) return badRequest(parsed.error.issues[0].message);
-  const id = EventId.safeParse(raw);
-  if (!id.success) return badRequest(id.error.issues[0].message);
-  // A retry of an event already handled (the response was lost): same answer, nothing done twice
-  const seenKey = id.data.eventId ? `deviceevent:${device.id}:${id.data.eventId}` : null;
-  if ((await hit(seenKey, LIMITS.deviceEventId)).limited) return NextResponse.json({ ok: true, duplicate: true });
+  if (!parsed.success || !eventId.success) {
+    if (seenKey) await clearLimit(seenKey).catch(() => {});
+    return badRequest(!parsed.success ? parsed.error.issues[0].message : eventId.error!.issues[0].message);
+  }
   try {
     const res = await handle(device, parsed.data, legacy === "APP_REQUESTED");
     // Refused (e.g. 409 from an UNINSTALL_ACK the server can't accept yet): a retry with the same id must be judged
@@ -122,6 +132,22 @@ export async function POST(req: Request) {
     if (seenKey) await clearLimit(seenKey).catch(() => {});
     throw err;
   }
+}
+
+/**
+ * A token with no device: a computer removed without confirming it (lib/removed-computers) may be confirming now that
+ * it uninstalled eGuard, after the signed command it got with /sync's 401. Its UNINSTALL_ACK is taken (once), and
+ * nothing more is kept for it. Anything else from it, or from any other token, is a 401.
+ */
+async function removedComputerAck(req: Request) {
+  const removed = await removedComputerFor(req);
+  if (!removed) return unauthorized();
+  const raw = await readJson(req);
+  const ack = raw && typeof raw === "object" && "type" in raw && raw.type === "UNINSTALL_ACK";
+  if (!ack) return unauthorized();
+  await forgetRemovedComputer(removed.id);
+  console.info(`[device] removed computer ${removed.deviceId} confirmed it uninstalled eGuard`);
+  return NextResponse.json({ ok: true });
 }
 
 type Device = NonNullable<Awaited<ReturnType<typeof authDevice>>>;
@@ -221,6 +247,12 @@ async function handle(device: Device, e: z.infer<typeof Body>, legacyRequest: bo
       await db.alert.create({ data: { ...base, severity: "ATTENTION", category: "DEVICES", icon: "users", title: "Used on another user",
         body: `${who} was on another user or a guest profile for ${fmtMinutes(e.awayMinutes)}. Nothing was limited or reported during that time.`, subject: who } });
     }
+  } else if (e.app) {
+    // One app's own limit: its own alert, so it never reads as (nor dedupes away) the whole day's limit
+    await createAlertUnless(`LIMIT:${device.id}:APP:${e.app}`,
+      { ...base, title: `${e.app} time used up`, createdAt: { gt: new Date(Date.now() - LIMIT_ALERT_WINDOW_MS) } },
+      { ...base, severity: "INFO", category: "SCREEN_TIME", icon: "hourglass", title: `${e.app} time used up`,
+        body: `${device.child.name} reached the ${fmtMinutes(e.minutes)} daily limit for ${e.app}. It was paused as scheduled.`, subject: who });
   } else if (e.category) {
     const name = CATEGORY_BY_KEY[e.category].limitLabel;
     await createAlertUnless(`LIMIT:${device.id}:${e.category}`,

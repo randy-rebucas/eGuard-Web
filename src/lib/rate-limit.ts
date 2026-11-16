@@ -69,6 +69,8 @@ export const LIMITS = {
   deviceReport: { max: 120, windowMs: 60 * 60_000 },
   /** an event id seen once is a retry after that (device/v1/events `eventId`); devices retry for up to a few days */
   deviceEventId: { max: 1, windowMs: 7 * 24 * 60 * 60_000 },
+  /** parent PIN tries on one child device ("Parent settings" on an iPhone): a 4-digit PIN mustn't be guessable */
+  deviceParentUnlock: { max: 5, windowMs: 15 * 60_000 },
   /** organization join codes a user tries (a wrong guess only joins an organization, but don't allow enumeration) */
   joinCodeUser: { max: 20, windowMs: 60 * 60_000 },
   /** sponsor codes a family tries; codes are worth money, so keep guessing slow */
@@ -120,7 +122,9 @@ export const TOO_MANY = "Too many attempts. Wait a few minutes and try again.";
 
 /** Counts an attempt and throws 429 once over the limit. */
 export async function enforce(key: string | null, limit: Limit, message = TOO_MANY) {
-  if ((await hit(key, limit)).limited) throw new ServiceError(429, message, "rate_limited");
+  const r = await hit(key, limit);
+  // `retryAfter` (seconds): the mobile API sends it as the Retry-After header (lib/mobile-api)
+  if (r.limited) throw new ServiceError(429, message, "rate_limited", { retryAfter: r.retryAfter });
 }
 
 /**

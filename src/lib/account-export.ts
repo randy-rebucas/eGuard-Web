@@ -10,6 +10,8 @@ import { db } from "./db";
 export async function exportFamily(user: { id: string; familyId: string; name: string }) {
   const family = await db.family.findUniqueOrThrow({
     where: { id: user.familyId },
+    // The parent PIN's hash is a secret, like a password's
+    omit: { devicePinHash: true },
     include: {
       users: {
         select: {

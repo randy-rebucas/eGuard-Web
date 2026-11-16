@@ -5,7 +5,8 @@ vi.mock("server-only", () => ({}));
 const log: string[] = [];
 const op = (name: string, count = 1) => vi.fn((args: unknown) => { log.push(name); return { op: name, args, count }; });
 const db = vi.hoisted(() => ({
-  device: { findFirst: vi.fn(), deleteMany: vi.fn(), updateMany: vi.fn(), update: vi.fn() },
+  device: { findFirst: vi.fn(), findUnique: vi.fn(), deleteMany: vi.fn(), updateMany: vi.fn(), update: vi.fn() },
+  removedComputer: { upsert: vi.fn() },
   screenTimeDaily: { deleteMany: vi.fn() },
   appUsageDaily: { deleteMany: vi.fn() },
   locationVisit: { deleteMany: vi.fn() },
@@ -84,6 +85,15 @@ describe("removeDevice", () => {
     expect(audit).toHaveBeenCalledWith("fam1", "Ana", "device.removed_with_history", "Mia's Old phone");
   });
 
+  it("keeps a removed phone's token a while, so its 401 carries the signed uninstall the iPhone app waits for", async () => {
+    db.device.findUnique.mockResolvedValue({ tokenHash: "phonehash", kind: "PHONE" });
+    await removeDevice(actor, "d1", confirm);
+    expect(db.removedComputer.upsert.mock.calls[0][0]).toMatchObject({
+      where: { deviceId: "d1" },
+      create: { deviceId: "d1", familyId: "fam1", label: "Mia's Old phone", tokenHash: "phonehash", removalSecret: null },
+    });
+  });
+
   it("is a 404 when another parent removed it first", async () => {
     db.device.deleteMany.mockImplementation(op("device", 0));
     await expect(removeDevice(actor, "d1", confirm, { deleteHistory: true })).rejects.toMatchObject({ status: 404 });
@@ -138,9 +148,15 @@ describe("removeDevice on a computer", () => {
     db.screenTimeDaily.deleteMany.mockImplementation(op("screenTime"));
     db.appUsageDaily.deleteMany.mockImplementation(op("appUsage"));
     db.locationVisit.deleteMany.mockImplementation(op("visits"));
+    db.device.findUnique.mockResolvedValue({ tokenHash: "hash1", removalSecret: "secret1" });
     expect(await removeDevice(actor, "d1", confirm, { now: true })).toMatchObject({ pending: false });
     expect(ops()).toEqual(["screenTime", "appUsage", "visits", "device", "alerts"]);
-    expect(alertBody()).toContain("until a removal code from the device page is typed into it");
+    expect(alertBody()).toContain("when it removes itself, or until its removal code (on the Devices page at eguard.family for 30 days");
+    // eGuard is still on it: its token and secret are kept to let it go later (lib/removed-computers)
+    expect(db.removedComputer.upsert.mock.calls[0][0]).toMatchObject({
+      where: { deviceId: "d1" },
+      create: { deviceId: "d1", familyId: "fam1", label: "Mia's Gaming PC", tokenHash: "hash1", removalSecret: "secret1" },
+    });
   });
 
   it("can be kept while it waits", async () => {

@@ -8,7 +8,8 @@ const db = vi.hoisted(() => ({
   alert: { updateMany: vi.fn(), create: vi.fn() },
   rateLimit: { findUnique: vi.fn(), upsert: vi.fn() },
   configChange: { create: vi.fn() },
-  device: { findMany: vi.fn(), updateMany: vi.fn(), deleteMany: vi.fn() },
+  device: { findMany: vi.fn(), findUnique: vi.fn(), updateMany: vi.fn(), deleteMany: vi.fn() },
+  removedComputer: { upsert: vi.fn() },
   screenTimeDaily: { deleteMany: vi.fn() },
   appUsageDaily: { deleteMany: vi.fn() },
   locationVisit: { deleteMany: vi.fn() },
@@ -71,8 +72,10 @@ describe("finishQuietRemovals", () => {
     db.device.findMany.mockResolvedValue([pc]);
     db.device.updateMany.mockResolvedValue({ count: 1 });
     db.device.deleteMany.mockResolvedValue({ count: 1 });
+    db.device.findUnique.mockResolvedValue({ tokenHash: "hash1", removalSecret: "secret1" });
     expect(await finishQuietRemovals()).toBe(1);
     expect(db.device.updateMany.mock.calls[0][0].where).toEqual({ id: "d1", lastSeenAt: seen });
+    expect(db.removedComputer.upsert.mock.calls[0][0].create).toMatchObject({ deviceId: "d1", tokenHash: "hash1", removalSecret: "secret1" });
   });
 
   it("leaves a computer that checked in meanwhile", async () => {

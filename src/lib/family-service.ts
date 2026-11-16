@@ -24,6 +24,8 @@ import { ensurePrimary, makePrimary, promoteOldest, usedDeviceSlots, withDeviceL
 import { noteActivitySafely, noteRegistration } from "./parent-care/hooks";
 import { removalWaits } from "./device-removal";
 import { advancePolicyPast } from "./browser-policy";
+import { REMOVED_COMPUTER_DAYS, rememberRemovedComputer, rememberRemovedPhone } from "./removed-computers";
+import { appleTokensOf, revokeAppleTokens } from "./apple-tokens";
 
 /** Family, children, apps and devices: shared by the web server actions and the mobile API. */
 
@@ -164,6 +166,9 @@ export async function deleteChild(actor: Actor, childId: string, confirm: Confir
   await confirmDestructive(actor.id, confirm);
   const child = await db.child.findFirst({ where: { id: childId, familyId: actor.familyId } });
   if (!child) throw notFound("Child");
+  // Their devices go with them: each is kept a while as a removed device (lib/removed-computers), so its token still
+  // gets eGuard's signed uninstall command (phones lift protection only with it; computers remove themselves)
+  const devices = await db.device.findMany({ where: { childId: child.id, familyId: actor.familyId }, select: { id: true, name: true, kind: true, tokenHash: true, removalSecret: true } });
   const [, gone] = await db.$transaction([
     // Codes aren't linked to the child in the schema, so they'd outlive it: a device pairing with one would
     // fail with a database error and use the code up
@@ -172,6 +177,13 @@ export async function deleteChild(actor: Actor, childId: string, confirm: Confir
     db.child.deleteMany({ where: { id: child.id, familyId: actor.familyId } }),
   ]);
   if (!gone.count) throw notFound("Child");
+  for (const d of devices) {
+    const label = `${child.name}'s ${d.name}`;
+    const row = { id: d.id, familyId: actor.familyId, tokenHash: d.tokenHash };
+    // Best effort: without it a phone lifts protection on its own after a week of refused check-ins
+    await (d.kind === "COMPUTER" ? rememberRemovedComputer(db, { ...row, removalSecret: d.removalSecret }, label) : rememberRemovedPhone(db, row, label))
+      .catch((e) => console.error("[child] couldn't keep a removed device", e));
+  }
   await audit(actor.familyId, actor.name, "child.deleted", child.name);
   // Like removing a device, this ends verification and tamper alerts, so the other parents hear about it
   await db.alert.create({
@@ -681,6 +693,16 @@ export async function deleteDevice(d: { id: string; familyId: string; childId: s
       await tx.appUsageDaily.deleteMany(history);
       await tx.locationVisit.deleteMany(history);
     }
+    // Removed without its own word: eGuard is still on the computer, so its token and removal secret are kept a while
+    // to let it go later (lib/removed-computers)
+    if (how === "forced" || how === "quiet") {
+      const row = await tx.device.findUnique({ where: { id: d.id }, select: { tokenHash: true, removalSecret: true } });
+      if (row) await rememberRemovedComputer(tx, { id: d.id, familyId: d.familyId, ...row }, `${d.child.name}'s ${d.name}`);
+    } else if (how === "removed") {
+      // A phone lifts its protection only with eGuard's signed word (lib/removed-computers): keep its token a while
+      const row = await tx.device.findUnique({ where: { id: d.id }, select: { tokenHash: true, kind: true } });
+      if (row && row.kind !== "COMPUTER") await rememberRemovedPhone(tx, { id: d.id, familyId: d.familyId, tokenHash: row.tokenHash }, `${d.child.name}'s ${d.name}`);
+    }
     // deleteMany: another parent removing it at the same moment is a 404 here, not a Prisma error
     const deleted = await tx.device.deleteMany({ where: { id: d.id } });
     // Alerts only hold the device's id, so its open ones (offline, protection changed) would never resolve
@@ -704,9 +726,9 @@ export async function deleteDevice(d: { id: string; familyId: string; childId: s
       body: how === "uninstalled"
         ? `${d.name} confirmed it uninstalled eGuard, as ${by} asked, and was removed. ${kept}`
         : how === "forced"
-          ? `${by} removed ${d.name} without waiting for it. eGuard stays on the computer and keeps its last settings until a removal code from the device page is typed into it. ${kept}`
+          ? `${by} removed ${d.name} without waiting for it. eGuard stays on the computer with its last settings until it next connects, when it removes itself, or until its removal code (on the Devices page at eguard.family for ${REMOVED_COMPUTER_DAYS} days) is typed into it. ${kept}`
           : how === "quiet"
-            ? `${d.name} hasn't checked in since ${by} asked to remove it ${QUIET_REMOVAL_DAYS} days ago, so its removal was finished. If a removal code was typed into it, eGuard is already gone from it; if not, eGuard stays on it with its last settings until one is. ${kept}`
+            ? `${d.name} hasn't checked in since ${by} asked to remove it ${QUIET_REMOVAL_DAYS} days ago, so its removal was finished. If a removal code was typed into it, eGuard is already gone from it; if not, eGuard removes itself when it next connects, or when its removal code (on the Devices page at eguard.family for ${REMOVED_COMPUTER_DAYS} days) is typed into it. ${kept}`
           : `${by} removed ${d.name} from eGuard. The eGuard app on it stops applying your settings, and eGuard no longer checks it. ${kept}`,
     },
   });
@@ -736,12 +758,15 @@ export async function changeEmail(actor: Actor, email: string, password: string)
   const taken = () => conflict("Another account already uses this email.");
   if (await userIdForMailbox(email, actor.id)) throw taken();
   await confirmPassword(actor.id, password);
+  // Linked sign-ins go with the old address: their Apple tokens are revoked once they're gone (5.1.1(v))
+  const appleTokens = await appleTokensOf([actor.id]);
   await db.$transaction([
     db.user.update({ where: { id: actor.id }, data: { email, emailVerifiedAt: null } }),
     db.oAuthIdentity.deleteMany({ where: { userId: actor.id } }),
     db.emailVerification.deleteMany({ where: { userId: actor.id } }),
     db.passwordReset.deleteMany({ where: { userId: actor.id } }),
   ]).catch((e) => { throw isUniqueViolation(e) ? taken() : e; });
+  await revokeAppleTokens(appleTokens);
   await audit(actor.familyId, actor.name, "email.changed", `${current.email} → ${email}`);
   // To the old address: whoever changed it may not be its owner
   sendSecurityNotice(current.email, current.name, { kind: "email", newEmail: email });
@@ -760,7 +785,7 @@ export async function unlinkIdentity(actor: Actor, identityId: string) {
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`identities:${actor.id}`}))`;
     const [user, identities] = await Promise.all([
       tx.user.findUniqueOrThrow({ where: { id: actor.id } }),
-      tx.oAuthIdentity.findMany({ where: { userId: actor.id }, select: { id: true, provider: true } }),
+      tx.oAuthIdentity.findMany({ where: { userId: actor.id }, select: { id: true, provider: true, appleRefreshToken: true } }),
     ]);
     const t = identities.find((i) => i.id === identityId);
     if (!t) throw notFound("Sign-in");
@@ -771,6 +796,8 @@ export async function unlinkIdentity(actor: Actor, identityId: string) {
     return t;
   });
   await audit(actor.familyId, actor.name, "identity.unlinked", target.provider);
+  // Apple: also end eGuard's access at Apple (Settings › Sign in with Apple), best-effort
+  if (target.provider === "apple" && target.appleRefreshToken) await revokeAppleTokens([target.appleRefreshToken]);
 }
 
 /**
@@ -785,12 +812,18 @@ export async function deleteAccount(actor: Actor, confirm: Confirm) {
     await cancelSubscriptionsBeforeDeletion(actor.familyId);
     const members = await db.user.findMany({ where: { familyId: actor.familyId }, select: { id: true } });
     await handOverOrganizations(members.map((m) => m.id));
+    // Read before the rows go: every parent in the family loses their account
+    const appleTokens = await appleTokensOf(members.map((m) => m.id));
     await db.family.delete({ where: { id: actor.familyId } });
+    await revokeAppleTokens(appleTokens);
     return { deleted: "family" as const };
   }
   await handOverOrganizations([actor.id]);
+  const appleTokens = await appleTokensOf([actor.id]);
   await db.user.delete({ where: { id: actor.id } });
   await audit(actor.familyId, actor.name, "member.left", user.email);
+  // Sign in with Apple: revoke eGuard's access at Apple too (App Store 5.1.1(v)); never fails the deletion
+  await revokeAppleTokens(appleTokens);
   return { deleted: "account" as const };
 }
 
@@ -822,8 +855,11 @@ export async function removeParent(actor: Actor, userId: string) {
   const parent = await db.user.findFirst({ where: { id: userId, familyId: actor.familyId, role: "PARENT" } });
   if (!parent) throw notFound("Family member");
   await handOverOrganizations([userId]);
+  // Their account is deleted: so is their Sign in with Apple grant (revoked once the account is gone)
+  const appleTokens = await appleTokensOf([userId]);
   const r = await db.user.deleteMany({ where: { id: userId, familyId: actor.familyId, role: "PARENT" } });
   if (!r.count) throw notFound("Family member");
+  await revokeAppleTokens(appleTokens);
   // Name the person: the id means nothing in the audit log once their account is gone
   await audit(actor.familyId, actor.name, isPendingInvite(parent) ? "member.invite_withdrawn" : "member.removed", `${parent.name} (${parent.email})`);
 }

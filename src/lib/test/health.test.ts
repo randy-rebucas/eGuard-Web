@@ -37,6 +37,14 @@ describe("evaluate", () => {
     expect(evaluate("AVAILABLE", web("ALLOWLIST", 0), web("FILTER", 81_244))).toBe("WARNING");
     expect(describeConfig(web("FILTER", 42))).toBe("Adult and unsafe sites filtered");
   });
+  it("says what an iPhone's limit counts, without making it differ from the policy", () => {
+    const policy = { key: "SCREEN_TIME", dailyMinutes: 120, weekendMinutes: 120 };
+    const reported = { ...policy, counts: { apps: 1, categories: 0, sites: 0 } };
+    expect(configMatches(policy, reported)).toBe(true);
+    expect(describeConfig(reported)).toBe("2h / day · counts 1 app");
+    expect(describeConfig({ ...policy, counts: { apps: 3, categories: 2, sites: 0 } })).toBe("2h / day · counts 3 apps, 2 categories");
+    expect(describeConfig(policy)).toBe("2h / day");
+  });
   it("never scores unsupported capabilities", () => {
     expect(evaluate("UNSUPPORTED", { key: "NOTIFICATIONS", quietDuringBedtime: true }, null)).toBe("UNSUPPORTED");
   });

@@ -8,6 +8,8 @@ import { Avatar, EmptyState, PageHead } from "@/components/ui";
 import { DeviceCard } from "@/components/cards";
 import { BrowserCard } from "@/components/browser-card";
 import { PairDevice } from "@/components/device-forms";
+import { removedComputers } from "@/lib/removed-computers";
+import { dayTime, shortDate } from "@/lib/format";
 
 export const metadata = { title: "Devices" };
 
@@ -15,8 +17,8 @@ export default async function DevicesPage(props: PageProps<"/devices">) {
   const u = await requireUser();
   // ?child= preselects who the code is for (from a child's "Pair a device"); ignored if it isn't one of theirs
   const { child } = await props.searchParams;
-  const [family, { children, devices, deviceStates }, browsers] = await Promise.all([
-    getFamily(u.familyId), getFamilyGraph(u.familyId), listBrowsers(u.familyId),
+  const [family, { children, devices, deviceStates }, browsers, removed] = await Promise.all([
+    getFamily(u.familyId), getFamilyGraph(u.familyId), listBrowsers(u.familyId), removedComputers(u.familyId),
   ]);
   // Browsers take a device slot, except one eGuard disconnected for security and one on a paired computer (its slot covers it)
   const used = devices.length + browsers.filter((b) => !b.revokedAt && !b.deviceId).length;
@@ -54,6 +56,24 @@ export default async function DevicesPage(props: PageProps<"/devices">) {
           </section>
         );
       })}
+      {/* Removed without confirming it: eGuard may still be on them, and only this code (or their next connection) lets it go */}
+      {removed.length ? (
+        <section className="card card-pad" id="removed">
+          <div className="card-head"><div><h2>Removed computers</h2><div className="sub">These were removed before they confirmed it, so eGuard may still be on them with their last settings. Each removes eGuard by itself the next time it&apos;s online. To remove it sooner, open eGuard on the computer, choose <b>Remove with a code</b> and type its code. Reload this page for a new code.</div></div></div>
+          <div className="dash-col" style={{ gap: 14 }}>
+            {removed.map((r) => (
+              <div key={r.id} className="row" style={{ flexWrap: "wrap", gap: 12 }}>
+                <span className="ico-tile muted"><Icon name="laptop" /></span>
+                <div className="grow" style={{ minWidth: 200 }}>
+                  <div className="t-title">{r.label}</div>
+                  <div className="t-meta">Removed {shortDate(r.removedAt, family.timezone)} · code works until {dayTime(r.removal.expiresAt, family.timezone)} · shown here until {shortDate(r.expiresAt, family.timezone)}</div>
+                </div>
+                <div className="pairing-code num" aria-label={`Removal code for ${r.label}: ${r.removal.code.split("").join(" ")}`}>{r.removal.code}</div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
       {/* Both pairing forms would only say "Add a child first": one clear next step instead */}
       {!children.length ? (
         <section className="card card-pad" id="pair">

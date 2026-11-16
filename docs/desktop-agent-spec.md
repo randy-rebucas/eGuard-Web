@@ -274,7 +274,11 @@ to an allowed one whose signer it doesn't carry.
   - **Test vector:** a secret of 32 bytes of `0x07` (base64url `BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc`),
     deviceId `dev_123` and window 0 give `XEM54CNL`.
 - **Remove without waiting** (the PC is lost or was reset). The device is deleted now. The agent on that PC keeps
-  its last policy until the code is typed into it, so the parent should type the code in first if they can.
+  its last policy until it next connects or the code is typed into it.
+- **A removal finished without the PC** (Remove without waiting, or 7 quiet days) keeps a `RemovedComputer` for 30
+  days (`lib/removed-computers`): `/sync`'s `401` for its token carries the signed uninstall command (checked as
+  the one in a sync answer; a `401` without one, or with one that doesn't verify, still changes nothing), its
+  `UNINSTALL_ACK` answers `200` once, and the web Devices page shows its removal code under "Removed computers".
 
 **Every local route is blocked:**
 
@@ -390,6 +394,9 @@ On the parent side:
 - 2026-10-24 (the owner's decisions after Phase 6): a quiet removal finished after 7 days (`finishQuietRemovals`,
   run by the maintenance cron), BROWSERS apps PENDING while web filtering is on, `APP_REQUESTED` `ids`/`source`/
   `category`, `TAMPER` `SERVICE_RESTARTED`
+- 2026-11-16: removed computers (`RemovedComputer`, migration `20261116180000_removed_computers`): the signed
+  uninstall command on `/sync`'s `401` for 30 days after a removal finished without the PC, its `UNINSTALL_ACK`, the
+  code on the Devices page. `/events`: a repeated `eventId` and a `413` no longer count toward the 120 an hour
 
 **Tests:**
 - `tests/api/desktop-agent.test.ts`: 16 tests covering pairing, the scan, id merging, approval, the signed catalog, tamper and all three

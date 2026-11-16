@@ -139,11 +139,15 @@ model Family {
   retentionDays       Int     @default(90)
   /// when the last weekly summary went out (claimed once per family, for every parent who wants it)
   digestSentAt        DateTime?
+  /// The parent PIN that opens "Parent settings" on a child's iPhone (lib/device-pin), argon2id like a password
+  devicePinHash       String?
+  devicePinSetAt      DateTime?
   createdAt     DateTime @default(now())
 
   users        User[]
   children     Child[]
   devices      Device[]
+  removedComputers RemovedComputer[]
   alerts       Alert[]
   changes      ConfigChange[]
   pairingCodes PairingCode[]
@@ -321,6 +325,9 @@ model OAuthIdentity {
   provider  String
   subject   String
   email     String?
+  /// Apple only: the refresh token from the app's authorization code, with its client id, sealed with TWO_FACTOR_KEY
+  /// (lib/apple-tokens). Revoked at Apple when the account is deleted or Apple is unlinked. Null for older sign-ins.
+  appleRefreshToken String?
   createdAt DateTime @default(now())
 
   @@unique([provider, subject])
@@ -662,6 +669,8 @@ model Device {
   /// iPhones only: the Screen Time authorization the app last reported on /sync (lib/screen-time-authorization).
   /// Null on other platforms, and until an app that reports it has synced.
   screenTimeAuthorization ScreenTimeAuthorization?
+  /// iPhone: what the app rules chosen on the phone cover, as counts (lib/device-app-rules)
+  appRules    Json?
   createdAt   DateTime   @default(now())
 
   protections DeviceProtection[]
@@ -676,6 +685,28 @@ model Device {
 
   @@index([familyId])
   @@index([childId])
+}
+
+/// A computer removed without confirming it (a parent finished the removal without waiting, or it stayed quiet for
+/// QUIET_REMOVAL_DAYS). eGuard is still on it and refuses to be uninstalled there, so for REMOVED_COMPUTER_DAYS its
+/// token still gets eGuard's signed uninstall command (with the 401 on /sync), its UNINSTALL_ACK is taken, and the
+/// device list shows its offline removal code (lib/removed-computers). Deleted on the ACK or when it expires.
+model RemovedComputer {
+  id            String   @id @default(cuid())
+  familyId      String
+  family        Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  /// The device's id as the agent knows it: the uninstall command and the removal codes are for this id
+  deviceId      String   @unique
+  /// "Mia's Laptop", for the device list (the child may since have been renamed or removed)
+  label         String
+  tokenHash     String   @unique
+  /// Computers only: the key for offline removal codes. Null for a removed phone or tablet, which is kept only so its
+  /// token's 401 carries the signed uninstall command (the iPhone app lifts protection only with it)
+  removalSecret String?
+  removedAt     DateTime @default(now())
+  expiresAt     DateTime
+
+  @@index([familyId])
 }
 
 /// Verified state per device and protection (what the device reported).

@@ -58,7 +58,7 @@ the app runs in exactly one mode, against exactly one API, with exactly one cred
 | **Lifetime** | 30 days. Ends on sign-out, password change, "sign out other sessions", or removal from the family | Doesn't expire. Ends only when a parent removes the device, or deletes the child or the family |
 | **Can it be recovered?** | Sign in again | No. Only a hash is kept on the server; a lost token means pairing again |
 | **Storage** | iOS Keychain / Android EncryptedSharedPreferences | Android Keystore (EncryptedSharedPreferences) / iOS Keychain shared with the extensions through the App Group |
-| **A `401` means** | The session ended: clear it and show sign-in | The device was removed: stop enforcing, wipe local data, show the removed screen |
+| **A `401` means** | The session ended: clear it and show sign-in | The device was removed: stop enforcing, wipe local data, show the removed screen (iPhone: with eGuard's signed `uninstall`, or after 7 days of `401`s; see Device API › Tokens) |
 | **Scope of data** | The whole family: all children, devices, alerts, settings, subscription | Its own child only: that child's policy, open changes and app rules |
 | **Direction** | Reads state and **asks for** changes | **Applies** changes and **reports** what the OS really has |
 | **Requests** | `GET`, `POST`, `PUT`, `PATCH`, `DELETE` | `POST` only |
@@ -288,7 +288,7 @@ Every error has the same shape. `error` is always written for the parent and saf
 | 409 | `conflict`, `unsupported`, `not_dismissible` | Duplicate email/app, device limit reached, protection unsupported on the child's devices, alert can't be dismissed |
 | 413 | `too_large` | Photo over 2 MB |
 | 415 | `unsupported_media_type` | Photo isn't a JPEG/PNG/WebP/HEIC, or its bytes don't match its declared type |
-| 429 | `rate_limited` | Too many tries, e.g. 10 failed sign-ins for one account from one address in 15 minutes (see `POST /auth/login`) |
+| 429 | `rate_limited` | Too many tries, e.g. 10 failed sign-ins for one account from one address in 15 minutes (see `POST /auth/login`). Carries `Retry-After` (seconds until the limit resets): say when to try again |
 | 501 | `provider_not_configured` | Apple/Google sign-in isn't enabled on this server (check `/app-info` first) |
 | 500 | `server_error` | Unexpected. Show `error` and let the parent retry |
 
@@ -415,9 +415,17 @@ Used in the children list, the dashboard and the family screen.
   "issues": 0,
   "firstCheck": false,
   "removalRequestedAt": null,
-  "selfApproved": false
+  "selfApproved": false,
+  "appRules": null,
+  "appRulesLabel": null
 }
 ```
+
+`appRules` (iPhones only, else `null`): the app rules a parent chose on the phone in "Parent settings", as counts:
+`{ blocked: { apps, categories, sites }, limited: [{ minutes, counts: { apps, categories, sites } }] }`, and
+`appRulesLabel` the line to show ("Blocked: 3 apps, 1 category · 1 h 30 min a day: 2 apps"), `null` when there are
+none. Apple gives eGuard no app names on an iPhone, so per-app rules there are chosen on the phone with the family's
+parent PIN ([Child device PIN](#child-device-pin)); the server's `apps` rules apply to Android and computers.
 
 `state` is `healthy`, `issues` (`issues` > 0 protections not passing, counting ones the device hasn't reported yet:
 a device that was just paired has `issues` equal to the number of protections until its first check) or `offline`
@@ -730,7 +738,8 @@ address emails the invitation again rather than a reset link.
 
 ##### `POST /auth/social` → `200` (existing account) / `201` (new account)
 
-"Continue with Apple / Google". Send the **ID token** (JWT) from the native SDK, not an authorization code.
+"Continue with Apple / Google". Send the **ID token** (JWT) from the native SDK. Apple sign-ins also send the
+credential's `authorizationCode` (below), which is only used to revoke eGuard at Apple later.
 
 | Field | Type | Notes |
 |---|---|---|
@@ -739,6 +748,7 @@ address emails the invitation again rather than a reset link.
 | `name` | string, optional | Apple only gives the name on the **first** authorization. Forward `fullName` so the account gets a name |
 | `guardian` | boolean, optional | Needed only when this creates a new account. Without it, a new sign-up gets `400 guardian_required`: show the parent/guardian (18+) confirmation and retry the same `idToken` with `guardian: true` |
 | `nonce` | string (16–128), optional | The raw one-time nonce. Apple: put its SHA-256 (hex) in `ASAuthorizationAppleIDRequest.nonce`. Google: pass it as the request's nonce. When the token carries a nonce it must match, and a nonce sent with a token that has none is refused (`401 invalid_token`); retries with `guardian: true` reuse the same nonce |
+| `authorizationCode` | string, optional (Apple only) | iOS: `ASAuthorizationAppleIDCredential.authorizationCode` (UTF-8). The server exchanges it at Apple for a refresh token, kept encrypted, so that deleting the account (`DELETE /me`) or unlinking Apple (`DELETE /me/identities/{id}`) revokes eGuard at Apple (App Store guideline 5.1.1(v)). Send it on every Apple sign-in, and again on the `guardian: true` retry (the code is single-use and lasts 5 minutes; a failed first attempt doesn't use it). The exchange is best-effort: an expired or refused code, or Apple being down, never fails the sign-in. Ignored for Google |
 
 Response: `{ token, expiresAt, user, isNew }`, or `{ twoFactorRequired: true, challenge, expiresAt, isNew: false }`
 when the linked account has two-step verification on. Continue with onboarding when `isNew` is true.
@@ -753,7 +763,9 @@ Errors: `400 email_required` (no verified email; Apple "Hide my email" relay add
 `401 invalid_token`, `501 provider_not_configured`.
 
 > Server setup: the ID token's audience must be listed in `APPLE_CLIENT_IDS` (the iOS bundle ID) or
-> `GOOGLE_CLIENT_IDS` (the iOS and Android OAuth client IDs). Send these IDs to the backend team.
+> `GOOGLE_CLIENT_IDS` (the iOS and Android OAuth client IDs). Send these IDs to the backend team. Revoking Apple
+> sign-ins also needs `APPLE_TEAM_ID`, `APPLE_KEY_ID` and `APPLE_PRIVATE_KEY` (a Sign in with Apple key, .p8) and
+> `TWO_FACTOR_KEY` (encrypts the stored token). Without them Apple sign-in still works; nothing is kept or revoked.
 
 ##### Two-step verification: `POST /auth/two-factor`
 
@@ -783,10 +795,10 @@ treated as no token. Response: `{ "ok": true }`.
 |---|---|---|
 | `GET /me` | none | `User` |
 | `PATCH /me` | any of `{ name, email, password, timezone }` | `User`. `timezone` (IANA, e.g. `Asia/Manila`) is the family's, stored with proper casing (`asia/manila` → `Asia/Manila`); fixed offsets like `+08:00` are `400`. Only the family admin can change it (`403 forbidden` for another parent sending a different zone). Changing `email` needs the current `password` (`403 wrong_password`, or `403 password_not_set` when `hasPassword` is false). `409` if the email is taken. A new email sets `emailVerified: false`, sends a link to the new address, and unlinks Apple/Google sign-ins |
-| `DELETE /me` | `{ password }`, or `{ confirm: "DELETE" }` when `hasPassword` is false ([Confirming deletions](#confirming-deletions)) | `{ ok, deleted: "family" \| "account" }`. **Deletes the account.** The family admin's account deletes the whole family (children, devices, history, other parents). Another parent's account removes only them. Sign out locally afterwards |
+| `DELETE /me` | `{ password }`, or `{ confirm: "DELETE" }` when `hasPassword` is false ([Confirming deletions](#confirming-deletions)) | `{ ok, deleted: "family" \| "account" }`. **Deletes the account.** The family admin's account deletes the whole family (children, devices, history, other parents). Another parent's account removes only them. Apple sign-ins of every deleted account are then revoked at Apple (best-effort, up to a few seconds: Apple being down or refusing never fails the deletion; sign-ins from before `authorizationCode` was sent have nothing to revoke). Sign out locally afterwards |
 | `POST /me/export` | none | The family's data as a JSON file (`Content-Disposition: attachment; filename="eguard-family-export.json"`): parents, children, settings, devices, app rules, screen time, location visits, history, alerts, browsers, support requests and purchases, plus `tipsAndReminders`: the signed-in parent's own parent-care preferences, activities, plans, messages, events and opt-outs (never another parent's). Never includes passwords or tokens. Save it or hand it to the share sheet. Any parent can export; each export is recorded in the family's audit log. Same file as the website's export |
 | `GET /me/identities` | none | `{ identities: [{ id, provider, email, createdAt }] }`: linked sign-ins. `provider` is `apple`, `google` or `linkedin` (LinkedIn is linked on the website only; show any other value as is) |
-| `DELETE /me/identities/{id}` | none | `{ ok }`. `409` if it's the only way to sign in (no password set) |
+| `DELETE /me/identities/{id}` | none | `{ ok }`. `409` if it's the only way to sign in (no password set). Unlinking Apple also revokes eGuard at Apple, best-effort |
 | `POST /me/password` | `{ current, next }` | `{ ok, message }`. `403 wrong_password`, `400` if `next` < 10 chars. **Signs out every other session**; this one stays. The parent is emailed that it changed (as for an email change, to the old address, and for turning off two-step verification) |
 | `GET /me/notifications` | none | `{ notifyPush, notifyEmail, notifyApproval, weeklySummary, productUpdates }`. `notifyEmail` emails alerts that need attention; `notifyPush` pushes the same alerts to this parent's phones (every plan: all of them with `realtimeAlerts`, security alerts only otherwise, see `pushScope`); `notifyApproval` also sends a child's requests for an app or a blocked website, by whichever of email and push is on; `productUpdates` is the eGuard team's emails about new features (notices about the account, privacy or security are sent regardless) |
 | `PATCH /me/notifications` | any subset of those booleans | Same object, updated. Send only what changed. Push can be turned on on every plan |
@@ -1501,8 +1513,10 @@ it uninstalls, confirms, and is removed (the family gets "Device removed"). Mean
 `removalCode: { code, expiresAt }`: an 8-character code the parent can type into eGuard on the computer to remove it
 offline. Show it with **Keep this computer** (`POST /devices/{id}/keep`, cancels the removal) and **Remove now**
 (`DELETE` again with `now: true`: removed at once without waiting; eGuard stays on the computer with its last settings
-until a removal code is typed into it). A computer that stays silent for 7 days after the request is removed by the
-server. `pending` is `false` for every other kind of device, which is removed at once.
+until it next connects, when it removes itself, or a removal code is typed into it). A computer that stays silent for 7
+days after the request is removed by the server. A computer removed either of these ways leaves the device list, but
+for 30 days its token still gets the signed uninstall command (Part C) and the web Devices page shows its removal
+code under "Removed computers". `pending` is `false` for every other kind of device, which is removed at once.
 
 ```json
 {
@@ -1562,6 +1576,8 @@ Compare `devicesUsed` with `deviceLimit` ("6 of 8 devices").
 | `DELETE /family/members/{id}` | none | `{ ok }`. Admin only. Removes a `PARENT` (not yourself) and signs them out everywhere, or withdraws a pending invitation |
 | `GET /family/privacy` | none | `{ keepLocationHistory, shareAnalytics, retentionDays }`. eGuard doesn't collect product analytics yet: `shareAnalytics` is saved as the family's consent and applies if it starts, so say that under the switch |
 | `PATCH /family/privacy` | any of `{ keepLocationHistory, shareAnalytics }` | Same object. Admin only. **Turning `keepLocationHistory` off deletes all stored visits**, so confirm with the parent first |
+| `GET /family/device-pin` | none | `{ set, setAt }`. <a id="child-device-pin"></a>The parent PIN that opens "Parent settings" on a child's iPhone, where a parent blocks apps or gives them a daily time (Apple's picker; eGuard never sees their names). Never returns the PIN |
+| `PUT /family/device-pin` | `{ pin }`: 4–8 digits, or `null` to clear | Same as GET. Admin only. Stored like a password; the phone checks it online (`POST /device/v1/parent-unlock`, 5 tries per 15 minutes per phone), and the family's audit log records each opening and wrong try |
 
 ##### Organizations
 
@@ -1882,7 +1898,7 @@ These parts of the design aren't backed by the API yet. Plan the UI accordingly.
 
 | Design element | Status | Suggested UI for now |
 |---|---|---|
-| Push notifications | Sent through Firebase Cloud Messaging once the server has `FCM_SERVICE_ACCOUNT`; alerts go out with the maintenance job (every few minutes), not instantly | Register FCM tokens; still refresh with `/alerts/unread-count` on foreground. A push's `data` has `type: "alert"`, `alertId`, `category` and `childId?`, plus the alert's `action` flattened when it has one: `actionType`, `deviceId?`, `key?`, `requestId?` (`childId` is then the action's). Open what `actionType` opens, as the alert's button does; without one, open the alert. `type` is always `"alert"`, never an action |
+| Push notifications | Sent through Firebase Cloud Messaging once the server has `FCM_SERVICE_ACCOUNT`; alerts go out with the maintenance job (every few minutes), not instantly | Register FCM tokens; still refresh with `/alerts/unread-count` on foreground. A push's `data` has `type: "alert"`, `alertId`, `category` and `childId?`, plus the alert's `action` flattened when it has one: `actionType`, `deviceId?`, `key?`, `requestId?` (`childId` is then the action's). Open what `actionType` opens, as the alert's button does; without one, open the alert. `type` is always `"alert"`, never an action. **Android tokens get data-only messages**: `title` and `body` are in `data` and there is no `notification` part, so the app always posts the alert itself (only for a signed-in parent, private on the lock screen). iOS tokens keep the `notification` part |
 | Upgrade / Manage Subscription in the apps | Plans are sold on the web only (PayMongo) for now; Google Play billing is turned off and App Store purchases aren't supported, so `billingAvailable` is `false` | Show the plan and usage without a buy button or a link to the website |
 | Password for Apple/Google accounts | Social accounts have no password until they set one, so they can't change one or change their email | Hide "Change password" while `hasPassword` is false and offer "Forgot password?" to set one. Deletions use "Type DELETE" instead ([Confirming deletions](#confirming-deletions)) |
 | Sponsor codes | Redeeming a code that pays for a plan happens on the website only: unlocking a paid plan with a code inside a store app can break App Store and Google Play payment rules. Joining an organization (free) works in the app | Show a sponsored plan (`store.name: "VOUCHER"`) as "Sponsored plan"; no in-app redeem and no link to the website |
@@ -1930,10 +1946,20 @@ P4.12 for what the parent apps show meanwhile.
   the child or the family.
 - **Any `401` means the device was removed.** On a phone or tablet: stop syncing and enforcing, clear the token, and
   show the removal screen ([child-app-spec.md › Removal](child-app-spec.md#removal)).
+- **For 30 days after a phone or tablet is removed** (by a parent, or with its child), its token's `401` from `/sync`
+  carries eGuard's signed word too: `{ "error", "uninstall": { command, signature, keyId } }`, the same command and
+  signature as for computers below (`lib/removed-computers`, kept without a removal secret). The iPhone app lifts
+  protection at once only with it (signature against its built-in keys, `deviceId` its own, `at` within a day); on a
+  `401` without it, it keeps the saved settings and lifts them after 7 days of nothing but `401`s (a deleted family,
+  or signing not configured). A proxy with its own root certificate can send a bare `401`, never the signature.
 - **Computers are the exception: a `401` never lowers protection** ([desktop-agent-spec.md › 2](desktop-agent-spec.md),
   rule 5, "Fail closed"). The agent keeps enforcing its last policy; it uninstalls itself only on eGuard's signed
   `uninstall` command from `/sync` or a parent's offline removal code. A removed computer's token answers `401`
-  from then on, and the agent stays as it is until one of those arrives.
+  from then on, and the agent stays as it is until one of those arrives. For 30 days after a removal finished without
+  the computer's confirmation (a parent's "Remove without waiting", or 7 quiet days), `/sync`'s `401` body carries that
+  command too: `{ "error", "uninstall": { command, signature, keyId } }`, the same as `/sync`'s `uninstall` and checked
+  the same way (signature, device, time, newer than the last). Its `UNINSTALL_ACK` on `/events` answers `200 { ok }`
+  once; every other call with that token is a `401`.
 
 A parent token doesn't work here and a device token doesn't work in the parent API. When a parent pairs the phone
 they're holding, the app signs out of the parent session after pairing
@@ -1959,7 +1985,7 @@ they're holding, the app signs out of the parent session after pairing
 | Status | Meaning / what the app should do |
 |---|---|
 | 400 | Validation failed (the message names the problem, e.g. `date must be YYYY-MM-DD`), or a bad pairing code. A `400` on a queued item is a bug: log it locally and **drop it**, don't retry |
-| 401 | `Invalid or missing device token`: the device was removed. Stop everything |
+| 401 | `{ error: "Invalid or missing device token", code: "device_unknown" }`: the device was removed. Stop everything. Unpair only on `code: "device_unknown"`: a `401` without it came from something in between (a proxy, a captive portal, an outage), so keep enforcing and retry |
 | 409 | `/pair` only: the plan's device limit is reached |
 | 413 | The body is over 64 KB. Send less (e.g. split a usage backlog into days); a retry of the same body fails again |
 | 429 | Rate limited (`/pair` per IP; `/events`, `/report`, `/usage`, `/location`, `GET /catalog` and `GET /update` per device). Every 429 carries `Retry-After` (seconds until the limit's window resets): wait at least that long, keep the item queued, then retry |
@@ -2096,7 +2122,15 @@ The heartbeat. Call it every `nextSyncSeconds`, at app start, when the network r
 ```
 
 All fields are optional (`battery` 0–100 or `null`, `osVersion` ≤ 40, `appVersion` ≤ 20, `pushToken` ≤ 4096 or
-`null`); an empty body is fine. An invalid body is ignored rather than refused.
+`null`); an empty body is fine. An invalid body is ignored rather than refused. iPhones also send `appRules` (the
+counts of the app rules chosen in Parent settings; see the parent API's device `appRules`), and get
+`parentPinSet` back: whether the family set a parent PIN.
+
+#### `POST /parent-unlock`
+
+`{ "pin": "4821" }` from "Parent settings" on a child's iPhone. `200 { ok: true }` when it's the family's parent PIN;
+`403` wrong PIN, `409` no PIN set yet, `429` with `Retry-After` after 5 tries in 15 minutes. Online only: the phone
+never holds the PIN or its hash.
 
 **iOS: `screenTimeAuthorization`** (optional): `"child"` when the app's FamilyControls authorization was approved
 through Family Sharing (`AuthorizationCenter.requestAuthorization(for: .child)`), `"individual"` when the child
@@ -2264,7 +2298,7 @@ detected from `/report`.
 | `APP_INSTALLED` | `app`, `ageRating?` (0–21) | A new app appears and App Approval is off | Adds the app to the child's list; INFO alert "New app installed" the first time the name is seen for this child (from any device). If App Approval (or Downloads "parent approval") is on anyway, the new app is added as `PENDING` with an "App approval requested" alert, as `APP_REQUESTED` would (Android 1.0.9 and earlier send both events). On a plan that limits apps (Free), the alert names the app only if the parent's Apps list shows it; otherwise it says "An app was installed" with the upgrade line |
 | `APP_REQUESTED` | `app`; computers also `ids?`, `source?`, `category?` (as `APP_INSTALLED`) | The child taps Ask, or a new app is installed with App Approval on | Marks the app `PENDING` and raises an ATTENTION "App approval requested". One open request per app. A new app keeps the `category` and `source` sent, and its `ids` are remembered (the computer agent sends them for an app its scan hadn't reported) |
 | `APP_BLOCKED` | `app` | The child opens a `BLOCKED` app | INFO "App blocked", at most once per app per device per hour. On Free, an app the Apps list hides isn't named ("tried to open a blocked app"), and those share one alert per hour |
-| `LIMIT_REACHED` | `minutes` (0–1440, the limit) | The daily screen-time limit is hit | INFO "Screen time limit reached", at most once per device per 12 hours |
+| `LIMIT_REACHED` | `minutes` (0–1440, the limit); `category?` or `app?` (1–80) | The daily screen-time limit is hit; with `category`, a category limit; with `app`, that app's own daily limit (an app rule's `dailyLimitMinutes`) | INFO "Screen time limit reached" / "Gaming time used up" / "YouTube time used up", at most once per device (per category, per app) per 12 hours. Each is its own alert: an app's limit never reads as, or hides, the day's |
 | `TIME_REQUESTED` | `app?`, `reason?` (`DAILY_LIMIT`, `APP_LIMIT`, `CATEGORY_LIMIT`, `BEDTIME`) | The child taps "Ask for more time" on a limit or bedtime block screen | ATTENTION "More time requested" (Screen time). One open request per child across devices; after a parent answers it (extra time, or not now), a new one only 10 minutes later. `app` is named only if the plan's Apps list shows it |
 | `USER_LEFT` | none | Android: the phone switched to another user or a guest profile (`ACTION_USER_BACKGROUND`), where eGuard doesn't run | ATTENTION "Switched to another user" (Devices), open until `USER_RETURNED` |
 | `USER_RETURNED` | `awayMinutes` (0–20160) | Android: back on the child's profile (`ACTION_USER_FOREGROUND`) | Resolves "Switched to another user"; from 1 minute away, a dismissible ATTENTION "Used on another user" saying for how long nothing was enforced |
@@ -2281,7 +2315,9 @@ Response: `{ "ok": true }`.
 - **`eventId`** (optional, 8–64 chars, e.g. a UUID): make one per event and send the same one on every retry. A repeat
   from the same device within 7 days returns `{ "ok": true, "duplicate": true }` and does nothing. Without it, a
   retried event counts as new.
-- `429` after 120 events an hour from one device. Keep the event queued and retry later.
+- `429` after 120 events an hour from one device. Keep the event queued and retry later. A repeat of an `eventId`
+  already handled and a body over 64 KB (`413`) don't count toward the 120; an event answered `429` wasn't handled,
+  so its retry with the same `eventId` is.
 - Legacy names from Android 1.0.7 and earlier are still accepted: `NEW_APP` as `APP_INSTALLED`, and `APP_REQUEST` as
   `APP_REQUESTED`, except that an `APP_REQUEST` for an app the parent already allowed is taken as `TIME_REQUESTED`
   (those builds sent it from "Ask for more time"). New builds send the names above.
@@ -2358,7 +2394,7 @@ token, and show the removal screen. There is no way yet for the device to unpair
 
 | KEY | Fields | Parent range | Reported range |
 |---|---|---|---|
-| `SCREEN_TIME` | `dailyMinutes`, `weekendMinutes` | 15–1440 | 0–1440 (0: no limit on the device) |
+| `SCREEN_TIME` | `dailyMinutes`, `weekendMinutes` | 15–1440 | 0–1440 (0: no limit on the device). iPhone also sends `counts: { apps, categories, sites }` (what its limit counts; shown to parents, not compared) |
 | `BEDTIME` | `enabled` bool, `start` / `end` `"HH:MM"`, `days` `EVERY_DAY` \| `SCHOOL_NIGHTS` | start ≠ end when enabled | any valid times |
 | `APP_RESTRICTIONS` | `maxAgeRating` | 4–18 | 0–21 |
 | `APP_APPROVAL` | `enabled` bool | | |

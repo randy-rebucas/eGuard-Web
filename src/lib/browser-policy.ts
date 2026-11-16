@@ -344,6 +344,10 @@ export async function policyForInstallation(inst: Pick<BrowserInstallation, "id"
         .filter(([, list]) => list.length),
     ),
     updatedAt: p.updatedAt.toISOString(),
+    // When eGuard signed this copy. The extension takes its clock from it, never lets its time fall below it, and
+    // refuses a copy older than the one it has: a Date header or a replayed older answer from a proxy between the
+    // browser and eGuard can't move its clock back (reviving approvals) or bring back a revoked approval.
+    issuedAt: new Date().toISOString(),
   };
   // Names as /pair returns them, current: a parent can rename the child or family later. Outside the signed policy,
   // so they're display text only and never change what's enforced.

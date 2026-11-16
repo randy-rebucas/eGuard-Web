@@ -203,9 +203,14 @@ export function describeConfig(cfg: unknown): string {
   const c = cfg as ProtectionConfig;
   switch (c.key) {
     // Name the weekend limit when it differs, or a weekend-only change reads the same before and after
-    case "SCREEN_TIME": return c.weekendMinutes === c.dailyMinutes || c.weekendMinutes == null
-      ? `${fmtMinutes(c.dailyMinutes)} / day`
-      : `${fmtMinutes(c.dailyMinutes)} / day, ${fmtMinutes(c.weekendMinutes)} weekends`;
+    case "SCREEN_TIME": {
+      const limits = c.weekendMinutes === c.dailyMinutes || c.weekendMinutes == null
+        ? `${fmtMinutes(c.dailyMinutes)} / day`
+        : `${fmtMinutes(c.dailyMinutes)} / day, ${fmtMinutes(c.weekendMinutes)} weekends`;
+      // A reported iPhone limit also says what it counts (the child chose the apps on the phone)
+      const counts = describeCounts(cfg);
+      return counts ? `${limits} · ${counts}` : limits;
+    }
     // Name school nights: without it a school-nights bedtime reads as every night, and a days-only change looks unchanged
     case "BEDTIME": return c.enabled ? `${to12h(c.start)} – ${to12h(c.end)}${c.days === "SCHOOL_NIGHTS" ? ", school nights" : ""}` : "Off";
     case "APP_RESTRICTIONS": return `Apps rated ${c.maxAgeRating}+ and under`;
@@ -238,16 +243,27 @@ export function isConfigured(cfg: unknown): boolean {
 /**
  * Stable comparison of requested vs reported configuration. Web filtering compares the mode only: a device reports
  * `blockedSites` as the count of sites it actually loaded (docs/child-app-spec.md), which never equals the policy's.
+ * A screen time limit's `counts` (iPhone: how many apps it counts) is information, not part of the setting.
  */
 export function configMatches(desired: unknown, reported: unknown): boolean {
   return stableStringify(comparable(desired)) === stableStringify(comparable(reported));
 }
 
 function comparable(v: unknown): unknown {
-  if (!v || typeof v !== "object" || (v as { key?: unknown }).key !== "WEB") return v;
+  const key = v && typeof v === "object" ? (v as { key?: unknown }).key : undefined;
+  if (key !== "WEB" && key !== "SCREEN_TIME") return v;
   const rest = { ...(v as Record<string, unknown>) };
-  delete rest.blockedSites;
+  delete rest[key === "WEB" ? "blockedSites" : "counts"];
   return rest;
+}
+
+/** "counts 3 apps, 1 category": what an iPhone's limit counts, from its report. Empty when not reported. */
+export function describeCounts(cfg: unknown): string {
+  const counts = cfg && typeof cfg === "object" ? (cfg as { counts?: { apps?: number; categories?: number; sites?: number } }).counts : undefined;
+  if (!counts) return "";
+  const n = (count: number | undefined, one: string, many: string) => count ? `${count} ${count === 1 ? one : many}` : null;
+  const parts = [n(counts.apps, "app", "apps"), n(counts.categories, "category", "categories"), n(counts.sites, "website", "websites")].filter(Boolean);
+  return parts.length ? `counts ${parts.join(", ")}` : "counts no apps";
 }
 
 function stableStringify(v: unknown): string {

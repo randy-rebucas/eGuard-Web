@@ -31,6 +31,14 @@ describe("push", () => {
     expect(JSON.parse(init.body).message).toMatchObject({ token: "tok", notification: { title: "T", body: "B" }, data: { alertId: "a1" } });
   });
 
+  it("sends Android alerts data-only, so the app shows them (signed-in parent, private on the lock screen)", async () => {
+    const f = fake(200, { name: "projects/eguard-test/messages/3" });
+    expect(await sendPush(cfg, "tok", { title: "T", body: "B", data: { alertId: "a1" } }, f, "ANDROID")).toBe("sent");
+    const message = JSON.parse((f as unknown as ReturnType<typeof vi.fn>).mock.calls.at(-1)![1].body).message;
+    expect(message).not.toHaveProperty("notification");
+    expect(message).toEqual({ token: "tok", data: { alertId: "a1", title: "T", body: "B" }, android: { priority: "HIGH" } });
+  });
+
   it("forgets tokens FCM says are gone, and keeps them on other failures", async () => {
     expect(await sendPush(cfg, "t", { title: "", body: "" }, fake(404, { error: { status: "NOT_FOUND", details: [{ errorCode: "UNREGISTERED" }] } }))).toBe("gone");
     expect(await sendPush(cfg, "t", { title: "", body: "" }, fake(400, { error: { status: "INVALID_ARGUMENT", message: "The registration token is not a valid FCM registration token" } }))).toBe("gone");

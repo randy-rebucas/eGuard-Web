@@ -15,8 +15,12 @@ export function bearer(req: Request) {
   return h.startsWith("Bearer ") ? h.slice(7).trim() : "";
 }
 
-export const apiError = (status: number, error: string, code?: string) =>
-  NextResponse.json({ error, ...(code ? { code } : {}) }, { status });
+/** `retryAfter` (seconds, a 429): sent as `Retry-After` so the app can say when to try again. */
+export const apiError = (status: number, error: string, code?: string, retryAfter?: number) =>
+  NextResponse.json({ error, ...(code ? { code } : {}) }, {
+    status,
+    ...(retryAfter && retryAfter > 0 ? { headers: { "Retry-After": String(Math.ceil(retryAfter)) } } : {}),
+  });
 
 /** "iOS app" / "Android app" from the `X-eGuard-Client` header, used in history ("Randy on iOS app"). */
 export function clientLabel(req: Request) {
@@ -48,7 +52,10 @@ export function query<S extends z.ZodType>(req: Request, schema: S): z.infer<S> 
 
 function toResponse(e: unknown) {
   unstable_rethrow(e); // Next's own control flow (e.g. bailing out of prerendering), not a failure
-  if (e instanceof ServiceError) return apiError(e.status, e.message, e.code);
+  if (e instanceof ServiceError) {
+    const retryAfter = e.status === 429 && typeof e.extra?.retryAfter === "number" ? e.extra.retryAfter : undefined;
+    return apiError(e.status, e.message, e.code, retryAfter);
+  }
   if (e instanceof z.ZodError) return apiError(400, e.issues[0].message, "invalid");
   console.error("[mobile-api]", e);
   return apiError(500, "Something went wrong. Try again.", "server_error");

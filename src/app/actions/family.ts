@@ -19,6 +19,8 @@ import { LOCATION_UPGRADE, familyEntitlements } from "@/lib/plan-access";
 import { PROFILE_IDS, ageReview } from "@/lib/profiles";
 import { isDismissible } from "@/lib/health";
 import { signOutSession } from "@/lib/sessions";
+import * as devicePin from "@/lib/device-pin";
+import { DevicePin } from "@/lib/device-pin";
 import type { FormState } from "./auth";
 
 const { audit, ChildSchema } = family;
@@ -414,6 +416,18 @@ export async function addParent(_: FormState, form: FormData): Promise<FormState
   return sent
     ? { ok: `We emailed ${parsed.data.email} an invitation. ${parsed.data.name} joins once they accept it (within ${invitations.INVITE_DAYS} days).` }
     : { error: `${parsed.data.name} is invited, but we couldn't send the email right now. Use Resend below in a few minutes.` };
+}
+
+/** Settings › Family › Child device PIN (lib/device-pin): sets it, or clears it with `clear`. Admin only. */
+export async function setDevicePin(_: FormState, form: FormData): Promise<FormState> {
+  const u = await requireAdmin();
+  const clear = form.get("clear") === "1";
+  const parsed = DevicePin.safeParse(form.get("pin"));
+  if (!clear && !parsed.success) return { error: parsed.error.issues[0].message };
+  await devicePin.setDevicePin(u.familyId, clear ? null : parsed.data!);
+  await audit(u.familyId, u.name, clear ? "device_pin.cleared" : "device_pin.set", "");
+  revalidatePath("/settings/family");
+  return { ok: clear ? "The parent PIN was removed. Parent settings can't be opened on your child's iPhone until you set one." : "Parent PIN saved. Use it to open Parent settings on your child's iPhone." };
 }
 
 export async function resendInvitation(userId: string): Promise<Result> {
