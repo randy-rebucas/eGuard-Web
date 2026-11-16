@@ -17,7 +17,8 @@ export const GET = authed(async ({ user }) => {
     plans: PLANS.map((p) => ({
       // The prices the web charges now (env can change them), not the built-in defaults
       id: p.id, name: p.name, blurb: p.blurb, current: p.name === family.plan,
-      monthlyPesos: p.id === "FREE" ? 0 : webPrice(p.id) / 100, yearlyPesos: p.id === "FREE" ? 0 : webPrice(p.id, process.env, "year") / 100,
+      // Whole pesos, always integers (the apps decode Int): a price set with centavos in env is rounded here
+      monthlyPesos: p.id === "FREE" ? 0 : Math.round(webPrice(p.id) / 100), yearlyPesos: p.id === "FREE" ? 0 : Math.round(webPrice(p.id, process.env, "year") / 100),
       childLimit: p.entitlements.childLimit, deviceLimit: p.entitlements.deviceLimit,
       entitlements: p.entitlements,
       features: p.features,

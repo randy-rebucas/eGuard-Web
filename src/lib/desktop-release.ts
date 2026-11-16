@@ -8,7 +8,8 @@ const File = z.object({
   name: z.enum(PROGRAMS),
   size: z.number().int().positive(),
   sha256: z.string().regex(/^[0-9a-f]{64}$/),
-  url: z.string().url().refine((u) => /^https?:\/\//.test(u)),
+  // https only: the agent checks the hash and signature, but a plain-http download can be blocked or watched on the way
+  url: z.string().url().refine((u) => u.startsWith("https://"), "https only"),
 });
 
 const Release = z.object({

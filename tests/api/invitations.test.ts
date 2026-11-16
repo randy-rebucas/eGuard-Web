@@ -61,9 +61,14 @@ describe("inviting a parent", () => {
 
   it("forgot password on a pending invitation sends the invitation again, not a reset link", async () => {
     await invite("Eve Tan", email("eve"));
-    const before = Date.now();
+    // Counted, not timed: Mailpit stamps mail with the container's clock, and both emails go out after the response,
+    // so "sent after this moment" can miss the resend or match the first invitation
+    const invitations = async () => (await inbox(email("eve"))).filter((m) => /accept-invite/.test(m.text)).length;
+    await inviteToken(email("eve"));
+    const sent = await invitations();
     await call("POST", "/auth/forgot-password", { body: { email: email("eve") } });
-    await inviteToken(email("eve"), { after: before });
+    for (let i = 0; i < 40 && (await invitations()) <= sent; i++) await new Promise((r) => setTimeout(r, 250));
+    expect(await invitations()).toBe(sent + 1);
     const mail = await inbox(email("eve"));
     expect(mail.some((m) => /reset-password/.test(m.text))).toBe(false);
   });

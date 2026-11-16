@@ -8,8 +8,11 @@ import { signInWithIdentity } from "@/lib/social-signin";
 const Body = z.object({
   provider: z.enum(["apple", "google"]),
   idToken: z.string().min(20),
-  /** Apple only sends the name to the app on the first sign-in, so the app forwards it */
-  name: z.string().trim().min(1).max(80).optional(),
+  /**
+   * Apple only sends the name to the app on the first sign-in, so the app forwards it. Older iOS builds send "" on a
+   * repeat sign-in: blank counts as absent rather than failing the sign-in.
+   */
+  name: z.preprocess((v) => (typeof v === "string" && !v.trim() ? undefined : v), z.string().trim().min(1).max(80).optional()),
   /** Required only when this creates a new account: the parent's "I'm a parent or guardian, 18+" confirmation */
   guardian: z.boolean().optional(),
   /** The raw one-time nonce whose SHA-256 the app put in the Apple request (or the nonce given to Google) */

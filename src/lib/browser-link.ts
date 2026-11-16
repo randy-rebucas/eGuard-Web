@@ -48,5 +48,5 @@ export async function computerFromLink(link: string | undefined, code: { familyI
   const want = Buffer.from(mac(d.tokenHash, d.id, Number(exp)));
   const got = Buffer.from(sig);
   if (want.length !== got.length || !timingSafeEqual(want, got)) return null;
-  return await db.browserInstallation.count({ where: { deviceId: d.id } }) < MAX_BROWSERS_PER_COMPUTER ? d : null;
+  return await db.browserInstallation.count({ where: { deviceId: d.id, revokedAt: null } }) < MAX_BROWSERS_PER_COMPUTER ? d : null;
 }

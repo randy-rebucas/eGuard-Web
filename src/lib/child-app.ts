@@ -2,13 +2,14 @@ import type { Platform } from "@prisma/client";
 
 /**
  * The oldest child-app version the server supports on a platform, from CHILD_MIN_APP_VERSION: either one version for
- * both platforms ("1.2.0") or one per platform ("android:1.2.0,ios:1.1.0"). null when unset or when the platform
- * isn't listed, so the app never shows an update screen by accident.
+ * both phone apps ("1.2.0", Android and iOS only) or one per platform ("android:1.2.0,ios:1.1.0,windows:0.2.0"). null
+ * when unset or when the platform isn't listed, so the app never shows an update screen by accident. A bare version
+ * never applies to computers: the desktop agent's versions are numbered apart from the phone apps'.
  */
 export function minChildAppVersion(platform: Platform, raw = process.env.CHILD_MIN_APP_VERSION) {
   const v = raw?.trim();
   if (!v) return null;
-  if (!v.includes(":")) return v;
+  if (!v.includes(":")) return platform === "ANDROID" || platform === "IOS" ? v : null;
   for (const part of v.split(",")) {
     const [p, version] = part.split(":").map((s) => s.trim());
     if (p.toUpperCase() === platform && version) return version;

@@ -20,15 +20,18 @@ export const GET = authed<{ id: string }>(async ({ user, params }) => {
 
 const Body = z.object({
   minutes: z.number().int().refine((m) => (EXTRA_TIME_MINUTES as readonly number[]).includes(m), `Choose ${EXTRA_TIME_MINUTES.join(", ")} minutes.`),
+  // Optional: the same id on a retry (the answer was lost) never grants twice. A UUID is the usual choice
+  requestId: z.string().trim().regex(/^[A-Za-z0-9_-]{8,64}$/, "use 8–64 letters, digits, - or _.").optional(),
 });
 
 /** Gives `minutes` more (added to extra time still running, up to 4 hours ahead) and answers an open request. */
 export const POST = authed<{ id: string }>(async ({ req, user, params }) => {
   const b = await body(req, Body);
   const child = await childFor(user.familyId, params.id);
-  const r = await grantExtraTime(user, child.id, b.minutes, clientLabel(req));
-  // `addedMinutes` is less than `minutes` when extra time would run more than 4 hours ahead
-  return NextResponse.json({ until: r.extraTimeUntil.toISOString(), addedMinutes: r.addedMinutes });
+  const r = await grantExtraTime(user, child.id, b.minutes, clientLabel(req), b.requestId);
+  // `addedMinutes` is less than `minutes` when extra time would run more than 4 hours ahead. `replayed`: this
+  // requestId was already granted and nothing more was added (still 200, with the first grant's addedMinutes)
+  return NextResponse.json({ until: r.extraTimeUntil.toISOString(), addedMinutes: r.addedMinutes, replayed: r.replayed });
 });
 
 /** Ends running extra time, and answers an open request with "not now". */

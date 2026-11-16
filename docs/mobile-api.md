@@ -136,7 +136,7 @@ itself.
 | Unset → parent | Sign in or create an account | Save the session token, `mode = PARENT` |
 | Unset → child | Pair with a code from a parent | Save the device token, `mode = CHILD` |
 | Parent → parent (another account) | Sign out, sign in | As usual |
-| Parent → unset | Settings › Sign out | `POST /auth/logout?pushToken=…`, delete the token, `mode = UNSET`, back to "Who's using this device?" |
+| Parent → unset | Settings › Sign out | `POST /auth/logout` with `{"pushToken":…}`, delete the token, `mode = UNSET`, back to "Who's using this device?" |
 | **Parent → child** | Settings › **Set up this device for a child** | See below |
 | **Child → unset** | A parent removes the device; the child's device shows the removed screen | See below |
 
@@ -150,7 +150,7 @@ they're holding, without a second phone to read the code from.
    verify banner), `409` (device limit) and `429` as in [P4.6](#p46-children).
 4. Ask for the device name.
 5. `POST /api/device/v1/pair` with that code. On `201`: save the device token, then
-   `POST /auth/logout?pushToken=…`, delete the parent token and set `mode = CHILD`.
+   `POST /auth/logout` with `{"pushToken":…}`, delete the parent token and set `mode = CHILD`.
 6. Continue child setup at the permissions step.
 
 If pairing fails, the parent stays signed in and nothing changes. If sign-out fails (offline), delete the parent
@@ -191,7 +191,7 @@ on `child` and `core-*`.
 - **Update screen:** one "Please update" screen, triggered by `minimumAppVersion` in parent mode and `minAppVersion`
   in child device mode.
 - **Push:** one FCM token per install. In parent mode register it with `POST /me/push-tokens`; unregister
-  (`logout?pushToken=`) before switching to child device mode. Tokens belong to the account, not the session, so
+  (`POST /auth/logout` with `pushToken` in the body) before switching to child device mode. Tokens belong to the account, not the session, so
   when a request answers `401` (session ended elsewhere, password changed) delete the FCM token too: FCM then
   reports it gone and the server drops it, instead of this phone getting the family's alerts while signed out.
   Android shows alerts on the `parent_alerts` channel, which the server names in each message.
@@ -413,7 +413,9 @@ Used in the children list, the dashboard and the family screen.
   "lastSeenLabel": "Today, 1:56 PM",
   "state": "healthy",
   "issues": 0,
-  "firstCheck": false
+  "firstCheck": false,
+  "removalRequestedAt": null,
+  "selfApproved": false
 }
 ```
 
@@ -421,7 +423,15 @@ Used in the children list, the dashboard and the family screen.
 a device that was just paired has `issues` equal to the number of protections until its first check) or `offline`
 (no sync for over 24 h). `firstCheck` is `true` until the device's first report: show "Waiting for first check"
 instead of the issue count, as the web does. `battery?`
-and `appVersion?` may be null.
+and `appVersion?` may be null. `removalRequestedAt` is set while a computer's removal waits (see
+[Removing a computer](#removing-a-computer-parent-apps)), null otherwise.
+
+`selfApproved` is `true` only for an iPhone whose last `/sync` reported `screenTimeAuthorization: "individual"`: the
+child approved eGuard's Screen Time access on the phone and can turn it off in Settings. Show "Self-approved: the
+child can turn this off in Settings" on the device (as the web does), with the fix: add the child to Family Sharing as
+a child and approve eGuard from the parent's iPhone. `false` everywhere else, including iPhones whose app doesn't
+report it yet. It doesn't change `state`, `issues` or Configuration Health: the protections still apply while the
+access is on, and if the child turns it off the device reports them failing.
 
 #### Alert
 
@@ -552,7 +562,7 @@ Returned by `PUT /children/{id}/protections/{KEY}`, `POST /children/{id}/setup` 
 | 17 | Subscription | `GET /subscription`. Android upgrade: `GET /subscription/plans` → Play Billing → `POST /subscription/google-play` |
 | 18 | Help & Support | `GET /help?q=`, `GET /help/{slug}`, `POST /support/tickets`. Share eGuard needs no endpoint: the system share sheet with the app's own text and `https://www.eguard.family/`, worded as the web's (`src/lib/share.ts`) |
 | — | Tab-bar badge | `GET /alerts/unread-count` |
-| — | Push registration | `POST /me/push-tokens` after sign-in, `DELETE` / `logout?pushToken=` on sign-out |
+| — | Push registration | `POST /me/push-tokens` after sign-in, `DELETE` / `POST /auth/logout` with `{"pushToken"}` on sign-out |
 
 ---
 
@@ -760,10 +770,12 @@ used (tell the parent it's used up, and suggest new codes when few are left). Er
 again), `401 challenge_expired` (10 minutes passed, 5 wrong codes, or already used: go back to the sign-in screen),
 `429 rate_limited`. Each authenticator code works once.
 
-##### `POST /auth/logout[?pushToken=<token>]` → `200`
+##### `POST /auth/logout` → `200`
 
-Ends this session only. Pass the device's push token so this phone stops receiving pushes for this parent. Response:
-`{ "ok": true }`.
+Body (optional): `{ "pushToken": "<token>" }`. Ends this session only. Pass the device's push token so this phone stops
+receiving pushes for this parent. Send it in the body: a query string ends up in access logs. `?pushToken=<token>`
+still works for older apps (the body wins when both are sent). An unreadable body never fails the sign-out; it's
+treated as no token. Response: `{ "ok": true }`.
 
 #### P4.3 Me (account and preferences)
 
@@ -1285,9 +1297,17 @@ answers the child's "Ask for more time" (the ATTENTION alert "More time requeste
 
 `until` is `null` when none is running, `request` when the child isn't waiting. `POST { "minutes": 30 }` (one of
 `choices`) adds that much, to what's left if extra time is running, never more than 4 hours ahead, answers the
-request, and returns `{ until, addedMinutes }`. `addedMinutes` is what was actually given: less than `minutes` (0
+request, and returns `{ until, addedMinutes, replayed }`. `addedMinutes` is what was actually given: less than `minutes` (0
 when already at the cap) when the 4-hour cap applies, so say "Mia has 10 more minutes", not the amount chosen.
-Two parents giving time at once both count. `DELETE` ends it, or answers the request with "not now", and returns
+Two parents giving time at once both count.
+
+Retries: send an optional `requestId` (8–64 letters, digits, `-` or `_`; a UUID) with each grant, and the same one
+when retrying it after a timeout or lost connection: `POST { "minutes": 30, "requestId": "6f1c…" }`. A grant with an
+id this child already got within 24 hours adds nothing and answers `200 { until, addedMinutes, replayed: true }`, with
+the first grant's `addedMinutes` and the extra time running now (`until` is the current time if a parent ended it
+since). A new grant answers `replayed: false`. Use a new id for each tap. Without an id, every request grants.
+
+`DELETE` ends it, or answers the request with "not now", and returns
 `{ until: null }`. Devices pick it up on their next sync; one showing the block screen after asking checks every 20
 seconds.
 
@@ -1472,6 +1492,18 @@ a batch completes.
 | `POST /checks` | `{ deviceId? }` (omit for all devices) | `202 { runId }`. `409 no_devices` if the family has no paired device. `429 rate_limited` after 30 checks per parent per hour |
 | `GET /checks/{runId}` | none | See below. Poll until `done` |
 
+##### Removing a computer (parent apps)
+
+A computer (`kind: "COMPUTER"`) can't be uninstalled from the computer itself, so `DELETE /devices/{id}` answers
+`200 { ok: true, pending: true }` and the device stays in `GET /devices` with `removalRequestedAt` set. Show it as
+"Removing" (it's still protected). Its next sync (within a minute when online) gets eGuard's signed uninstall command;
+it uninstalls, confirms, and is removed (the family gets "Device removed"). Meanwhile `GET /devices/{id}` carries
+`removalCode: { code, expiresAt }`: an 8-character code the parent can type into eGuard on the computer to remove it
+offline. Show it with **Keep this computer** (`POST /devices/{id}/keep`, cancels the removal) and **Remove now**
+(`DELETE` again with `now: true`: removed at once without waiting; eGuard stays on the computer with its last settings
+until a removal code is typed into it). A computer that stays silent for 7 days after the request is removed by the
+server. `pending` is `false` for every other kind of device, which is removed at once.
+
 ```json
 {
   "status": "RUNNING",
@@ -1622,7 +1654,7 @@ Sponsor codes, which pay for a plan, are redeemed on the website only (see [Know
 ##### `GET /subscription/plans`
 
 The upgrade screen: Free, eGuard Plus and eGuard Family, in that order. Where Play Billing is available, show the
-localized price from `ProductDetails`; `monthlyPesos` is the web price.
+localized price from `ProductDetails`; `monthlyPesos` and `yearlyPesos` are the web prices, always whole-peso integers.
 
 ```json
 {
@@ -1873,7 +1905,8 @@ resistance) is in [child-app-spec.md](child-app-spec.md). This part is the wire 
 `GET /catalog` and `GET /update`, and `accounts` on `/report` (the Windows accounts the child's rules apply in). They sync every
 minute. See [desktop-agent-spec.md › 12](desktop-agent-spec.md#12-wire-reference-whats-new-for-computers).
 Removing a computer waits for it: `DELETE /devices/{id}` returns `pending: true` (and takes `now: true`), and
-`POST /devices/{id}/keep` cancels the removal.
+`POST /devices/{id}/keep` cancels the removal. See [Removing a computer](#removing-a-computer-parent-apps) under
+P4.12 for what the parent apps show meanwhile.
 
 - **Base URL:** `https://www.eguard.family/api/device/v1`
 - **Format:** JSON in and out, UTF-8, HTTPS only. Every endpoint is a `POST`.
@@ -1895,8 +1928,12 @@ Removing a computer waits for it: `DELETE /devices/{id}` returns `pending: true`
   to be paired again.
 - It stops working when a parent removes the device (web, or `DELETE /devices/{id}` in the parent API), or deletes
   the child or the family.
-- **Any `401` means the device was removed.** Stop syncing and enforcing, clear the token, and show the removal
-  screen ([child-app-spec.md › Removal](child-app-spec.md#removal)).
+- **Any `401` means the device was removed.** On a phone or tablet: stop syncing and enforcing, clear the token, and
+  show the removal screen ([child-app-spec.md › Removal](child-app-spec.md#removal)).
+- **Computers are the exception: a `401` never lowers protection** ([desktop-agent-spec.md › 2](desktop-agent-spec.md),
+  rule 5, "Fail closed"). The agent keeps enforcing its last policy; it uninstalls itself only on eGuard's signed
+  `uninstall` command from `/sync` or a parent's offline removal code. A removed computer's token answers `401`
+  from then on, and the agent stays as it is until one of those arrives.
 
 A parent token doesn't work here and a device token doesn't work in the parent API. When a parent pairs the phone
 they're holding, the app signs out of the parent session after pairing
@@ -1924,10 +1961,12 @@ they're holding, the app signs out of the parent session after pairing
 | 400 | Validation failed (the message names the problem, e.g. `date must be YYYY-MM-DD`), or a bad pairing code. A `400` on a queued item is a bug: log it locally and **drop it**, don't retry |
 | 401 | `Invalid or missing device token`: the device was removed. Stop everything |
 | 409 | `/pair` only: the plan's device limit is reached |
-| 429 | Rate limited (`/pair` per IP; `/events`, `/report`, `/usage` and `/location` per device). Back off and retry later |
+| 413 | The body is over 64 KB. Send less (e.g. split a usage backlog into days); a retry of the same body fails again |
+| 429 | Rate limited (`/pair` per IP; `/events`, `/report`, `/usage`, `/location`, `GET /catalog` and `GET /update` per device). Every 429 carries `Retry-After` (seconds until the limit's window resets): wait at least that long, keep the item queued, then retry |
 | 5xx / network | Retry with exponential backoff from 30 seconds to 15 minutes, with jitter |
 
-Request bodies are limited to **64 KB**. A larger or non-JSON body is read as empty (`400` where a body is required).
+Request bodies are limited to **64 KB**: a larger one is refused with `413`. A non-JSON body is read as empty
+(`400` where a body is required; ignored on `/sync`).
 
 #### Data types
 
@@ -1984,8 +2023,15 @@ appears here, but the device's next report verifies it the same way.
 #### AppRule
 
 ```json
-{ "name": "Roblox", "approval": "ALLOWED", "dailyLimitMinutes": 60 }
+{ "name": "Roblox", "approval": "ALLOWED", "dailyLimitMinutes": 60, "category": "GAMES", "packageName": "com.roblox.client" }
 ```
+
+**`packageName`** (Android only; `null` when unknown): the app's package, as an Android device reported it in `ids`
+(`{ "kind": "PACKAGE", "value": "com.roblox.client" }`) on `APP_INSTALLED`, `APP_REQUESTED` or `/usage` `apps[]`.
+Stored lowercase, so compare case-insensitively. Match a rule to an installed app by package when it's set, and fall
+back to the label when it's `null` (rules made before the device sent ids, or apps it never reported). Send `ids`
+with every app you report so the rule gets one; the first package seen for an app name wins. iOS and computers don't
+get this field (computers get `ids`).
 
 | `approval` | Device behavior |
 |---|---|
@@ -2051,6 +2097,12 @@ The heartbeat. Call it every `nextSyncSeconds`, at app start, when the network r
 
 All fields are optional (`battery` 0–100 or `null`, `osVersion` ≤ 40, `appVersion` ≤ 20, `pushToken` ≤ 4096 or
 `null`); an empty body is fine. An invalid body is ignored rather than refused.
+
+**iOS: `screenTimeAuthorization`** (optional): `"child"` when the app's FamilyControls authorization was approved
+through Family Sharing (`AuthorizationCenter.requestAuthorization(for: .child)`), `"individual"` when the child
+approved it on the phone (`.individual`), so they can turn it off in Settings › Screen Time. Send it on every sync
+(the server stores it only when it changes). Another value is ignored, other platforms' values are ignored, and
+omitting it leaves the last value. Parents see `selfApproved: true` on the device ([P4.12](#p412-devices-and-configuration-checks)).
 
 `pushToken` is the app's FCM registration token (on iOS, from the Firebase Messaging SDK). With it, a parent's change
 wakes the device: a data-only FCM message `{ "type": "sync", "reason": "config" | "check" | "apps" | "extra_time" }`,

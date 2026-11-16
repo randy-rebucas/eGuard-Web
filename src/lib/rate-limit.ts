@@ -92,17 +92,19 @@ export const LIMITS = {
  * A null key (per-address limit when the address is unknown) is never limited.
  */
 export async function hit(key: string | null, { max, windowMs }: Limit) {
-  if (!key) return { count: 0, limited: false };
+  if (!key) return { count: 0, limited: false, retryAfter: 0 };
   const now = new Date();
   const resetAt = new Date(now.getTime() + windowMs);
-  const rows = await db.$queryRaw<{ count: number }[]>`
+  const rows = await db.$queryRaw<{ count: number; resetAt: Date }[]>`
     INSERT INTO "RateLimit" ("key", "count", "resetAt") VALUES (${key}, 1, ${resetAt})
     ON CONFLICT ("key") DO UPDATE SET
       "count"   = CASE WHEN "RateLimit"."resetAt" <= ${now} THEN 1 ELSE "RateLimit"."count" + 1 END,
       "resetAt" = CASE WHEN "RateLimit"."resetAt" <= ${now} THEN ${resetAt} ELSE "RateLimit"."resetAt" END
-    RETURNING "count"`;
+    RETURNING "count", "resetAt"`;
   const count = Number(rows[0]?.count ?? 1);
-  return { count, limited: count > max };
+  // Seconds until the window resets: the Retry-After a 429 sends
+  const until = rows[0]?.resetAt ? new Date(rows[0].resetAt).getTime() : resetAt.getTime();
+  return { count, limited: count > max, retryAfter: Math.max(1, Math.ceil((until - now.getTime()) / 1000)) };
 }
 
 /** True when `key` is already over its limit, without counting an attempt. */

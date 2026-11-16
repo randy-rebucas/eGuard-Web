@@ -508,7 +508,8 @@ describe("13. App management", () => {
     const lim = await call("PATCH", `/apps/${r.data.id}`, { token, body: { dailyLimitMinutes: 60 } });
     expect(lim.data.dailyLimitMinutes).toBe(60);
     const sync = await android.send("/sync");
-    expect(sync.data.apps).toEqual(expect.arrayContaining([{ name: "Khan Academy", approval: "ALWAYS_ALLOWED", dailyLimitMinutes: 60, category: "EDUCATION" }]));
+    // Android also gets packageName: null here, since no device has reported this app's package yet
+    expect(sync.data.apps).toEqual(expect.arrayContaining([{ name: "Khan Academy", approval: "ALWAYS_ALLOWED", dailyLimitMinutes: 60, category: "EDUCATION", packageName: null }]));
     expect((await call("PATCH", `/apps/${r.data.id}`, { token, body: {} })).status).toBe(400);
   });
 

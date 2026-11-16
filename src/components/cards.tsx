@@ -3,6 +3,7 @@ import type { Alert, BrowserInstallation, ProtectionKey } from "@prisma/client";
 import { Icon } from "./icon";
 import { Avatar, DeviceIcon, SEVERITY, StatusBadge, statusLabel, platformName } from "./ui";
 import type { ChildView, DeviceView } from "@/lib/queries";
+import { SELF_APPROVED_NOTE, isSelfApproved } from "@/lib/screen-time-authorization";
 import { systemAction, type DeviceState } from "@/lib/health";
 import { BROWSER_STATE, browserStatus } from "@/lib/browser-status";
 import { ageLabel, dayTime } from "@/lib/format";
@@ -41,6 +42,7 @@ export function DeviceCard({ d, state, tz }: { d: DeviceView; state: DeviceState
   const badge = state.key === "healthy" ? <StatusBadge status="healthy" /> : state.key === "offline" ? <span className="row" style={{ gap: 6 }}><StatusBadge status="offline" />{issues}</span> : issues;
   const status = [
     d.removalRequestedAt ? "being removed" : null,
+    isSelfApproved(d) ? "self-approved, the child can turn this off in Settings" : null,
     state.key === "healthy" ? "Healthy" : state.key === "offline" ? "Offline" : null,
     first ? "waiting for first check" : state.issues ? `${state.issues} ${state.issues === 1 ? "issue" : "issues"}` : null,
   ].filter(Boolean).join(", ");
@@ -51,7 +53,8 @@ export function DeviceCard({ d, state, tz }: { d: DeviceView; state: DeviceState
         <DeviceIcon kind={d.kind} />
         <span className="pill tone-muted plat-chip" style={{ background: "var(--surface)" }}>{platformName(d.platform)}</span>
       </div>
-      <div><div className="t-title">{d.name}</div><div className="t-meta">{d.child.name} · {d.osVersion}</div></div>
+      <div><div className="t-title">{d.name}</div><div className="t-meta">{d.child.name} · {d.osVersion}</div>
+        {isSelfApproved(d) ? <div className="t-meta" style={{ color: "var(--warn-ink)" }}>{SELF_APPROVED_NOTE}</div> : null}</div>
       <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
         {/* A computer a parent removed, until it confirms it uninstalled eGuard (lib/device-removal) */}
         {d.removalRequestedAt ? <span className="row" style={{ gap: 6 }}><span className="pill tone-warn"><Icon name="trash" />Removing</span>{badge}</span> : badge}
