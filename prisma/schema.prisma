@@ -232,6 +232,8 @@ model SignupRequest {
   familyName   String
   passwordHash String
   codeHash     String?
+  /// The Terms of Use / Privacy Policy date (LEGAL.updated) the person agreed to on the form; null when the client didn't say
+  termsVersion String?
   attempts     Int      @default(0)
   sends        Int      @default(1)
   sentAt       DateTime @default(now())

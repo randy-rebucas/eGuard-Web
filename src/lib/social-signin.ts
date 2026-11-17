@@ -7,6 +7,7 @@ import { GUARDIAN_REQUIRED, NAME_MAX, createFamily, isPendingInvite, userIdForMa
 import { defaultFamilyName } from "./mobile-account";
 import { sendSecurityNotice } from "./security-notice";
 import type { Identity } from "./social-auth";
+import { LEGAL } from "./legal";
 
 /**
  * Settings › Security › Link: adds a provider sign-in to the signed-in parent's account. They confirmed it with their
@@ -36,7 +37,7 @@ const providerName = (p: string) => ({ apple: "Apple", google: "Google", linkedi
  * Continue with Apple / Google / LinkedIn, once the provider's ID token is verified. Signs in a linked account,
  * links an existing account with exactly the same email, or creates a new family.
  */
-export async function signInWithIdentity(id: Identity, opts: { name?: string; guardian?: boolean } = {}) {
+export async function signInWithIdentity(id: Identity, opts: { name?: string; guardian?: boolean; terms?: boolean } = {}) {
   const linkedUser = async () => (await db.oAuthIdentity.findUnique({ where: { provider_subject: { provider: id.provider, subject: id.subject } } }))?.userId;
   try {
     return await signIn(id, opts, await linkedUser());
@@ -55,7 +56,7 @@ export async function signInWithIdentity(id: Identity, opts: { name?: string; gu
   }
 }
 
-async function signIn(id: Identity, opts: { name?: string; guardian?: boolean }, linked: string | undefined) {
+async function signIn(id: Identity, opts: { name?: string; guardian?: boolean; terms?: boolean }, linked: string | undefined) {
   if (linked) return { userId: linked, isNew: false };
 
   if (!id.email || !id.emailVerified) {
@@ -94,7 +95,7 @@ async function signIn(id: Identity, opts: { name?: string; guardian?: boolean },
   // The provider's name isn't checked like the sign-up form's: keep it within the same length
   const name = (opts.name ?? id.name ?? email.split("@")[0]).trim().slice(0, NAME_MAX) || email.split("@")[0].slice(0, NAME_MAX);
   // Social accounts have no password: store a hash of a random secret nobody knows
-  const user = await createFamily({ name, email, familyName: defaultFamilyName(name).slice(0, NAME_MAX), passwordHash: await hashPassword(newToken()), emailVerified: true, passwordSet: false });
+  const user = await createFamily({ name, email, familyName: defaultFamilyName(name).slice(0, NAME_MAX), passwordHash: await hashPassword(newToken()), emailVerified: true, passwordSet: false, termsVersion: opts.terms ? LEGAL.updated : null });
   await db.oAuthIdentity.create({ data: { userId: user.id, provider: id.provider, subject: id.subject, email } });
   return { userId: user.id, isNew: true };
 }

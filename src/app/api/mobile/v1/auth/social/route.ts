@@ -16,6 +16,8 @@ const Body = z.object({
   name: z.preprocess((v) => (typeof v === "string" && !v.trim() ? undefined : v), z.string().trim().min(1).max(80).optional()),
   /** Required only when this creates a new account: the parent's "I'm a parent or guardian, 18+" confirmation */
   guardian: z.boolean().optional(),
+  /** New accounts only: the app showed the Terms of Use and Privacy Policy and the person agreed (recorded with the account) */
+  terms: z.literal(true).optional(),
   /** The raw one-time nonce whose SHA-256 the app put in the Apple request (or the nonce given to Google) */
   nonce: z.string().min(16).max(128).optional(),
   /**
@@ -33,7 +35,7 @@ export const POST = open(async ({ req }) => {
   await enforce(ipKey("social", clientIp(req)), LIMITS.socialIp);
   const b = await body(req, Body);
   const id = await verifyIdToken(b.provider, b.idToken, { nonce: b.nonce });
-  const r = await signInWithIdentity(id, { name: b.name, guardian: b.guardian });
+  const r = await signInWithIdentity(id, { name: b.name, guardian: b.guardian, terms: b.terms });
   // Best-effort: never fails the sign-in (logged instead)
   if (b.provider === "apple" && b.authorizationCode) {
     await rememberAppleToken({ subject: id.subject, idToken: b.idToken, authorizationCode: b.authorizationCode });

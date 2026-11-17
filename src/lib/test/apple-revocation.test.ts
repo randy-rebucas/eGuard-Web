@@ -147,4 +147,13 @@ describe("POST /auth/social with an authorizationCode", () => {
     expect((await POST(req({ provider: "google", idToken, authorizationCode: "c_1" }), ctx)).status).toBe(200);
     expect(apple.rememberAppleToken).not.toHaveBeenCalled();
   });
+
+  it("passes the Terms agreement through for a new account, and leaves it out when not sent", async () => {
+    await POST(req({ provider: "apple", idToken, guardian: true, terms: true }), ctx);
+    expect(social.signInWithIdentity).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ guardian: true, terms: true }));
+    await POST(req({ provider: "apple", idToken }), ctx);
+    expect(social.signInWithIdentity).toHaveBeenLastCalledWith(expect.anything(), expect.objectContaining({ terms: undefined }));
+    // Only an agreement counts: `false` isn't a value the app sends
+    expect((await POST(req({ provider: "apple", idToken, terms: false }), ctx)).status).toBe(400);
+  });
 });

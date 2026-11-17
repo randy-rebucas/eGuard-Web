@@ -7,6 +7,7 @@ import { assertNotBreached } from "./breached-password";
 import { appUrl } from "./email-verification";
 import { ServiceError } from "./errors";
 import { createFamily, userIdForMailbox } from "./family-service";
+import { LEGAL } from "./legal";
 import { escapeHtml, sendMail } from "./mail";
 import { LIMITS, enforce, hit, ipKey } from "./rate-limit";
 
@@ -30,7 +31,8 @@ const RESEND_SECONDS = 60;
 /** Emails per sign-up (the first and resends) */
 const MAX_SENDS = 5;
 
-export type SignupInput = { name: string; familyName: string; email: string; password: string };
+/** `terms`: the form showed the Terms of Use and Privacy Policy and the person agreed (RegisterSchema.terms). */
+export type SignupInput = { name: string; familyName: string; email: string; password: string; terms?: boolean };
 
 export const SIGNUP_EXPIRED = "This sign-up has expired. Fill in the form again to get a new code.";
 const WRONG_CODE = "That code isn't right. Check the newest email from eGuard and try again.";
@@ -63,6 +65,7 @@ export async function startSignup(input: SignupInput, ip: string | null) {
     data: {
       tokenHash: sha256(ticket), email: input.email, name: input.name, familyName: input.familyName,
       passwordHash: await hashPassword(input.password), codeHash: code ? codeHash(ticket, code) : null, expiresAt,
+      termsVersion: input.terms ? LEGAL.updated : null,
     },
   });
   sendLater(input.email, input.name, code, existing ? { hasPassword: existing.passwordSet } : null);
@@ -110,7 +113,7 @@ export async function finishSignup(ticket: string, code: string, ip: string | nu
   if (!ok) throw new ServiceError(400, WRONG_CODE, "wrong_code");
   // The mailbox is proven: every other sign-up waiting for it goes too
   await db.signupRequest.deleteMany({ where: { email: r.email } });
-  return createFamily({ name: r.name, familyName: r.familyName, email: r.email, passwordHash: r.passwordHash, emailVerified: true });
+  return createFamily({ name: r.name, familyName: r.familyName, email: r.email, passwordHash: r.passwordHash, emailVerified: true, termsVersion: r.termsVersion });
 }
 
 async function liveRequest(ticket: string) {

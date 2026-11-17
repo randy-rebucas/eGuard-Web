@@ -34,7 +34,7 @@ describe("public endpoints", () => {
 describe("3. Create account / sign in", () => {
   it("creates the family only once the emailed code is entered, with the email already verified", async () => {
     const after = Date.now() - 5000;
-    const form = await call("POST", "/auth/register", { body: { name: "Randy Cruz", email: email("randy"), password: PASSWORD, guardian: true } });
+    const form = await call("POST", "/auth/register", { body: { name: "Randy Cruz", email: email("randy"), password: PASSWORD, guardian: true, terms: true } });
     expect(form.status).toBe(202);
     expect(form.data).toMatchObject({ verificationRequired: true, email: email("randy") });
     expect(form.data.signup).toBeTruthy();
@@ -51,6 +51,8 @@ describe("3. Create account / sign in", () => {
     token = r.data.token;
     const log = await db.auditLog.findFirst({ where: { familyId: r.data.user.family.id, action: "account.created" } });
     expect(log?.detail).toMatch(/parent or legal guardian/);
+    // The agreement the app showed is recorded with the account, with the version agreed to
+    expect(log?.detail).toMatch(/agreed to the Terms of Use and Privacy Policy dated \d{4}-\d{2}-\d{2}/);
     // Used up
     expect((await call("POST", "/auth/register/verify", { body: { signup: form.data.signup, code } })).data.code).toBe("signup_expired");
   });

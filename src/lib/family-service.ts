@@ -885,6 +885,11 @@ export const RegisterSchema = z.object({
   password: z.string().min(10, "Use at least 10 characters for your password.").refine((p) => !passwordTooLong(p), PASSWORD_TOO_LONG),
   /** Accounts are for parents and guardians only; children are added by a parent, never sign up */
   guardian: z.literal(true, { error: GUARDIAN_REQUIRED }),
+  /**
+   * The person agreed to the Terms of Use and Privacy Policy (a client that shows the agreement sends `true`). Optional
+   * so older clients keep working; when sent, the version agreed to is recorded with the account (audit log).
+   */
+  terms: z.literal(true).optional(),
 });
 
 /**
@@ -892,7 +897,7 @@ export const RegisterSchema = z.object({
  * guardian (18+); it's recorded in the audit log. `passwordHash` lets social sign-up pass an unusable hash,
  * and `emailVerified` marks an email the provider already verified. Otherwise, send a verification email.
  */
-export async function createFamily(input: { name: string; familyName: string; email: string; passwordHash: string; emailVerified?: boolean; passwordSet?: boolean }) {
+export async function createFamily(input: { name: string; familyName: string; email: string; passwordHash: string; emailVerified?: boolean; passwordSet?: boolean; termsVersion?: string | null }) {
   const taken = () => conflict("An account with this email already exists. Sign in instead.");
   await dropPendingInvite(input.email);
   if (await userIdForMailbox(input.email)) throw taken();
@@ -908,7 +913,8 @@ export async function createFamily(input: { name: string; familyName: string; em
     },
     include: { users: true },
   }).catch((e) => { throw isUniqueViolation(e) ? taken() : e; });
-  await audit(family.id, input.name, "account.created", "Confirmed parent or legal guardian, 18 or older");
+  const terms = input.termsVersion ? `; agreed to the Terms of Use and Privacy Policy dated ${input.termsVersion}` : "";
+  await audit(family.id, input.name, "account.created", `Confirmed parent or legal guardian, 18 or older${terms}`);
   await noteRegistration(family.users[0]);
   return family.users[0];
 }

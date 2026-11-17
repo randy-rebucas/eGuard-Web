@@ -32,9 +32,13 @@ const TAMPER_KINDS = {
   REMOVAL_CODE_GUESSED: "Someone is guessing eGuard's removal code",
   NEW_ACCOUNT: "A new account was added to the computer",
   SERVICE_RESTARTED: "eGuard was stopped and started again",
+  // Android (child-app-spec, "Tamper events")
+  LAUNCHER_CHANGED: "The home screen app was changed",
+  DIALER_CHANGED: "The phone's calling app was changed",
+  PROFILE_ADDED: "A separate profile is on the phone",
 } as const;
 /** Kinds that need a look rather than action: the rest are someone working against eGuard. */
-const TAMPER_ATTENTION = new Set<keyof typeof TAMPER_KINDS>(["AGENT_RESTARTED", "CLOCK_CHANGED", "NEW_ACCOUNT", "SERVICE_RESTARTED"]);
+const TAMPER_ATTENTION = new Set<keyof typeof TAMPER_KINDS>(["AGENT_RESTARTED", "CLOCK_CHANGED", "NEW_ACCOUNT", "SERVICE_RESTARTED", "LAUNCHER_CHANGED", "DIALER_CHANGED"]);
 const TAMPER_BODY: Record<keyof typeof TAMPER_KINDS, string> = {
   UNINSTALL_BLOCKED: "Someone tried to uninstall eGuard from {d}. eGuard refused and is still running. Only you can remove it, from the device page.",
   SERVICE_STOP_DENIED: "Someone tried to stop eGuard on {d}. eGuard refused and is still running.",
@@ -46,6 +50,9 @@ const TAMPER_BODY: Record<keyof typeof TAMPER_KINDS, string> = {
   REMOVAL_CODE_GUESSED: "Wrong removal codes were typed on {d} several times. eGuard stopped taking codes for a while and is still running. Only you can remove it, from the device page.",
   NEW_ACCOUNT: "A new Windows account was added on {d}. eGuard applies your rules only in the accounts you chose when pairing, so this one isn't limited. If it's your child's, choose it in eGuard on the computer.",
   SERVICE_RESTARTED: "eGuard on {d} was stopped without being asked to, and started again within seconds. Limits and app rules kept applying. Stopping it takes an administrator account: if it happens again, check who has one on the computer.",
+  LAUNCHER_CHANGED: "A different home screen app was made the default on {d}. eGuard applies your app rules and limits to it like any other app. If you didn't expect this, check which apps are installed.",
+  DIALER_CHANGED: "A different phone app was made the default for calls on {d}. eGuard applies your app rules and limits to it like any other app. If you didn't expect this, check which apps are installed.",
+  PROFILE_ADDED: "{d} has a work profile, Private Space or cloned apps. Apps there run apart from your child's own apps: eGuard counts their time on screen and holds them for your approval when App approval is on, but can't list them. If you didn't set it up, remove it in the phone's Settings.",
 };
 
 const Body = z.discriminatedUnion("type", [

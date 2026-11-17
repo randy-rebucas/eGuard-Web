@@ -14,7 +14,7 @@ const Body = RegisterSchema.extend({ familyName: RegisterSchema.shape.familyName
 export const POST = open(async ({ req }) => {
   const b = await body(req, Body);
   const { ticket, expiresAt, email } = await startSignup(
-    { name: b.name, email: b.email, familyName: b.familyName ?? defaultFamilyName(b.name), password: b.password }, clientIp(req),
+    { name: b.name, email: b.email, familyName: b.familyName ?? defaultFamilyName(b.name), password: b.password, terms: b.terms }, clientIp(req),
   );
   return NextResponse.json({ verificationRequired: true, signup: ticket, email, expiresAt }, { status: 202 });
 });

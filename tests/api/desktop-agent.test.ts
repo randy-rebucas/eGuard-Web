@@ -290,6 +290,19 @@ describe("tampering", () => {
     expect(alert?.body).toContain("takes an administrator account");
   });
 
+  it("Android's launcher change, dialer change and extra profile reach the parent", async () => {
+    await pc("/events", { type: "TAMPER", kind: "LAUNCHER_CHANGED" });
+    expect(await db.alert.findFirst({ where: { familyId, title: "The home screen app was changed" } })).toMatchObject({ severity: "ATTENTION", deviceId });
+    await pc("/events", { type: "TAMPER", kind: "DIALER_CHANGED" });
+    const dialer = await db.alert.findFirst({ where: { familyId, title: "The phone's calling app was changed" } });
+    expect(dialer).toMatchObject({ severity: "ATTENTION", deviceId });
+    expect(dialer?.body).toContain("default for calls");
+    await pc("/events", { type: "TAMPER", kind: "PROFILE_ADDED" });
+    const profile = await db.alert.findFirst({ where: { familyId, title: "A separate profile is on the phone" } });
+    expect(profile).toMatchObject({ severity: "ACTION_REQUIRED", deviceId });
+    expect(profile?.body).toContain("Private Space");
+  });
+
   it("someone guessing the removal code raises an action-required alert", async () => {
     await pc("/events", { type: "TAMPER", kind: "REMOVAL_CODE_GUESSED" });
     const alert = await db.alert.findFirst({ where: { familyId, title: "Someone is guessing eGuard's removal code" } });
