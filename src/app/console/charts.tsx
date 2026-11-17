@@ -133,7 +133,7 @@ export function StackedColumnChart({ data, series, unit, height = 180, label }: 
                 aria-label={`${d.full}: ${totals[i].toLocaleString("en-US")} ${unit}${series.map((s) => `, ${s.label} ${d.values[s.key] ?? 0}`).join("")}`}
                 data-tip={tip({ t: `${d.full} · ${totals[i].toLocaleString("en-US")} ${unit}`, r: series.map((s) => [s.label, (d.values[s.key] ?? 0).toLocaleString("en-US"), s.color]) })}>
                 {totals[i] > 0 ? (
-                  <span className="cn-stack" style={{ height: `${(totals[i] / top) * 100}%` }}>
+                  <span className="cn-stackbar" style={{ height: `${(totals[i] / top) * 100}%` }}>
                     {series.filter((s) => (d.values[s.key] ?? 0) > 0).map((s) => <span key={s.key} style={{ flexGrow: d.values[s.key], background: s.color }} />)}
                   </span>
                 ) : null}
