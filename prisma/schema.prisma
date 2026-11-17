@@ -139,6 +139,14 @@ model Family {
   retentionDays       Int     @default(90)
   /// when the last weekly summary went out (claimed once per family, for every parent who wants it)
   digestSentAt        DateTime?
+  /// Setup reminders (lib/setup-reminders) sent while the family has no children, and when the last one went out.
+  /// Never reset, so a family gets the sequence at most once.
+  childReminders      Int       @default(0)
+  childRemindedAt     DateTime?
+  /// Setup reminders sent while the family has children but no paired device, and when the last one went out. Never
+  /// reset, so a family gets the sequence at most once.
+  setupReminders      Int       @default(0)
+  setupRemindedAt     DateTime?
   /// The parent PIN that opens "Parent settings" on a child's iPhone (lib/device-pin), argon2id like a password
   devicePinHash       String?
   devicePinSetAt      DateTime?

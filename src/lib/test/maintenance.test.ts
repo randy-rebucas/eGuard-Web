@@ -14,6 +14,7 @@ vi.mock("../plan-access", () => ({}));
 vi.mock("../push", () => ({}));
 vi.mock("../weekly-digest", () => ({}));
 vi.mock("../parent-care/runner", () => ({}));
+vi.mock("../setup-reminders", () => ({}));
 
 type Fn = ReturnType<typeof vi.fn>;
 const { isChildRequest, isSecurityAlert, worthEmail, closeStaleWork, OPEN_CHANGE_DAYS, groupProtectionAlerts, combineAlerts, recordMaintenanceRun } = await import("../maintenance");
