@@ -219,7 +219,7 @@ export function ScreenPairingCode() {
       </div>
       <ol className="sc-steps">
         <li>Install eGuard on Mia&apos;s phone</li>
-        <li>Choose <b>I&apos;m setting up my child&apos;s device</b></li>
+        <li>Choose <b>This is my child&apos;s device</b></li>
         <li>Enter this code</li>
       </ol>
       <span className="sc-btn ghost wide">Done</span>

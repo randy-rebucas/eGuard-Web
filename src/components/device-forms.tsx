@@ -120,7 +120,7 @@ export function PairDevice({ kids: children, used, limit, upgrade = true, kind =
             <span className="t-meta">
               {browser
                 ? <>On {result?.childName}&apos;s computer, install eGuard for Chrome, Edge or Firefox. It opens a setup page: choose <b>Get started</b> and enter this code.{" "}</>
-                : <>Open the eGuard app on {result?.childName}&apos;s phone or tablet and choose <b>Pair with parent</b>, or open eGuard for Windows on their computer, and enter this code.{" "}</>}
+                : <>Open the eGuard app on {result?.childName}&apos;s phone or tablet and choose <b>This is my child&apos;s device</b>, or open eGuard for Windows on their computer, and enter this code.{" "}</>}
               <span className="num">Expires in {mmss(left)}.</span> This page updates when the device pairs.
             </span>
             <button className="btn btn-secondary btn-sm" onClick={async () => { try { await navigator.clipboard.writeText(code); toast("Code copied."); } catch { toast("Select the code to copy it."); } }}><Icon name="copy" />Copy</button>

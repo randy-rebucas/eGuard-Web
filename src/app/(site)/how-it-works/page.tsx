@@ -233,7 +233,7 @@ export default function HowItWorksPage() {
               <div className="hw-step-copy">
                 <span className="hw-num">3</span>
                 <h3>Connect your child&apos;s phone and browser</h3>
-                <p><b>Phone or tablet:</b> install eGuard, choose <b>I&apos;m setting up my child&apos;s device</b>, and enter the code. eGuard explains each permission before your phone asks for it.</p>
+                <p><b>Phone or tablet:</b> install eGuard, choose <b>This is my child&apos;s device</b>, and enter the code. eGuard explains each permission before your phone asks for it.</p>
                 <p><b>Computer:</b> add the eGuard extension to Chrome, Edge or Firefox, and type the browser code on its setup page.</p>
               </div>
             </li>

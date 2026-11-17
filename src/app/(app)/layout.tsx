@@ -7,6 +7,8 @@ import { BottomNav, Sidebar, TopHeader } from "@/components/shell";
 import { FlowProvider } from "@/components/flow";
 import { VerifyEmailBanner } from "@/components/verify-email-banner";
 import { Tour } from "@/components/tour";
+import { ConnectBanner, ConnectGuideDialog } from "@/components/connect-guide";
+import { db } from "@/lib/db";
 import { hasPendingVerification } from "@/lib/email-verification";
 import { nextPlan } from "@/lib/plans";
 
@@ -20,13 +22,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const user = await requireUser();
   // Upkeep first where it matters: simulated heartbeats before reading device state, offline alerts before counting them
   const touched = touchSimulated(user.familyId);
-  const [family, graph, unread, jar, linkSent] = await Promise.all([
+  const [family, graph, unread, jar, linkSent, browsers] = await Promise.all([
     getFamily(user.familyId),
     touched.then(() => getFamilyGraph(user.familyId)),
     touched.then(() => ensureOfflineAlerts(user.familyId)).then(() => unreadCount(user.familyId, user.id)),
     cookies(),
     !user.emailVerified && hasPendingVerification(user.id, user.email),
+    // Only whether any browser is connected, for the "connect a device" banner
+    db.browserInstallation.count({ where: { familyId: user.familyId, revokedAt: null } }),
   ]);
+  // Nothing paired yet: eGuard can't protect anyone, so every page says how to connect a device
+  const nothingPaired = !graph.devices.length && !browsers;
+  const hasChildren = graph.children.length > 0;
   const attention = Object.values(graph.deviceStates).filter((s) => s.key !== "healthy").length;
   const plan = { plan: family.plan, used: graph.children.length, limit: family.childLimit, upgrade: !!nextPlan(family.plan) };
   return (
@@ -37,12 +44,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <TopHeader user={{ name: user.name, email: user.email, role: user.role }} unread={unread} theme={jar.get("eg_theme")?.value ?? "system"} />
           <main className="content" id="main">
             {user.emailVerified ? null : <VerifyEmailBanner email={user.email} linkSent={linkSent} />}
+            {nothingPaired ? <ConnectBanner hasChildren={hasChildren} /> : null}
             {children}
           </main>
         </div>
       </div>
       <BottomNav attention={attention} plan={plan} />
-      <Tour intro={!user.introSeen} firstName={user.name.trim().split(/\s+/)[0] || "there"} hasChildren={graph.children.length > 0} />
+      <Tour intro={!user.introSeen} firstName={user.name.trim().split(/\s+/)[0] || "there"} hasChildren={hasChildren} />
+      <ConnectGuideDialog hasChildren={hasChildren} />
     </FlowProvider>
   );
 }

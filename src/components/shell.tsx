@@ -8,6 +8,7 @@ import { Brand, LogoMark } from "./logo";
 import { logout } from "@/app/actions/auth";
 import { setTheme } from "@/app/actions/family";
 import { startTour } from "./tour";
+import { openConnectGuide } from "./connect-guide";
 
 export const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: "house" },
@@ -251,6 +252,7 @@ function ProfileMenu({ name, email, role, theme }: { name: string; email: string
           <Link className="menu-item" role="menuitem" href="/settings/family" onClick={() => setOpen(false)}><Icon name="users" />Family members</Link>
           <Link className="menu-item" role="menuitem" href="/settings/security" onClick={() => setOpen(false)}><Icon name="key-round" />Security</Link>
           <button className="menu-item" role="menuitem" onClick={() => { setOpen(false); startTour(); }}><Icon name="compass" />Take the quick tour</button>
+          <button className="menu-item" role="menuitem" onClick={() => { setOpen(false); openConnectGuide(); }}><Icon name="tablet-smartphone" />How to connect a device</button>
           <hr />
           <div className="eyebrow" style={{ padding: "4px 10px" }}>Appearance</div>
           <div className="seg" role="group" aria-label="Theme">

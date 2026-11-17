@@ -8,6 +8,7 @@ import { Avatar, EmptyState, PageHead } from "@/components/ui";
 import { DeviceCard } from "@/components/cards";
 import { BrowserCard } from "@/components/browser-card";
 import { PairDevice } from "@/components/device-forms";
+import { ConnectGuide } from "@/components/connect-guide";
 import { removedComputers } from "@/lib/removed-computers";
 import { dayTime, shortDate } from "@/lib/format";
 
@@ -83,6 +84,8 @@ export default async function DevicesPage(props: PageProps<"/devices">) {
         </section>
       ) : (
         <>
+          {/* Open until something is paired; after that it's there for the next device, folded away */}
+          <ConnectGuide open={used === 0} />
           <section className="card card-pad" id="pair">
             {/* Only Android is out: the landing page and help say the iPhone and iPad app is coming soon */}
             <div className="card-head"><div><h2>Pair a device</h2><div className="sub">Install eGuard from Google Play on your child&apos;s Android phone or tablet, then enter a pairing code. The iPhone and iPad app is coming soon.</div></div></div>

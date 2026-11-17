@@ -530,6 +530,15 @@ button.check-item:hover{border-color:var(--line-strong); background:var(--surfac
 .guide-steps{counter-reset:g; display:flex; flex-direction:column; gap:10px; margin:0; padding:0; list-style:none}
 .guide-steps li{counter-increment:g; display:grid; grid-template-columns:28px 1fr; gap:10px; font-size:14px}
 .guide-steps li::before{content:counter(g); width:26px; height:26px; border-radius:50%; display:grid; place-items:center; background:var(--accent-soft); color:var(--accent-ink); font-weight:700; font-size:13px}
+/* Devices page: how to connect a child's device (components/connect-guide) */
+.connect-guide > summary{display:flex; align-items:center; gap:12px; cursor:pointer; list-style:none; border-radius:10px}
+.connect-guide > summary::-webkit-details-marker{display:none}
+.connect-guide > summary .t-title,.connect-guide > summary .t-meta{display:block}
+.connect-guide > summary:focus-visible{outline:2px solid var(--accent); outline-offset:4px}
+.connect-guide .guide-chevron{flex:none; color:var(--ink-3); transition:transform .2s}
+.connect-guide[open] .guide-chevron{transform:rotate(180deg)}
+.connect-guide .guide-steps li > span{min-width:0; padding-top:3px}
+.guide-store svg,.guide-mark svg{width:18px; height:18px; flex:none}
 /* First-run intro (components/tour-dialogs) */
 .dialog.intro{max-width:480px}
 .intro-band{display:grid; place-items:center; height:112px; background:radial-gradient(120% 140% at 50% 0%, var(--navy-3), var(--navy-1)); border-bottom:1px solid var(--line)}

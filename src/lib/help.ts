@@ -40,7 +40,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     summary: "Pair your child's phone or tablet with a one-time code.",
     body: [
       "Open your child's profile and tap Add device. eGuard shows an 8-character code that works for 15 minutes.",
-      "Install eGuard on your child's device, choose I'm setting up my child's device, and enter the code.",
+      "Install eGuard on your child's device, choose This is my child's device, and enter the code.",
       "eGuard checks every protection on the new device right away, so Configuration Health is accurate from the start.",
     ],
   },
@@ -57,7 +57,7 @@ export const HELP_ARTICLES: HelpArticle[] = [
     slug: "android-family-link", category: "SETUP", title: "Set up supervision on Android",
     summary: "eGuard supervises your child's Android phone or tablet itself. You don't need Google Family Link.",
     body: [
-      "Install eGuard from Google Play on your child's phone or tablet, choose I'm setting up my child's device, and enter the pairing code from your eGuard app or the web.",
+      "Install eGuard from Google Play on your child's phone or tablet, choose This is my child's device, and enter the pairing code from your eGuard app or the web.",
       "eGuard then asks for a few permissions: usage access for screen time and app limits, location if you turn it on, and device admin for uninstall protection. Each one is explained before Android asks for it.",
       "Web filtering is one guided step: eGuard shows you how to set the phone's Private DNS to a family filter, then checks it's set.",
       "You don't need Google Family Link. eGuard applies and verifies every protection directly on Android.",
