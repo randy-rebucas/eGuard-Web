@@ -21,6 +21,7 @@ tests `src/lib/test/console-ops.test.ts`, `src/lib/test/feature-flags.test.ts` a
 6. [Setup](#6-setup)
 7. [Not in v1](#7-not-in-v1)
 8. [Email broadcasts](#8-email-broadcasts)
+9. [Store reviews](#9-store-reviews)
 
 ---
 
@@ -45,6 +46,15 @@ between the family and its devices, as the privacy policy promises. New console 
 live in `src/lib/console-queries.ts`, so the rule can be checked in one file, and
 `src/lib/test/console-ops.test.ts` fails if that file reads an activity table or selects a field like `title`,
 `config`, `reported` or `blockedDomains`.
+
+Two pages show text beyond tickets, each with queries in their own file and a test that fails if that file reads any
+other table:
+
+- **Store reviews** (§9): the public words reviewers posted on Google Play and the App Store, with the store nickname
+  they chose. They aren't a family's data, and nothing links a review to an account. Queries: `src/lib/review-queries.ts`
+  (checked by `src/lib/test/review-post.test.ts`).
+- **Feedback** (`/feedback`): parents' survey answers and Send feedback, their own words to the team, shown with their
+  email like a ticket. Queries: `src/lib/feedback-queries.ts` (checked by `src/lib/test/feedback.test.ts`).
 
 ## 2. How the subdomain works
 
@@ -123,16 +133,20 @@ script uses the development key and warns, and those codes only work locally.
 | `/diagnostics` | The fleet: app, OS and extension versions in use, offline, never synced, no push token, browsers behind on their rules, devices that went quiet in the last 30 days. |
 | `/policies` | How many children have each protection set, and browser-rule adoption (Safe Search, schedule, blocked sites, YouTube level, unknown sites). Counts only. |
 | `/config-health` | Check results by protection × status across every device, parents' changes by state, changes waiting over 24 hours (linked to the device), failures in 7 days by reason. |
-| `/alerts` | What needs staff: maintenance job stopped or steps failing, parent care jobs failed or retrying, broadcast emails failed, purchases not re-checked in 2 days, stuck changes, browsers disconnected for security, tickets open over 2 days. Then families' alerts as counts by category and severity. |
+| `/alerts` | What needs staff: maintenance job stopped or steps failing, parent care jobs failed or retrying, broadcast emails failed, purchases not re-checked in 2 days, stuck changes, browsers disconnected for security, tickets open over 2 days, 1–2★ store reviews unanswered over 2 days, a store whose reviews haven't synced in 36 hours. Then families' alerts as counts by category and severity. |
 | `/families/[id]` | Account, parents, purchases, support tickets, organizations joined and sponsor codes redeemed. The plan says "renews" or "ends" as the parent's Settings does, and device slots count phones, tablets and connected browsers, as pairing does. |
 | `/tickets` | Support tickets, filtered by Open, Closed or All. Parents file them from the app's Contact Support or the web's Settings › Support (both through `createTicket` in `src/lib/support.ts`), and see each one's Open/Closed status there. |
+| `/reviews` | Google Play and App Store reviews, newest first: stars, AI summary, topics, urgency, status. Filter by status, store, stars, sentiment, urgency, topic, and "reads like a child". Above: replies waiting, unanswered 1–2★ reviews, 30-day and all-time averages per store, median reply time, top topics, each store's last sync (with **Sync now**). See [section 9](#9-store-reviews). |
+| `/reviews/[id]` | The review, the AI's reading, the draft reply (edit, regenerate with an instruction, save, or approve and post with confirmation), Ignore, a linked support ticket, and earlier replies. |
+| `/feedback` | Parents' survey answers and Send feedback: NPS over 30 and 90 days, answers by group, every answer with the parent's email, filtered by kind, group or follow-up; mark unhappy ones Contacted or Resolved. See [docs/features/feedback.md](features/feedback.md). |
+| `/proof` | Social proof on eguard.family: the Google Play rating (typed from the Play Console, with the day checked; warns when stale or far from synced reviews), and parents' quotes: propose, ask the parent for consent by email, publish, take off, reorder. See [docs/marketing-site-review.md › Social proof](marketing-site-review.md#social-proof-how-to-add-it). |
 | `/tickets/[id]` | The message, who sent it, and a Close/Reopen button. Replies still go out from the support inbox, where tickets are forwarded with Reply-To set to the parent. |
 | `/organizations` | Organizations with counts of admins, families and code batches. |
 | `/organizations/[id]` | Admins, join code, and code batches with how many codes were redeemed. |
 | `/broadcasts` | Emails to many parents: drafts, scheduled, sending and sent, with how many went out. See [section 8](#8-email-broadcasts). |
 | `/broadcasts/new`, `/broadcasts/[id]` | Write an email; preview it, send yourself a test, send it now or schedule it; stop it; see failures. |
 | `/care` | Parent care engagement: weekly active families, 7- and 30-day retention and reactivation (treatment vs holdout), activities, messages by channel. See [docs/features/parent-care.md](features/parent-care.md). |
-| `/care/automations`, `/care/automations/[key]` | The five automations: status, version, channels, counts, conversion, why jobs were skipped, template preview. Pause or resume (with confirmation; pausing cancels pending jobs). |
+| `/care/automations`, `/care/automations/[key]` | The six automations: status, version, channels, counts, conversion, why jobs were skipped, template preview. Pause or resume (with confirmation; pausing cancels pending jobs). |
 | `/care/delivery` | The job queue, reliability, provider errors, duplicate guards, failed and retrying jobs; retry one, or all from the last 7 days (with confirmation). |
 | `/care/trust` | Consent and preference counts, opt-outs and suppressions, channel readiness, contact limits, template approval, staff changes (`care.*` audit entries). |
 | `/audit` | The staff audit log. |
@@ -299,3 +313,67 @@ on in Settings. Deleting a draft is the only delete, so sent emails' links keep 
 
 `npm run db:deploy` applies the migration. It uses the existing mail settings, `APP_URL` for links, and the
 maintenance cron. `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` turns on Write with AI.
+
+## 9. Store reviews
+
+Google Play and App Store reviews come into the console, AI reads each one and drafts a reply, and staff edit and
+approve it before anything is posted. Code: `src/lib/store-reviews/` (sync, store clients, posting),
+`src/lib/review-ai.ts`, `src/lib/review-queries.ts`, `src/app/actions/console-reviews.ts`.
+
+### Sync
+
+The maintenance job's "store reviews" step reads each store that's set up, every `REVIEW_SYNC_HOURS` (default 6), or
+an hour after a failed sync. **Sync now** on `/reviews` reads one right away (6 an hour).
+
+- **Google Play** (`reviews.list`) only returns reviews with written text, and only those created or edited in about
+  the last week. So the sync must keep running: a gap of over a week loses reviews. Star-only ratings never arrive.
+- **App Store** (`customerReviews`) returns the whole history, newest first. The first sync reads it all (up to 5,000);
+  later ones stop 2 days past the newest review already saved.
+- A reviewer who edits a review changes its `textHash`. The AI reading is cleared, and drafts written for the old
+  words are superseded, so a reply never answers words that are gone.
+- A reply typed straight into Play Console or App Store Connect is picked up at the next sync, and the review shows
+  as Replied.
+
+### AI reading and drafts
+
+Up to 15 new reviews a run go to the AI provider set for Write with AI (`ANTHROPIC_API_KEY` or `OPENAI_API_KEY`). One
+call returns sentiment, 1–3 topics, urgency, a one-line English summary, whether it reads like a child, and a reply
+draft. Only the review goes to the provider (stars, title, words, language): never the reviewer's nickname or any
+account data.
+
+The draft must fit the store: Google Play takes 350 characters (the App Store about 5,970). A draft over the limit is
+asked for once more, shorter, then cut at a sentence and flagged. The instructions forbid asking for a better rating,
+offering anything for one, promising refunds or fixes, or claiming to have looked at the reviewer's account.
+**Regenerate** takes an instruction ("shorter", "in Filipino") and counts toward the 30 AI drafts an hour per staff
+member.
+
+### Approving and posting
+
+**Approve & post** needs the confirmation box. It posts the text in the box (staff edits included) once: the draft and
+the review are each claimed from the state they must be in, and posting is refused if the reviewer changed the review
+since the draft was written. A store error leaves the reply Failed with the reason; posting again reuses it. Posting
+to a review that already has a reply replaces that reply in the store. Every view, save, draft, post, failure, ignore
+and sync is in the audit log (`review.*`).
+
+### Alerts
+
+New 1–2★ reviews from the last 14 days with no reply are emailed to `REVIEWS_ALERT_EMAIL` (default `SUPPORT_EMAIL`),
+one email per run, each review once. Console › Alerts lists 1–2★ reviews unanswered over 2 days and stores whose sync
+hasn't worked in 36 hours.
+
+### Retention
+
+Reviews are kept 730 days after they were posted; replaced drafts 90 days (`STORE_REVIEW_RETENTION_DAYS`, run by the
+maintenance job's data retention).
+
+### Setup
+
+1. `npm run db:deploy` applies the migration (`20261118090000_store_reviews`).
+2. Google Play: the `GOOGLE_PLAY_*` service account already used for billing. In Play Console › Users and permissions,
+   also give it **Reply to reviews**.
+3. App Store: in App Store Connect › Users and Access › Integrations › Team Keys, make a key with the Customer Support
+   role (or higher). Set `APP_STORE_CONNECT_ISSUER_ID`, `APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_PRIVATE_KEY`
+   (the .p8 file; `
+` for newlines is fine) and `APP_STORE_APP_ID` (App Information › Apple ID).
+4. Optional: `REVIEWS_ALERT_EMAIL`, `REVIEW_SYNC_HOURS`. Without an AI key, reviews still sync and staff write replies
+   themselves.

@@ -21,6 +21,8 @@ import { browserNeedsAttention, familySummary, healthBadge, isOffline } from "@/
 import { db } from "@/lib/db";
 import { status as twoStepStatus } from "@/lib/two-factor";
 import { TwoStepPrompt } from "@/components/two-step-prompt";
+import { NpsCard } from "@/components/nps-card";
+import { feedbackPrompts } from "@/lib/feedback";
 
 import heroArt from "../../../../public/web/dashboard-hero.jpg";
 
@@ -125,7 +127,8 @@ export default async function Dashboard() {
 
   return (
     <>
-      {twoStepPrompt ? <TwoStepPrompt /> : null}
+      {/* One ask at a time: the security prompt first, then the survey (lib/feedback npsDue) */}
+      {twoStepPrompt ? <TwoStepPrompt /> : (await feedbackPrompts(u)).nps.due ? <NpsCard /> : null}
       <section className="hero" aria-labelledby="hero-title">
         <HeroArt />
         <div className="hero-copy">

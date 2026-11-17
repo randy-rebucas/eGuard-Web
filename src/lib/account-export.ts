@@ -48,6 +48,8 @@ export async function exportFamily(user: { id: string; familyId: string; name: s
       alerts: { select: { title: true, body: true, subject: true, severity: true, category: true, createdAt: true, resolvedAt: true } },
       auditLogs: { select: { actor: true, action: true, detail: true, createdAt: true }, orderBy: { createdAt: "desc" } },
       supportTickets: { select: { category: true, subject: true, message: true, status: true, createdAt: true } },
+      // Survey answers and "Send feedback" (lib/feedback)
+      feedback: { select: { kind: true, score: true, comment: true, contactOk: true, platform: true, followUp: true, createdAt: true }, orderBy: { createdAt: "desc" } },
       purchases: { select: { store: true, productId: true, state: true, autoRenewing: true, expiresAt: true, createdAt: true } },
       // The eGuard browser extension on the children's computers (never its tokens)
       browsers: {

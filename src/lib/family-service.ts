@@ -26,6 +26,7 @@ import { removalWaits } from "./device-removal";
 import { advancePolicyPast } from "./browser-policy";
 import { REMOVED_COMPUTER_DAYS, rememberRemovedComputer, rememberRemovedPhone } from "./removed-computers";
 import { appleTokensOf, revokeAppleTokens } from "./apple-tokens";
+import { expireProof, hasPublishedQuotes } from "./testimonials";
 
 /** Family, children, apps and devices: shared by the web server actions and the mobile API. */
 
@@ -814,13 +815,18 @@ export async function deleteAccount(actor: Actor, confirm: Confirm) {
     await handOverOrganizations(members.map((m) => m.id));
     // Read before the rows go: every parent in the family loses their account
     const appleTokens = await appleTokensOf(members.map((m) => m.id));
+    const quoted = await hasPublishedQuotes(members.map((m) => m.id));
     await db.family.delete({ where: { id: actor.familyId } });
+    // Their words go with them, off eguard.family at once (lib/testimonials)
+    if (quoted) expireProof();
     await revokeAppleTokens(appleTokens);
     return { deleted: "family" as const };
   }
   await handOverOrganizations([actor.id]);
   const appleTokens = await appleTokensOf([actor.id]);
+  const quoted = await hasPublishedQuotes([actor.id]);
   await db.user.delete({ where: { id: actor.id } });
+  if (quoted) expireProof();
   await audit(actor.familyId, actor.name, "member.left", user.email);
   // Sign in with Apple: revoke eGuard's access at Apple too (App Store 5.1.1(v)); never fails the deletion
   await revokeAppleTokens(appleTokens);
@@ -857,8 +863,10 @@ export async function removeParent(actor: Actor, userId: string) {
   await handOverOrganizations([userId]);
   // Their account is deleted: so is their Sign in with Apple grant (revoked once the account is gone)
   const appleTokens = await appleTokensOf([userId]);
+  const quoted = await hasPublishedQuotes([userId]);
   const r = await db.user.deleteMany({ where: { id: userId, familyId: actor.familyId, role: "PARENT" } });
   if (!r.count) throw notFound("Family member");
+  if (quoted) expireProof();
   await revokeAppleTokens(appleTokens);
   // Name the person: the id means nothing in the audit log once their account is gone
   await audit(actor.familyId, actor.name, isPendingInvite(parent) ? "member.invite_withdrawn" : "member.removed", `${parent.name} (${parent.email})`);

@@ -110,3 +110,11 @@ export function StatGrid({ stats }: { stats: Stat[] }) {
     </div>
   );
 }
+
+const REVIEW_LABEL: Record<string, string> = { NEW: "New", DRAFTED: "Draft ready", APPROVED: "Approved", POSTING: "Posting", REPLIED: "Replied", IGNORED: "Ignored", FAILED: "Post failed" };
+
+/** A store review's state (console › Store reviews) */
+export function ReviewPill({ status }: { status: string }) {
+  const tone = status === "REPLIED" ? "tone-ok" : status === "FAILED" ? "tone-crit" : status === "IGNORED" ? "tone-muted" : status === "DRAFTED" ? "tone-accent" : "tone-warn";
+  return <span className={`pill ${tone}`}>{REVIEW_LABEL[status] ?? status}</span>;
+}

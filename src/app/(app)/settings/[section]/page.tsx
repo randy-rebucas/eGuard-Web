@@ -16,7 +16,9 @@ import { BuyPlan, CancelAutoRenew } from "@/components/billing";
 import { CreateOrgForm, JoinOrgForm, LeaveOrgButton, OrgInvitationActions, RedeemCodeForm } from "@/components/organizations";
 import { ORG_KINDS, VOUCHER_STORE, familyOrganizations, invitationsFor, managedOrganizations, sponsorOf } from "@/lib/organizations";
 import { SECTIONS } from "../sections";
-import { TICKET_CATEGORIES, listTickets, supportEmail } from "@/lib/support";
+import { FeedbackForm, WithdrawQuoteButton } from "@/components/feedback-form";
+import { ownTestimonials } from "@/lib/testimonials";
+import { TICKET_CATEGORIES, TICKET_CATEGORY_LABEL, listTickets, supportEmail } from "@/lib/support";
 import QRCode from "qrcode";
 import { shareMessage } from "@/lib/share";
 import { ShareEguard } from "@/components/share";
@@ -192,7 +194,8 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
       );
     }
 
-    case "privacy":
+    case "privacy": {
+      const quotes = await ownTestimonials(u.id);
       return (
         <>
           {head}
@@ -201,9 +204,20 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
           <SettingSwitch setting="shareAnalytics" title="Share anonymous product analytics" desc="Helps improve eGuard. Never includes children's data. eGuard doesn't collect product analytics yet; your choice is saved and applies if it starts" checked={family.shareAnalytics} disabled={!admin} />
           <div className="setting-row"><div className="grow"><div className="t-title">What children can see</div><div className="t-meta">Children see which protections are on, and can ask you for new apps and for blocked websites</div></div></div>
           <div className="setting-row"><div className="grow"><div className="t-title">Data retention</div><div className="t-meta">{/* What purgeExpiredData deletes; open alerts stay until they're resolved */}Screen time, app usage, location visits, change history, browser block counts and site requests, and resolved alerts are deleted after {family.retentionDays} days</div></div><span className="pill tone-accent">{family.retentionDays} days</span></div>
+          {quotes.map((q) => (
+            // Each parent's own: their words on eguard.family, which they can take back (lib/testimonials)
+            <div className="setting-row" key={q.id}>
+              <div className="grow">
+                <div className="t-title">Your words on eguard.family</div>
+                <div className="t-meta">&ldquo;{q.quote}&rdquo; — {q.displayName}. {q.status === "PUBLISHED" ? "Shown on the site." : q.status === "CONSENTED" ? "You agreed; not on the site yet." : "Waiting for your answer in the email we sent."}</div>
+              </div>
+              <WithdrawQuoteButton id={q.id} />
+            </div>
+          ))}
           {!admin ? <p className="t-meta" style={{ marginTop: 12 }}>Only the family admin can change privacy settings.</p> : null}
         </>
       );
+    }
 
     case "security": {
       const [sessions, identities, twoStep, { recovery, linked, oauth, provider }] = await Promise.all([
@@ -430,6 +444,10 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
             <div><div className="t-title">Contact support</div><div className="t-meta">We reply by email within 1 business day{family.plan !== BASE_PLAN ? `, and ${family.plan} requests are answered first` : ""}. You can also write to <a className="link-btn" href={`mailto:${supportEmail()}`}>{supportEmail()}</a>.</div></div>
             <SupportTicketForm categories={Object.entries(TICKET_CATEGORIES)} email={user.email} />
           </div>
+          <div className="setting-row" style={{ flexDirection: "column", alignItems: "stretch", gap: 12 }}>
+            <div><div className="t-title">Send feedback</div><div className="t-meta">Tell us what works, what doesn&apos;t, or what you&apos;d like eGuard to do. If something&apos;s broken and we may email you, it becomes a support request.</div></div>
+            <FeedbackForm email={user.email} />
+          </div>
           {tickets.length ? (
             <>
               <h3 className="org-sub">Your requests</h3>
@@ -438,7 +456,7 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
                   <span className="ico-tile"><Icon name="message-circle" /></span>
                   <div className="grow" style={{ minWidth: 0 }}>
                     <div className="t-title">{t.subject}</div>
-                    <div className="t-meta">{TICKET_CATEGORIES[t.category as keyof typeof TICKET_CATEGORIES] ?? t.category} · sent {dayTime(t.createdAt, tz)}</div>
+                    <div className="t-meta">{TICKET_CATEGORY_LABEL[t.category] ?? t.category} · sent {dayTime(t.createdAt, tz)}</div>
                   </div>
                   <span className={`pill ${t.status === "OPEN" ? "tone-accent" : "tone-muted"}`}>{t.status === "OPEN" ? "Open" : "Closed"}</span>
                 </div>

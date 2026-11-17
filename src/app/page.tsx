@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
@@ -14,7 +15,8 @@ import { profileConfig, recommendedProfile } from "@/lib/profiles";
 import { describeSuggested } from "@/lib/protection-pages";
 import { ARTICLES, articleBySlug } from "@/lib/learn";
 import { SETUP_VIDEO } from "@/lib/setup-video";
-import { MADE_IN, proof } from "@/lib/social-proof";
+import { MADE_IN } from "@/lib/social-proof";
+import { loadProof } from "@/lib/social-proof-data";
 import { jsonLd, pageMetadata, siteUrl } from "@/lib/site";
 import { SiteFooter, SiteHeader } from "@/components/site-chrome";
 import { MetaPixel } from "@/components/meta-pixel";
@@ -178,8 +180,8 @@ function Shield() {
  * Ratings, parents' words and press, from lib/social-proof. Renders nothing until one of them is real: no
  * placeholder quotes, no "trusted by thousands".
  */
-function ProofBand() {
-  const { rating, quotes, press, any } = proof();
+async function ProofBand() {
+  const { rating, quotes, press, any } = await loadProof();
   if (!any) return null;
   return (
     <section className="lp-proof" aria-labelledby="lp-proof-h">
@@ -452,7 +454,8 @@ export default function Home() {
           </div>
         </section>
 
-        <ProofBand />
+        {/* Cached (lib/social-proof-data); read at request time only if it couldn't be prerendered */}
+        <Suspense fallback={null}><ProofBand /></Suspense>
 
         {/* ---------- Pricing ---------- */}
         <section className="lp-pricing" id="pricing">

@@ -568,7 +568,7 @@ Returned by `PUT /children/{id}/protections/{KEY}`, `POST /children/{id}/setup` 
 | 15 | Alerts | `GET /alerts?filter=`, `POST /alerts/{id}/read`, `/read-all`, `/dismiss`, `GET /alerts/unread-count` (includes "App blocked") |
 | 16 | Settings | `GET /family`, `PATCH /family`, `/me`, `/me/notifications`, `/family/privacy`, `/me/sessions`, `POST /me/password`, `/me/two-factor`, `/me/identities`, `POST /me/export`, `DELETE /me`, `GET /organizations`, `POST /auth/logout` |
 | 17 | Subscription | `GET /subscription`. Android upgrade: `GET /subscription/plans` → Play Billing → `POST /subscription/google-play` |
-| 18 | Help & Support | `GET /help?q=`, `GET /help/{slug}`, `POST /support/tickets`. Share eGuard needs no endpoint: the system share sheet with the app's own text and `https://www.eguard.family/`, worded as the web's (`src/lib/share.ts`) |
+| 18 | Help & Support | `GET /help?q=`, `GET /help/{slug}`, `POST /support/tickets`, `POST /feedback` (Send feedback). Home also checks `GET /feedback/prompts` for the survey. Share eGuard needs no endpoint: the system share sheet with the app's own text and `https://www.eguard.family/`, worded as the web's (`src/lib/share.ts`) |
 | — | Tab-bar badge | `GET /alerts/unread-count` |
 | — | Push registration | `POST /me/push-tokens` after sign-in, `DELETE` / `POST /auth/logout` with `{"pushToken"}` on sign-out |
 
@@ -1751,6 +1751,43 @@ The public help endpoints are in [§P4.1](#p41-public-no-sign-in).
 - `category`: `SETUP`, `DEVICE`, `BILLING`, `ACCOUNT` or `OTHER` (the default).
 - `subject`: 3–120 characters.
 - `message`: 10–5000 characters.
+- A ticket can also have the category `FEEDBACK`: opened for the parent from the survey or Send feedback (below). Show
+  it as "Your feedback"; it isn't offered in the picker.
+
+##### Feedback and the NPS survey
+
+The survey ("How likely are you to recommend eGuard to another parent?", 0–10) and Help & support › Send feedback.
+Full design in [docs/features/feedback.md](features/feedback.md). The platform is read from `X-eGuard-Client`.
+
+| Method & path | Body | Response |
+|---|---|---|
+| `GET /feedback/prompts` | none | `{ nps: { due } }`. Check on the home screen a few seconds after it has loaded, at most once per app run; never at launch, after an error, or in child mode |
+| `POST /feedback/nps` | `{ event: "seen" \| "dismissed" }` | `{ ok: true }`. Send `seen` when the survey is shown, `dismissed` for "Not now" (or a swipe away without answering) |
+| `POST /feedback` | `{ kind, score?, comment?, contactOk?, appVersion?, trigger? }` | `201 { id, followUp, ticketId, bucket, message }`. Show `message` |
+
+- `kind`: `NPS` (needs `score` 0–10), or `FEEDBACK`, `BUG`, `IDEA` (need a `comment` of 3+ characters, and no score).
+- `comment`: up to 2,000 characters. `contactOk`: the parent agreed we may email them about it.
+- `trigger`: `nps_survey` (set for `NPS` whatever is sent), `settings` or `help`.
+- `followUp: "TICKET"`: a 0–6 score or a `BUG`, with `contactOk` and a comment, opened a support ticket in the
+  parent's name (it appears in `GET /support/tickets`).
+- 10 an hour per parent (`429 rate_limited`).
+- **Never** use the answer to decide whether to ask for a store rating: Google Play and Apple forbid asking only
+  happy users.
+
+##### Store rating
+
+The store's own review card (Play In-App Review; Apple's `requestReview` once eGuard is on the App Store). Full rules in
+[docs/features/feedback.md › Store ratings](features/feedback.md#store-ratings). The platform is read from `X-eGuard-Client`.
+
+| Method & path | Body | Response |
+|---|---|---|
+| `GET /review-prompt` | none | `{ eligible, reason }`. `reason` is for logs only (`eligible`, `flag_off`, `too_new`, `not_active`, `device_needs_attention`, `recent_feedback`, `asked_recently`, `yearly_limit`, …) |
+| `POST /review-prompt` | none | `{ ok: true }`. Send right after asking the store for its card, whether or not it showed |
+
+- Check only right after something went well: a change verified, a child's request answered. Never at launch, after
+  an error, in child mode, or after asking the parent anything (no "Do you like eGuard?" first: Play forbids it).
+- Ask at most once per app run, and launch the store's own card; never a custom rating screen.
+- Never decide from the survey or feedback: the server's answer already accounts for everything allowed.
 
 #### Parent care (tips, plans, reminders)
 
@@ -1759,7 +1796,7 @@ Optional guidance, separate from safety alerts (`/alerts`): nothing here changes
 
 | Method & path | Body | Response |
 |---|---|---|
-| `GET /me/care` | none | `{ enabled, inApp, push, email, briefings, followUps, weeklyPlan, checkIns, monthlyReport, briefingDays, deliveryTime, quietStart, quietEnd, language, timezone, effectiveTimezone, consent: { push, email }, channels: { push, email, inApp }, languages }` |
+| `GET /me/care` | none | `{ enabled, inApp, push, email, briefings, followUps, weeklyPlan, checkIns, monthlyReport, feedbackInvites, briefingDays, deliveryTime, quietStart, quietEnd, language, timezone, effectiveTimezone, consent: { push, email }, channels: { push, email, inApp }, languages }` |
 | `PATCH /me/care` | any of the fields above except `consent`, `channels`, `languages`, `effectiveTimezone` | Same as GET. Times are `"HH:MM"` (24-hour, local); `briefingDays` 0 (Sun)–6; `language` `en` or `fil`; `timezone` an IANA zone or `null` (the family's). Unknown fields: 400 |
 | `GET /care/activities` | none | `{ week, plan, inProgress, suggested, completed, dismissed, completedTotal }`; each activity `{ key, title, why, minutes, steps, ages?, article, appLink?, repeatDays?, status, startedAt, completedAt, due }` |
 | `GET /care/activities/{key}` | none | One activity, as above |

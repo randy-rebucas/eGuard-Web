@@ -14,7 +14,8 @@ import { ServiceError } from "./errors";
 type Fetch = typeof fetch;
 export type ServiceAccount = { client_email: string; private_key: string; private_key_id?: string; token_uri?: string };
 
-const API = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications";
+/** The Play Developer API's applications base; lib/store-reviews/play builds on it too */
+export const API = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications";
 const SCOPE = "https://www.googleapis.com/auth/androidpublisher";
 
 export function googlePlayConfig(env: Record<string, string | undefined> = process.env) {
@@ -38,10 +39,10 @@ export const obfuscatedAccountId = (familyId: string) => createHash("sha256").up
 const b64url = (v: string | Buffer) => Buffer.from(v).toString("base64url");
 
 const TIMEOUT_MS = 15_000;
-const unreachable = () => new ServiceError(502, "Couldn't reach Google Play. Try again in a moment.", "store_unavailable");
+export const unreachable = () => new ServiceError(502, "Couldn't reach Google Play. Try again in a moment.", "store_unavailable");
 
 /** A request that can't reach Google (network down, timeout) fails like a 5xx, not as a crash. */
-async function reach(f: Fetch, url: string, init: RequestInit = {}) {
+export async function reach(f: Fetch, url: string, init: RequestInit = {}) {
   try {
     return await f(url, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS) });
   } catch (e) {

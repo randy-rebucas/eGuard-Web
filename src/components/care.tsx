@@ -10,7 +10,7 @@ import { activityAction, messageAction, saveCarePreferences, type ActivityAction
 
 export type CarePrefsView = {
   enabled: boolean; inApp: boolean; push: boolean; email: boolean;
-  briefings: boolean; followUps: boolean; weeklyPlan: boolean; checkIns: boolean; monthlyReport: boolean;
+  briefings: boolean; followUps: boolean; weeklyPlan: boolean; checkIns: boolean; monthlyReport: boolean; feedbackInvites: boolean;
   briefingDays: number[]; deliveryTime: string; quietStart: string; quietEnd: string;
   language: string; timezone: string | null; effectiveTimezone: string;
   channels: { push: boolean; email: boolean; inApp: boolean };
@@ -18,7 +18,7 @@ export type CarePrefsView = {
 };
 
 const SAVED_FIELDS = [
-  "enabled", "inApp", "push", "email", "briefings", "followUps", "weeklyPlan", "checkIns", "monthlyReport",
+  "enabled", "inApp", "push", "email", "briefings", "followUps", "weeklyPlan", "checkIns", "monthlyReport", "feedbackInvites",
   "briefingDays", "deliveryTime", "quietStart", "quietEnd", "language", "timezone",
 ] as const satisfies readonly (keyof CarePrefsView)[];
 
@@ -87,6 +87,7 @@ export function CareSettings({ initial, zones }: { initial: CarePrefsView; zones
         <Toggle id="care-follow" title="Activity reminders" checked={p.followUps} disabled={off} onChange={(v) => set("followUps", v)} desc="One reminder about a day after you start an activity, if it isn't done yet." />
         <Toggle id="care-checkins" title="Check-ins when you've been away" checked={p.checkIns} disabled={off} onChange={(v) => set("checkIns", v)} desc="If you haven't used eGuard for a week or more, up to three helpful messages, a week apart. They stop as soon as you're back." />
         <Toggle id="care-report" title="Monthly summary" checked={p.monthlyReport} disabled={off} onChange={(v) => set("monthlyReport", v)} desc="On the 1st: what you did last month, from your own activity in eGuard." />
+        <Toggle id="care-rate" title="Rating invitation" checked={p.feedbackInvites} disabled={off} onChange={(v) => set("feedbackInvites", v)} desc="Now and then, once eGuard has been working well for a while: an email asking if you'd rate it on Google Play. At most twice a year." />
       </fieldset>
 
       <fieldset className="care-group" disabled={off}>

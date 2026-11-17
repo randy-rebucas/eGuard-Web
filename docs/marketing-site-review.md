@@ -35,11 +35,27 @@ Review of the public pages: the landing page (`src/app/page.tsx`) and everything
 
 ### Social proof: how to add it
 
-All in `src/lib/social-proof.ts`. The landing page's "What parents say" band appears on its own once any of these is set.
+The landing page's "What parents say" band appears on its own once any of these is set. Quotes and the rating live in
+the database and are managed in **console › Social proof** (`/proof`); the site reads them through
+`src/lib/social-proof-data.ts` (cached for an hour, refreshed at once when staff or a parent change something). The
+rules are in `src/lib/social-proof.ts`.
 
-- **A parent's quote:** add `{ quote, name, consentedOn }` to `TESTIMONIALS`, only after they replied "Yes" to being quoted (the About page's **Share your story** email asks). Use the name they chose. Keep their email.
-- **Google Play rating:** copy the stars and review count from the Play Console into `PLAY_RATING` with `checkedOn`. It shows only from 20 reviews (`MIN_PLAY_REVIEWS`). Update it monthly or set it back to `null`. It's never put in JSON-LD.
-- **Press:** add `{ outlet, title, url, date }` to `PRESS` once an article has actually run.
+- **A parent's quote** (`src/lib/testimonials.ts`):
+  1. Propose it from the parent's own words: console › Feedback › **Quote this** (survey promoters and Send feedback),
+     or by their account email for something they wrote to support. Trim for length if needed, never change the
+     meaning. Store reviews can't be used: reviewers are anonymous and can't agree.
+  2. **Ask the parent.** They're emailed the exact quote and name, and on the link's page agree (and may change the
+     name), or say no. The link works 30 days. No answer means nothing is shared.
+  3. **Publish** once they've agreed. Only the exact words and name they agreed to can go up; any edit takes it down
+     and needs their consent again.
+  4. They can withdraw at any time, from the same link or Settings › Privacy, and it comes off the site at once.
+     Withdrawn and declined quotes are erased after 30 days, keeping only the record that it was done. Deleting their
+     account removes it too.
+- **Google Play rating:** copy the stars and rating count from the Play Console into console › Social proof, with the
+  day you checked. It shows only from 20 ratings (`MIN_PLAY_REVIEWS`), and is hidden once it's over 45 days old
+  (the console warns from 30): check it monthly. Next to it the console shows the average of the written reviews
+  eGuard synced (console › Store reviews), to catch a typo. It's never put in JSON-LD.
+- **Press:** add `{ outlet, title, url, date }` to `PRESS` in `src/lib/social-proof.ts` once an article has actually run.
 
 ## What's already strong
 

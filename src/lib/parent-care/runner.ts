@@ -10,6 +10,8 @@ import { cohortFor, ensurePreference, recordEvent, recordEvents } from "./events
 import { cancelJobs, claimDue, classifyError, enqueue, nextAttempt, releaseStale, type NewJob } from "./queue";
 import { addDays, afterQuietHours, daysSince, localDay, previousMonth, slot, slotsBetween, weekOf } from "./schedule";
 import { render, safeLink, type MonthlyNumbers, type RenderInput } from "./templates";
+import { isEnabled } from "../feature-flags";
+import { RATE_PROMPT_FLAG, rateFacts, reviewInviteEligibility, usesAndroidApp } from "../review-prompts";
 
 /**
  * The parent-care engine's moving parts (docs/features/parent-care.md): keeps the automations' rows in step with
@@ -141,6 +143,15 @@ export async function planUser(ctx: CareContext, enabled: Map<string, boolean>, 
     }
   }
 
+  // The store rating invitation: from what the parent does, never from what they said (lib/review-prompts)
+  if (allowed("review_invite").ok && (await reviewInviteDue(ctx, now))) {
+    const [s] = slotsBetween(now, HORIZON_DAYS, ctx.tz, minute);
+    if (s) {
+      const half = `${s.day.slice(0, 4)}-H${Number(s.day.slice(5, 7)) <= 6 ? 1 : 2}`;
+      jobs.push({ ...base, automationKey: "review_invite", idempotencyKey: `review_invite:${uid}:${half}`, runAt: s.at, payload: { half } });
+    }
+  }
+
   // Check-ins: one enrollment per inactivity period, named by when it started
   const last = ctx.prefs.lastQualifyingAt;
   if (daysSince(last, now) >= INACTIVE_DAYS) {
@@ -169,6 +180,23 @@ export async function planUser(ctx: CareContext, enabled: Map<string, boolean>, 
   const created = await enqueue(jobs);
   await db.parentCarePreference.update({ where: { userId: uid }, data: { plannedAt: now } });
   return created.length;
+}
+
+/**
+ * Whether to invite this parent to rate eGuard now: the flag is on, they use the Android app (eGuard's only store
+ * today), the last invitation was 180+ days ago (the contact history only covers a week, so it's read here), and
+ * reviewInviteEligibility passes. Cheap checks first: it runs at every planning.
+ */
+async function reviewInviteDue(ctx: CareContext, now: Date): Promise<boolean> {
+  if (!(await isEnabled(RATE_PROMPT_FLAG, ctx.user.familyId))) return false;
+  const cooldown = automationByKey("review_invite")!.cooldownDays;
+  const last = await db.parentCareMessage.findFirst({
+    where: { userId: ctx.user.id, automationKey: "review_invite", status: { in: ["ACCEPTED", "DELIVERED", "UNCERTAIN", "SENDING"] } },
+    orderBy: { createdAt: "desc" }, select: { createdAt: true },
+  });
+  if (last && now.getTime() - last.createdAt.getTime() < cooldown * 864e5) return false;
+  if (!(await usesAndroidApp(ctx.user.id))) return false;
+  return reviewInviteEligibility(await rateFacts(ctx.user, now.getTime()), now.getTime()).eligible;
 }
 
 /** Plans parents not planned in REPLAN_MS, a batch per run. Returns how many jobs were scheduled. */
@@ -262,6 +290,12 @@ async function prepare(job: ParentCareJob, ctx: CareContext, now: Date): Promise
       const activityKey = step === 2 ? null : plan[Math.min(step, plan.length - 1)] ?? null;
       if (step < 2 && !activityKey) return { irrelevant: "nothing_to_suggest" };
       return { input: { params: { step, activityKey } }, contentKey: `check_in:${step}:${activityKey ?? "last"}` };
+    }
+    case "review_invite": {
+      // Everything may have changed since it was planned: a device went offline, the parent wrote in, a prompt showed
+      const reason = (await reviewInviteDue(ctx, now)) ? null : "not_eligible";
+      if (reason) return { irrelevant: reason };
+      return { input: { params: {} }, contentKey: `review_invite:${str(p.half)}` };
     }
     case "monthly_report": {
       const month = str(p.month);

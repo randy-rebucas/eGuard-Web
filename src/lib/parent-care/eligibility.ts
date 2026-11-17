@@ -11,7 +11,7 @@ export type CarePrefs = {
   enabled: boolean;
   inApp: boolean; push: boolean; email: boolean;
   pushConsentAt: Date | null; emailConsentAt: Date | null;
-  briefings: boolean; followUps: boolean; weeklyPlan: boolean; checkIns: boolean; monthlyReport: boolean;
+  briefings: boolean; followUps: boolean; weeklyPlan: boolean; checkIns: boolean; monthlyReport: boolean; feedbackInvites: boolean;
   quietStart: number; quietEnd: number;
   cohort: string;
 };

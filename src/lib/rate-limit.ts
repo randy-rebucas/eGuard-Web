@@ -41,6 +41,8 @@ export const LIMITS = {
   resetEmail: { max: 3, windowMs: 60 * 60_000 },
   resetIp: { max: 10, windowMs: 60 * 60_000 },
   supportUser: { max: 10, windowMs: 60 * 60_000 },
+  /** survey answers and "Send feedback" from one parent (lib/feedback) */
+  feedbackUser: { max: 10, windowMs: 60 * 60_000 },
   /** mailing-list sign-ups from one address (the site's footer and /iphone) */
   subscribeIp: { max: 10, windowMs: 60 * 60_000 },
   /** sign-ups for one email address, so the form can't be used to flood someone's inbox with confirmation emails */

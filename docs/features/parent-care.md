@@ -64,7 +64,7 @@ cron (10 min) ──► runParentCare (runner.ts)
 
 Plus per-automation cooldowns and each parent's quiet hours (default 21:00–07:00, local).
 
-## 3. The five automations
+## 3. The six automations
 
 | Key | Trigger | Rule | Channels | Stops / skipped when |
 |---|---|---|---|---|
@@ -73,6 +73,7 @@ Plus per-automation cooldowns and each parent's quiet hours (default 21:00–07:
 | `weekly_plan` | Schedule | Mondays: 1–2 activities fitting the ages, in-progress first, skipping done/dismissed, ≤ ~30 min together. The plan is also made when the parent opens `/plan` | Email → push → in-app | Everything in the plan already done |
 | `check_in` | Schedule (inactivity) | Enrolled at 7 days without a qualifying action; steps at day 7, 14, 21: a resource, a small idea, a final check-in that says they stop | Email → push (no in-app: they're not in the app) | Any qualifying action (cancels the rest immediately, records `PARENT_REACTIVATED`), opt-out, care off; inactivity rechecked before each |
 | `monthly_report` | Schedule | 1st of the month: last month's activities done/started, family protection changes (`ConfigChange`), weekly plans, a next step | Email → in-app | Parent joined after that month |
+| `review_invite` | Schedule | Needs the `rate_prompt` feature flag and the Android app (eGuard's only store today). After 30+ days with eGuard, active on 3 of the last 14 days, every device online and passing, no urgent alert, no open ticket, no feedback in 30 days, no in-app rating prompt in 60 days; one email at the next delivery time, at most every 180 days (`lib/review-prompts`, [feedback.md](feedback.md)). Offers rating on Google Play *and* "something not working? tell us" to everyone, linking `/rate` | Email only (the apps don't open parent care links from a push) | Any of those stops holding when it's due (rechecked), switch `feedbackInvites` off |
 
 **Qualifying activity** (never app opens or syncs): protection changes, app decisions, web-request decisions,
 screen-time rules, extra time, child added/updated, pairing code, browser policy, place saved, activity

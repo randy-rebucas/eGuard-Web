@@ -19,6 +19,7 @@ vi.mock("../billing", () => ({}));
 vi.mock("../web-billing", () => ({ cancelSubscriptionsBeforeDeletion: vi.fn() }));
 vi.mock("../organizations", () => ({ handOverOrganizations: vi.fn() }));
 vi.mock("../audit", () => ({ audit: vi.fn() }));
+vi.mock("../testimonials", () => ({ hasPublishedQuotes: vi.fn(async () => false), expireProof: vi.fn() }));
 vi.mock("../email-verification", () => ({}));
 vi.mock("../device-slots", () => ({}));
 const apple = vi.hoisted(() => ({ appleTokensOf: vi.fn(), revokeAppleTokens: vi.fn(), rememberAppleToken: vi.fn() }));

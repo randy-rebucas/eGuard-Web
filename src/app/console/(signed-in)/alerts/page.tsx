@@ -2,6 +2,9 @@ import Link from "next/link";
 import type { AlertCategory, AlertSeverity } from "@prisma/client";
 import { requireStaff } from "@/lib/staff-auth";
 import { alertsPerDay, familyAlertVolume, opsAlerts } from "@/lib/console-queries";
+import { reviewAlerts } from "@/lib/review-queries";
+import { feedbackNeedingFollowUp } from "@/lib/feedback-queries";
+import { STORE_LABEL, type Store } from "@/lib/store-reviews/types";
 import { ago, label, num, stamp } from "../../format";
 import { Empty, StatGrid } from "../../ui";
 import { ChartCard, DataTable, SegmentRows, StackedColumnChart, dayLabels } from "../../charts";
@@ -29,7 +32,7 @@ const SEVERITY_SERIES = [
  */
 export default async function AlertsPage() {
   await requireStaff();
-  const [o, v, perDay] = await Promise.all([opsAlerts(), familyAlertVolume(), alertsPerDay(14)]);
+  const [o, v, perDay, rv, fb] = await Promise.all([opsAlerts(), familyAlertVolume(), alertsPerDay(14), reviewAlerts(), feedbackNeedingFollowUp()]);
   const issues: Issue[] = [];
   if (o.cronStale) {
     issues.push({ level: "crit", title: "The maintenance job isn't running", detail: o.lastRun ? `Last run ${ago(o.lastRun.startedAt)}.` : "No run recorded yet.", href: "/status" });
@@ -44,6 +47,11 @@ export default async function AlertsPage() {
   if (o.uncheckedPurchases) issues.push({ level: "warn", title: `${num(o.uncheckedPurchases)} ${o.uncheckedPurchases === 1 ? "purchase hasn't" : "purchases haven't"} been re-checked in 2 days`, detail: "The maintenance job's purchase refresh may be failing for them. See below.", href: "/subscriptions" });
   if (o.stuck) issues.push({ level: "warn", title: `${num(o.stuck)} ${o.stuck === 1 ? "change is" : "changes are"} stuck waiting for a device`, detail: "Over 24 hours without being delivered or confirmed.", href: "/config-health" });
   if (o.revokedBrowsers) issues.push({ level: "warn", title: `${num(o.revokedBrowsers)} ${o.revokedBrowsers === 1 ? "browser was" : "browsers were"} disconnected for security this week`, detail: "A copied sign-in token was used. A spike may mean an attack.", href: "/devices?view=browsers&state=revoked" });
+  for (const s of rv.failingSync) {
+    issues.push({ level: "warn", title: `${STORE_LABEL[s.store as Store]} reviews haven't synced in 36 hours`, detail: s.lastError ?? (s.lastSuccessAt ? `Last success ${ago(s.lastSuccessAt)}.` : "Never synced."), href: "/reviews" });
+  }
+  if (rv.unansweredLow) issues.push({ level: "warn", title: `${num(rv.unansweredLow)} 1–2 star store ${rv.unansweredLow === 1 ? "review has" : "reviews have"} waited over 2 days for a reply`, detail: "Drafts are ready in Store reviews.", href: "/reviews?status=DRAFTED" });
+  if (fb) issues.push({ level: "warn", title: `${num(fb)} unhappy ${fb === 1 ? "parent has" : "parents have"} waited over 2 days for someone to read their feedback`, detail: "They didn't ask to be contacted, so no ticket was opened.", href: "/feedback?followUp=NEEDED" });
   if (o.oldTickets) issues.push({ level: "warn", title: `${num(o.oldTickets)} support ${o.oldTickets === 1 ? "ticket has" : "tickets have"} been open over 2 days`, detail: "", href: "/tickets?status=OPEN" });
 
   const week = new Map(v.week.map((r) => [`${r.category}:${r.severity}`, r.n]));

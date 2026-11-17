@@ -170,6 +170,28 @@ export const TEMPLATES: Template[] = [
       },
     },
   },
+  {
+    // Both choices go to everyone who gets it: rating it, or telling us what's wrong. Never "if you're happy…" alone
+    key: "review_invite", version: 1, name: "Store rating invitation",
+    copy: {
+      en: {
+        approval: "APPROVED",
+        render: () => ({
+          title: "Would you rate eGuard?",
+          body: "If eGuard is helping your family, a short rating on Google Play helps other parents find it. Something not working the way it should? Reply to this email or use Help & support in the app, and we'll help.",
+          cta: "Rate eGuard on Google Play", link: "/rate",
+        }),
+      },
+      fil: {
+        approval: "PENDING_REVIEW",
+        render: () => ({
+          title: "Puwede mo bang i-rate ang eGuard?",
+          body: "Kung nakakatulong ang eGuard sa pamilya mo, makakatulong sa ibang magulang ang maikling rating sa Google Play. May hindi gumagana? Sumagot sa email na ito o gamitin ang Help & support sa app.",
+          cta: "I-rate sa Google Play", link: "/rate",
+        }),
+      },
+    },
+  },
 ];
 
 const BY_KEY = new Map(TEMPLATES.map((t) => [t.key, t]));

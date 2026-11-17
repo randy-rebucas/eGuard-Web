@@ -12,9 +12,9 @@ export type Channel = (typeof CHANNELS)[number];
 export const CHANNEL_LABEL: Record<Channel, string> = { PUSH: "Push", EMAIL: "Email", IN_APP: "In-app" };
 
 /** Each parent's own switch for an automation (ParentCarePreference) */
-export type PreferenceToggle = "briefings" | "followUps" | "weeklyPlan" | "checkIns" | "monthlyReport";
+export type PreferenceToggle = "briefings" | "followUps" | "weeklyPlan" | "checkIns" | "monthlyReport" | "feedbackInvites";
 
-export type AutomationKey = "briefing" | "follow_up" | "weekly_plan" | "check_in" | "monthly_report";
+export type AutomationKey = "briefing" | "follow_up" | "weekly_plan" | "check_in" | "monthly_report" | "review_invite";
 
 export type AutomationDef = {
   key: AutomationKey;
@@ -65,6 +65,13 @@ export const AUTOMATIONS: AutomationDef[] = [
     description: "Last month's completed activities and protection changes, from the family's own records, with a next step.",
     schedule: "The 1st of each month at the parent's delivery time",
     channels: ["EMAIL", "IN_APP"], cooldownDays: 20,
+  },
+  {
+    key: "review_invite", name: "Store rating invitation", trigger: "SCHEDULE", version: 1, templateKey: "review_invite", toggle: "feedbackInvites",
+    description: "Once eGuard has been working well for a while, an invitation to rate it on Google Play, with \"tell us what's wrong\" next to it. Chosen from what the parent does, never from what they said in feedback (lib/review-prompts).",
+    schedule: "After 30 days of healthy use, at the parent's delivery time; at most every 6 months",
+    // Email only: its link (/rate) opens the store; the apps don't open parent care links from a push
+    channels: ["EMAIL"], cooldownDays: 180,
   },
 ];
 

@@ -627,6 +627,10 @@ export function configReadiness(env: Record<string, string | undefined> = proces
     { name: "Google Play (GOOGLE_PLAY_PACKAGE_NAME, GOOGLE_PLAY_SERVICE_ACCOUNT)", ok: has("GOOGLE_PLAY_PACKAGE_NAME", "GOOGLE_PLAY_SERVICE_ACCOUNT"), required: false },
     { name: "reCAPTCHA (RECAPTCHA_SITE_KEY, RECAPTCHA_SECRET_KEY)", ok: has("RECAPTCHA_SITE_KEY", "RECAPTCHA_SECRET_KEY"), required: false },
     { name: "Write with AI (ANTHROPIC_API_KEY or OPENAI_API_KEY)", ok: has("ANTHROPIC_API_KEY") || has("OPENAI_API_KEY"), required: false },
+    {
+      name: "App Store reviews (APP_STORE_CONNECT_ISSUER_ID, _KEY_ID, _PRIVATE_KEY, APP_STORE_APP_ID)",
+      ok: has("APP_STORE_CONNECT_ISSUER_ID", "APP_STORE_CONNECT_KEY_ID", "APP_STORE_CONNECT_PRIVATE_KEY", "APP_STORE_APP_ID"), required: false,
+    },
   ];
 }
 

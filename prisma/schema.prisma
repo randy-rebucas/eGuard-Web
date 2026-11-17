@@ -164,6 +164,7 @@ model Family {
   auditLogs    AuditLog[]
   purchases    StorePurchase[]
   supportTickets SupportTicket[]
+  feedback     Feedback[]
   orgMemberships OrgMembership[]
   vouchers     Voucher[]
   places       Place[]
@@ -224,6 +225,9 @@ model User {
   careActivities   ParentCareActivity[]
   carePlans        ParentCarePlan[]
   careSuppressions ParentCareSuppression[]
+  feedback         Feedback[]
+  feedbackState    FeedbackState?
+  testimonials     Testimonial[]
 
   @@index([familyId])
 }
@@ -1405,6 +1409,8 @@ model ParentCarePreference {
   weeklyPlan       Boolean   @default(true)
   checkIns         Boolean   @default(true)
   monthlyReport    Boolean   @default(true)
+  /// The occasional invitation to rate eGuard in the app store (review_invite, lib/review-prompts)
+  feedbackInvites  Boolean   @default(true)
   /// Days of the week for briefings, 0 = Sunday
   briefingDays     Int[]     @default([1, 3, 5])
   /// Local minutes after midnight messages are sent at (default 7:30 PM)
@@ -1626,4 +1632,214 @@ model ParentCareSuppression {
 
   @@unique([userId, scope, reason])
   @@index([scope])
+}
+
+/**
+ * A review from Google Play or the App Store (lib/store-reviews, docs/console.md › Store reviews). Public text, synced
+ * by the maintenance job. `textHash` changes when the reviewer edits it: the classification is cleared and drafts
+ * written for the old text are superseded, so a reply never answers words that are gone.
+ */
+model StoreReview {
+  id                String    @id @default(cuid())
+  /// GOOGLE_PLAY or APP_STORE
+  store             String
+  externalId        String
+  rating            Int
+  /// App Store only
+  reviewTitle       String?
+  text              String
+  /// The public store nickname: shown to staff, never sent to an AI provider
+  authorName        String?
+  language          String?
+  territory         String?
+  appVersion        String?
+  device            String?
+  reviewedAt        DateTime
+  textHash          String
+  firstSeenAt       DateTime  @default(now())
+  lastSyncedAt      DateTime
+  /// POSITIVE, NEUTRAL, NEGATIVE (lib/review-ai)
+  sentiment         String?
+  topics            String[]  @default([])
+  /// LOW, NORMAL, HIGH
+  urgency           String?
+  summary           String?
+  /// Reads like a child (a parental control app gets those): staff answer the parent-facing way, or not at all
+  likelyChild       Boolean   @default(false)
+  classifiedAt      DateTime?
+  classifierVersion Int?
+  /// NEW, DRAFTED, APPROVED, POSTING, REPLIED, IGNORED, FAILED
+  status            String    @default("NEW")
+  /// The reply the store shows now, including one typed in Play Console or App Store Connect
+  storeReplyText    String?
+  storeReplyAt      DateTime?
+  /// App Store Connect customerReviewResponses id
+  storeReplyId      String?
+  /// Claimed once for the low-rating alert email
+  alertedAt         DateTime?
+  ticketId          String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  replies StoreReviewReply[]
+
+  @@unique([store, externalId])
+  @@index([status, reviewedAt])
+  @@index([store, reviewedAt])
+  @@index([rating, reviewedAt])
+  @@index([classifiedAt])
+}
+
+/** A reply to a store review: drafted by AI or staff, approved by staff, then posted to the store. */
+model StoreReviewReply {
+  id           String      @id @default(cuid())
+  reviewId     String
+  review       StoreReview @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  text         String
+  /// AI or STAFF
+  source       String
+  provider     String?
+  /// The review text it answers (StoreReview.textHash); posting refuses once that changed
+  forTextHash  String
+  /// The AI's draft was cut to fit the store's limit: staff should read the ending
+  trimmed      Boolean     @default(false)
+  /// DRAFT, APPROVED, POSTING, POSTED, FAILED, SUPERSEDED
+  status       String      @default("DRAFT")
+  createdById  String?
+  approvedById String?
+  approvedAt   DateTime?
+  postedAt     DateTime?
+  /// An error code or short message, never a provider's full response
+  postError    String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@index([reviewId, createdAt])
+  @@index([status])
+}
+
+/** When each store's reviews were last synced, claimed per run so two runs don't sync at once. */
+model StoreSyncState {
+  /// GOOGLE_PLAY or APP_STORE
+  store          String    @id
+  lastRunAt      DateTime?
+  lastSuccessAt  DateTime?
+  lastError      String?
+  newestReviewAt DateTime?
+  fetched        Int       @default(0)
+  updatedAt      DateTime  @updatedAt
+}
+
+/**
+ * What a parent told us in the app: an NPS answer, or feedback, a bug or an idea from "Send feedback" (lib/feedback,
+ * docs/features/feedback.md). Their own words, like a support ticket: shown to staff in console › Feedback, never sent
+ * to an AI provider. The comment is erased after a year, the row after two (FEEDBACK_RETENTION_DAYS).
+ */
+model Feedback {
+  id         String   @id @default(cuid())
+  familyId   String
+  family     Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// NPS, FEEDBACK, BUG, IDEA
+  kind       String
+  /// 0–10, NPS only
+  score      Int?
+  /// PROMOTER (9–10), PASSIVE (7–8), DETRACTOR (0–6); NPS only
+  bucket     String?
+  comment    String?
+  /// The parent said we may contact them about it
+  contactOk  Boolean  @default(false)
+  /// WEB, IOS, ANDROID
+  platform   String
+  appVersion String?
+  /// Where it was given: nps_survey, settings, help
+  trigger    String
+  /// NONE, NEEDED (staff to look), TICKET (a support ticket was opened), CONTACTED, RESOLVED
+  followUp   String   @default("NONE")
+  ticketId   String?  @unique
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([familyId, createdAt])
+  @@index([kind, createdAt])
+  @@index([bucket, followUp])
+  @@index([followUp, createdAt])
+}
+
+/**
+ * When a parent was last asked for and gave feedback, one row per parent: the NPS survey's timing (lib/feedback npsDue),
+ * and, for the store rating prompt, when each app last asked (lib/review-prompts).
+ */
+model FeedbackState {
+  userId               String    @id
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// The app showed the survey (an answer or "Not now" may follow)
+  npsSeenAt            DateTime?
+  npsAnsweredAt        DateTime?
+  npsDismissedAt       DateTime?
+  lastFeedbackAt       DateTime?
+  /// { "IOS": iso, "ANDROID": iso }: when each app last asked the store for its review prompt
+  ratePromptedAt       Json      @default("{}")
+  /// Times asked in the last year, with when that year started
+  ratePromptCount      Int       @default(0)
+  ratePromptYearFrom   DateTime?
+  testimonialInvitedAt DateTime?
+  updatedAt            DateTime  @updatedAt
+}
+
+/**
+ * A parent's words on eguard.family, only with their written consent (lib/testimonials, docs/marketing-site-review.md ›
+ * Social proof). Staff propose a quote from what the parent wrote; the parent is emailed the exact quote and name and
+ * agrees, changes the name, or declines. Any edit after consent needs consent again (`quoteHash`). Withdrawn or declined
+ * quotes are erased after 30 days, keeping only the record that it was handled.
+ */
+model Testimonial {
+  id                 String    @id @default(cuid())
+  userId             String?
+  user               User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// The feedback it came from, if any
+  feedbackId         String?
+  /// FEEDBACK or EMAIL (staff pasted what the parent wrote to support)
+  source             String
+  /// What the parent wrote, for staff
+  originalText       String?
+  /// The exact words shown, as the parent approved them
+  quote              String?
+  /// As the parent agreed to be named: "Maria, Tacloban" or "Parent of two, Cebu"
+  displayName        String?
+  /// sha256 of quote + name when the parent agreed; a mismatch means it changed since
+  quoteHash          String?
+  /// The address that gave consent
+  consentEmail       String?
+  consentAt          DateTime?
+  /// The consent wording version they saw (CONSENT_VERSION)
+  consentTextVersion Int?
+  /// The consent link (sha256 of the emailed token) and when it stops working
+  tokenHash          String?   @unique
+  tokenExpiresAt     DateTime?
+  /// PROPOSED, AWAITING_CONSENT, CONSENTED, PUBLISHED, WITHDRAWN, DECLINED
+  status             String    @default("PROPOSED")
+  publishedAt        DateTime?
+  withdrawnAt        DateTime?
+  /// Lower first on the site
+  sortOrder          Int       @default(0)
+  createdById        String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([status, sortOrder])
+  @@index([userId])
+}
+
+/**
+ * Figures the public site shows that eGuard can't read from an API, kept with when they were checked
+ * (console › Social proof). `play_rating`: { stars, reviews } from the Play Console.
+ */
+model SiteStat {
+  key         String   @id
+  value       Json
+  checkedOn   DateTime
+  updatedById String?
+  updatedAt   DateTime @updatedAt
 }

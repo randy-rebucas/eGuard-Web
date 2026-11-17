@@ -32,6 +32,9 @@ const GROUPS: Group[] = [
     label: "Support",
     links: [
       { href: "/tickets", label: "Support tickets" },
+      { href: "/reviews", label: "Store reviews" },
+      { href: "/feedback", label: "Feedback" },
+      { href: "/proof", label: "Social proof" },
       { href: "/alerts", label: "Alerts" },
       { href: "/broadcasts", label: "Email" },
       { href: "/care", label: "Parent care" },

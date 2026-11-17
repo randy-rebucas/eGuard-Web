@@ -309,7 +309,7 @@ describe("parent care: console metrics", () => {
     expect(o.channels.find((c) => c.channel === "EMAIL")!.sent).toBeGreaterThanOrEqual(0);
 
     const a = await metrics.automationStats(new Date("2026-10-30T00:00:00Z"));
-    expect(a.map((x) => x.def.key)).toEqual(["briefing", "follow_up", "weekly_plan", "check_in", "monthly_report"]);
+    expect(a.map((x) => x.def.key)).toEqual(["briefing", "follow_up", "weekly_plan", "check_in", "monthly_report", "review_invite"]);
     expect(a.find((x) => x.def.key === "weekly_plan")!.sent30).toBeGreaterThanOrEqual(2);
     expect(a.find((x) => x.def.key === "check_in")!.enrollments.HOLDOUT).toBeGreaterThanOrEqual(1);
 

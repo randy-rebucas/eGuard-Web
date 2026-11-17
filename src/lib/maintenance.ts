@@ -24,6 +24,10 @@ import { sendSetupReminders } from "./setup-reminders";
 import { finishQuietRemovals } from "./family-service";
 import { forgetExpiredRemovedComputers } from "./removed-computers";
 import { CARE_RETENTION_DAYS } from "./parent-care/retention";
+import { syncStoreReviews } from "./store-reviews/sync";
+import { STORE_REVIEW_RETENTION_DAYS } from "./store-reviews/types";
+import { FEEDBACK_RETENTION_DAYS } from "./feedback";
+import { eraseWithdrawn } from "./testimonials";
 
 /**
  * Background upkeep, run every few minutes by /api/cron/maintenance. Before this existed, offline
@@ -178,6 +182,14 @@ export async function purgeExpiredData(now = new Date()) {
     careJobs: await db.parentCareJob.deleteMany({ where: { status: { in: ["DONE", "SKIPPED", "CANCELLED", "DEAD"] }, updatedAt: { lt: new Date(now.getTime() - CARE_RETENTION_DAYS.jobs * 864e5) } } }).then((r) => r.count),
     carePlans: await db.parentCarePlan.deleteMany({ where: { createdAt: { lt: new Date(now.getTime() - CARE_RETENTION_DAYS.plans * 864e5) } } }).then((r) => r.count),
     careSuppressions: await db.parentCareSuppression.deleteMany({ where: { until: { lt: now } } }).then((r) => r.count),
+    // Store reviews (docs/console.md › Store reviews): public text, kept for trends; replaced drafts go sooner
+    storeReviews: await db.storeReview.deleteMany({ where: { reviewedAt: { lt: new Date(now.getTime() - STORE_REVIEW_RETENTION_DAYS.reviews * 864e5) } } }).then((r) => r.count),
+    storeReviewDrafts: await db.storeReviewReply.deleteMany({ where: { status: "SUPERSEDED", updatedAt: { lt: new Date(now.getTime() - STORE_REVIEW_RETENTION_DAYS.supersededReplies * 864e5) } } }).then((r) => r.count),
+    // Parents' feedback (docs/features/feedback.md): the words go after a year, the score after two
+    feedbackComments: await db.feedback.updateMany({ where: { comment: { not: null }, createdAt: { lt: new Date(now.getTime() - FEEDBACK_RETENTION_DAYS.comment * 864e5) } }, data: { comment: null } }).then((r) => r.count),
+    feedback: await db.feedback.deleteMany({ where: { createdAt: { lt: new Date(now.getTime() - FEEDBACK_RETENTION_DAYS.row * 864e5) } } }).then((r) => r.count),
+    // Quotes parents withdrew or declined: the words, name and email go after 30 days; the record that it was done stays
+    testimonialsErased: await eraseWithdrawn(now),
     maintenanceRuns: await db.maintenanceRun.deleteMany({ where: { startedAt: { lt: new Date(now.getTime() - MAINTENANCE_RUN_RETENTION_DAYS * 864e5) } } }).then((r) => r.count),
   };
   return counts;
@@ -329,9 +341,11 @@ export async function runMaintenance() {
   const setupReminders = await step("setup reminders", () => sendSetupReminders());
   // After alert emails, so a safety alert never waits behind tips and reminders
   const parentCare = await step("parent care", () => runParentCare());
+  // Last of the outbound work: reading the stores and the AI calls are slow, and nothing parents wait for
+  const storeReviews = await step("store reviews", () => syncStoreReviews());
   const stale = await step("stale checks and changes", () => closeStaleWork());
   const quietRemovals = await step("quiet computer removals", () => finishQuietRemovals());
   const expiredRemovals = await step("expired removed computers", () => forgetExpiredRemovedComputers());
   const purged = await step("data retention", () => purgeExpiredData());
-  return { offlineFamilies, unfinishedPairings, offlineBrowsers, purchases, passReminders, codeBatches, codeReminders, orgDigests, emails, weeklyDigests, broadcasts, setupReminders, parentCare, stale, quietRemovals, expiredRemovals, purged, failed };
+  return { offlineFamilies, unfinishedPairings, offlineBrowsers, purchases, passReminders, codeBatches, codeReminders, orgDigests, emails, weeklyDigests, broadcasts, setupReminders, parentCare, storeReviews, stale, quietRemovals, expiredRemovals, purged, failed };
 }

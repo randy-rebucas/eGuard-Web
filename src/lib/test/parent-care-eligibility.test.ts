@@ -14,7 +14,7 @@ function input(o: Partial<Omit<EligibilityInput, "prefs">> & { prefs?: Partial<E
     account: { active: true, emailVerified: true },
     prefs: {
       enabled: true, inApp: true, push: true, email: true, pushConsentAt: hoursAgo(100), emailConsentAt: hoursAgo(100),
-      briefings: true, followUps: true, weeklyPlan: true, checkIns: true, monthlyReport: true,
+      briefings: true, followUps: true, weeklyPlan: true, checkIns: true, monthlyReport: true, feedbackInvites: true,
       quietStart: 21 * 60, quietEnd: 7 * 60, cohort: "TREATMENT", ...prefs,
     },
     suppressions: [], available: { PUSH: true, EMAIL: true, IN_APP: true }, recent: [], alreadySent: false, irrelevant: null,

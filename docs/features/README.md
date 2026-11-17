@@ -13,6 +13,7 @@ how complete it is, known issues and suggestions.
 | Location | `/location`, `/location/[childId]` | [location.md](location.md) | ~97% |
 | Notifications | `/notifications` | — | — |
 | Parent care (Safety plan, tips and reminders) | `/plan`, `/plan/[key]`, `/plan/report`, Settings › Notifications | [parent-care.md](parent-care.md) | pilot-ready, see doc |
+| Feedback and the NPS survey | Dashboard card, Settings › Support › Send feedback | [feedback.md](feedback.md) | web and Android; iOS to do |
 | Reports | `/reports` | — | — |
 | Organizations | `/organizations/[id]` | see [organizations.md](../organizations.md) | — |
 | Settings | `/settings/[section]` | — | — |

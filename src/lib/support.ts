@@ -12,6 +12,12 @@ export const supportEmail = () => process.env.SUPPORT_EMAIL?.trim() || "support@
 /** What a request is about, as the parent picks it (docs/mobile-api.md › Support) */
 export const TICKET_CATEGORIES = { SETUP: "Setting up", DEVICE: "A child's device", BILLING: "Plans and billing", ACCOUNT: "My account", OTHER: "Something else" } as const;
 
+/**
+ * Every category a ticket can have, for showing one: the parent's choices, plus FEEDBACK, opened for them from the
+ * survey or "Send feedback" when they were unhappy and said we may contact them (lib/feedback). Not offered to pick.
+ */
+export const TICKET_CATEGORY_LABEL: Record<string, string> = { ...TICKET_CATEGORIES, FEEDBACK: "Your feedback" };
+
 export const TicketSchema = z.object({
   category: z.enum(Object.keys(TICKET_CATEGORIES) as [keyof typeof TICKET_CATEGORIES, ...(keyof typeof TICKET_CATEGORIES)[]]).default("OTHER"),
   subject: z.string().trim().min(3, "Add a short subject.").max(120),

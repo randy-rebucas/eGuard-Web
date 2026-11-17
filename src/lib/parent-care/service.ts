@@ -31,7 +31,7 @@ const Clock = z.string().trim().refine((s) => parseClock(s) !== null, "Use a 24-
 export const CarePrefsSchema = z.object({
   enabled: z.boolean(),
   inApp: z.boolean(), push: z.boolean(), email: z.boolean(),
-  briefings: z.boolean(), followUps: z.boolean(), weeklyPlan: z.boolean(), checkIns: z.boolean(), monthlyReport: z.boolean(),
+  briefings: z.boolean(), followUps: z.boolean(), weeklyPlan: z.boolean(), checkIns: z.boolean(), monthlyReport: z.boolean(), feedbackInvites: z.boolean(),
   briefingDays: z.array(z.number().int().min(0).max(6)).max(7).transform((d) => [...new Set(d)].sort()),
   deliveryTime: Clock,
   quietStart: Clock, quietEnd: Clock,
@@ -42,7 +42,7 @@ export const CarePrefsSchema = z.object({
 export type CarePrefsInput = z.input<typeof CarePrefsSchema>;
 
 const TOGGLE_AUTOMATION: Record<PreferenceToggle, AutomationKey> = Object.fromEntries(AUTOMATIONS.map((a) => [a.toggle, a.key])) as Record<PreferenceToggle, AutomationKey>;
-const TIME_BASED: AutomationKey[] = ["briefing", "weekly_plan", "monthly_report", "check_in"];
+const TIME_BASED: AutomationKey[] = ["briefing", "weekly_plan", "monthly_report", "check_in", "review_invite"];
 
 /** The preferences as the app and the settings page show them, with what each channel can actually do. */
 export async function carePreferences(actor: Actor) {
@@ -54,7 +54,7 @@ function prefsJson(ctx: CareContext) {
   const p = ctx.prefs;
   return {
     enabled: p.enabled, inApp: p.inApp, push: p.push, email: p.email,
-    briefings: p.briefings, followUps: p.followUps, weeklyPlan: p.weeklyPlan, checkIns: p.checkIns, monthlyReport: p.monthlyReport,
+    briefings: p.briefings, followUps: p.followUps, weeklyPlan: p.weeklyPlan, checkIns: p.checkIns, monthlyReport: p.monthlyReport, feedbackInvites: p.feedbackInvites,
     briefingDays: p.briefingDays, deliveryTime: clock(p.deliveryMinute), quietStart: clock(p.quietStart), quietEnd: clock(p.quietEnd),
     language: p.language, timezone: p.timezone, effectiveTimezone: ctx.tz,
     consent: { push: p.pushConsentAt?.toISOString() ?? null, email: p.emailConsentAt?.toISOString() ?? null },
@@ -81,7 +81,7 @@ export async function updateCarePreferences(actor: Actor, input: unknown) {
   const data: Record<string, unknown> = {};
   const events: { type: EventType; meta: Record<string, string> }[] = [];
 
-  for (const k of ["enabled", "inApp", "push", "email", "briefings", "followUps", "weeklyPlan", "checkIns", "monthlyReport"] as const) {
+  for (const k of ["enabled", "inApp", "push", "email", "briefings", "followUps", "weeklyPlan", "checkIns", "monthlyReport", "feedbackInvites"] as const) {
     if (b[k] === undefined || b[k] === p[k]) continue;
     data[k] = b[k];
     if (!b[k]) events.push({ type: "NOTIFICATION_OPTED_OUT", meta: k === "enabled" ? { scope: "ALL" } : k === "inApp" || k === "push" || k === "email" ? { channel: k === "inApp" ? "IN_APP" : k.toUpperCase() } : { automation: TOGGLE_AUTOMATION[k as PreferenceToggle] } });
