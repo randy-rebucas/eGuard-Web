@@ -4,10 +4,14 @@ vi.mock("server-only", () => ({}));
 vi.mock("../email-verification", () => ({ appUrl: () => "https://app.test" }));
 const sendMail = vi.hoisted(() => vi.fn());
 vi.mock("../mail", async () => ({ sendMail, escapeHtml: (await vi.importActual<typeof import("../mail")>("../mail")).escapeHtml }));
-const db = vi.hoisted(() => ({ family: { findMany: vi.fn(), updateMany: vi.fn() }, user: { findMany: vi.fn() } }));
+const db = vi.hoisted(() => ({
+  family: { findMany: vi.fn(), updateMany: vi.fn() }, child: { findMany: vi.fn(), updateMany: vi.fn() },
+  device: { findMany: vi.fn(), updateMany: vi.fn() }, configRequest: { findMany: vi.fn() }, alert: { findMany: vi.fn() },
+  user: { findMany: vi.fn() },
+}));
 vi.mock("../db", () => ({ db }));
 
-const { reminderDue, nameList, setupReminderEmail, addChildReminderEmail, sendSetupReminders, STEPS, START_WITHIN_DAYS } = await import("../setup-reminders");
+const { reminderDue, nameList, setupReminderEmail, addChildReminderEmail, browserNudgeEmail, unfinishedSetupEmail, sendSetupReminders, STEPS, START_WITHIN_DAYS } = await import("../setup-reminders");
 
 const DAY = 864e5;
 // 10:00 in Manila (UTC+8): inside the sending window
@@ -92,7 +96,11 @@ describe("addChildReminderEmail", () => {
 });
 
 describe("sendSetupReminders", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    db.child.findMany.mockResolvedValue([]);
+    db.device.findMany.mockResolvedValue([]);
+  });
 
   const withKids = { id: "f1", timezone: "Asia/Manila", setupReminders: 0, setupRemindedAt: null, children: [{ name: "Mia", createdAt: ago(2) }], browsers: [] };
   const noKids = { id: "f2", timezone: "Asia/Manila", createdAt: ago(2), childReminders: 0, childRemindedAt: null };
@@ -112,7 +120,7 @@ describe("sendSetupReminders", () => {
     expect(sendMail).toHaveBeenCalledTimes(2);
     expect(sendMail.mock.calls[0][0].text).toMatch(/^Hi Ana,/);
     expect(sendMail.mock.calls[0][0].subject).toContain("Mia");
-    expect(r.noDevices).toEqual({ families: 1, due: 1, sent: 2, failed: 0 });
+    expect(r.noDevices).toEqual({ scanned: 1, due: 1, sent: 2, failed: 0 });
   });
 
   it("asks a family with no children to add one, claiming on its own counter", async () => {
@@ -125,7 +133,7 @@ describe("sendSetupReminders", () => {
       where: { id: "f2", childReminders: 0, children: { none: {} } }, data: { childReminders: 1, childRemindedAt: now },
     });
     expect(sendMail.mock.calls[0][0].subject).toBe("Finish setting up eGuard: add your child");
-    expect(r.noChildren).toEqual({ families: 1, due: 1, sent: 1, failed: 0 });
+    expect(r.noChildren).toEqual({ scanned: 1, due: 1, sent: 1, failed: 0 });
   });
 
   it("sends nothing when another run claimed it, or a child or device was added meanwhile", async () => {
@@ -150,5 +158,98 @@ describe("sendSetupReminders", () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     const r = await sendSetupReminders(now);
     expect(r.noDevices).toMatchObject({ sent: 1, failed: 1 });
+  });
+});
+
+describe("emails for a child left out, a missing browser and an unfinished phone", () => {
+  it("names the protected sibling and the child left out", () => {
+    const m = setupReminderEmail({ step: 0, parent: "Ana", children: ["Leo"], hasBrowser: false, protectedSiblings: ["Mia"] });
+    expect(m.subject).toBe("Leo isn't protected by eGuard yet");
+    expect(m.text).toContain("Mia is protected by eGuard, but Leo has no device connected yet");
+    expect(m.text).toContain("connected for Leo.");
+  });
+
+  it("suggests the browser extension once, with the store links", () => {
+    const m = browserNudgeEmail({ parent: "Ana", child: "Mia" });
+    expect(m.subject).toBe("Mia's phone is protected. What about their computer?");
+    expect(m.text).toContain("https://app.test/devices#add-browser");
+    expect(m.text).toContain("chromewebstore.google.com");
+    expect(m.text).toContain("only send this suggestion once");
+  });
+
+  it("lists what isn't working and what an Android phone needs allowed", () => {
+    const m = unfinishedSetupEmail({ parent: "Ana", child: "Mia", deviceName: "Galaxy A15", deviceId: "d1", platform: "ANDROID", keys: ["WEB", "UNINSTALL_PROTECTION", "SCREEN_TIME"] });
+    expect(m.subject).toBe("Finish setting up Mia's Galaxy A15: some protections aren't working yet");
+    expect(m.text).toContain("Web Filtering, Uninstall Protection and Screen Time");
+    expect(m.text).toContain("(for these: the web filtering step, device admin and usage access)");
+    expect(m.text).toContain("https://app.test/devices/d1");
+    const ios = unfinishedSetupEmail({ parent: "", child: "Mia", deviceName: "iPhone", deviceId: "d2", platform: "IOS", keys: ["WEB"] });
+    expect(ios.subject).toContain("a protection isn't working yet");
+    expect(ios.text).not.toContain("for these");
+  });
+});
+
+describe("sendSetupReminders for children and devices", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    db.family.findMany.mockResolvedValue([]);
+    db.child.findMany.mockResolvedValue([]);
+    db.device.findMany.mockResolvedValue([]);
+    db.user.findMany.mockResolvedValue([{ email: "a@x.ph", name: "Ana" }]);
+  });
+
+  it("reminds about a child left out, timed from the family's first device", async () => {
+    const leo = {
+      id: "c2", name: "Leo", familyId: "f1", createdAt: ago(20), setupReminders: 0, setupRemindedAt: null, browsers: [],
+      family: { timezone: "Asia/Manila", devices: [{ createdAt: ago(0.5) }], children: [{ name: "Mia" }] },
+    };
+    // The first device was paired 12 hours ago: the parents may still be pairing Leo's
+    db.child.findMany.mockResolvedValueOnce([leo]);
+    expect((await sendSetupReminders(now)).childLeftOut.due).toBe(0);
+
+    db.child.findMany.mockResolvedValueOnce([{ ...leo, family: { ...leo.family, devices: [{ createdAt: ago(2) }] } }]);
+    db.child.updateMany.mockResolvedValue({ count: 1 });
+    const r = await sendSetupReminders(now);
+    expect(db.child.updateMany).toHaveBeenCalledWith({ where: { id: "c2", setupReminders: 0, devices: { none: {} } }, data: { setupReminders: 1, setupRemindedAt: now } });
+    expect(sendMail.mock.calls[0][0].subject).toBe("Leo isn't protected by eGuard yet");
+    expect(r.childLeftOut).toEqual({ scanned: 1, due: 1, sent: 1, failed: 0 });
+  });
+
+  it("suggests a browser once, for children with a phone and no computer", async () => {
+    // The left-out scan runs first, then the browser one
+    db.child.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([{ id: "c1", name: "Mia", familyId: "f1", family: { timezone: "Asia/Manila" } }]);
+    db.child.updateMany.mockResolvedValue({ count: 1 });
+    const r = await sendSetupReminders(now);
+    const where = db.child.findMany.mock.calls[1][0].where;
+    expect(where.browserNudgedAt).toBeNull();
+    expect(where.devices.none).toEqual({ kind: "COMPUTER" });
+    expect(db.child.updateMany.mock.calls[0][0].data).toEqual({ browserNudgedAt: now });
+    expect(sendMail.mock.calls[0][0].subject).toContain("What about their computer?");
+    expect(r.browserNudge.sent).toBe(1);
+  });
+
+  it("emails about protections that never worked, leaving out ones mid-change or already alerted", async () => {
+    db.device.findMany.mockResolvedValue([{
+      id: "d1", name: "Galaxy A15", platform: "ANDROID", familyId: "f1", child: { name: "Mia" }, family: { timezone: "Asia/Manila" },
+      protections: [{ key: "WEB" }, { key: "SCREEN_TIME" }, { key: "LOCATION" }],
+    }]);
+    db.configRequest.findMany.mockResolvedValue([{ key: "SCREEN_TIME" }]);
+    db.alert.findMany.mockResolvedValue([{ resolveKey: "LOCATION:d1" }]);
+    db.device.updateMany.mockResolvedValue({ count: 1 });
+    const r = await sendSetupReminders(now);
+    expect(db.device.updateMany).toHaveBeenCalledWith({ where: { id: "d1", setupNudgedAt: null }, data: { setupNudgedAt: now } });
+    expect(sendMail.mock.calls[0][0].text).toContain("this protection isn't working on it yet: Web Filtering.");
+    expect(r.unfinishedSetup).toEqual({ scanned: 1, due: 1, sent: 1, failed: 0 });
+  });
+
+  it("doesn't claim a phone whose failing protections are all mid-change", async () => {
+    db.device.findMany.mockResolvedValue([{
+      id: "d1", name: "Galaxy", platform: "ANDROID", familyId: "f1", child: { name: "Mia" }, family: { timezone: "Asia/Manila" }, protections: [{ key: "WEB" }],
+    }]);
+    db.configRequest.findMany.mockResolvedValue([{ key: "WEB" }]);
+    db.alert.findMany.mockResolvedValue([]);
+    await sendSetupReminders(now);
+    expect(db.device.updateMany).not.toHaveBeenCalled();
+    expect(sendMail).not.toHaveBeenCalled();
   });
 });

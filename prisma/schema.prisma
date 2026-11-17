@@ -598,6 +598,12 @@ model Child {
   weekendLimitMinutes Int @default(240)
   /// Extra time a parent gave: until then, the child's devices don't pause apps for limits or bedtime
   extraTimeUntil DateTime?
+  /// Setup reminders (lib/setup-reminders) sent while the family had a device but this child had none, and when the
+  /// last one went out. Never reset.
+  setupReminders  Int       @default(0)
+  setupRemindedAt DateTime?
+  /// When the parents were asked to add a browser for this child, whose phone was paired but no browser was. Once only.
+  browserNudgedAt DateTime?
   createdAt  DateTime @default(now())
 
   devices    Device[]
@@ -681,6 +687,9 @@ model Device {
   screenTimeAuthorization ScreenTimeAuthorization?
   /// iPhone: what the app rules chosen on the phone cover, as counts (lib/device-app-rules)
   appRules    Json?
+  /// When the parents were emailed that protections on this phone never started working after pairing
+  /// (lib/setup-reminders). Once per device.
+  setupNudgedAt DateTime?
   createdAt   DateTime   @default(now())
 
   protections DeviceProtection[]
