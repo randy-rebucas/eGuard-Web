@@ -12,6 +12,24 @@ Code: `src/lib/forum.ts` (service), `src/lib/forum-shared.ts` (constants the bro
 Everything is behind the `community` feature flag (console › Feature flags). The migration creates it **off**. While it's
 off for a family, the nav item is hidden and every `/community` page is a 404.
 
+## Starter threads
+
+Migration `20261119090000_community_starter_threads` posts one thread per topic as the eGuard team, so Community
+doesn't open empty:
+
+| Topic | Thread | Pinned | Open to replies |
+|---|---|---|---|
+| Announcements | Welcome and the community rules | ✓ | – (locked) |
+| Getting started | Say hello: introduce yourself | ✓ | ✓ |
+| Getting started | Setup tips | – | ✓ |
+| Screen time | What screen time rules work in your home? | ✓ | ✓ |
+| Apps & games | Which apps and games do you allow? | ✓ | ✓ |
+| Online safety | How do you talk to your kids about staying safe online? | ✓ | ✓ |
+| Feature ideas | What should eGuard do next? | ✓ | ✓ |
+
+They're authored by `staffAuthorId` `'system'` (shown as "eGuard team"). Staff can unpin, lock or hide them in console ›
+Community like any thread. Running the migration again adds nothing (fixed ids).
+
 ## Who can do what
 
 | | Read | Post, reply, edit own, Helpful | Report |
