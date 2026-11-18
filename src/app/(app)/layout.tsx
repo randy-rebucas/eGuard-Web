@@ -11,6 +11,7 @@ import { ConnectBanner, ConnectGuideDialog } from "@/components/connect-guide";
 import { db } from "@/lib/db";
 import { hasPendingVerification } from "@/lib/email-verification";
 import { nextPlan } from "@/lib/plans";
+import { communityOn, unreadNotices } from "@/lib/forum";
 
 /** Signed-in pages never belong in search results (signed-out visitors are sent to sign in anyway). */
 export const metadata = { robots: { index: false, follow: false } };
@@ -22,7 +23,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const user = await requireUser();
   // Upkeep first where it matters: simulated heartbeats before reading device state, offline alerts before counting them
   const touched = touchSimulated(user.familyId);
-  const [family, graph, unread, jar, linkSent, browsers] = await Promise.all([
+  const [family, graph, unread, jar, linkSent, browsers, community] = await Promise.all([
     getFamily(user.familyId),
     touched.then(() => getFamilyGraph(user.familyId)),
     touched.then(() => ensureOfflineAlerts(user.familyId)).then(() => unreadCount(user.familyId, user.id)),
@@ -30,6 +31,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     !user.emailVerified && hasPendingVerification(user.id, user.email),
     // Only whether any browser is connected, for the "connect a device" banner
     db.browserInstallation.count({ where: { familyId: user.familyId, revokedAt: null } }),
+    // Community in the nav, with its unread notices, only where the family has it
+    communityOn(user.familyId).then(async (on) => (on ? { unread: await unreadNotices(user.id) } : null)),
   ]);
   // Nothing paired yet: eGuard can't protect anyone, so every page says how to connect a device
   const nothingPaired = !graph.devices.length && !browsers;
@@ -39,7 +42,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <FlowProvider>
       <div className="app">
-        <Sidebar attention={attention} plan={plan} />
+        <Sidebar attention={attention} plan={plan} community={community} />
         <div className="main">
           <TopHeader user={{ name: user.name, email: user.email, role: user.role }} unread={unread} theme={jar.get("eg_theme")?.value ?? "system"} />
           <main className="content" id="main">
@@ -49,7 +52,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </main>
         </div>
       </div>
-      <BottomNav attention={attention} plan={plan} />
+      <BottomNav attention={attention} plan={plan} community={community} />
       <Tour intro={!user.introSeen} firstName={user.name.trim().split(/\s+/)[0] || "there"} hasChildren={hasChildren} />
       <ConnectGuideDialog hasChildren={hasChildren} />
     </FlowProvider>

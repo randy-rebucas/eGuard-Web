@@ -4,7 +4,7 @@ import {
   Film, Gamepad2, Globe, History, Hourglass, House, Inbox, Info, KeyRound, Laptop, LayoutGrid, LifeBuoy, Link2, ListChecks, LoaderCircle, Lock, QrCode, Share2,
   LogOut, Mail, Map, MapPin, MapPinOff, Menu, MessageCircle, Monitor, Moon, OctagonAlert, Palette, Pencil, Plug, Plus, Receipt,
   RefreshCw, Route, ScanSearch, School, Search, SearchX, Settings, Shield, ShieldAlert, ShieldCheck, Siren, SlidersHorizontal,
-  Printer, Smartphone, Star, Sun, Table, Tablet, TabletSmartphone, Ticket, Trash2, TriangleAlert, User, UserCheck, UserPlus, Users, Wallet, WifiOff, X,
+  Printer, Smartphone, Star, Sun, Megaphone, Rocket, Clock, Lightbulb, MessagesSquare, ThumbsUp, Flag, Pin, VolumeX, AtSign, Table, Tablet, TabletSmartphone, Ticket, Trash2, TriangleAlert, User, UserCheck, UserPlus, Users, Wallet, WifiOff, X,
   type LucideIcon,
 } from "lucide-react";
 
@@ -22,6 +22,7 @@ const ICONS: Record<string, LucideIcon> = {
   "scan-search": ScanSearch, search: Search, "search-x": SearchX, settings: Settings, shield: Shield,
   "shield-alert": ShieldAlert, "shield-check": ShieldCheck, siren: Siren, "sliders-horizontal": SlidersHorizontal,
   smartphone: Smartphone, star: Star, sun: Sun, table: Table, tablet: Tablet, "tablet-smartphone": TabletSmartphone,
+  megaphone: Megaphone, rocket: Rocket, clock: Clock, lightbulb: Lightbulb, "messages-square": MessagesSquare, "thumbs-up": ThumbsUp, flag: Flag, pin: Pin, "volume-x": VolumeX, "at-sign": AtSign,
   trash: Trash2, "triangle-alert": TriangleAlert, user: User, "user-check": UserCheck, "user-plus": UserPlus, users: Users, wallet: Wallet, "wifi-off": WifiOff, x: X,
 };
 

@@ -228,6 +228,13 @@ model User {
   feedback         Feedback[]
   feedbackState    FeedbackState?
   testimonials     Testimonial[]
+  forumProfile       ForumProfile?
+  forumThreads       ForumThread[]
+  forumPosts         ForumPost[]
+  forumVotes         ForumVote[]
+  forumReports       ForumReport[]
+  forumSubscriptions ForumSubscription[]
+  forumNotifications ForumNotification[]
 
   @@index([familyId])
 }
@@ -1830,6 +1837,169 @@ model Testimonial {
 
   @@index([status, sortOrder])
   @@index([userId])
+}
+
+// ---------- Community (lib/forum, docs/features/community.md) ----------
+
+/**
+ * A parent's community identity. Only `handle` is ever shown to other parents: never their name, email or family.
+ * Created when they pick a handle and accept the community rules, before their first post.
+ */
+model ForumProfile {
+  userId          String    @id
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// As the parent typed it: "SleepyDad", "Mama_ng_tatlo"
+  handle          String
+  /// lower-case `handle`, so "Maria" and "maria" can't both exist
+  handleKey       String    @unique
+  /// Staff muted this parent: they can read, not post, vote or report, until then
+  mutedUntil      DateTime?
+  /// Email when someone replies to a thread they follow or mentions them (push follows `User.notifyPush`)
+  notifyReplies   Boolean   @default(true)
+  acceptedRulesAt DateTime
+  createdAt       DateTime  @default(now())
+}
+
+/// Fixed topics, seeded by the migration. `staffOnly`: only the eGuard team starts threads there (Announcements).
+model ForumCategory {
+  id          String        @id @default(cuid())
+  slug        String        @unique
+  name        String
+  description String
+  /// lucide icon name (components/icon)
+  icon        String
+  sortOrder   Int           @default(0)
+  staffOnly   Boolean       @default(false)
+  threads     ForumThread[]
+}
+
+/// A thread's opening post. Parents' threads have `authorId`; the eGuard team's have `staffAuthorId`.
+model ForumThread {
+  id             String              @id @default(cuid())
+  categoryId     String
+  category       ForumCategory       @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  /// Null once the parent's account is deleted (the thread stays, emptied, as "Deleted member"), or for staff posts
+  authorId       String?
+  author         User?               @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  staffAuthorId  String?
+  title          String
+  body           String
+  /// visible, hidden (staff, or reports pending review), deleted (by its author; title and body cleared)
+  status         String              @default("visible")
+  /// When `status` last changed: hidden and deleted posts are erased 30 days after (lib/maintenance)
+  statusAt       DateTime?
+  pinned         Boolean             @default(false)
+  locked         Boolean             @default(false)
+  /// Visible replies, and "Helpful" votes: kept here so lists don't count
+  replyCount     Int                 @default(0)
+  score          Int                 @default(0)
+  lastActivityAt DateTime            @default(now())
+  editedAt       DateTime?
+  createdAt      DateTime            @default(now())
+
+  posts         ForumPost[]
+  votes         ForumVote[]
+  reports       ForumReport[]
+  subscriptions ForumSubscription[]
+  notifications ForumNotification[]
+
+  @@index([categoryId, status, lastActivityAt])
+  @@index([status, lastActivityAt])
+  @@index([authorId])
+}
+
+/// A reply in a thread
+model ForumPost {
+  id            String              @id @default(cuid())
+  threadId      String
+  thread        ForumThread         @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  authorId      String?
+  author        User?               @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  staffAuthorId String?
+  body          String
+  /// visible, hidden, deleted (as ForumThread.status)
+  status        String              @default("visible")
+  statusAt      DateTime?
+  score         Int                 @default(0)
+  editedAt      DateTime?
+  createdAt     DateTime            @default(now())
+
+  votes         ForumVote[]
+  reports       ForumReport[]
+  notifications ForumNotification[]
+
+  @@index([threadId, createdAt])
+  @@index([authorId])
+}
+
+/// "Helpful", on a thread or a reply (exactly one of the two)
+model ForumVote {
+  id        String       @id @default(cuid())
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  threadId  String?
+  thread    ForumThread? @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  postId    String?
+  post      ForumPost?   @relation(fields: [postId], references: [id], onDelete: Cascade)
+  createdAt DateTime     @default(now())
+
+  @@unique([userId, threadId])
+  @@unique([userId, postId])
+}
+
+/// A parent flagging a thread or reply for staff (console › Community). One per parent per post.
+model ForumReport {
+  id           String       @id @default(cuid())
+  reporterId   String
+  reporter     User         @relation(fields: [reporterId], references: [id], onDelete: Cascade)
+  threadId     String?
+  thread       ForumThread? @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  postId       String?
+  post         ForumPost?   @relation(fields: [postId], references: [id], onDelete: Cascade)
+  /// REPORT_REASONS in lib/forum
+  reason       String
+  note         String?
+  /// open, actioned, dismissed
+  status       String       @default("open")
+  resolvedById String?
+  resolvedAt   DateTime?
+  createdAt    DateTime     @default(now())
+
+  @@unique([reporterId, threadId])
+  @@unique([reporterId, postId])
+  @@index([status, createdAt])
+}
+
+/// Who hears about new replies: the author and everyone who replied, until they stop following (`active` false)
+model ForumSubscription {
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  threadId  String
+  thread    ForumThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  active    Boolean     @default(true)
+  createdAt DateTime    @default(now())
+
+  @@id([userId, threadId])
+  @@index([threadId, active])
+}
+
+/// In-app community notices (Community › Notifications). Separate from family Alerts, which are about children.
+model ForumNotification {
+  id        String      @id @default(cuid())
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  threadId  String
+  thread    ForumThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  postId    String?
+  post      ForumPost?  @relation(fields: [postId], references: [id], onDelete: Cascade)
+  /// reply, mention, moderation
+  kind      String
+  /// Shown handle of who did it ("eGuard team" for staff); not a link to their account
+  actor     String?
+  readAt    DateTime?
+  createdAt DateTime    @default(now())
+
+  @@index([userId, readAt, createdAt])
 }
 
 /**

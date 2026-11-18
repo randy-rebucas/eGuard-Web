@@ -18,10 +18,15 @@ export const NAV = [
   { href: "/reports", label: "Reports", icon: "chart-column" },
   { href: "/location", label: "Location", icon: "map-pin" },
   { href: "/plan", label: "Safety plan", icon: "list-checks" },
+  // Only where the `community` feature flag is on for the family (lib/forum)
+  { href: "/community", label: "Community", icon: "messages-square", community: true },
   // Straight to the first section: going through the /settings redirect (next.config) costs a round trip, and a client
   // navigation that hits it while the dev server is compiling fails ("Failed to fetch RSC payload") and reloads the page
   { href: "/settings/account", section: "/settings", label: "Settings", icon: "settings" },
-] as { href: string; section?: string; label: string; icon: string }[];
+] as { href: string; section?: string; label: string; icon: string; community?: boolean }[];
+
+/** Community in the nav: null where the family doesn't have it; `unread`, its unread notices */
+export type CommunityNav = { unread: number } | null;
 
 function useActive() {
   const path = usePathname();
@@ -43,35 +48,36 @@ function PlanCard({ plan }: { plan: PlanInfo }) {
   );
 }
 
-function NavList({ attention, onNavigate }: { attention: number; onNavigate?: () => void }) {
+function NavList({ attention, community, onNavigate }: { attention: number; community: CommunityNav; onNavigate?: () => void }) {
   const isActive = useActive();
   return (
     <nav className="nav" aria-label="Primary">
-      {NAV.map((n) => (
+      {NAV.filter((n) => !n.community || community).map((n) => (
         <Link key={n.href} href={n.href} className="nav-item" aria-current={isActive(n.section ?? n.href) ? "page" : undefined} title={n.label} onClick={onNavigate} data-tour={`nav-${(n.section ?? n.href).slice(1)}`}>
           <Icon name={n.icon} />
           <span className="label">{n.label}</span>
           {n.href === "/devices" && attention ? <span className="count num" aria-label={`${attention} need attention`}>{attention}</span> : null}
+          {n.community && community?.unread ? <span className="count num" aria-label={`${community.unread} unread`}>{community.unread > 99 ? "99+" : community.unread}</span> : null}
         </Link>
       ))}
     </nav>
   );
 }
 
-export function Sidebar({ attention, plan }: { attention: number; plan: PlanInfo }) {
+export function Sidebar({ attention, plan, community }: { attention: number; plan: PlanInfo; community: CommunityNav }) {
   return (
     <aside className="sidebar" aria-label="Sidebar">
       <Brand />
-      <NavList attention={attention} />
+      <NavList attention={attention} community={community} />
       <PlanCard plan={plan} />
     </aside>
   );
 }
 
-export function BottomNav({ attention, plan }: { attention: number; plan: PlanInfo }) {
+export function BottomNav({ attention, plan, community }: { attention: number; plan: PlanInfo; community: CommunityNav }) {
   const isActive = useActive();
   const [open, setOpen] = useState(false);
-  const moreActive = ["/reports", "/location", "/settings"].some((h) => isActive(h));
+  const moreActive = ["/reports", "/location", "/plan", "/community", "/settings"].some((h) => isActive(h));
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
@@ -95,7 +101,7 @@ export function BottomNav({ attention, plan }: { attention: number; plan: PlanIn
           <div className="drawer-scrim" onClick={() => setOpen(false)} />
           <div className="drawer" role="dialog" aria-modal="true" aria-label="Menu">
             <Brand />
-            <NavList attention={attention} onNavigate={() => setOpen(false)} />
+            <NavList attention={attention} community={community} onNavigate={() => setOpen(false)} />
             <PlanCard plan={plan} />
           </div>
         </>

@@ -28,6 +28,7 @@ import { syncStoreReviews } from "./store-reviews/sync";
 import { STORE_REVIEW_RETENTION_DAYS } from "./store-reviews/types";
 import { FEEDBACK_RETENTION_DAYS } from "./feedback";
 import { eraseWithdrawn } from "./testimonials";
+import { purgeForum } from "./forum";
 
 /**
  * Background upkeep, run every few minutes by /api/cron/maintenance. Before this existed, offline
@@ -190,6 +191,8 @@ export async function purgeExpiredData(now = new Date()) {
     feedback: await db.feedback.deleteMany({ where: { createdAt: { lt: new Date(now.getTime() - FEEDBACK_RETENTION_DAYS.row * 864e5) } } }).then((r) => r.count),
     // Quotes parents withdrew or declined: the words, name and email go after 30 days; the record that it was done stays
     testimonialsErased: await eraseWithdrawn(now),
+    // Community (lib/forum): hidden posts erased 30 days on, emptied threads removed, old read notices
+    community: await purgeForum(now),
     maintenanceRuns: await db.maintenanceRun.deleteMany({ where: { startedAt: { lt: new Date(now.getTime() - MAINTENANCE_RUN_RETENTION_DAYS * 864e5) } } }).then((r) => r.count),
   };
   return counts;

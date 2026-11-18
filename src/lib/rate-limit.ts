@@ -43,6 +43,14 @@ export const LIMITS = {
   supportUser: { max: 10, windowMs: 60 * 60_000 },
   /** survey answers and "Send feedback" from one parent (lib/feedback) */
   feedbackUser: { max: 10, windowMs: 60 * 60_000 },
+  /** Community (lib/forum): threads, replies and edits, "Helpful" votes, reports and name changes by one parent */
+  forumThread: { max: 5, windowMs: 60 * 60_000 },
+  forumPost: { max: 30, windowMs: 60 * 60_000 },
+  forumVote: { max: 120, windowMs: 60 * 60_000 },
+  forumReport: { max: 20, windowMs: 24 * 60 * 60_000 },
+  forumHandle: { max: 5, windowMs: 24 * 60 * 60_000 },
+  /** reply emails one parent gets about one thread: a busy thread sends one an hour (the in-app notices list each) */
+  forumMail: { max: 1, windowMs: 60 * 60_000 },
   /** mailing-list sign-ups from one address (the site's footer and /iphone) */
   subscribeIp: { max: 10, windowMs: 60 * 60_000 },
   /** sign-ups for one email address, so the form can't be used to flood someone's inbox with confirmation emails */

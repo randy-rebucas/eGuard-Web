@@ -9,6 +9,8 @@ const db = vi.hoisted(() => ({
   auditLog: { create: vi.fn() },
 }));
 vi.mock("../db", () => ({ db }));
+// What the parent wrote in Community is exported by lib/forum, tested in forum.test.ts
+vi.mock("../forum", () => ({ exportForum: vi.fn(async () => ({ profile: null, threads: [], replies: [], helpfulVotes: 0 })) }));
 
 const { exportFamily } = await import("../account-export");
 

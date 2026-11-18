@@ -1,5 +1,6 @@
 import "server-only";
 import { db } from "./db";
+import { exportForum } from "./forum";
 
 /**
  * Full export of the family's data, including browsers, browser protection and organizations joined
@@ -78,7 +79,9 @@ export async function exportFamily(user: { id: string; familyId: string; name: s
     },
   });
   await db.auditLog.create({ data: { familyId: user.familyId, actor: user.name, action: "data.exported" } });
-  return { exportedAt: new Date().toISOString(), family, tipsAndReminders };
+  // What this parent wrote in Community (lib/forum): never other parents' posts
+  const community = await exportForum(user.id);
+  return { exportedAt: new Date().toISOString(), family, tipsAndReminders, community };
 }
 
 export const EXPORT_FILENAME = "eguard-family-export.json";

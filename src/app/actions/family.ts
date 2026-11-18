@@ -22,6 +22,7 @@ import { signOutSession } from "@/lib/sessions";
 import * as devicePin from "@/lib/device-pin";
 import { DevicePin } from "@/lib/device-pin";
 import type { FormState } from "./auth";
+import { setNotifyReplies } from "@/lib/forum";
 
 const { audit, ChildSchema } = family;
 
@@ -390,6 +391,9 @@ export async function setToggle(key: string, value: boolean): Promise<Result> {
     if (value && key === "keepLocationHistory" && !plan.locationSharing) throw planRequired(LOCATION_UPGRADE);
     if ((USER_TOGGLES as readonly string[]).includes(key)) {
       await db.user.update({ where: { id: u.id }, data: { [key]: value } });
+    } else if (key === "communityReplies") {
+      // Community › emails about replies and mentions (lib/forum)
+      await setNotifyReplies(u.id, value);
     } else if ((FAMILY_TOGGLES as readonly string[]).includes(key)) {
       await requireAdmin();
       await db.family.update({ where: { id: u.familyId }, data: { [key]: value } });

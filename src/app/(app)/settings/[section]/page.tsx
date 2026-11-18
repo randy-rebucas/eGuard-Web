@@ -37,6 +37,8 @@ import { isOffline } from "@/lib/health";
 import { enabledWebProviders, isWebProvider, providerLabel } from "@/lib/oauth-web";
 import { oauthMessage } from "@/lib/oauth-errors";
 import { summarizeAgent } from "@/lib/user-agent";
+import { communityOn, getProfile } from "@/lib/forum";
+import { HandleForm } from "@/components/forum/forum-forms";
 
 export async function generateMetadata(props: PageProps<"/settings/[section]">) {
   const { section } = await props.params;
@@ -165,7 +167,10 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
 
     case "notifications": {
       const push = pushAvailable();
-      const care = await carePreferences(u);
+      const [care, community] = await Promise.all([
+        carePreferences(u),
+        communityOn(u.familyId).then((on) => (on ? getProfile(u.id) : null)),
+      ]);
       return (
         <>
           {head}
@@ -190,6 +195,14 @@ export default async function SettingsSection(props: PageProps<"/settings/[secti
           {/* The parent's own zone too (it can be chosen in the app), so the select never shows another in its place */}
           <CareSettings initial={care} zones={timeZones(tz, care.timezone)} />
           <p className="t-meta" style={{ marginTop: 12 }}>See your activities and messages on your <Link className="inline-link" href="/plan">Safety plan</Link>.</p>
+          {community ? (
+            <>
+              <hr className="divider" style={{ margin: "24px 0 8px" }} />
+              <h3 className="org-sub" id="community">Community</h3>
+              <SettingSwitch setting="communityReplies" title="Replies and mentions" desc="An email when someone replies to a thread you follow or mentions you, at most one an hour per thread. Push follows Push notifications above." checked={community.notifyReplies} />
+              <div style={{ marginTop: 16 }}><HandleForm current={community.handle} /></div>
+            </>
+          ) : null}
         </>
       );
     }

@@ -27,6 +27,7 @@ import { advancePolicyPast } from "./browser-policy";
 import { REMOVED_COMPUTER_DAYS, rememberRemovedComputer, rememberRemovedPhone } from "./removed-computers";
 import { appleTokensOf, revokeAppleTokens } from "./apple-tokens";
 import { expireProof, hasPublishedQuotes } from "./testimonials";
+import { eraseForUsers } from "./forum";
 
 /** Family, children, apps and devices: shared by the web server actions and the mobile API. */
 
@@ -816,6 +817,8 @@ export async function deleteAccount(actor: Actor, confirm: Confirm) {
     // Read before the rows go: every parent in the family loses their account
     const appleTokens = await appleTokensOf(members.map((m) => m.id));
     const quoted = await hasPublishedQuotes(members.map((m) => m.id));
+    // What they wrote in Community is emptied; other parents' replies stay, under "Deleted member" (lib/forum)
+    await eraseForUsers(members.map((m) => m.id));
     await db.family.delete({ where: { id: actor.familyId } });
     // Their words go with them, off eguard.family at once (lib/testimonials)
     if (quoted) expireProof();
@@ -825,6 +828,7 @@ export async function deleteAccount(actor: Actor, confirm: Confirm) {
   await handOverOrganizations([actor.id]);
   const appleTokens = await appleTokensOf([actor.id]);
   const quoted = await hasPublishedQuotes([actor.id]);
+  await eraseForUsers([actor.id]);
   await db.user.delete({ where: { id: actor.id } });
   if (quoted) expireProof();
   await audit(actor.familyId, actor.name, "member.left", user.email);
@@ -864,6 +868,7 @@ export async function removeParent(actor: Actor, userId: string) {
   // Their account is deleted: so is their Sign in with Apple grant (revoked once the account is gone)
   const appleTokens = await appleTokensOf([userId]);
   const quoted = await hasPublishedQuotes([userId]);
+  await eraseForUsers([userId]);
   const r = await db.user.deleteMany({ where: { id: userId, familyId: actor.familyId, role: "PARENT" } });
   if (!r.count) throw notFound("Family member");
   if (quoted) expireProof();
