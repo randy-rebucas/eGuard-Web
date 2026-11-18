@@ -36,8 +36,13 @@ export function ThreadList({ threads, tz, showCategory, empty }: { threads: Thre
               : <Avatar name={t.by.kind === "deleted" ? "?" : t.by.name} hue={t.by.kind === "deleted" ? 220 : handleHue(t.by.name)} size="sm" />}
             <div className="grow" style={{ minWidth: 0 }}>
               <div className="t-title forum-title">
-                {t.pinned ? <Icon name="pin" size={14} style={{ marginRight: 4, verticalAlign: "-2px" }} /> : null}
-                {t.locked ? <Icon name="lock" size={14} style={{ marginRight: 4, verticalAlign: "-2px" }} /> : null}
+                {t.pinned || t.locked ? (
+                  // Inline beside the title: Tailwind's base styles make a bare svg a block, which put these on a line of their own
+                  <span className="forum-flags">
+                    {t.pinned ? <span title="Pinned"><Icon name="pin" size={14} /><span className="sr-only">Pinned: </span></span> : null}
+                    {t.locked ? <span title="Closed to replies"><Icon name="lock" size={14} /><span className="sr-only">Closed: </span></span> : null}
+                  </span>
+                ) : null}
                 {t.title}
               </div>
               <div className="t-meta">

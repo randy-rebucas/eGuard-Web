@@ -912,3 +912,5 @@ code{font-family:ui-monospace,"SF Mono",Consolas,monospace; font-size:.92em; bac
 .forum-text{white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.6}
 .forum-removed{color:var(--ink-3); font-style:italic}
 .forum-report{padding:12px; border:1px solid var(--line); border-radius:12px; background:var(--surface-2)}
+.forum-flags{display:inline-flex; align-items:center; gap:4px; margin-right:6px; vertical-align:-2px; color:var(--accent-ink)}
+.forum-flags > span{display:inline-flex}
