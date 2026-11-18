@@ -4,6 +4,7 @@ import { cacheLife } from "next/cache";
 import { ChevronDown, Menu } from "lucide-react";
 import { LogoMark } from "@/components/logo";
 import { SignedIn } from "@/components/signed-in";
+import { CommunityLink } from "@/components/community-link";
 import { LEGAL } from "@/lib/legal";
 import { LIST_COPY } from "@/lib/subscribers";
 import { botCheckSiteKey } from "@/lib/bot-check";
@@ -51,6 +52,8 @@ export function SiteHeader() {
               {RESOURCES.map(([label, href, sub]) => <li key={href}><Link href={href}><b>{label}</b><span>{sub}</span></Link></li>)}
             </ul>
           </div>
+          {/* Only while Community is open (components/community-link) */}
+          <CommunityLink><Link href="/community">Community</Link></CommunityLink>
           {AFTER.map(([label, href]) => <Link key={href} href={href}>{label}</Link>)}
         </nav>
         <div className="lp-head-cta">
@@ -69,6 +72,7 @@ export function SiteHeader() {
               {[...NAV, ...AFTER].map(([label, href]) => <Link key={href} href={href}>{label}</Link>)}
               <span className="lp-menu-h">Resources</span>
               {RESOURCES.map(([label, href]) => <Link key={href} href={href}>{label}</Link>)}
+              <CommunityLink><Link href="/community">Community</Link></CommunityLink>
               <SignedIn signedIn={null} signedOut={<Link href="/login">Sign In</Link>} />
             </nav>
           </details>
@@ -110,7 +114,7 @@ export function SiteFooter() {
           </div>
           <div>
             <h4>Resources</h4>
-            <ul><li><Link href="/learn">Knowledge Center</Link></li><li><Link href="/help">Help Center</Link></li><li><Link href="/#faq">FAQ</Link></li><li><Link href="/blog">Blog</Link></li><li><Link href="/guides">Guides by age</Link></li><li><Link href="/for-kids">For kids</Link></li></ul>
+            <ul><li><Link href="/learn">Knowledge Center</Link></li><li><Link href="/help">Help Center</Link></li><li><Link href="/#faq">FAQ</Link></li><li><Link href="/blog">Blog</Link></li><li><Link href="/guides">Guides by age</Link></li><li><Link href="/for-kids">For kids</Link></li><CommunityLink><li><Link href="/community">Parent community</Link></li></CommunityLink></ul>
           </div>
           <div>
             <h4>Company</h4>
