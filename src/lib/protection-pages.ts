@@ -124,7 +124,7 @@ export const PROTECTION_PAGES: Record<ProtectionKey, ProtectionPage> = {
   },
   DOWNLOADS: {
     title: "Approval for downloads",
-    summary: "Make app store installs wait for a parent's OK.",
+    summary: "Make new app store installs wait for a parent's OK on Android and iPhone, and hear from eGuard if that setting changes.",
     what: [
       "When this is on, a new app from the app store can't be used until you approve it. On iPhone and iPad it can't be installed at all.",
       "Together with App Approval, it means new apps reach the phone only with your say-so.",
@@ -169,7 +169,7 @@ export const PROTECTION_PAGES: Record<ProtectionKey, ProtectionPage> = {
   },
   UNINSTALL_PROTECTION: {
     title: "Uninstall protection",
-    summary: "Stop eGuard from being removed from your child's phone without you.",
+    summary: "Stop eGuard from being removed from your child's phone without you, while it stays visible to your child the whole time.",
     what: [
       "Keeps the eGuard app from being deleted, so the protections you set stay in place.",
       "eGuard stays visible on the device the whole time. This protection stops removal, not your child's view of what's on.",

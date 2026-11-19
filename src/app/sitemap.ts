@@ -1,9 +1,9 @@
 import type { MetadataRoute } from "next";
 import { POSTS } from "@/lib/blog";
-import { HELP_ARTICLES } from "@/lib/help";
+import { HELP_ARTICLES, HELP_UPDATED } from "@/lib/help";
 import { LEGAL } from "@/lib/legal";
 import { PROTECTIONS } from "@/lib/protections";
-import { AGE_GUIDES } from "@/lib/age-guides";
+import { AGE_GUIDES, GUIDES_UPDATED } from "@/lib/age-guides";
 import { ARTICLES, TOPICS, articlesIn, newestReview } from "@/lib/learn";
 import { siteUrl } from "@/lib/site";
 import { KIDS_LANGUAGES } from "./(site)/for-kids/copy";
@@ -22,8 +22,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
     page("/protections", 0.8, "monthly"),
     ...PROTECTIONS.map((p) => page(`/protections/${p.slug}`, 0.7, "monthly")),
     page("/pricing", 0.8, "monthly"),
-    page("/guides", 0.7, "monthly"),
-    ...AGE_GUIDES.map((g) => page(`/guides/${g.slug}`, 0.6, "monthly")),
+    page("/guides", 0.7, "monthly", GUIDES_UPDATED),
+    ...AGE_GUIDES.map((g) => page(`/guides/${g.slug}`, 0.6, "monthly", GUIDES_UPDATED)),
     page("/security", 0.6, "monthly"),
     // Both languages, each naming the other (hreflang), with English as x-default like the pages' own tags
     ...Object.values(KIDS_LANGUAGES).map((path) => ({
@@ -39,10 +39,9 @@ export default function sitemap(): MetadataRoute.Sitemap {
     ...ARTICLES.map((a) => page(`/learn/${a.slug}`, 0.6, "monthly", a.reviewed)),
     page("/blog", 0.7, "weekly", newestPost),
     ...POSTS.map((p) => page(`/blog/${p.slug}`, 0.7, "monthly", p.date)),
-    page("/help", 0.7, "monthly"),
-    ...HELP_ARTICLES.map((a) => page(`/help/${a.slug}`, 0.6, "monthly")),
+    page("/help", 0.7, "monthly", HELP_UPDATED),
+    ...HELP_ARTICLES.map((a) => page(`/help/${a.slug}`, 0.6, "monthly", HELP_UPDATED)),
     page("/register", 0.5, "yearly"),
-    page("/login", 0.3, "yearly"),
     page("/privacy", 0.3, "yearly", LEGAL.updated),
     page("/terms", 0.3, "yearly", LEGAL.updated),
     page("/delete-account", 0.3, "yearly", LEGAL.updated),

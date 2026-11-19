@@ -40,7 +40,7 @@ const THEME_SCRIPT = `try{var t=document.cookie.match(/(?:^|; )eg_theme=(light|d
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${hanken.variable} ${sora.variable}`} suppressHydrationWarning>
+    <html lang="en-PH" className={`${hanken.variable} ${sora.variable}`} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>

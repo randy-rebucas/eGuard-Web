@@ -16,6 +16,8 @@ export type Block =
 export type Post = {
   slug: string;
   title: string;
+  /** A shorter title for search results, when `title` is over ~60 characters (Google cuts it off there) */
+  metaTitle?: string;
   /** One or two sentences, used on the index card and as the meta description */
   description: string;
   tag: "Guides" | "Product" | "Plans";
@@ -30,6 +32,7 @@ export const POSTS: Post[] = [
     tag: "Product",
     date: "2026-09-28",
     title: "Saved isn't the same as working: why eGuard checks every setting on the device",
+    metaTitle: "Why eGuard checks every setting on your child's device",
     description: "Most parental controls tell you a setting was saved. eGuard waits until your child's phone confirms it, and tells you when that changes.",
     body: [
       { p: "You set a two-hour screen time limit, the app says \"Saved\", and you move on with your day. Three weeks later you find your child on their phone at midnight. The limit was saved. It just wasn't on the phone." },

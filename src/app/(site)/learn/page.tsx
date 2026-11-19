@@ -8,7 +8,7 @@ import { LearnSearch } from "./search";
 import "./learn.css";
 
 export const metadata: Metadata = pageMetadata({
-  title: "Knowledge Center: child online safety guides for Filipino parents",
+  title: "Child online safety guides for Filipino parents",
   path: "/learn",
   description: "100 free, practical guides on parental controls, screen time, cyberbullying, TikTok, Roblox, Discord, AI and digital parenting in the Philippines.",
 });

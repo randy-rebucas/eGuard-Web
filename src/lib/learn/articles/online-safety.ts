@@ -92,6 +92,7 @@ Our full guide to [reporting online child abuse in the Philippines](/learn/repor
     slug: "child-online-safety-philippines",
     topic: "online-safety",
     title: "Child online safety in the Philippines: the risks, the laws and where to get help",
+    metaTitle: "Child online safety in the Philippines: risks, laws, help",
     description: "What Filipino children face online, which Philippine laws protect them, and which agencies to contact when something goes wrong.",
     reviewed: R,
     takeaways: [
@@ -413,7 +414,7 @@ If you find your child's photo on a page or account you don't recognise, report 
     slug: "online-scams-targeting-kids",
     topic: "online-safety",
     title: "Scams that target kids and teens, and how to spot them",
-    description: "Free diamonds, free Robux, fake GCash messages, too-good-to-be-true jobs and account selling: the scams aimed at Filipino kids and how to teach them to spot one.",
+    description: "Free diamonds, free Robux, fake GCash messages, too-good-to-be-true jobs and account selling: the scams aimed at Filipino kids, and how to spot one.",
     reviewed: R,
     takeaways: [
       "If something is free, urgent or secret, it's probably a scam.",

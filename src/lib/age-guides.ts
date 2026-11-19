@@ -22,6 +22,9 @@ export type AgeGuide = {
   protections: string[];
 };
 
+/** YYYY-MM-DD: when the guides' advice was last revised (JSON-LD dateModified and the sitemap). Bump it with the content. */
+export const GUIDES_UPDATED = "2026-10-08";
+
 export const AGE_GUIDES: AgeGuide[] = [
   {
     slug: "ages-5-8", label: "Ages 5 to 8", sampleAge: 7,

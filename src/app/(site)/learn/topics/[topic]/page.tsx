@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { TOPICS, articlesIn, readMinutes, topicById } from "@/lib/learn";
-import { jsonLd, pageMetadata, siteUrl } from "@/lib/site";
+import { TITLE_MAX, jsonLd, pageMetadata, siteUrl } from "@/lib/site";
 import { PageHead } from "../../../page-head";
 import "../../learn.css";
 
@@ -11,10 +11,17 @@ export function generateStaticParams() {
   return TOPICS.map((t) => ({ topic: t.id }));
 }
 
+/** "<title>: guides for parents", unless the title already speaks to parents or that won't fit in a search result */
+function topicTitle(title: string) {
+  if (/parent/i.test(title)) return title;
+  const long = `${title}: guides for parents`;
+  return long.length <= TITLE_MAX ? long : `${title}: parent guides`;
+}
+
 export async function generateMetadata({ params }: PageProps<"/learn/topics/[topic]">): Promise<Metadata> {
   const t = topicById((await params).topic);
   if (!t) return {};
-  return pageMetadata({ title: `${t.title}: guides for parents`, description: t.description, path: `/learn/topics/${t.id}`, ownImage: true });
+  return pageMetadata({ title: topicTitle(t.title), description: t.description, path: `/learn/topics/${t.id}`, ownImage: true });
 }
 
 export default async function TopicPage({ params }: PageProps<"/learn/topics/[topic]">) {

@@ -296,6 +296,7 @@ Strangers offering Robux in exchange for friendship, personal information, photo
     slug: "roblox-inappropriate-experiences",
     topic: "gaming",
     title: "Inappropriate experiences on Roblox: maturity labels and what to do",
+    metaTitle: "Inappropriate experiences on Roblox: what parents can do",
     description: "Why some Roblox experiences include violent, frightening or sexual content, how maturity labels work, and what to do if your child sees something.",
     reviewed: R,
     takeaways: [

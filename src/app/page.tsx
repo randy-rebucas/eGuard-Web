@@ -35,10 +35,10 @@ import avatar2 from "../../public/landing/avatar-2.png";
 import avatar3 from "../../public/landing/avatar-3.png";
 
 export const metadata: Metadata = pageMetadata({
-  title: "eGuard · Parental controls you can verify, for families in the Philippines",
+  title: "eGuard: verified parental controls for Filipino families",
   absoluteTitle: true,
   path: "/",
-  description: `Set screen time, bedtime, app and web rules on your child's Android phone or tablet, and see each one confirmed on the device. Free for ${FREE_CHILDREN}; plans from ₱${webPrice("PLUS") / 100} a month.`,
+  description: `Set screen time, bedtime, app and web rules on your child's Android phone, and see each one confirmed on the device. Free for ${FREE_CHILDREN}; plans from ₱${webPrice("PLUS") / 100}/month.`,
   share: {
     title: "eGuard: parental controls you can verify",
     description: `Set screen time, bedtime and app rules on your child's phone, and see each one confirmed on the device. Free for ${FREE_CHILDREN}.`,
@@ -121,7 +121,7 @@ function structuredData() {
       { "@type": "WebApplication", name: "eGuard", url: site, applicationCategory: "LifestyleApplication", operatingSystem: "Web, Android", installUrl: PLAY_STORE_URL,
         description: "Parental controls for screen time, bedtime, apps, web and location, with every setting verified on the child's device.",
         publisher: { "@id": org },
-        offers: PLANS.map((p) => ({ "@type": "Offer", name: p.name, price: p.price, priceCurrency: "PHP", url: `${site}/#pricing` })) },
+        offers: PLANS.map((p) => ({ "@type": "Offer", name: p.name, price: p.price, priceCurrency: "PHP", url: `${site}/pricing` })) },
     ],
   };
 }

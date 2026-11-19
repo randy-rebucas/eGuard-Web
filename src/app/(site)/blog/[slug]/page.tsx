@@ -15,7 +15,7 @@ export function generateStaticParams() {
 export async function generateMetadata({ params }: PageProps<"/blog/[slug]">): Promise<Metadata> {
   const post = postBySlug((await params).slug);
   if (!post) return {};
-  return pageMetadata({ title: post.title, description: post.description, path: `/blog/${post.slug}`, type: "article", publishedTime: post.date, ownImage: true });
+  return pageMetadata({ title: post.metaTitle ?? post.title, description: post.description, path: `/blog/${post.slug}`, type: "article", publishedTime: post.date, ownImage: true });
 }
 
 function Content({ block }: { block: Block }) {
@@ -36,7 +36,7 @@ export default async function PostPage({ params }: PageProps<"/blog/[slug]">) {
     "@context": "https://schema.org",
     "@graph": [
       { "@type": "BlogPosting", headline: post.title, description: post.description, datePublished: post.date, dateModified: post.date,
-        url, mainEntityOfPage: url, inLanguage: "en-PH",
+        url, mainEntityOfPage: url, image: `${site}/opengraph-image`, inLanguage: "en-PH",
         author: { "@type": "Organization", name: "eGuard", url: site },
         publisher: { "@type": "Organization", "@id": `${site}/#org`, name: "eGuard", logo: `${site}/brand/logo-mark-512.png` } },
       { "@type": "BreadcrumbList", itemListElement: [

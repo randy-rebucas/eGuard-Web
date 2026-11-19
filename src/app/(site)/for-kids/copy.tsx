@@ -30,7 +30,7 @@ export const KIDS_COPY: Record<Lang, KidsCopy> = {
   en: {
     meta: {
       title: "eGuard, explained for kids",
-      description: "A page for children: what eGuard does on your phone, what your parents can and can't see, how to ask for an app or a website, and a family agreement to fill in together.",
+      description: "For children: what eGuard does on your phone, what your parents can and can't see, how to ask for an app or a website, and a family agreement.",
     },
     switchTo: { label: "Basahin sa Filipino", href: "/fil/for-kids", lang: "fil" },
     eyebrow: "For kids",
@@ -120,7 +120,7 @@ export const KIDS_COPY: Record<Lang, KidsCopy> = {
   fil: {
     meta: {
       title: "Ang eGuard, ipinaliwanag para sa mga bata",
-      description: "Isang pahina para sa mga bata: ano ang ginagawa ng eGuard sa phone mo, ano ang nakikita at hindi nakikita ng mga magulang mo, paano humingi ng app o website, at isang kasunduan ng pamilya na sabay ninyong sasagutan.",
+      description: "Para sa mga bata: ano ang ginagawa ng eGuard sa phone mo, ano ang nakikita at hindi nakikita ng mga magulang mo, at paano humingi ng app o website.",
     },
     switchTo: { label: "Read in English", href: "/for-kids", lang: "en" },
     eyebrow: "Para sa mga bata",

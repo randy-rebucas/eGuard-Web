@@ -7,6 +7,7 @@ export const PARENTAL_CONTROLS: Article[] = [
     slug: "parental-controls-philippines-guide",
     topic: "parental-controls",
     title: "Parental controls in the Philippines: a complete guide for parents",
+    metaTitle: "Parental controls in the Philippines: a complete guide",
     description: "What parental controls can and can't do, the free tools already on your child's phone, and how to set them up for each age.",
     reviewed: R,
     takeaways: [
@@ -350,6 +351,7 @@ Your home Wi-Fi rules don't follow your child to a computer shop or pisonet. If 
     slug: "youtube-parental-controls",
     topic: "parental-controls",
     title: "YouTube parental controls: YouTube Kids, supervised accounts and teens",
+    metaTitle: "YouTube parental controls: Kids, supervised accounts, teens",
     description: "Choose between YouTube Kids, a supervised YouTube account and teen settings, and set each one up properly for your child's age.",
     reviewed: R,
     takeaways: [
@@ -616,6 +618,7 @@ Can you reach a person? Is there a help center with setup guides? Is support ava
     slug: "parental-controls-for-teens",
     topic: "parental-controls",
     title: "Parental controls for teenagers: what to keep and what to let go",
+    metaTitle: "Parental controls for teens: what to keep, what to let go",
     description: "How to step back from parental controls as your child becomes a teenager, without leaving them to figure everything out alone at 18.",
     reviewed: R,
     takeaways: [

@@ -227,6 +227,7 @@ If your child seems persistently low, anxious, or talks about not wanting to liv
     slug: "anti-bullying-act-and-schools",
     topic: "cyberbullying",
     title: "The Anti-Bullying Act and your child's school: what schools must do",
+    metaTitle: "The Anti-Bullying Act: what your child's school must do",
     description: "What RA 10627 requires of Philippine schools when a child is bullied, including online, and how parents can work with the school or escalate.",
     reviewed: R,
     takeaways: [

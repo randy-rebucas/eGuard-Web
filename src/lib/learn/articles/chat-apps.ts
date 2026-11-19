@@ -288,6 +288,7 @@ See also [disappearing messages and secret chats](/learn/disappearing-messages-a
     slug: "disappearing-messages-and-secret-chats",
     topic: "chat-apps",
     title: "Disappearing messages and secret chats: what parents should know",
+    metaTitle: "Disappearing messages and secret chats: a parent's guide",
     description: "How disappearing messages, vanish mode and secret chats work, why they can make risky behaviour feel safe, and what to tell your teen.",
     reviewed: R,
     takeaways: [

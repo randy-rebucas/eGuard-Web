@@ -7,6 +7,7 @@ export const SOCIAL_MEDIA: Article[] = [
     slug: "social-media-safety-kids",
     topic: "social-media",
     title: "Social media safety for kids: the settings and habits that matter",
+    metaTitle: "Social media safety for kids: the settings that matter",
     description: "The essential privacy, messaging and content settings for kids on social media, plus the habits and conversations that make them work.",
     reviewed: R,
     takeaways: [
@@ -567,6 +568,7 @@ If your child wants to become a creator themselves, see [my child wants to be a 
     slug: "teaching-kids-to-spot-fake-news",
     topic: "social-media",
     title: "Fake news and misinformation: teaching kids to check before they share",
+    metaTitle: "Fake news: teaching kids to check before they share",
     description: "Simple habits that help children and teens spot misinformation, check claims and think before forwarding, with Philippine fact-checking resources.",
     reviewed: R,
     takeaways: [

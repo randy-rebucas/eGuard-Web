@@ -5,7 +5,7 @@ import { ArrowRight } from "lucide-react";
 import { Icon } from "@/components/icon";
 import { PROTECTIONS, PROTECTION_BY_SLUG, type Capability } from "@/lib/protections";
 import { PROTECTION_PAGES } from "@/lib/protection-pages";
-import { pageMetadata } from "@/lib/site";
+import { breadcrumbs, jsonLd, pageMetadata } from "@/lib/site";
 import { StartLink } from "@/components/signed-in";
 import { PageHead } from "../page-head";
 import { CapabilityChip, CAPABILITY_COPY } from "./capability";
@@ -40,6 +40,7 @@ const LEVELS: Capability[] = ["AVAILABLE", "GUIDED", "VERIFY_ONLY", "PARENT_SET"
 export default function ProtectionsPage() {
   return (
     <>
+      <script type="application/ld+json" dangerouslySetInnerHTML={jsonLd({ "@context": "https://schema.org", ...breadcrumbs(["Protections", "/protections"]) })} />
       <PageHead
         eyebrow="Protections"
         title="Ten protections, each one checked on the device"

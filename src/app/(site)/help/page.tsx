@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { HELP_ARTICLES, HELP_CATEGORIES } from "@/lib/help";
-import { pageMetadata } from "@/lib/site";
+import { breadcrumbs, jsonLd, pageMetadata } from "@/lib/site";
 import { supportEmail } from "@/lib/support";
 import { PageHead } from "../page-head";
 
@@ -15,6 +15,7 @@ export const metadata: Metadata = pageMetadata({
 export default function HelpPage() {
   return (
     <>
+      <script type="application/ld+json" dangerouslySetInnerHTML={jsonLd({ "@context": "https://schema.org", ...breadcrumbs(["Help Center", "/help"]) })} />
       <PageHead eyebrow="Help Center" title="How can we help?" lede="Setup guides, fixes for common problems, and how eGuard handles your family's data." />
       <div className="lp-wrap st-help">
         {HELP_CATEGORIES.map((c) => {

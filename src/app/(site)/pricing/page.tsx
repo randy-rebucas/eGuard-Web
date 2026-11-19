@@ -4,7 +4,7 @@ import { Check, ChevronDown, CreditCard, Minus, RefreshCw, Ticket } from "lucide
 import { SignedIn, StartLink } from "@/components/signed-in";
 import { FREE_CHILDREN, LEGACY_LIMITS, PLANS, planById, webPrice, type PaidPlanId, type Plan } from "@/lib/plans";
 import { discountSummary } from "@/lib/batch-discount";
-import { pageMetadata } from "@/lib/site";
+import { breadcrumbs, jsonLd, pageMetadata } from "@/lib/site";
 import { supportEmail } from "@/lib/support";
 import { PageHead } from "../page-head";
 import { PlanFinder } from "./plan-finder";
@@ -13,7 +13,7 @@ import "./pricing.css";
 export const metadata: Metadata = pageMetadata({
   title: "Pricing: free parental controls, plans in pesos",
   path: "/pricing",
-  description: `eGuard is free for ${FREE_CHILDREN}. ${planById("PLUS").name} and ${planById("PRO").name} add more children and devices, alerts when a setting changes, location sharing and reports. Pay monthly or yearly in pesos with GCash, Maya, QR Ph or card.`,
+  description: `eGuard is free for ${FREE_CHILDREN}. ${planById("PLUS").name} and ${planById("PRO").name} add more children, change alerts, location and reports. Pay in pesos by GCash, Maya, QR Ph or card.`,
 });
 
 const LOOK = {
@@ -85,6 +85,7 @@ function PlanLink({ id, signedIn }: { id: Plan["id"]; signedIn: boolean }) {
 export default function PricingPage() {
   return (
     <>
+      <script type="application/ld+json" dangerouslySetInnerHTML={jsonLd({ "@context": "https://schema.org", ...breadcrumbs(["Pricing", "/pricing"]) })} />
       <PageHead
         eyebrow="Pricing"
         title="Simple plans, priced in pesos"

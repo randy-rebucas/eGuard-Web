@@ -31,6 +31,8 @@ export type Article = {
   slug: string;
   topic: TopicId;
   title: string;
+  /** A shorter title for search results, when `title` is over ~60 characters (Google cuts it off there) */
+  metaTitle?: string;
   /** One or two sentences, used on cards and as the meta description. Keep under ~160 characters. */
   description: string;
   /** YYYY-MM-DD: when the facts (settings, ages, laws, hotlines) were last checked */

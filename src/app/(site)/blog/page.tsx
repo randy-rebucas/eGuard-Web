@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { POSTS, postDate, readMinutes } from "@/lib/blog";
 import { FREE_CHILDREN } from "@/lib/plans";
-import { pageMetadata } from "@/lib/site";
+import { breadcrumbs, jsonLd, pageMetadata } from "@/lib/site";
 import { StartLink } from "@/components/signed-in";
 import { PageHead } from "../page-head";
 
@@ -20,6 +20,7 @@ export const metadata: Metadata = pageMetadata({
 export default function BlogPage() {
   return (
     <>
+      <script type="application/ld+json" dangerouslySetInnerHTML={jsonLd({ "@context": "https://schema.org", ...breadcrumbs(["Blog", "/blog"]) })} />
       <PageHead
         eyebrow="Blog"
         title="News and notes from eGuard"

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, ArrowRight, Check, MessageCircle, Sprout } from "lucide-react";
 import { Icon } from "@/components/icon";
-import { AGE_GUIDES, ageGuide } from "@/lib/age-guides";
+import { AGE_GUIDES, GUIDES_UPDATED, ageGuide } from "@/lib/age-guides";
 import { PROFILES, profileConfig, recommendedProfile } from "@/lib/profiles";
 import { PROTECTIONS, PROTECTION_BY_SLUG } from "@/lib/protections";
 import { PROTECTION_PAGES, describeSuggested } from "@/lib/protection-pages";
@@ -35,7 +35,7 @@ export default async function AgeGuidePage({ params }: PageProps<"/guides/[slug]
     "@context": "https://schema.org",
     "@graph": [
       { "@type": "Article", headline: g.title, description: g.summary, url: `${site}/guides/${g.slug}`, mainEntityOfPage: `${site}/guides/${g.slug}`,
-        inLanguage: "en-PH", author: { "@type": "Organization", name: "eGuard", url: site },
+        image: `${site}/opengraph-image`, dateModified: GUIDES_UPDATED, inLanguage: "en-PH", author: { "@type": "Organization", name: "eGuard", url: site },
         publisher: { "@type": "Organization", "@id": `${site}/#org`, name: "eGuard", logo: `${site}/brand/logo-mark-512.png` } },
       { "@type": "BreadcrumbList", itemListElement: [
         { "@type": "ListItem", position: 1, name: "Home", item: site },

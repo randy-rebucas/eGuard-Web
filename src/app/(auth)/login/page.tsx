@@ -7,7 +7,8 @@ import { botCheckSiteKey } from "@/lib/bot-check";
 import { FormSuspense } from "../form-suspense";
 import { redirectIfSignedIn } from "../signed-out";
 
-export const metadata = pageMetadata({ title: "Sign in", path: "/login", description: "Sign in to eGuard to manage your children's protections, screen time and alerts." });
+// Nothing to find here from a search; kept out of the index and the sitemap, but links on it are still followed
+export const metadata = { ...pageMetadata({ title: "Sign in", path: "/login", description: "Sign in to eGuard to manage your children's protections, screen time and alerts." }), robots: { index: false, follow: true } };
 
 async function Login({ searchParams }: Pick<PageProps<"/login">, "searchParams">) {
   const { next, oauth, provider } = await searchParams;

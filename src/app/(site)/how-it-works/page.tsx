@@ -20,7 +20,7 @@ import "./how-it-works.css";
 export const metadata: Metadata = pageMetadata({
   title: "How eGuard parental controls work",
   path: "/how-it-works",
-  description: "See how the eGuard parent app, web dashboard, your child's phone and the Chrome, Edge and Firefox extension work together, and how every rule gets verified on the device.",
+  description: "How the eGuard parent app, web dashboard, your child's phone and browser extension work together, and how every rule gets verified on the device.",
 });
 
 const JUMP: [string, string][] = [

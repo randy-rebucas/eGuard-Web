@@ -3,7 +3,7 @@ import { FREE_CHILDREN } from "@/lib/plans";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
-import { HELP_ARTICLES, HELP_CATEGORIES } from "@/lib/help";
+import { HELP_ARTICLES, HELP_CATEGORIES, HELP_UPDATED } from "@/lib/help";
 import { jsonLd, pageMetadata, siteUrl } from "@/lib/site";
 import { supportEmail } from "@/lib/support";
 import { STORE_LINKS } from "@/components/brand-marks";
@@ -32,7 +32,8 @@ export default async function HelpArticlePage({ params }: PageProps<"/help/[slug
   const data = {
     "@context": "https://schema.org",
     "@graph": [
-      { "@type": "TechArticle", headline: a.title, description: a.summary, url, mainEntityOfPage: url, inLanguage: "en-PH",
+      { "@type": "TechArticle", headline: a.title, description: a.summary, url, mainEntityOfPage: url, image: `${site}/opengraph-image`,
+        dateModified: HELP_UPDATED, inLanguage: "en-PH",
         author: { "@type": "Organization", name: "eGuard", url: site },
         publisher: { "@type": "Organization", "@id": `${site}/#org`, name: "eGuard", logo: `${site}/brand/logo-mark-512.png` } },
       { "@type": "BreadcrumbList", itemListElement: [

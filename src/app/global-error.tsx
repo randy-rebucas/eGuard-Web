@@ -7,7 +7,7 @@ import "./globals.css";
 export default function GlobalError({ error, retry }: { error: Error & { digest?: string }; retry: () => void }) {
   useEffect(() => { console.error(error); }, [error]);
   return (
-    <html lang="en">
+    <html lang="en-PH">
       <body>
         <main style={{ minHeight: "100dvh", display: "grid", placeItems: "center", padding: "32px 16px" }}>
           <section className="card card-pad" role="alert" style={{ maxWidth: 440, width: "100%" }}>

@@ -3,7 +3,7 @@ import Link from "next/link";
 import {
   ArrowRight, Briefcase, Check, ChevronDown, EyeOff, Gift, GraduationCap, Hash, KeyRound, Landmark, Mail, Share2, X, type LucideIcon,
 } from "lucide-react";
-import { discountSummary } from "@/lib/batch-discount";
+import { BATCH_DISCOUNTS, discountSummary } from "@/lib/batch-discount";
 import { CODE_MONTHS, MAX_CODES_PER_BATCH } from "@/lib/organizations";
 import { PLANS, webPrice } from "@/lib/plans";
 import { pageMetadata } from "@/lib/site";
@@ -16,7 +16,7 @@ import "./schools.css";
 export const metadata: Metadata = pageMetadata({
   title: "eGuard for schools, barangays and employers",
   path: "/for-schools",
-  description: `Invite families with a join code and sponsor their eGuard plans with prepaid codes, ${discountSummary()}. Organizations see counts only, never a family's data.`,
+  description: `Invite families with a join code and sponsor their eGuard plans with prepaid codes, up to ${Math.max(...BATCH_DISCOUNTS.map((t) => t.percent))}% off in bulk. Organizations see counts, never a family's data.`,
 });
 
 const WHO: [LucideIcon, string, string][] = [

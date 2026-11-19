@@ -146,6 +146,7 @@ When you're home, spend time understanding your child's online life: the games t
     slug: "grandparents-yaya-screen-rules",
     topic: "digital-parenting",
     title: "Grandparents, yayas and relatives: keeping screen rules consistent",
+    metaTitle: "Grandparents, yayas and relatives: consistent screen rules",
     description: "How to agree on screen rules with lolo, lola, yaya and other caregivers, without conflict, so children get the same message wherever they are.",
     reviewed: R,
     takeaways: [

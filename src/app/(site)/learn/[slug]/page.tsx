@@ -39,7 +39,7 @@ export function generateStaticParams() {
 export async function generateMetadata({ params }: PageProps<"/learn/[slug]">): Promise<Metadata> {
   const a = articleBySlug((await params).slug);
   if (!a) return {};
-  return pageMetadata({ title: a.title, description: a.description, path: `/learn/${a.slug}`, type: "article", publishedTime: a.reviewed, ownImage: true });
+  return pageMetadata({ title: a.metaTitle ?? a.title, description: a.description, path: `/learn/${a.slug}`, type: "article", publishedTime: a.reviewed, ownImage: true });
 }
 
 export default async function LearnArticlePage({ params }: PageProps<"/learn/[slug]">) {
@@ -56,7 +56,7 @@ export default async function LearnArticlePage({ params }: PageProps<"/learn/[sl
     "@context": "https://schema.org",
     "@graph": [
       { "@type": "Article", headline: a.title, description: a.description, dateModified: a.reviewed, url, mainEntityOfPage: url,
-        inLanguage: "en-PH", articleSection: topic.label,
+        image: `${site}/opengraph-image`, inLanguage: "en-PH", articleSection: topic.label,
         author: { "@type": "Organization", name: "eGuard", url: site },
         publisher: { "@type": "Organization", "@id": `${site}/#org`, name: "eGuard", logo: `${site}/brand/logo-mark-512.png` } },
       { "@type": "BreadcrumbList", itemListElement: [

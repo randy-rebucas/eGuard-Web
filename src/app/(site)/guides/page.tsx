@@ -4,7 +4,7 @@ import { ArrowRight } from "lucide-react";
 import { AGE_GUIDES } from "@/lib/age-guides";
 import { PROFILES, profileConfig, recommendedProfile } from "@/lib/profiles";
 import { describeSuggested } from "@/lib/protection-pages";
-import { pageMetadata } from "@/lib/site";
+import { breadcrumbs, jsonLd, pageMetadata } from "@/lib/site";
 import { PageHead } from "../page-head";
 import "./guides.css";
 
@@ -17,6 +17,7 @@ export const metadata: Metadata = pageMetadata({
 export default function GuidesPage() {
   return (
     <>
+      <script type="application/ld+json" dangerouslySetInnerHTML={jsonLd({ "@context": "https://schema.org", ...breadcrumbs(["Guides by age", "/guides"]) })} />
       <PageHead
         eyebrow="Guides by age"
         title="The right rules for their age"
