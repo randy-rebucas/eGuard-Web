@@ -5,6 +5,11 @@ const db = vi.hoisted(() => {
   const d = {
     user: { findUniqueOrThrow: vi.fn(), findMany: vi.fn(), findFirst: vi.fn(), delete: vi.fn(), deleteMany: vi.fn() },
     family: { delete: vi.fn() },
+    device: { findMany: vi.fn(async () => [
+      { id: "d1", name: "iPhone", kind: "PHONE", tokenHash: "h1", removalSecret: null, child: { name: "Mia" } },
+      { id: "d2", name: "Laptop", kind: "COMPUTER", tokenHash: "h2", removalSecret: "s2", child: { name: "Mia" } },
+    ]) },
+    removedComputer: { upsert: vi.fn() },
     oAuthIdentity: { findMany: vi.fn(), delete: vi.fn() },
     $executeRaw: vi.fn(),
     $transaction: vi.fn(),
@@ -57,6 +62,13 @@ describe("deleteAccount revokes Sign in with Apple", () => {
     expect(apple.appleTokensOf).toHaveBeenCalledWith(["u1", "u2"]);
     expect(apple.revokeAppleTokens).toHaveBeenCalledWith(["sealed_1"]);
     expect(db.family.delete.mock.invocationCallOrder[0]).toBeLessThan(apple.revokeAppleTokens.mock.invocationCallOrder[0]);
+  });
+
+  it("keeps the children's devices as removed devices first, so each still gets its signed uninstall", async () => {
+    await deleteAccount(admin, { phrase: "DELETE" });
+    const kept = db.removedComputer.upsert.mock.calls.map(([a]) => [(a as { where: { deviceId: string } }).where.deviceId, (a as { create: { removalSecret: string | null } }).create.removalSecret]);
+    expect(kept).toEqual([["d1", null], ["d2", "s2"]]);
+    expect(db.removedComputer.upsert.mock.invocationCallOrder[1]).toBeLessThan(db.family.delete.mock.invocationCallOrder[0]);
   });
 
   it("for a parent who leaves, only theirs", async () => {

@@ -227,6 +227,20 @@ to an allowed one whose signer it doesn't carry.
 - **What else is set, so the extension isn't one click from off:** Incognito/InPrivate off and Guest mode off (Chrome,
   Edge); the extension allowed in private windows and Troubleshoot Mode off (Firefox). The managed policy also says
   `privateWindows: "off"`, so the extension doesn't ask for "Allow in Incognito" where private windows can't open.
+  These are taken out while the parent has web filtering off (nothing is filtered then) and put back when it's on.
+  A browser exe from a trusted signer is exempt only if it's a covered browser or one of its components
+  (`COVERED_BROWSER_EXES`, WebView2 included); any other is held like an unknown browser.
+- **Other extensions.** An extension's own requests are out of reach of every other extension's declarativeNetRequest
+  rules, so a proxy, VPN or viewer extension could get around eGuard's. While web filtering is on, the agent blocks
+  new extension installs: Chrome and Edge get `*` in `ExtensionInstallBlocklist` and eGuard's id plus the extensions
+  already installed in `ExtensionInstallAllowlist` (allowlist written first); Firefox gets `"*": {"installation_mode":
+  "blocked"}` and `"allowed"` for each kept id in `ExtensionSettings`. Installed extensions are found once, when the
+  block goes in (every account's Chrome/Edge `User Data\<profile>\Extensions`, all channels, and each Firefox profile's
+  `extensions.json`, `location: app-profile`), validated and capped at 200 per browser. The list and which entries are
+  eGuard's are kept in `HKLM\SOFTWARE\Policies\eGuard\ExtensionBlock`, so a restart neither looks again nor forgets
+  what to take out. Other administrators' entries (a school's allowlist or `*`) are never changed or removed. With web
+  filtering off eGuard's entries come out; turning it on looks at the installed extensions afresh, so a parent adds an
+  extension by turning web filtering off for a moment.
 - The parent pairs the extension once with a browser code (WEB is GUIDED with those steps).
 - **Browsers on the PC take no device slot.** Every `/sync` returns `browserLink: { value, expiresAt }` (30 days).
   The agent writes `value` into the extension's managed policy as `deviceLink` (HKLM
@@ -349,7 +363,9 @@ parent while it happens, and a reinstall shows up as the offline alert after a d
 - **GUIDED:**
   - UNINSTALL_PROTECTION: report `enabled: true` only while the child's account is standard and the service is
     locked.
-  - WEB: report the policy's config once the extension is forced in every browser.
+  - WEB: report the policy's config once the extension is forced in every browser. The server passes it only while a
+    browser on this computer is connected (paired with its browser link); until then it shows as needing review with
+    "No browser on this computer is connected yet", and a browser pairing asks the computer for a fresh report.
 - **UNSUPPORTED:** APP_RESTRICTIONS and CONTENT (PC apps carry no rating eGuard can read), LOCATION, NOTIFICATIONS.
 
 ## 12. Wire reference (what's new for computers)

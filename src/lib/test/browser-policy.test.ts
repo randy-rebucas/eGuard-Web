@@ -18,7 +18,7 @@ vi.mock("../db", () => ({
   },
 }));
 
-const { BrowserPolicyInput, defaultCategories, describeBrowserPolicy, updateBrowserPolicy } = await import("../browser-policy");
+const { BrowserPolicyInput, defaultCategories, describeBrowserPolicy, updateBrowserPolicy, withWebMode } = await import("../browser-policy");
 const actor = { id: "u1", name: "Randy", familyId: "f1", role: "FAMILY_ADMIN" as const };
 // What the parent's stale form would send: it still has the allowed list from version 2
 const staleForm = { ...policy, allowedDomains: [], schedule: null } as never;
@@ -62,5 +62,28 @@ describe("browser policy defaults and summary", () => {
   it("names the YouTube level in the change history", () => {
     expect(describeBrowserPolicy(policy)).toContain("YouTube Restricted Mode moderate");
     expect(describeBrowserPolicy({ ...policy, youtubeRestrict: "OFF" })).toContain("YouTube Restricted Mode off");
+  });
+
+  it("names the other-sites choice and focus hours, so changing them doesn't log as no change", () => {
+    const allow = describeBrowserPolicy({ ...policy, unknownSitesPolicy: "ALLOW", schedule: null });
+    const block = describeBrowserPolicy({ ...policy, unknownSitesPolicy: "BLOCK", schedule: { enabled: true, startTime: "21:00", endTime: "06:00" } });
+    expect(allow).toContain("other sites open");
+    expect(block).toContain("only allowed sites open");
+    expect(block).toContain("focus hours 21:00–06:00");
+    expect(allow).not.toBe(block);
+  });
+});
+
+describe("withWebMode", () => {
+  const p = { blockedCategories: ["ADULT"], blockedDomains: ["x.com"], allowedDomains: ["kids.org"], unknownSitesPolicy: "ALLOW", safeSearch: true, youtubeRestrict: "MODERATE", safeBrowsing: true };
+  it("blocks every site not allowed for Allowed sites only", () => {
+    expect(withWebMode(p, "ALLOWLIST")).toEqual({ ...p, unknownSitesPolicy: "BLOCK" });
+  });
+  it("filters nothing when Web Filtering is off, keeping Safe Browsing and the allowed list", () => {
+    expect(withWebMode(p, "OFF")).toEqual({ ...p, blockedCategories: [], blockedDomains: [], unknownSitesPolicy: "ALLOW", safeSearch: false, youtubeRestrict: "OFF" });
+  });
+  it("uses the browser protection settings as they are for Filter, or with no Web Filtering setting", () => {
+    expect(withWebMode(p, "FILTER")).toBe(p);
+    expect(withWebMode(p, undefined)).toBe(p);
   });
 });

@@ -56,15 +56,18 @@ export type DemoCap = "AVAILABLE" | "GUIDED" | "VERIFY_ONLY" | "PARENT_SET" | "U
 /** One protection, and what Android and a computer can do with it (protections.ts `caps`). */
 export type DemoProtection = { key: string; name: string; android: DemoCap; computer: DemoCap };
 
+/** A new child's starting Screen Time and Bedtime at one age, worded for the demo (demo/page.tsx builds them). */
+export type DemoPreset = { profile: string; screen: string; bedtime: string; limitToday: string };
+
 export type CheckState = "verified" | "guided" | "parent" | "off" | "na" | "plan";
 export type Check = { key: string; name: string; state: CheckState; note?: string };
 
 /** Android permissions the setup asks for, and the protections that stay off when one is skipped (child-app-spec 4). */
 export const ANDROID_PERMISSIONS = [
-  { id: "usage", name: "Usage access", why: "Lets eGuard count screen time and pause apps when time is up.", protects: ["SCREEN_TIME", "APP_APPROVAL"] },
-  { id: "overlay", name: "Display over other apps", why: "Shows the eGuard screen over an app that's paused or blocked.", protects: ["BEDTIME"] },
+  { id: "accessibility", name: "Accessibility", why: "Lets eGuard see which app is open, so it can pause it when time is up or at bedtime and hold new apps for approval.", protects: ["SCREEN_TIME", "BEDTIME", "APP_APPROVAL", "DOWNLOADS"] },
+  { id: "usage", name: "Usage access", why: "Lets eGuard count how long each app is used.", protects: ["SCREEN_TIME"] },
   { id: "notifications", name: "Notification policy access", why: "Silences notifications during bedtime.", protects: ["NOTIFICATIONS"] },
-  { id: "admin", name: "Device admin", why: "Stops eGuard from being removed without a parent.", protects: ["UNINSTALL_PROTECTION"] },
+  { id: "admin", name: "Device admin", why: "Stops eGuard being removed without you hearing about it.", protects: ["UNINSTALL_PROTECTION"] },
 ] as const;
 export type PermissionId = (typeof ANDROID_PERMISSIONS)[number]["id"];
 

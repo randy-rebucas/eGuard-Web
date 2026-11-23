@@ -24,9 +24,11 @@ export const GET = authed<{ id: string }>(async ({ req, user, params }) => {
   const child = await childFor(user.familyId, params.id);
   const family = await getFamily(user.familyId);
   const requested = await requestedApps(child.id);
-  const matches = (a: { approval: AppApproval; name: string }) => filter === "blocked" ? a.approval === "BLOCKED"
+  // Devices block FILTERED apps too: they belong with the blocked ones, not the installed ones
+  const blocked = (a: AppApproval) => a === "BLOCKED" || a === "FILTERED";
+  const matches = (a: { approval: AppApproval; name: string }) => filter === "blocked" ? blocked(a.approval)
     : filter === "pending" ? a.approval === "PENDING" || requested.has(a.name)
-    : filter === "installed" ? a.approval !== "BLOCKED" : true;
+    : filter === "installed" ? !blocked(a.approval) : true;
   const [every, usage, counts, pending, plan] = await Promise.all([
     db.childApp.findMany({ where: { childId: child.id }, orderBy: [{ approval: "asc" }, { name: "asc" }] }),
     appMinutesOn([child.id], dateFromKey(dayKey(new Date(), family.timezone))),
@@ -40,7 +42,7 @@ export const GET = authed<{ id: string }>(async ({ req, user, params }) => {
   const apps = visible.filter(matches), hidden = every.filter(matches).length - apps.length;
   const count = (a: AppApproval) => counts.find((c) => c.approval === a)?._count ?? 0;
   return NextResponse.json({
-    counts: { all: counts.reduce((s, c) => s + c._count, 0), blocked: count("BLOCKED"), pending, installed: counts.reduce((s, c) => s + c._count, 0) - count("BLOCKED") },
+    counts: { all: counts.reduce((s, c) => s + c._count, 0), blocked: count("BLOCKED") + count("FILTERED"), pending, installed: counts.reduce((s, c) => s + c._count, 0) - count("BLOCKED") - count("FILTERED") },
     apps: apps.map((a) => ({
       id: a.id, name: a.name, approval: a.approval, approvalLabel: APPROVAL_LABEL[a.approval],
       /** true while the child's request waits for the parent (approve with ALLOWED, decline with BLOCKED) */

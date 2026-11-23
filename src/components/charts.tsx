@@ -122,6 +122,8 @@ function Multiple({ s, days, wide }: { s: Series; days: DayLabel[]; wide?: boole
 export type ActivityChild = {
   id: string; name: string; hue: number; photo: string | null; deviceName: string; used: number; limit: number;
   apps: [string, number][];
+  /** When extra time a parent gave runs out, formatted ("8:45 PM"), or null when none is running */
+  extraUntil: string | null;
   /** available: has a fix; waiting: sharing on, no fix yet; off: sharing off; nodevice; plan: not on the family's plan */
   location: { state: "available" | "waiting" | "off" | "nodevice" | "plan"; place: string | null; updated: string | null };
   devices: { id: string; name: string; state: "healthy" | "issues" | "offline"; issues: number; firstCheck: boolean }[];
@@ -185,10 +187,11 @@ export function ActivityPanel({ kids, dateLabel }: { kids: ActivityChild[]; date
                     <div className="usage-big num">{fmtMinutesPadded(c.used)} <small>/ {fmtMinutes(c.limit)}</small></div>
                     <div className={`bar ${over ? "over" : pct >= 85 ? "warn" : ""}`} role="progressbar" aria-label={`${c.name} screen time`} aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}
                       aria-valuetext={over ? `Over the limit by ${fmtMinutes(c.used - c.limit)}` : `${pct}% of the daily limit`}><span style={{ width: `${pct}%` }} /></div>
-                    {over ? <div className="limit-note crit"><Icon name="octagon-alert" size={14} />Over by {fmtMinutes(c.used - c.limit)}</div>
+                    {c.extraUntil ? <div className="limit-note"><Icon name="hourglass" size={14} />Extra time until {c.extraUntil}</div>
+                      : over ? <div className="limit-note crit"><Icon name="octagon-alert" size={14} />Over by {fmtMinutes(c.used - c.limit)}</div>
                       : reached ? <div className="limit-note warn"><Icon name="hourglass" size={14} />Limit reached</div> : null}
                   </div>
-                  <div className="app-rows">{c.apps.length ? c.apps.map(([a, m]) => <div key={a}><span>{a}</span><span>{fmtMinutes(m)}</span></div>) : <div><span>No usage reported yet today</span><span /></div>}</div>
+                  <div className="app-rows">{c.apps.length ? c.apps.map(([a, m]) => <div key={a}><span>{a}</span><span>{fmtMinutes(m)}</span></div>) : <div><span>{c.used > 0 ? "No app breakdown reported" : "No usage reported yet today"}</span><span /></div>}</div>
                 </div>
               </div>
             );

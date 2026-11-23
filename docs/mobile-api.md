@@ -435,7 +435,9 @@ and `appVersion?` may be null. `removalRequestedAt` is set while a computer's re
 [Removing a computer](#removing-a-computer-parent-apps)), null otherwise.
 
 `selfApproved` is `true` only for an iPhone whose last `/sync` reported `screenTimeAuthorization: "individual"`: the
-child approved eGuard's Screen Time access on the phone and can turn it off in Settings. Show "Self-approved: the
+child approved eGuard's Screen Time access on the phone and can turn it off in Settings. Its Uninstall Protection then
+reads `WARNING` rather than `PASS`, with a message saying so (turning that access off drops the setting, and eGuard can
+be deleted before it reports again); no alert is raised for it. Show "Self-approved: the
 child can turn this off in Settings" on the device (as the web does), with the fix: add the child to Family Sharing as
 a child and approve eGuard from the parent's iPhone. `false` everywhere else, including iPhones whose app doesn't
 report it yet. It doesn't change `state`, `issues` or Configuration Health: the protections still apply while the
@@ -1211,17 +1213,17 @@ Every response says which tabs are locked (`locked`), so the first Today load is
 | `hourly` | 24 values (index 0 = midnight, family time zone) for `today` only. `null` for 7d/30d, **or when the child's devices don't send hourly data**. Hide the hourly chart then |
 | `days` | One entry per day, oldest first (1, 7 or 30 entries). Use for the 7/30-day bar charts |
 | `averageMinutes` / `previousAverageMinutes` / `completeDays` | Averages over complete days only, as the web's reports: today is still in progress, so for 7d/30d `averageMinutes` covers the `completeDays` (6 or 29) before today, and `previousAverageMinutes` as many days just before those (for "↓ 12% vs the previous period"). For `today`, `averageMinutes` is today's total and `previousAverageMinutes` is `null` (nothing complete to compare): hide the comparison. The chart's `days` still include today |
-| `deviceCount` | Phones and tablets paired to the child (browsers don't send screen time). `0`: say "Pair a phone or tablet to see screen time" instead of an empty ring and chart |
+| `deviceCount` | Phones, tablets and computers paired to the child (browsers don't send screen time). `0`: say "Pair a phone or tablet to see screen time" instead of an empty ring and chart |
 | `locked` | `null`, or `{ periods, message }`: tabs the plan doesn't include (`["30d"]`). Show a lock on them and `message` when tapped, without requesting them |
 | `from` / `to` | The days covered, family time zone (`YYYY-MM-DD`). Show them ("Oct 7 – 13"); parse as calendar dates, not in the phone's zone |
-| `apps` | Most used first. `appId` / `approval` are `null` for apps without a rule (e.g. `Others`). With an `appMonitoringLimit`, only that many are named and the rest are summed into `Others`. For `today`, the named apps are also only ones the child's apps list (`GET /children/{id}/apps`) shows, which keeps apps waiting for approval first |
+| `apps` | Most used first. `appId` / `approval` are `null` for apps without a rule (e.g. `Others`). With an `appMonitoringLimit`, only that many are named and the rest are summed into `Others`. For every period, the named apps are also only ones the child's apps list (`GET /children/{id}/apps`) shows, which keeps apps waiting for approval first |
 | `hiddenApps` | How many apps were left unnamed because of the plan's `appMonitoringLimit` (0 otherwise). Show the upgrade note when above 0 |
 
 #### P4.9 Apps
 
 ##### `GET /children/{id}/apps?filter=all|installed|blocked|pending`
 
-- `installed` means everything that isn't blocked (the design's "Installed" tab).
+- `installed` means everything that isn't blocked (the design's "Installed" tab); `blocked` is `BLOCKED` and `FILTERED` (devices block both), in the list and in `counts`.
 - `pending` means requests waiting for the parent's approval: new apps (`PENDING`), and blocked apps the
   child asked for again. A request never unblocks an app; it stays `BLOCKED` with `requested: true`.
 
@@ -1257,12 +1259,15 @@ Every response says which tabs are locked (`locked`), so the first Today load is
 | Field | Type | Notes |
 |---|---|---|
 | `approval` | `ALLOWED` \| `ALWAYS_ALLOWED` \| `FILTERED` \| `BLOCKED`, optional | Switch on → `ALLOWED`, off → `BLOCKED`. Approving or declining a request also resolves its alert |
+| `baseApproval` | an approval (incl. `PENDING`), optional | The `approval` the app showed when the parent answered. Send it with Approve / Decline: if another parent changed the app since, `409 stale` instead of overwriting their decision |
 | `dailyLimitMinutes` | int 1–1440, or `null` to remove, optional | |
 | `category` | a category, or `null` to go back to eGuard's guess, optional | Any plan; it only matters once a category limit is set |
 
 Send at least one field. Response:
 `{ id, name, approval, approvalLabel, dailyLimitMinutes, category, categoryLabel, categoryAuto }`. The device picks up the change on its next sync (within
-about 5 minutes).
+about 5 minutes). `409` with `code: "stale"` when another parent changed the app's approval since `baseApproval` (or at the same
+moment): show the message and reload the list. iPhones apply none of these per-app rules: say so for an
+iPhone-only child (apps there are allowed or blocked on the phone in Parent settings).
 
 ##### `POST /children/{id}/apps` → `201`
 

@@ -83,7 +83,7 @@ app does:
 | App Restrictions | Available | Available |
 | App Approval | Available | Available |
 | Content | Available | Available |
-| Web Filtering | Guided (Private DNS) | Guided |
+| Web Filtering | Guided (Private DNS) | Available (Apple's adult-website filter) |
 | Downloads | Available | Verify only |
 | Location | Available | Guided |
 | Notification Controls | Available | Unsupported |
@@ -226,14 +226,14 @@ protection that was skipped. Treat a non-empty `ignored` as a bug and log it.
 |---|---|---|---|
 | `SCREEN_TIME` | `{ dailyMinutes, weekendMinutes }` | Stored in the app. Count with `UsageStatsManager`, including the app open right now; at the limit, show the block screen over non-allowed apps at once, even mid-game or mid-video (Android plans a check for the exact moment the open app's time, extra time or the wait for bedtime runs out, and checks again as soon as a sync changes the rules). Report the limits the app is enforcing | `DeviceActivityMonitor` schedule with a threshold event; at the threshold, apply a shield through `ManagedSettingsStore`. Report the thresholds actually registered |
 | `BEDTIME` | `{ enabled, start: "HH:MM", end: "HH:MM", days: "EVERY_DAY" \| "SCHOOL_NIGHTS" }` | App-enforced schedule; block screen during the window. Handle windows that cross midnight | `DeviceActivitySchedule` with `repeats: true`; shield on `intervalDidStart`, clear on `intervalDidEnd`. Report the registered schedule |
-| `APP_RESTRICTIONS` | `{ maxAgeRating }` (4, 9, 12, 13 or 17) | **Set by the parent (`PARENT_SET`), don't report.** Android can't read app ratings (D3), so the parent sets Google Play's parental controls from the guide and confirms; the server records it as set by them, not verified, and ignores anything a device reports for this key | `ManagedSettings` `appStore.maximumRating` (`ageRating` mapping). Read back from the store |
+| `APP_RESTRICTIONS` | `{ maxAgeRating }` (4–18; the web offers 4, 9, 12, 13, 16, 17 and 18) | **Set by the parent (`PARENT_SET`), don't report.** Android can't read app ratings (D3), so the parent sets Google Play's parental controls from the guide and confirms; the server records it as set by them, not verified, and ignores anything a device reports for this key | `ManagedSettings` `appStore.maximumRating`: the highest of Apple's tiers (4+, 9+, 12+, 17+, everything at 18) at or below the age, never a looser one (16 is 12+). Read back from the store: report the age asked for when the store holds that tier, otherwise the tier's own age (a looser cap reports higher, so it doesn't verify) |
 | `APP_APPROVAL` | `{ enabled }` | When on, a newly installed app is blocked until approved; send `APP_REQUESTED` | `application.denyAppInstallation` (shared with `DOWNLOADS`: denied when either is on). Report `enabled` = installs denied **and** approval wanted |
-| `CONTENT` | `{ maxAgeRating }` | **Set by the parent (`PARENT_SET`), don't report.** Google Play's parental controls for movies and TV, as for `APP_RESTRICTIONS` | `ManagedSettings` `media.maximumMovieRating` / `maximumTVShowRating`, explicit content. Report the higher of the movie and TV tiers (no cap counts as 21), so either one loosened shows as not matching |
-| `WEB` | `{ mode: "OFF" \| "FILTER" \| "ALLOWLIST", blockedSites }` | **Guided.** The parent sets Private DNS to a family filter (`family.cloudflare-dns.com`; `FamilyDns.HOSTS` also accepts AdGuard, CleanBrowsing and Mullvad family resolvers). Read back with `LinkProperties.privateDnsServerName`: `FILTER` when it's one of those, else `OFF` (always `OFF` below Android 9). `ALLOWLIST` isn't possible, so it shows as not matching. `blockedSites` is 0; the server compares `mode` only. Turning it off on the phone is noticed on the next cycle (it's in the capability set) | **Applied by eGuard.** `webContent.blockedByFilter = .auto()` unless the mode is `OFF` (`ALLOWLIST` is applied as a filter, so it shows as not matching). Report `mode` from the store and `blockedSites: 0` |
+| `CONTENT` | `{ maxAgeRating }` | **Set by the parent (`PARENT_SET`), don't report.** Google Play's parental controls for movies and TV, as for `APP_RESTRICTIONS` | `ManagedSettings` `media.maximumMovieRating` / `maximumTVShowRating` (US scales, rounded down as for apps: 13 is PG-13 and TV-PG), explicit content below 18. Report the higher of the movie and TV tiers (no cap counts as 21), so either one loosened shows as not matching |
+| `WEB` | `{ mode: "OFF" \| "FILTER" \| "ALLOWLIST", blockedSites }` | **Guided.** The parent sets Private DNS to a family filter (`family.cloudflare-dns.com`; `FamilyDns.HOSTS` also accepts AdGuard, CleanBrowsing and Mullvad family resolvers). Read back with `LinkProperties.privateDnsServerName`: `FILTER` when it's one of those, else `OFF` (always `OFF` below Android 9). `ALLOWLIST` isn't possible: the server holds a phone to `FILTER` for it (`onDevice`), so the family filter verifies. `blockedSites` is 0; the server compares `mode` only. Turning it off on the phone is noticed on the next cycle (it's in the capability set) | **Applied by eGuard.** `webContent.blockedByFilter = .auto()` unless the mode is `OFF` (`ALLOWLIST` is applied as a filter, which the server accepts for it, as on Android). Report `mode` from the store and `blockedSites: 0` |
 | `DOWNLOADS` | `{ requireApproval }` | A newly installed app stays locked until approved (same mechanism as App Approval; Android can't stop the Play Store download itself) | **Applied by eGuard.** `application.denyAppInstallation` (shared with `APP_APPROVAL`). Report `requireApproval` = installs denied **and** downloads approval wanted |
 | `LOCATION` | `{ sharing }` | `true` when location permission (background) is granted **and** the policy has sharing on | **Guided.** `true` when Always/While Using is granted and sharing is on |
-| `NOTIFICATIONS` | `{ quietDuringBedtime }` | Turn on Do Not Disturb during bedtime with `NotificationManager.setInterruptionFilter`. Report whether the app has policy access and the rule is registered | **Unsupported.** Don't report this key |
-| `UNINSTALL_PROTECTION` | `{ enabled }` | Device admin active (`DevicePolicyManager.isAdminActive`) | `ManagedSettings` `application.denyAppRemoval = true`. Read back |
+| `NOTIFICATIONS` | `{ quietDuringBedtime }` | Turn on Do Not Disturb during bedtime with `NotificationManager.setInterruptionFilter`, and on again if it's turned off before bedtime ends; lifted while the parent's extra time runs. On Android 15+ eGuard's own mode gets its own policy (alarms, calls from starred contacts and repeat callers); before that the phone's Do Not Disturb exceptions apply; at the end, turn off only what eGuard turned on (on Android 15+ that's eGuard's own mode, always ended; before, the phone's setting, left alone if the child chose another). Report whether the app has policy access and the rule is registered | **Unsupported.** Don't report this key |
+| `UNINSTALL_PROTECTION` | `{ enabled }` | Device admin active (`DevicePolicyManager.isAdminActive`). Turning it on needs the child to tap Activate: report `{ enabled: false }` with an `error` saying so, and the server keeps the change waiting (not failed) until it's on. Turning it off (`removeActiveAdmin`) reads as off at once, though Android removes the admin only after `onDisabled`; `onDisabled` sends its report before returning, since "Deactivate & uninstall" removes the app right after | `ManagedSettings` `application.denyAppRemoval = true`. Read back |
 
 Additional rules:
 
@@ -257,14 +257,19 @@ Additional rules:
   the device and the parent agree on "today" even when the device's own zone differs. Weekend means Saturday and
   Sunday, which is how the server counts it (`limitOn` in [src/lib/queries.ts](../src/lib/queries.ts)).
   `SCHOOL_NIGHTS` means the nights before a school day, Sunday to Thursday. A bedtime window belongs to the evening
-  it starts on (or the evening before, when it starts after midnight): 21:30–06:00 on school nights runs from
+  it starts on (or the evening before, when it starts before noon, as 00:30–07:00 does): 21:30–06:00 on school nights runs from
   Thursday 21:30 to Friday 06:00, and not on Friday or Saturday night. `bedtimeActive` in
-  [src/lib/protections.ts](../src/lib/protections.ts) is the reference, with tests.
+  [src/lib/protections.ts](../src/lib/protections.ts) is the reference, with tests. The iPhone app is the exception:
+  Screen Time schedules run in the phone's own time zone (DeviceActivity has no other), so a phone in another zone
+  starts its day, weekend and bedtime at its own local times.
+  Each device counts only its own use: a daily, app or category limit applies on each device separately, while the
+  parent's views add every device's use together.
 
 ## 7. Apps: approval, blocking and per-app limits
 
-`/sync` returns `apps: [{ name, approval, dailyLimitMinutes, category }]` for the child. `name` is the display name and is
-the only key: there's no package name or bundle ID (**Server gap G4**).
+`/sync` returns `apps: [{ name, approval, dailyLimitMinutes, category }]` for the child. `name` is the display name.
+Android also gets `packageName` (the package it reported for that app, or `null`) and computers get `ids`, to match
+rules by package or program rather than by name alone; iPhone has neither (Apple's app tokens are opaque).
 
 | `approval` | What the device does |
 |---|---|

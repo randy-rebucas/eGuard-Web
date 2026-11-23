@@ -7,6 +7,8 @@ import { authed, body, clientLabel } from "@/lib/mobile-api";
 
 const Body = z.object({
   approval: z.enum(["ALLOWED", "ALWAYS_ALLOWED", "FILTERED", "BLOCKED"]).optional(),
+  /** The approval the app showed when the parent answered: `409 stale` if another parent changed it since */
+  baseApproval: z.enum(["ALLOWED", "ALWAYS_ALLOWED", "FILTERED", "BLOCKED", "PENDING"]).optional(),
   /** null removes the limit */
   dailyLimitMinutes: z.number().int().min(1).max(1440).nullable().optional(),
   /** null goes back to eGuard's guess from the app's name */
@@ -17,7 +19,7 @@ const Body = z.object({
 export const PATCH = authed<{ id: string }>(async ({ req, user, params }) => {
   const b = await body(req, Body);
   if (b.approval === undefined && b.dailyLimitMinutes === undefined && b.category === undefined) throw invalid("Send approval, dailyLimitMinutes or category.");
-  let app = b.approval ? await setAppApproval(user, params.id, b.approval, clientLabel(req)) : null;
+  let app = b.approval ? await setAppApproval(user, params.id, b.approval, clientLabel(req), b.baseApproval) : null;
   if (b.dailyLimitMinutes !== undefined) app = await setAppLimit(user, params.id, b.dailyLimitMinutes, clientLabel(req));
   if (b.category !== undefined) app = await setAppCategory(user, params.id, b.category, clientLabel(req));
   const c = categoryOf(app!);

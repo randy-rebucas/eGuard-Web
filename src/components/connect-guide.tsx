@@ -73,7 +73,7 @@ function GuideBody({ hasChildren, onNavigate, idp }: { hasChildren: boolean; onN
               <li><span><b>Install eGuard on your child&apos;s phone or tablet</b> from Google Play.</span></li>
               <li><span><b>Open eGuard</b>, tap <b>Get Started</b>, then <b>This is my child&apos;s device</b>.</span></li>
               <li><span><b>Enter the code</b> and a device name you&apos;ll recognise, like &ldquo;Mia&apos;s Galaxy A15&rdquo;, then tap <b>Connect</b>.</span></li>
-              <li><span><b>Allow what eGuard asks for.</b> It explains each permission before Android asks: usage access for screen time and app limits, location if you turn it on, and device admin so it can&apos;t be uninstalled. Web filtering is one guided step on the phone.</span></li>
+              <li><span><b>Allow what eGuard asks for.</b> It explains each permission before Android asks: accessibility to pause apps at their limits and at bedtime and hold new apps for approval, usage access to count screen time, location if you turn it on, Do Not Disturb access for quiet bedtimes, and device admin so it can&apos;t be uninstalled. Web filtering is one guided step on the phone.</span></li>
             </ol>
             <div className="row" style={{ flexWrap: "wrap", gap: 8 }}>
               <Store href={STORE_LINKS.googlePlay} Mark={AndroidMark} label="Get it on Google Play" />

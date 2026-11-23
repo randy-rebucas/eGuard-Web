@@ -9,6 +9,7 @@ import { ServiceError, notFound } from "./errors";
 import { OFFLINE_AFTER_MS } from "./health";
 import { signRevocation } from "./browser-policy";
 import { MAX_BROWSERS_PER_COMPUTER, computerFromLink } from "./browser-link";
+import { wakeDevices } from "./push";
 import type { Actor } from "./config-service";
 
 /**
@@ -94,6 +95,11 @@ export async function pairBrowser(input: PairInput) {
       body: `${browserLabel(inst)} is now connected to eGuard for ${inst.child.name}.`,
     },
   });
+  // The computer's web filtering waits for a connected browser (engine): it reports again now, so that shows
+  if (inst.deviceId) {
+    await db.device.updateMany({ where: { id: inst.deviceId }, data: { checkRequestedAt: new Date() } });
+    await wakeDevices([inst.deviceId], "check").catch(() => {});
+  }
   return { installationId: inst.id, familyName: family.name, childName: inst.child.name, deviceName: inst.deviceLabel, ...grant };
 }
 

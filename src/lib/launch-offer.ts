@@ -50,7 +50,7 @@ export async function grantComputerLaunchOffer(familyId: string, now = new Date(
       data: {
         familyId, severity: "INFO", category: "SYSTEM", icon: "crown", subject: "Subscription",
         title: `A month of ${plan.name}, on us`,
-        body: `Thanks for adding your first computer. Until ${shortDate(expiresAt, family.timezone)} you have ${plan.name}: one gaming limit across phones and the computer, push alerts and location. After that your family goes back to Free unless you choose a plan.`,
+        body: `Thanks for adding your first computer. Until ${shortDate(expiresAt, family.timezone)} you have ${plan.name}: gaming and other category time limits on phones and the computer, push alerts and location. After that your family goes back to Free unless you choose a plan.`,
       },
     });
     return expiresAt;

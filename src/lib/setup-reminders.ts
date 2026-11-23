@@ -245,9 +245,11 @@ export function browserNudgeEmail(o: { parent: string; child: string }) {
 }
 
 /** What an Android phone needs allowed for a protection to work, in the in-app guide's words (components/connect-guide) */
-const ANDROID_HINT: Partial<Record<ProtectionKey, string>> = {
-  SCREEN_TIME: "usage access", BEDTIME: "usage access", APP_RESTRICTIONS: "usage access",
-  UNINSTALL_PROTECTION: "device admin", WEB: "the web filtering step", LOCATION: "location",
+const ANDROID_HINT: Partial<Record<ProtectionKey, string[]>> = {
+  // The app's own needs (Android AndroidDeviceSources.canEnforce); App Restrictions and Content are set in Google Play
+  SCREEN_TIME: ["accessibility", "usage access"], BEDTIME: ["accessibility"], APP_APPROVAL: ["accessibility"],
+  DOWNLOADS: ["accessibility"], NOTIFICATIONS: ["Do Not Disturb access"],
+  UNINSTALL_PROTECTION: ["device admin"], WEB: ["the web filtering step"], LOCATION: ["location"],
 };
 
 /**
@@ -261,7 +263,7 @@ export function unfinishedSetupEmail(o: { parent: string; child: string; deviceN
   const phone = `${o.child}'s ${o.deviceName}`;
   const page = `${base}/devices/${encodeURIComponent(o.deviceId)}`;
   const names = nameList(o.keys.map((k) => PROTECTION_BY_KEY[k]?.checkName ?? k));
-  const hints = o.platform === "ANDROID" ? [...new Set(o.keys.map((k) => ANDROID_HINT[k]).filter((h): h is string => !!h))] : [];
+  const hints = o.platform === "ANDROID" ? [...new Set(o.keys.flatMap((k) => ANDROID_HINT[k] ?? []))] : [];
   const subject = `Finish setting up ${phone}: ${o.keys.length === 1 ? "a protection isn't" : "some protections aren't"} working yet`;
   const intro = `${phone} is connected to eGuard, but ${o.keys.length === 1 ? "this protection isn't" : "these protections aren't"} working on it yet: ${names}. Usually a permission wasn't allowed during setup.`;
   const steps = [

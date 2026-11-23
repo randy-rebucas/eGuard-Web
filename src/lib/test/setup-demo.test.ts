@@ -53,9 +53,13 @@ describe("what each device reports", () => {
   });
 
   it("a skipped permission leaves its protections off", () => {
+    // Usage access only counts time: App Approval still works without it, as on a real phone
     const checks = phoneChecks(TABLE, { skipped: ["usage", "admin"], locationOnPlan: true });
     expect(state(checks, "SCREEN_TIME")).toBe("off");
-    expect(state(checks, "APP_APPROVAL")).toBe("off");
+    expect(state(checks, "APP_APPROVAL")).toBe("verified");
+    // Accessibility is what pauses apps: without it, bedtime, limits and approvals are all off
+    const noAccessibility = phoneChecks(TABLE, { skipped: ["accessibility"], locationOnPlan: true });
+    for (const key of ["SCREEN_TIME", "BEDTIME", "APP_APPROVAL", "DOWNLOADS"]) expect(state(noAccessibility, key)).toBe("off");
     expect(state(checks, "UNINSTALL_PROTECTION")).toBe("off");
     expect(state(checks, "LOCATION")).toBe("verified");
   });

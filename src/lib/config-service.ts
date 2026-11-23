@@ -3,12 +3,13 @@ import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { Prisma, ProtectionKey, RequestStatus, Role } from "@prisma/client";
 import { db } from "./db";
-import { PROTECTIONS, PROTECTION_BY_KEY, describeConfig, defaultConfig, isGuided, type ProtectionConfig } from "./protections";
+import { PROTECTIONS, PROTECTION_BY_KEY, describeConfig, defaultConfig, guideFor, isGuided, type ProtectionConfig } from "./protections";
 import { computeHealth, isOffline, reportedLabel, statusOn, worst } from "./health";
 import { syncChildLimits } from "./engine";
 import { wakeDevices } from "./push";
 import { ServiceError, notFound } from "./errors";
 import { noteActivitySafely } from "./parent-care/hooks";
+import { followWebMode } from "./browser-policy";
 
 /**
  * The configuration workflow, shared by the web server actions and the mobile API.
@@ -147,6 +148,9 @@ export async function requestConfigs(actor: Actor, childId: string, configs: Pro
     if (rows.length) await tx.configRequest.createMany({ data: rows });
     if (direct.length) await writePolicies(child.id, direct, tx);
   });
+  // Saved with no device to verify it (a browser-only child): the browser extension enforces it, so it gets a new
+  // policy version (browser-policy withWebMode)
+  if (direct.some((c) => c.key === "WEB")) await followWebMode(child.id);
   const detail = configs.length === 1
     ? `${PROTECTION_BY_KEY[configs[0].key].name} for ${child.name}: ${describeConfig(configs[0])}`
     : `${configs.length} protections for ${child.name}`;
@@ -255,7 +259,7 @@ export async function batchStatus(familyId: string, batchId: string) {
         /** VERIFIED here means the parent said they set it (PARENT_SET): say "Set by you", not "Verified" */
         parentSet: PROTECTION_BY_KEY[r.key].caps[r.device.platform] === "PARENT_SET",
         from: describeConfig(r.previous),
-        guide: r.mode === "GUIDED" ? PROTECTION_BY_KEY[r.key].guide?.[r.device.platform] ?? null : null,
+        guide: r.mode === "GUIDED" ? guideFor(r.key, r.device.platform, r.desired) : null,
       })),
     };
   });

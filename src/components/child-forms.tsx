@@ -149,7 +149,8 @@ const APPROVALS: [AppApproval, string][] = [["ALLOWED", "Allowed"], ["ALWAYS_ALL
 /**
  * `category`: the parent's choice, or null while it's eGuard's guess (`guess`).
  */
-export function AppControls({ app }: { app: { id: string; name: string; approval: AppApproval; dailyLimitMinutes: number | null; requested?: boolean; category: AppCategory | null; guess: AppCategory } }) {
+/** `appliesNote`: where an approval takes effect for this child's devices (iPhones don't apply per-app rules). */
+export function AppControls({ app, appliesNote = "It applies on the device's next sync." }: { app: { id: string; name: string; approval: AppApproval; dailyLimitMinutes: number | null; requested?: boolean; category: AppCategory | null; guess: AppCategory }; appliesNote?: string }) {
   const [pending, run] = useAction();
   const { toast } = useFlow();
   const saved = app.dailyLimitMinutes ? String(app.dailyLimitMinutes) : "";
@@ -162,7 +163,7 @@ export function AppControls({ app }: { app: { id: string; name: string; approval
   const [approval, setApproval] = useState<AppApproval | null>(null);
   const approve = (to: AppApproval, ok: string) => {
     setApproval(to);
-    run(() => setAppApproval(app.id, to), { ok, onError: () => setApproval(null), onOk: () => setApproval(null) });
+    run(() => setAppApproval(app.id, to, app.approval), { ok, onError: () => setApproval(null), onOk: () => setApproval(null) });
   };
   const [category, setCategory] = useState<string | null>(null);
   const categorize = (to: string) => {
@@ -189,7 +190,7 @@ export function AppControls({ app }: { app: { id: string; name: string; approval
     <div className="row app-controls" style={{ gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }} aria-busy={pending}>
       {app.approval === "PENDING" || app.requested ? (
         <>
-          <button className="btn btn-primary btn-sm" disabled={pending} onClick={() => approve("ALLOWED", `${app.name} approved. It applies on the device's next sync.`)}>
+          <button className="btn btn-primary btn-sm" disabled={pending} onClick={() => approve("ALLOWED", `${app.name} approved. ${appliesNote}`)}>
             {pending && approval === "ALLOWED" ? <><Icon name="loader-circle" className="spin" />Approving…</> : "Approve"}
           </button>
           <button className="btn btn-secondary btn-sm" disabled={pending} onClick={() => approve("BLOCKED", `${app.name} declined.`)}>

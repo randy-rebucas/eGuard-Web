@@ -127,7 +127,7 @@ Protection terms name the 10 settings areas eGuard applies and checks. The tools
 | Bedtime | Pauses the device overnight, every day or on school nights | Notification Controls |
 | App Restrictions | Limits apps by age rating; per-app daily limits and blocking | App Approval |
 | App Approval | The child asks for an app; the parent approves or declines | Downloads |
-| Content Restrictions | Age ratings for movies, TV and books | Web Filtering |
+| Content Restrictions | Age ratings for movies and TV | Web Filtering |
 | Web Filtering | Blocks adult sites, or allows only sites the parent chooses | |
 | Downloads | Requires the parent's approval to install apps | App Approval |
 | Location | Shows where the child's device is now | Location history |

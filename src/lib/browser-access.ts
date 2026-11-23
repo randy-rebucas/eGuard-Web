@@ -51,8 +51,12 @@ function untilFor(duration: Duration, timeZone: string, now = new Date()): Date 
 
 /** From the browser. Asking again for the same site while a request is open returns the open one. */
 export async function createAccessRequest(inst: BrowserInstallation & { child: Child }, input: { domain: string; reason?: string | null }) {
-  const domain = normalizeDomain(input.domain);
-  if (!domain) throw new ServiceError(400, "That isn't a website address.", "invalid_domain");
+  const host = normalizeDomain(input.domain);
+  if (!host) throw new ServiceError(400, "That isn't a website address.", "invalid_domain");
+  // Asked for www.example.com: the parent approves example.com, which covers it and the site's other addresses
+  // (its sign-in or video host); approving only "www." sent the child straight to another block page
+  const bare = host.replace(/^www\d*\./, "");
+  const domain = bare.includes(".") ? bare : host;
   const reason = input.reason?.trim().slice(0, 280) || null;
 
   const found = await db.browserAccessRequest.findFirst({ where: { childId: inst.childId, domain, status: "PENDING" } });

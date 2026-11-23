@@ -53,7 +53,7 @@ function Dialog({ labelledBy, onClose, children, small, role = "dialog" }: { lab
 const STEPS = ["Select protection", "Review current configuration", "Choose new configuration", "Apply to device", "Verify", "Configuration Health updated"];
 
 type BatchState = {
-  requests: { id: string; deviceId: string; deviceName: string; mode: "APPLY" | "GUIDED"; status: string; failureReason: string | null; offline: boolean; from: string; to: string; parentSet?: boolean }[];
+  requests: { id: string; deviceId: string; deviceName: string; mode: "APPLY" | "GUIDED"; status: string; failureReason: string | null; offline: boolean; from: string; to: string; parentSet?: boolean; guide?: string[] | null }[];
   score: number;
 };
 const OPEN = ["PENDING", "DELIVERED", "AWAITING_PARENT"];
@@ -276,7 +276,7 @@ export function ConfigFlow({ initialKey, initialChild, onClose }: { initialKey?:
     const problem = draftProblem(draft);
     body = (
       <>
-        <ConfigForm value={draft} onChange={setDraft} childName={ctx.child.name} />
+        <ConfigForm value={draft} onChange={setDraft} childName={ctx.child.name} bedtimeOff={ctx.bedtimeOff} />
         {problem ? <p className="form-error" id="draft-problem" role="status" style={{ marginTop: 12 }}><Icon name="triangle-alert" />{problem}</p> : null}
       </>
     );
@@ -297,7 +297,7 @@ export function ConfigFlow({ initialKey, initialChild, onClose }: { initialKey?:
                   <p className="muted" style={{ marginBottom: 10 }}>{r.parentSet
                     ? <>{dev?.platformLabel} doesn&apos;t let eGuard set or read age ratings, so you set them in Google Play. On {ctx.child.name}&apos;s {r.deviceName}:</>
                     : <>{dev?.platformLabel} doesn&apos;t let eGuard change this remotely. On {ctx.child.name}&apos;s {r.deviceName}:</>}</p>
-                  <ol className="guide-steps">{(dev?.guide ?? ["Open Settings on the device and turn this protection on."]).map((s) => <li key={s}>{s}</li>)}</ol>
+                  <ol className="guide-steps">{(r.guide ?? dev?.guide ?? ["Open Settings on the device and turn this protection on."]).map((s) => <li key={s}>{s}</li>)}</ol>
                 </div>
               );
             })}
@@ -446,13 +446,13 @@ function draftProblem(v: ProtectionConfig): string | null {
   return null;
 }
 
-function ConfigForm({ value, onChange, childName }: { value: ProtectionConfig; onChange: (v: ProtectionConfig) => void; childName: string }) {
+function ConfigForm({ value, onChange, childName, bedtimeOff }: { value: ProtectionConfig; onChange: (v: ProtectionConfig) => void; childName: string; bedtimeOff?: boolean }) {
   const set = (patch: Partial<ProtectionConfig>) => onChange({ ...value, ...patch } as ProtectionConfig);
   switch (value.key) {
     case "SCREEN_TIME":
       return (
         <div className="form-grid">
-          <DurationField id="st-d" label="School days" value={value.dailyMinutes} onChange={(m) => set({ dailyMinutes: m })} />
+          <DurationField id="st-d" label="Weekdays" value={value.dailyMinutes} onChange={(m) => set({ dailyMinutes: m })} />
           <DurationField id="st-w" label="Weekends" value={value.weekendMinutes} onChange={(m) => set({ weekendMinutes: m })} />
         </div>
       );
@@ -484,11 +484,16 @@ function ConfigForm({ value, onChange, childName }: { value: ProtectionConfig; o
       return (
         <div className="field">
           <label htmlFor="web">Web filtering</label>
-          <select className="input" id="web" value={value.mode} onChange={(e) => set({ mode: e.target.value as "OFF" | "FILTER" | "ALLOWLIST" })}>
+          <select className="input" id="web" aria-describedby="web-hint" value={value.mode} onChange={(e) => set({ mode: e.target.value as "OFF" | "FILTER" | "ALLOWLIST" })}>
             <option value="FILTER">Filter adult and unsafe sites</option>
             <option value="ALLOWLIST">Allowed sites only</option>
             <option value="OFF">Off</option>
           </select>
+          <p className="t-meta" id="web-hint" style={{ marginTop: 6 }}>{value.mode === "ALLOWLIST"
+            ? "Allowed sites only works in the eGuard browser extension on computers. Phones filter adult and unsafe sites instead, which is the most they can do."
+            : value.mode === "FILTER"
+              ? "Blocks adult and unsafe sites. On computers, the browser extension also applies the sites and categories you choose in Browser protection."
+              : `Websites aren't filtered on ${childName}'s devices. In the browser extension, warnings about harmful sites and focus hours stay on.`}</p>
         </div>
       );
     case "APP_APPROVAL":
@@ -498,9 +503,13 @@ function ConfigForm({ value, onChange, childName }: { value: ProtectionConfig; o
     case "LOCATION":
       return <Toggle id="loc" label="Share current location" hint="Updated when the device moves. Places are kept only if location history is on in Privacy settings." checked={value.sharing} onChange={(v) => set({ sharing: v })} />;
     case "NOTIFICATIONS":
-      return <Toggle id="nt" label="Silence app notifications during bedtime" checked={value.quietDuringBedtime} onChange={(v) => set({ quietDuringBedtime: v })} />;
+      return <Toggle id="nt" label="Silence app notifications during bedtime"
+        hint={bedtimeOff
+          ? `${childName}'s Bedtime is off, so this does nothing until you turn Bedtime on. Android phones only.`
+          : "Turns on Do Not Disturb for Bedtime's hours. Android phones only."}
+        checked={value.quietDuringBedtime} onChange={(v) => set({ quietDuringBedtime: v })} />;
     case "UNINSTALL_PROTECTION":
-      return <Toggle id="up" label="Prevent eGuard from being removed" hint="Removing eGuard will need a parent's approval." checked={value.enabled} onChange={(v) => set({ enabled: v })} />;
+      return <Toggle id="up" label="Prevent eGuard from being removed" hint={`You're alerted if it's turned off. Android: ${childName} taps Activate on the phone, and a parent PIN (Settings › Family) stops them turning it off. iPhone: no app can be deleted while it's on. Computers: ${childName}'s account must be a standard one.`} checked={value.enabled} onChange={(v) => set({ enabled: v })} />;
   }
 }
 

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { AppApproval } from "@prisma/client";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { fmtMinutes } from "@/lib/protections";
@@ -174,7 +175,9 @@ async function handle(device: Device, e: z.infer<typeof Body>, legacyRequest: bo
     // With approval on, a new app waits for the parent: created PENDING with a request, never ALLOWED (Android
     // 1.0.9 and earlier send APP_INSTALLED before APP_REQUESTED, and an allowed app has nothing to ask for).
     const pending = await approvalRequired(device.childId) || (e.category === "BROWSERS" && await webFilterOn(device.childId));
-    const created = await db.childApp.create({ data: { childId: device.childId, name: e.app, source: e.source, category: e.category, ...(pending ? { approval: "PENDING" as const } : {}) } })
+    // A full list takes no new names, as APPS_FOUND and /usage: a tampered device can't grow it (and the alerts) without end
+    const full = await db.childApp.count({ where: { childId: device.childId } }) >= MAX_CHILD_APPS;
+    const created = !full && await db.childApp.create({ data: { childId: device.childId, name: e.app, source: e.source, category: e.category, ...(pending ? { approval: "PENDING" as const } : {}) } })
       .then(() => true, (err) => {
         if (isUniqueViolation(err)) return false;
         throw err;
@@ -205,31 +208,46 @@ async function handle(device: Device, e: z.infer<typeof Body>, legacyRequest: bo
   } else if (e.type === "UNINSTALL_ACK") {
     return uninstalled(device, e.code);
   } else if (e.type === "APP_REQUESTED") {
-    const app = await db.childApp.findUnique({ where: { childId_name: { childId: device.childId, name: e.app } } });
+    // Known by one of its ids under another name: the request is for that app (a computer's "Ask a parent" names the
+    // process; the parent's rule is on the game). Otherwise a blocked app came back as a new request to approve.
+    const name = (await canonicalNames(device.childId, device.platform, [{ name: e.app, ids: e.ids }])).get(e.app) ?? e.app;
+    const app = await db.childApp.findUnique({ where: { childId_name: { childId: device.childId, name } } });
     // A request never overrides the parent's decision. An allowed app has nothing to ask for.
     if (app && ALLOWED.includes(app.approval)) {
-      if (legacyRequest) await requestTime(device, { app: e.app });
+      if (legacyRequest) await requestTime(device, { app: name });
       await db.device.update({ where: { id: device.id }, data: { lastSeenAt: new Date() } });
       return NextResponse.json({ ok: true, approval: app.approval });
     }
-    const resolveKey = `APPREQ:${device.childId}:${e.app}`;
+    const resolveKey = `APPREQ:${device.childId}:${name}`;
     if (app?.approval === "BLOCKED" || app?.approval === "FILTERED") {
       // A blocked app stays blocked. Asking again is passed on, but at most once per window, so a
       // declined request can't be turned into a stream of alerts.
       await createAlertUnless(resolveKey,
         { familyId: device.familyId, resolveKey, OR: [{ resolvedAt: null }, { createdAt: { gt: new Date(Date.now() - DECLINED_REQUEST_WINDOW_MS) } }] },
         { ...base, severity: "ATTENTION", category: "APPS", icon: "app-window", title: "App approval requested",
-          body: `${device.child.name} asked again for ${e.app}, which you blocked.`, subject: `${e.app} · ${who}`, resolveKey });
+          body: `${device.child.name} asked again for ${name}, which you blocked.`, subject: `${name} · ${who}`, resolveKey });
+      await closeIfAnswered(device, name, (a) => a === "BLOCKED" || a === "FILTERED");
       await db.device.update({ where: { id: device.id }, data: { lastSeenAt: new Date() } });
       return NextResponse.json({ ok: true, approval: app.approval });
     }
-    await db.childApp.upsert({
-      where: { childId_name: { childId: device.childId, name: e.app } },
-      create: { childId: device.childId, name: e.app, approval: "PENDING", source: e.source, category: e.category },
-      update: { approval: "PENDING" },
+    if (!app && await db.childApp.count({ where: { childId: device.childId } }) >= MAX_CHILD_APPS) {
+      await db.device.update({ where: { id: device.id }, data: { lastSeenAt: new Date() } });
+      return NextResponse.json({ ok: true, approval: "PENDING" });
+    }
+    // Created PENDING, or left as it is: a parent's answer landing since the read above must not be turned back into
+    // a request (the update branch only ever meets a PENDING row, or one the parent just decided)
+    const row = await db.childApp.upsert({
+      where: { childId_name: { childId: device.childId, name } },
+      create: { childId: device.childId, name, approval: "PENDING", source: e.source, category: e.category },
+      update: {},
     });
-    if (e.ids) await rememberIds(device.childId, device.platform, [{ name: e.app, ids: e.ids }]);
-    await raiseAppRequest(device, e.app, `${device.child.name} asked to install ${e.app}.`);
+    if (e.ids) await rememberIds(device.childId, device.platform, [{ name, ids: e.ids }]);
+    if (row.approval !== "PENDING") {
+      await db.device.update({ where: { id: device.id }, data: { lastSeenAt: new Date() } });
+      return NextResponse.json({ ok: true, approval: row.approval });
+    }
+    await raiseAppRequest(device, name, `${device.child.name} asked to install ${name}.`);
+    await closeIfAnswered(device, name, (a) => a === "PENDING");
   } else if (e.type === "APP_BLOCKED") {
     // An app the plan's Apps tab hides isn't named; those share one alert per window
     const named = await mayNameApp(device.familyId, device.childId, e.app);
@@ -359,6 +377,15 @@ async function webFilterOn(childId: string) {
   const row = await db.childPolicy.findFirst({ where: { childId, key: "WEB" } });
   const mode = ((row?.config ?? {}) as Record<string, unknown>).mode;
   return typeof mode === "string" && mode !== "OFF";
+}
+
+/**
+ * The parent answered while a request alert was being raised (it resolves the alert, then ours lands): close ours too,
+ * or it asks about an app that's already decided. `stillOpen`: the approvals the alert is still right for.
+ */
+async function closeIfAnswered(device: Device, app: string, stillOpen: (a: AppApproval) => boolean) {
+  const now = await db.childApp.findUnique({ where: { childId_name: { childId: device.childId, name: app } }, select: { approval: true } });
+  if (now && !stillOpen(now.approval)) await resolveAlerts(device.familyId, `APPREQ:${device.childId}:${app}`);
 }
 
 /** The parent's "App approval requested" alert. Asking several times in a row (or from two devices) raises one. */

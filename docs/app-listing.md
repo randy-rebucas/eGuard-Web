@@ -91,7 +91,7 @@ PROTECTIONS YOU CAN MANAGE
 • Bedtime: pause the device overnight, every day or on school nights
 • Apps: age-rating limits, per-app daily limits and blocking
 • App approval: your child asks, you approve or decline
-• Content: age ratings for movies, TV and books
+• Content: age ratings for movies and TV
 • Web filtering: block adult sites or allow only the sites you choose
 • Downloads: require your approval to install apps
 • Location: see where your child's device is now

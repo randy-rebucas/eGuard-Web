@@ -80,7 +80,7 @@ export async function recordHealth(inst: Inst, report: HealthReport, now = new D
   ]);
 
   // Drift: not enforcing the current policy, or its rules aren't in place
-  const current = await db.browserPolicy.findUnique({ where: { childId: inst.childId }, select: { version: true, updatedAt: true } });
+  const current = await db.browserPolicy.findUnique({ where: { childId: inst.childId }, select: { version: true, updatedAt: true, safeSearch: true, youtubeRestrict: true } });
   const behind = !!current && (report.policyVersion ?? 0) < current.version;
   const inFlight = behind && now.getTime() - current.updatedAt.getTime() < DRIFT_GRACE_MS;
   const rules = status("rules_installed");
@@ -114,11 +114,14 @@ export async function recordHealth(inst: Inst, report: HealthReport, now = new D
   // Site access withdrawn in the browser's settings: blocking goes on, SafeSearch doesn't. If eGuard's own address
   // went with it, this report never arrives and the offline alert says so a day later.
   const access = status("site_access");
+  // Both need the extension's access to sites (SafeSearch redirects, the YouTube header): named as the family has them
+  const lost = [current?.safeSearch !== false && "SafeSearch", current?.youtubeRestrict && current.youtubeRestrict !== "OFF" && "YouTube Restricted Mode"]
+    .filter((x): x is string => !!x);
   if (access === "ACTION_REQUIRED") {
     await raiseOnce(inst, siteAccessKey(inst.id), {
       icon: "shield-off",
-      title: "SafeSearch is off in this browser",
-      body: `eGuard's site access was turned off in ${inst.browser}'s extension settings on ${inst.deviceLabel}. Sites are still blocked, but SafeSearch is off and eGuard may stop getting your changes. Turn site access back on for eGuard in ${inst.browser}'s extension settings.`,
+      title: lost.length ? `${lost.join(" and ")} ${lost.length > 1 ? "are" : "is"} off in this browser` : "eGuard's site access is off in this browser",
+      body: `eGuard's site access was turned off in ${inst.browser}'s extension settings on ${inst.deviceLabel}. Sites are still blocked, but ${lost.length ? `${lost.join(" and ")} can't be applied, and ` : ""}eGuard may stop getting your changes. Turn site access back on for eGuard in ${inst.browser}'s extension settings.`,
     });
   } else if (access !== null) {
     await resolveAlerts(inst.familyId, siteAccessKey(inst.id));

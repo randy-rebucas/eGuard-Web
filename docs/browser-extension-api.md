@@ -262,6 +262,11 @@ ones you show from here. They're outside the signed `policy`, so use them only a
 | `blockedCategories` | Category keys (see below), sorted |
 | `blockedDomains` / `allowedDomains` | Up to 500 each, sorted, never overlapping |
 | `unknownSitesPolicy` | Sites on neither list: `ALLOW`, `WARN` (show a notice first) or `BLOCK` (only the allowed list opens) |
+
+The child's Web Filtering setting (the `WEB` protection) is applied to these fields before signing, so the extension
+needs nothing new: "Allowed sites only" sends `unknownSitesPolicy: "BLOCK"`; "Off" sends no blocked categories or
+sites, `unknownSitesPolicy: "ALLOW"`, `safeSearch: false` and `youtubeRestrict: "OFF"` (Safe Browsing, focus hours and
+approvals stay); "Filter" sends the browser protection settings as they are. Changing the mode makes a new `version`.
 | `schedule?` | Focus hours: while `enabled` and the local time in `timezone` is between `startTime` and `endTime` (`HH:MM`, 24 h; may cross midnight), block everything not on the allowed list. `null` when the parent never set them |
 | `temporaryAllows` | Sites a parent approved for a while (from an access request). The server lists only those still in force when it signs, so **the extension must also drop each one at `until`** |
 | `categoryDomains` | Domain lists for the blocked categories only. Categories without a list are left out |
@@ -379,7 +384,7 @@ Check statuses: `PASS`, `WARNING`, `ACTION_REQUIRED`, `UNSUPPORTED`, `NOT_CONFIG
 | `policy_signature` | A stored policy verifies | `ACTION_REQUIRED`: none yet, or the stored one was discarded | none |
 | `rules_installed` | The browser's rules read back exactly | `ACTION_REQUIRED`; `NOT_CONFIGURED` before the first policy | `WARNING` / `ACTION_REQUIRED` → "Browser protection changed" |
 | `private_windows` | Allowed in private windows | `WARNING` (not allowed); `UNSUPPORTED` if the browser can't say | `WARNING` / `ACTION_REQUIRED` → "Private windows aren't protected". `PASS` resolves it |
-| `site_access` | Every host permission is still granted | `ACTION_REQUIRED` (withdrawn in the browser's settings: SafeSearch and sync stop); `UNSUPPORTED` if unknown | `ACTION_REQUIRED` → "SafeSearch is off in this browser". Any other status resolves it. (If eGuard's own address was withdrawn too, the report can't arrive; the offline alert covers that after a day) |
+| `site_access` | Every host permission is still granted | `ACTION_REQUIRED` (withdrawn in the browser's settings: SafeSearch, YouTube Restricted Mode and sync stop); `UNSUPPORTED` if unknown | `ACTION_REQUIRED` → "SafeSearch and YouTube Restricted Mode are off in this browser" (naming the ones the family has on). Any other status resolves it. (If eGuard's own address was withdrawn too, the report can't arrive; the offline alert covers that after a day) |
 | `sync_fresh` | Synced in the last day and eGuard reachable | `WARNING` | none |
 | `safe_browsing` | Chrome's Safe Browsing is on | `ACTION_REQUIRED` (off, and held by something else); `NOT_CONFIGURED` (the family turned it off); `UNSUPPORTED` in Edge and Firefox | `ACTION_REQUIRED` → "Malware and phishing protection is off". Any other status resolves it |
 | `force_installed` | `management.getSelf().installType` is `admin` | `NOT_CONFIGURED` (the child can remove it); `UNSUPPORTED` if unknown | none |

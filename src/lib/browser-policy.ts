@@ -260,15 +260,29 @@ export async function updateBrowserPolicy(actor: Actor, childId: string, input: 
   return next;
 }
 
-export function describeBrowserPolicy(p: Pick<BrowserPolicy, "blockedCategories" | "blockedDomains" | "allowedDomains" | "safeSearch" | "youtubeRestrict">) {
+/** Other sites (on neither list), as the summary and the activity log name them. */
+const OTHER_SITES: Record<string, string> = { ALLOW: "other sites open", WARN: "other sites warned", BLOCK: "only allowed sites open" };
+
+/**
+ * One line for the summary and the activity log's before and after. Everything that changes what opens is named
+ * (the other-sites choice, focus hours, Safe Browsing too), so a change to them doesn't read as "no change".
+ */
+export function describeBrowserPolicy(
+  p: Pick<BrowserPolicy, "blockedCategories" | "blockedDomains" | "allowedDomains" | "safeSearch" | "youtubeRestrict">
+    & Partial<Pick<BrowserPolicy, "unknownSitesPolicy" | "schedule" | "safeBrowsing">>,
+) {
   const n = (k: number, one: string, many: string) => `${k} ${k === 1 ? one : many}`;
+  const focus = p.schedule as { enabled?: boolean; startTime?: string; endTime?: string } | null | undefined;
   return [
     n(p.blockedCategories.length, "category", "categories"),
     n(p.blockedDomains.length, "blocked site", "blocked sites"),
     n(p.allowedDomains.length, "allowed site", "allowed sites"),
+    p.unknownSitesPolicy ? OTHER_SITES[p.unknownSitesPolicy] ?? null : null,
     p.safeSearch ? "SafeSearch on" : "SafeSearch off",
     `YouTube Restricted Mode ${(YOUTUBE_RESTRICT_META[p.youtubeRestrict as YoutubeRestrict]?.label ?? p.youtubeRestrict).toLowerCase()}`,
-  ].join(", ");
+    p.safeBrowsing === false ? "Safe Browsing off" : null,
+    focus?.enabled && focus.startTime && focus.endTime ? `focus hours ${focus.startTime}–${focus.endTime}` : null,
+  ].filter(Boolean).join(", ");
 }
 
 /* ---------- Signing ---------- */
@@ -323,12 +337,40 @@ export function signRevocation(installationId: string) {
   }
 }
 
+type WebMode = "OFF" | "FILTER" | "ALLOWLIST";
+
+/**
+ * The child's Web Filtering setting (the WEB protection) over their browser protection settings: it's what the
+ * parent chose and what eGuard verifies, so the extension enforces it. "Allowed sites only" blocks every site not
+ * allowed; "Off" filters nothing (Safe Browsing's malware warnings and focus hours, which aren't filtering, stay).
+ * "Filter" uses the browser protection settings as they are.
+ */
+export function withWebMode<P extends { blockedCategories: string[]; blockedDomains: string[]; unknownSitesPolicy: string; safeSearch: boolean; youtubeRestrict: string }>(
+  p: P, mode: WebMode | undefined,
+): P {
+  // Object.assign, not a spread: relating `{ ...p }` back to P (Prisma's row with its JSON fields) overflows tsc
+  if (mode === "ALLOWLIST") return Object.assign({}, p, { unknownSitesPolicy: "BLOCK" });
+  if (mode === "OFF") return Object.assign({}, p, { blockedCategories: [], blockedDomains: [], unknownSitesPolicy: "ALLOW", safeSearch: false, youtubeRestrict: "OFF" });
+  return p;
+}
+
+/**
+ * The Web Filtering setting changed: a new browser policy version with the same settings, so each browser fetches
+ * the policy again (the extension keeps a version it already has) and enforces the new mode.
+ */
+export async function followWebMode(childId: string) {
+  const current = await getOrCreateBrowserPolicy(childId);
+  await advancePolicyPast(childId, current.version, "eGuard (Web Filtering changed)");
+}
+
 /** The policy for one installation, as the extension receives it. */
 export async function policyForInstallation(inst: Pick<BrowserInstallation, "id" | "childId" | "familyId" | "deviceLabel"> & { child: { name: string } }) {
-  const [p, family] = await Promise.all([
+  const [stored, family, web] = await Promise.all([
     getOrCreateBrowserPolicy(inst.childId),
     db.family.findUniqueOrThrow({ where: { id: inst.familyId }, select: { timezone: true, name: true } }),
+    db.childPolicy.findUnique({ where: { childId_key: { childId: inst.childId, key: "WEB" } }, select: { config: true } }),
   ]);
+  const p = withWebMode(stored, (web?.config as { mode?: WebMode } | null)?.mode);
   const schedule = p.schedule as { enabled: boolean; startTime: string; endTime: string } | null;
   const policy = {
     id: p.id, childId: p.childId, installationId: inst.id, version: p.version,

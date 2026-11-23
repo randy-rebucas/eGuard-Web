@@ -12,7 +12,7 @@ import { AndroidMark, AppleMark, ChromeMark, EdgeMark, FirefoxMark } from "@/com
 import {
   ANDROID_PERMISSIONS, CODE_LENGTH, CODE_MINUTES, DEVICE_ORDER, browserChecks, checkCode, computerChecks, countdown,
   formatCode, health, makeCode, normalizeCode, phoneChecks, slotsUsed,
-  type Check as DeviceCheck, type CheckState, type CodeKind, type DemoDevice, type DemoProtection, type PermissionId,
+  type Check as DeviceCheck, type CheckState, type CodeKind, type DemoDevice, type DemoPreset, type DemoProtection, type PermissionId,
 } from "@/lib/setup-demo";
 
 /*
@@ -48,12 +48,6 @@ const STATE: Record<CheckState | "pending", { label: string; tone: string; Icon:
   plan: { label: "Not on plan", tone: "muted", Icon: CircleSlash },
 };
 
-/** What the parent picks for a child of this age: the same idea as the app's protection profiles, simplified. */
-function preset(age: number) {
-  if (age <= 8) return { band: "ages 5 to 8", screen: "1 hour a day", bedtime: "8:00 PM", web: "Strict" };
-  if (age <= 12) return { band: "ages 9 to 12", screen: "2 hours a day", bedtime: "9:00 PM", web: "Moderate" };
-  return { band: "ages 13 to 17", screen: "3 hours a day", bedtime: "10:00 PM", web: "Light" };
-}
 
 const STEP_LABEL: Record<Step, string> = {
   account: "Your account", child: "Your child", devices: "Their devices", phone: "Phone", computer: "Computer", browser: "Browser", done: "All set",
@@ -253,8 +247,8 @@ function BrowserFrame({ browser, url, tab, extension, label, children }: {
 
 type PhoneScreen = "welcome" | "who" | "about" | "code" | "name" | "connecting" | "perm" | "finishing" | "home";
 
-function PhoneFlow({ child, code, other, checksFor, onPaired, onReported }: {
-  child: string; code: Code; other: Code | null; checksFor: (skipped: PermissionId[]) => DeviceCheck[];
+function PhoneFlow({ child, code, other, limitToday, checksFor, onPaired, onReported }: {
+  child: string; code: Code; other: Code | null; limitToday: string; checksFor: (skipped: PermissionId[]) => DeviceCheck[];
   onPaired: (name: string) => void; onReported: (skipped: PermissionId[]) => void;
 }) {
   const [screen, setScreen] = useState<PhoneScreen>("welcome");
@@ -360,7 +354,7 @@ function PhoneFlow({ child, code, other, checksFor, onPaired, onReported }: {
       body = (
         <div className="dm-scr">
           <div className="dm-kidhead"><span className="dm-shield"><ShieldCheck aria-hidden="true" /></span><h3 ref={head} tabIndex={-1}>eGuard is on</h3><p>Protecting this phone for {child}</p></div>
-          <div className="dm-inset"><small>Screen time left today</small><b className="num">2h 0m</b><span className="dm-meter"><span style={{ width: "100%" }} /></span></div>
+          <div className="dm-inset"><small>Screen time left today</small><b className="num">{limitToday}</b><span className="dm-meter"><span style={{ width: "100%" }} /></span></div>
           <p className="dm-small dm-muted">eGuard stays visible on this phone. There&apos;s nothing hidden from {child}.</p>
           <button type="button" className="dm-btn ghost wide push" disabled>Ask for more time</button>
         </div>
@@ -610,14 +604,15 @@ function PairPanel({ device, child, code, onNewCode, pairedName, checks, steps }
 
 // ---------- The demo ----------
 
-type Props = { protections: DemoProtection[]; plans: Plans };
+/** `presets`: by age, what a new child really starts with (the page works them out from lib/profiles). */
+type Props = { protections: DemoProtection[]; plans: Plans; presets: Record<number, DemoPreset> };
 
 export function SetupDemo(props: Props) {
   const [run, setRun] = useState(0);
   return <Demo key={run} {...props} onRestart={() => setRun((r) => r + 1)} />;
 }
 
-function Demo({ protections, plans, onRestart }: Props & { onRestart: () => void }) {
+function Demo({ protections, plans, presets, onRestart }: Props & { onRestart: () => void }) {
   const [step, setStep] = useState<Step>("account");
   const [parent, setParent] = useState("Alex");
   const [email, setEmail] = useState("alex@example.com");
@@ -645,7 +640,7 @@ function Demo({ protections, plans, onRestart }: Props & { onRestart: () => void
     window.document.getElementById("dm-top")?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
   };
   const next = () => go(order[at + 1]);
-  const p = preset(age);
+  const p = presets[age];
   const firstName = (s: string) => s.trim() || "your child";
   const kid = firstName(child);
 
@@ -712,11 +707,11 @@ function Demo({ protections, plans, onRestart }: Props & { onRestart: () => void
             </div>
           </div>
           <div className="dm-inset">
-            <small>Starting protections, recommended for {p.band}</small>
+            <small>Starting protections, recommended at {age} ({p.profile})</small>
             <ul className="dm-preset">
               <li><Hourglass aria-hidden="true" />Screen Time<b>{p.screen}</b></li>
               <li><Moon aria-hidden="true" />Bedtime<b className="num">{p.bedtime}</b></li>
-              <li><Globe aria-hidden="true" />Web Filtering<b>{p.web}</b></li>
+              <li><Globe aria-hidden="true" />Web Filtering<b>On</b></li>
               <li><BadgeCheck aria-hidden="true" />App Approval<b>On</b></li>
             </ul>
             <p className="dm-small dm-muted">You can change any of these later. Pairing is next.</p>
@@ -792,7 +787,7 @@ function Demo({ protections, plans, onRestart }: Props & { onRestart: () => void
       );
       childPane = (
         <PhoneFlow
-          child={kid} code={deviceCode!} other={browserCode}
+          child={kid} code={deviceCode!} other={browserCode} limitToday={p.limitToday}
           checksFor={(s) => phoneChecks(protections, { skipped: s, locationOnPlan: plans.free.location })}
           onPaired={(n) => { setPaired((x) => ({ ...x, phone: n })); announce(`${n} connected.`); }}
           onReported={(s) => { setSkipped(s); announce("The phone sent its first report."); }}

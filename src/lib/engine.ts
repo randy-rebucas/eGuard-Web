@@ -1,9 +1,11 @@
 import "server-only";
 import { Prisma, type CheckStatus, type Device, type ProtectionKey } from "@prisma/client";
 import { db } from "./db";
-import { PROTECTIONS, PROTECTION_BY_KEY, configMatches, describeConfig, isConfigured } from "./protections";
-import { evaluate, isPassing } from "./health";
+import { PROTECTIONS, PROTECTION_BY_KEY, configMatches, describeConfig, isConfigured, onDevice, waitsForChild } from "./protections";
+import { PARENT_SET_OUTDATED, evaluate, isPassing } from "./health";
 import { ServiceError } from "./errors";
+import { isSelfApproved } from "./screen-time-authorization";
+import { followWebMode } from "./browser-policy";
 import { LIMITS, enforce } from "./rate-limit";
 import { wakeDevices } from "./push";
 import { entitlementsFor } from "./plans";
@@ -106,6 +108,10 @@ export async function processReport(deviceId: string, report: DeviceReport) {
   const { driftAlerts } = entitlementsFor(device.family.plan);
   // The device can't read a protection the parent sets in another app (older Android builds echoed the policy back)
   const entries: (ReportedProtection & { missing?: boolean })[] = report.protections.filter((p) => PROTECTION_BY_KEY[p.key]?.caps[device.platform] !== "PARENT_SET");
+  // A computer's web filtering is the browser extension: the agent can say it's installed in every browser, not that
+  // anyone entered a code in one. Until a browser on this computer is connected, nothing filters
+  const noBrowser = device.kind === "COMPUTER" && entries.some((p) => p.key === "WEB")
+    && !await db.browserInstallation.count({ where: { deviceId: device.id, revokedAt: null } });
   if (report.full) {
     // A full report covers everything the device can apply. One it leaves out isn't in force (older Android builds
     // drop a protection when its permission is turned off): left alone, it would keep its last "Pass".
@@ -144,7 +150,10 @@ export async function processReport(deviceId: string, report: DeviceReport) {
     // 1. Open requests for this protection on this device
     const open = openRequests.filter((r) => r.key === rp.key && !settled.has(r.id));
     for (const req of open) {
-      if (configMatches(req.desired, reported)) {
+      // Matching values with an error beside them, for a protection that's on, weren't applied (see evaluate)
+      // Verified against what this device can do (onDevice); the parent's setting is what's saved
+      if (configMatches(onDevice(req.desired, device.platform), reported) && !(rp.error && isConfigured(req.desired))
+        && !(rp.key === "WEB" && noBrowser && isConfigured(req.desired))) {
         settled.add(req.id);
         await db.configRequest.update({ where: { id: req.id }, data: { status: "VERIFIED", verifiedAt: now } });
         await db.childPolicy.upsert({
@@ -152,8 +161,14 @@ export async function processReport(deviceId: string, report: DeviceReport) {
           create: { childId: device.childId, key: rp.key, config: req.desired as Prisma.InputJsonValue },
           update: { config: req.desired as Prisma.InputJsonValue },
         });
+        const wasMode = (policies.get(rp.key) as { mode?: string } | null | undefined)?.mode;
         policies.set(rp.key, req.desired);
+        // The browser extension enforces this mode too (browser-policy withWebMode): a new version reaches it
+        if (rp.key === "WEB" && wasMode !== (req.desired as { mode?: string } | null)?.mode) {
+          await followWebMode(device.childId).catch((e) => console.error("[engine] couldn't pass Web Filtering on to browsers", e));
+        }
         await syncChildLimits(device.childId, req.desired);
+        await parentSetOutdated(device.childId, rp.key, req.desired);
         const from = describeConfig(req.previous), to = describeConfig(req.desired);
         await db.configChange.create({
           data: {
@@ -163,7 +178,7 @@ export async function processReport(deviceId: string, report: DeviceReport) {
             fromValue: from === to ? null : from, toValue: to,
           },
         });
-      } else if (req.status === "DELIVERED" && req.mode === "APPLY") {
+      } else if (req.status === "DELIVERED" && req.mode === "APPLY" && !waitsForChild(rp.key, device.platform, req.desired)) {
         settled.add(req.id);
         await db.configRequest.update({
           where: { id: req.id },
@@ -173,9 +188,18 @@ export async function processReport(deviceId: string, report: DeviceReport) {
     }
 
     // 2. Evaluate against (possibly updated) policy
-    const status = evaluate(def.caps[device.platform], policies.get(rp.key), reported);
+    let status = evaluate(def.caps[device.platform], onDevice(policies.get(rp.key), device.platform), reported, rp.error);
+    // Applied, but the child can undo it: on an iPhone they approved Screen Time on themselves, turning that off in
+    // Settings drops the setting, and eGuard can then be deleted before it reports again
+    const childCanUndo = status === "PASS" && rp.key === "UNINSTALL_PROTECTION" && isConfigured(reported) && isSelfApproved(device);
+    const browserMissing = status === "PASS" && rp.key === "WEB" && isConfigured(reported) && noBrowser;
+    if (childCanUndo || browserMissing) status = "WARNING";
     const prev = device.protections.find((p) => p.key === rp.key);
-    const message = messageFor(status, rp.key, label, reported, rp.error);
+    const message = childCanUndo
+      ? `${def.name} on ${label} can be turned off by your child: they approved Screen Time for eGuard themselves. Approving it from your Apple ID through Family Sharing stops that.`
+      : browserMissing
+        ? `No browser on ${label} is connected yet, so nothing is filtered. Choose Add a browser on ${device.child.name}'s page, then open each browser on the computer and enter the code in eGuard's extension.`
+        : messageFor(status, rp.key, label, reported, rp.error);
     await db.deviceProtection.upsert({
       where: { deviceId_key: { deviceId, key: rp.key } },
       create: { deviceId, key: rp.key, status, reported: reported ?? Prisma.JsonNull, message, lastVerifiedAt: now },
@@ -191,7 +215,9 @@ export async function processReport(deviceId: string, report: DeviceReport) {
     }
     // A repeated key: the later entry wins, as when each was resolved on its own
     passing.delete(rk);
-    if (prev && isPassing(prev.status) && !open.some((r) => now.getTime() - r.createdAt.getTime() < CHANGE_GRACE_MS)) {
+    // A self-approved iPhone or a computer with no browser connected (above) changed nothing on the device: the device
+    // page says why, without an alert
+    if (!childCanUndo && !browserMissing && prev && isPassing(prev.status) && !open.some((r) => now.getTime() - r.createdAt.getTime() < CHANGE_GRACE_MS)) {
       const prevCfg = prev.reported;
       const isLocation = rp.key === "LOCATION" && !isConfigured(reported);
       // Drift (a setting changed on the device) alerts on plans with driftAlerts. Everywhere: eGuard stopped applying a
@@ -261,6 +287,26 @@ export async function processReport(deviceId: string, report: DeviceReport) {
     await db.device.update({ where: { id: deviceId }, data: { checkRequestedAt: null } });
   }
   return { ok: true };
+}
+
+/**
+ * Another device verified a new setting (an iPhone, for a child who also has an Android phone): an Android phone the
+ * parent set in Google Play to the old value no longer counts as set, so health and the device page say so instead
+ * of "Set by you" at a rating that isn't theirs any more. Its request keeps waiting for the parent's steps.
+ */
+async function parentSetOutdated(childId: string, key: ProtectionKey, desired: Prisma.JsonValue) {
+  const def = PROTECTION_BY_KEY[key];
+  if (!Object.values(def.caps).includes("PARENT_SET")) return;
+  const rows = await db.deviceProtection.findMany({
+    where: { key, status: "UNSUPPORTED", device: { childId } },
+    select: { id: true, reported: true, device: { select: { platform: true } } },
+  });
+  const outdated = rows.filter((r) => def.caps[r.device.platform] === "PARENT_SET" && !configMatches(desired, r.reported));
+  if (!outdated.length) return;
+  await db.deviceProtection.updateMany({
+    where: { id: { in: outdated.map((r) => r.id) } },
+    data: { status: "NOT_CONFIGURED", message: PARENT_SET_OUTDATED },
+  });
 }
 
 /** Child.dailyLimitMinutes mirrors the Screen Time policy for quick display. */

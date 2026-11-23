@@ -181,7 +181,7 @@ describe("emails for a child left out, a missing browser and an unfinished phone
     const m = unfinishedSetupEmail({ parent: "Ana", child: "Mia", deviceName: "Galaxy A15", deviceId: "d1", platform: "ANDROID", keys: ["WEB", "UNINSTALL_PROTECTION", "SCREEN_TIME"] });
     expect(m.subject).toBe("Finish setting up Mia's Galaxy A15: some protections aren't working yet");
     expect(m.text).toContain("Web Filtering, Uninstall Protection and Screen Time");
-    expect(m.text).toContain("(for these: the web filtering step, device admin and usage access)");
+    expect(m.text).toContain("(for these: the web filtering step, device admin, accessibility and usage access)");
     expect(m.text).toContain("https://app.test/devices/d1");
     const ios = unfinishedSetupEmail({ parent: "", child: "Mia", deviceName: "iPhone", deviceId: "d2", platform: "IOS", keys: ["WEB"] });
     expect(ios.subject).toContain("a protection isn't working yet");

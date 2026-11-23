@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { browserNeedsAttention, computeHealth, deviceState, evaluate, familySummary, healthBadge, healthLabel, isDismissible, worst } from "../health";
-import { PROTECTIONS, PROTECTION_BY_KEY, configMatches, describeConfig, defaultConfig } from "../protections";
+import { PARENT_SET_OUTDATED, browserNeedsAttention, computeHealth, deviceState, evaluate, familySummary, healthBadge, healthLabel, isDismissible, reportedLabel, worst } from "../health";
+import { PROTECTIONS, PROTECTION_BY_KEY, configMatches, describeConfig, defaultConfig, onDevice, waitsForChild } from "../protections";
 
 const now = new Date();
 const allPass = (overrides: Record<string, string> = {}) =>
-  PROTECTIONS.map((p) => ({ key: p.key, status: (overrides[p.key] ?? "PASS") as never, message: null, lastVerifiedAt: now }));
+  PROTECTIONS.map((p) => ({ key: p.key, status: (overrides[p.key] ?? "PASS") as never, message: null as string | null, lastVerifiedAt: now }));
 
 describe("evaluate", () => {
   it("passes when the device reports exactly the requested config", () => {
@@ -24,6 +24,14 @@ describe("evaluate", () => {
     expect(evaluate("AVAILABLE", off, off)).toBe("PASS");
     expect(evaluate("AVAILABLE", off, { ...off, enabled: true })).toBe("PASS");
     expect(evaluate("AVAILABLE", { key: "UNINSTALL_PROTECTION", enabled: false }, { key: "UNINSTALL_PROTECTION", enabled: false })).toBe("PASS");
+  });
+  it("doesn't pass a protection that's on when the device reports its values with an error", () => {
+    // An iPhone keeps its old schedule when no apps are chosen, reports those minutes and says why
+    const st = { key: "SCREEN_TIME", dailyMinutes: 120, weekendMinutes: 240 };
+    expect(evaluate("AVAILABLE", st, st, "Choose at least one app or category first.")).toBe("WARNING");
+    // Off by the parent: off with a reason beside it is what was asked (a computer whose child is an administrator)
+    const off = { key: "UNINSTALL_PROTECTION", enabled: false };
+    expect(evaluate("GUIDED", off, off, "The child's account is an administrator.")).toBe("PASS");
   });
   it("reports NOT_CONFIGURED when the child has no setting and the device has it off", () => {
     const off = { key: "BEDTIME", enabled: false, start: "22:00", end: "06:00", days: "EVERY_DAY" };
@@ -135,6 +143,23 @@ describe("computeHealth", () => {
       expect(check(h, "APP_RESTRICTIONS")).toMatchObject({ status: "PASS", parentSet: false, detail: "Verified on 1 of 1 device. Set by you on phone, not verified" });
       expect(check(h, "NOTIFICATIONS").detail).toBe("Verified on 1 of 1 device. Unsupported on iOS");
     });
+    it("stops counting a Google Play setting as set once an iPhone verified a newer one", () => {
+      // engine.ts parentSetOutdated: the phone still holds 13+ in Google Play, the parent's setting is now 9+
+      const outdated = allPass().map((p) => p.key === "APP_RESTRICTIONS" ? { ...p, status: "NOT_CONFIGURED" as never, message: PARENT_SET_OUTDATED } : p);
+      const h = computeHealth([dev("phone", outdated), dev("ipad", allPass({ NOTIFICATIONS: "UNSUPPORTED" }), "IOS")]);
+      expect(check(h, "APP_RESTRICTIONS")).toMatchObject({ status: "NOT_CONFIGURED", parentSet: false, detail: "Set in Google Play at an earlier setting on phone: select to see the steps" });
+      expect(reportedLabel("PARENT_SET", "NOT_CONFIGURED", { reported: { key: "APP_RESTRICTIONS", maxAgeRating: 13 }, message: PARENT_SET_OUTDATED })).toBe("Set by you earlier: Apps rated 13+ and under");
+      // An old row from before Google Play (no such message) still reads as not set up
+      expect(reportedLabel("PARENT_SET", "NOT_CONFIGURED", { reported: { key: "APP_RESTRICTIONS", maxAgeRating: 13 }, message: null })).toBe("Not set up yet");
+    });
+  });
+});
+
+describe("age rating labels", () => {
+  it("reads a device's missing cap (21) as no limit, not 21+", () => {
+    expect(describeConfig({ key: "APP_RESTRICTIONS", maxAgeRating: 21 })).toBe("No age limit");
+    expect(describeConfig({ key: "CONTENT", maxAgeRating: 21 })).toBe("No age limit");
+    expect(describeConfig({ key: "CONTENT", maxAgeRating: 18 })).toBe("Rated 18+ and under");
   });
 });
 
@@ -251,5 +276,29 @@ describe("helpers", () => {
     // A weekend-only change must read differently before and after
     expect(describeConfig({ key: "SCREEN_TIME", dailyMinutes: 120, weekendMinutes: 180 }))
       .not.toBe(describeConfig({ key: "SCREEN_TIME", dailyMinutes: 120, weekendMinutes: 240 }));
+  });
+});
+
+describe("waitsForChild", () => {
+  it("keeps only an Android change turning uninstall protection on waiting for the child", () => {
+    const on = { key: "UNINSTALL_PROTECTION", enabled: true }, off = { key: "UNINSTALL_PROTECTION", enabled: false };
+    expect(waitsForChild("UNINSTALL_PROTECTION", "ANDROID", on)).toBe(true);
+    // Turning it off is eGuard's own doing: a report that it's still on fails the change as usual
+    expect(waitsForChild("UNINSTALL_PROTECTION", "ANDROID", off)).toBe(false);
+    expect(waitsForChild("UNINSTALL_PROTECTION", "IOS", on)).toBe(false);
+    expect(waitsForChild("APP_APPROVAL", "ANDROID", { key: "APP_APPROVAL", enabled: true })).toBe(false);
+  });
+});
+
+describe("onDevice", () => {
+  it("holds a phone to the family filter when the parent allows only chosen sites", () => {
+    const allow = { key: "WEB", mode: "ALLOWLIST", blockedSites: 0 };
+    expect(onDevice(allow, "ANDROID")).toEqual({ ...allow, mode: "FILTER" });
+    expect(onDevice(allow, "IOS")).toEqual({ ...allow, mode: "FILTER" });
+    // The browser extension on a computer does allow only chosen sites
+    expect(onDevice(allow, "WINDOWS")).toBe(allow);
+    const filter = { key: "WEB", mode: "FILTER", blockedSites: 0 };
+    expect(onDevice(filter, "IOS")).toBe(filter);
+    expect(evaluate("AVAILABLE", onDevice(allow, "IOS"), { ...filter, key: "WEB" })).toBe("PASS");
   });
 });

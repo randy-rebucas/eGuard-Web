@@ -39,8 +39,9 @@ const MAC_STANDARD_ACCOUNT = [
 ];
 const BROWSER_EXTENSION = [
   "In the eGuard dashboard, open your child's page and choose Add a browser to get a code.",
-  "On the computer, open each browser. eGuard has already installed its extension there: open it and type the code.",
+  "On the computer, open each browser. eGuard has already installed its extension there: open it and type the code. In Firefox, if you don't see it, close Firefox completely and open it again.",
   "Browsers the extension can't run in stay blocked on the computer until you allow them in the Apps tab.",
+  "Browsers already connected need nothing more: they pick up the change within 5 minutes.",
 ];
 
 export type ProtectionDef = {
@@ -53,6 +54,8 @@ export type ProtectionDef = {
   caps: Record<Platform, Capability>;
   /** Guided-setup steps shown to the parent, per platform */
   guide?: Partial<Record<Platform, string[]>>;
+  /** Steps for turning it off, where that's also done on the device (the `guide` steps turn it on) */
+  guideOff?: Partial<Record<Platform, string[]>>;
 };
 
 export const PROTECTIONS: ProtectionDef[] = [
@@ -66,6 +69,7 @@ export const PROTECTIONS: ProtectionDef[] = [
     guide: { ANDROID: [
       ...PLAY_PARENTAL_CONTROLS,
       "Tap Apps & games and choose the highest rating that isn't above your setting, then Save.",
+      "Apps already on the phone aren't removed: block any above the rating in eGuard's Apps tab.",
     ] } },
   { key: "APP_APPROVAL", slug: "app-approval", name: "App Approval", checkName: "App Approval", icon: "badge-check",
     caps: { ANDROID: "AVAILABLE", IOS: "AVAILABLE", ...computer("APP_APPROVAL") } },
@@ -84,9 +88,17 @@ export const PROTECTIONS: ProtectionDef[] = [
       WINDOWS: BROWSER_EXTENSION,
       MACOS: BROWSER_EXTENSION,
       ANDROID: [
-        "Open Settings, tap Network & internet, then Private DNS. On Samsung: Connections, More connection settings, Private DNS.",
+        "Open Settings, tap Network & internet (then Advanced, on Android 9 to 11), then Private DNS. On Samsung: Connections, More connection settings, Private DNS. On Xiaomi: Connection & sharing, Private DNS.",
         "Choose Private DNS provider hostname.",
         "Type family.cloudflare-dns.com and tap Save.",
+      ],
+    },
+    guideOff: {
+      WINDOWS: ["Nothing to do on the computer: connected browsers stop filtering within 5 minutes."],
+      MACOS: ["Nothing to do on the computer: connected browsers stop filtering within 5 minutes."],
+      ANDROID: [
+        "Open Settings, tap Network & internet (then Advanced, on Android 9 to 11), then Private DNS. On Samsung: Connections, More connection settings, Private DNS. On Xiaomi: Connection & sharing, Private DNS.",
+        "Choose Automatic (or Off) and tap Save.",
       ],
     } },
   // iOS: eGuard blocks installing apps through Screen Time (the same switch as App Approval) and reads it back
@@ -94,10 +106,11 @@ export const PROTECTIONS: ProtectionDef[] = [
     caps: { ANDROID: "AVAILABLE", IOS: "AVAILABLE", ...computer("DOWNLOADS") } },
   { key: "LOCATION", slug: "location", name: "Location", checkName: "Location", icon: "map-pin",
     caps: { ANDROID: "AVAILABLE", IOS: "GUIDED", ...computer("LOCATION") },
+    // eGuard's own location permission (Core Location, While Using): Find My is Apple's sharing, not eGuard's
     guide: { IOS: [
-      "Open Settings and tap your child's name at the top.",
-      "Tap Find My, then turn on Share My Location.",
-      "Open the eGuard app and tap Allow location if it asks.",
+      "On your child's iPhone, open eGuard. When iOS asks to use your location, tap Allow While Using App.",
+      "If it didn't ask: open Settings › Privacy & Security › Location Services, make sure Location Services is on, then tap eGuard and choose While Using the App.",
+      "On that same screen, turn on Precise Location, or the map can be off by several kilometres.",
     ] } },
   { key: "NOTIFICATIONS", slug: "notifications", name: "Notifications", checkName: "Notification Controls", icon: "bell-ring",
     caps: { ANDROID: "AVAILABLE", IOS: "UNSUPPORTED", ...computer("NOTIFICATIONS") } },
@@ -213,9 +226,10 @@ export function describeConfig(cfg: unknown): string {
     }
     // Name school nights: without it a school-nights bedtime reads as every night, and a days-only change looks unchanged
     case "BEDTIME": return c.enabled ? `${to12h(c.start)} – ${to12h(c.end)}${c.days === "SCHOOL_NIGHTS" ? ", school nights" : ""}` : "Off";
-    case "APP_RESTRICTIONS": return `Apps rated ${c.maxAgeRating}+ and under`;
+    // A device with no cap reports 21 (ReportedConfigSchema): no limit, not "21+"
+    case "APP_RESTRICTIONS": return c.maxAgeRating > 18 ? "No age limit" : `Apps rated ${c.maxAgeRating}+ and under`;
     case "APP_APPROVAL": return c.enabled ? "Approval required" : "Off";
-    case "CONTENT": return `Rated ${c.maxAgeRating}+ and under`;
+    case "CONTENT": return c.maxAgeRating > 18 ? "No age limit" : `Rated ${c.maxAgeRating}+ and under`;
     // blockedSites isn't named: the policy's number is a placeholder, and devices report the size of their own list
     case "WEB": return c.mode === "OFF" ? "Off" : c.mode === "ALLOWLIST" ? "Allowed sites only" : "Adult and unsafe sites filtered";
     case "DOWNLOADS": return c.requireApproval ? "Parent approval" : "Unrestricted";
@@ -227,6 +241,31 @@ export function describeConfig(cfg: unknown): string {
 }
 
 /** A config counts as "configured" if it turns the protection on. */
+/**
+ * Turning this on needs the child to confirm a system screen on the device (Android's "Activate device admin app?"):
+ * eGuard can't do it alone, so a report that it isn't on yet leaves the change waiting rather than failing it.
+ */
+export function waitsForChild(key: ProtectionKey, platform: Platform, desired: unknown): boolean {
+  return key === "UNINSTALL_PROTECTION" && platform === "ANDROID" && isConfigured(desired);
+}
+
+/**
+ * What a device is judged against for a setting. A phone can't open only the sites a parent allowed (that's the
+ * browser extension on computers), so "Allowed sites only" is held to the family filter there, the most it can do,
+ * instead of failing the change and reading as changed on the device at every report.
+ */
+export function onDevice(cfg: unknown, platform: Platform): unknown {
+  const c = cfg as ProtectionConfig | null | undefined;
+  if (c?.key === "WEB" && c.mode === "ALLOWLIST" && (platform === "ANDROID" || platform === "IOS")) return { ...c, mode: "FILTER" };
+  return cfg;
+}
+
+/** The steps the parent follows for a guided change to [desired]: turning it off has its own, where there are any. */
+export function guideFor(key: ProtectionKey, platform: Platform, desired: unknown): string[] | null {
+  const def = PROTECTION_BY_KEY[key];
+  return (!isConfigured(desired) ? def.guideOff?.[platform] : undefined) ?? def.guide?.[platform] ?? null;
+}
+
 export function isConfigured(cfg: unknown): boolean {
   if (!cfg || typeof cfg !== "object") return false;
   const c = cfg as ProtectionConfig;

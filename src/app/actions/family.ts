@@ -130,13 +130,16 @@ const Id = z.string().min(1).max(64);
 
 /** A deletion form's confirmation: the password field, or "Type DELETE" for parents without a password. */
 const confirmFrom = (form: FormData): family.Confirm => ({ password: String(form.get("password") ?? ""), phrase: String(form.get("phrase") ?? "") });
-const Approval = z.enum(["ALLOWED", "ALWAYS_ALLOWED", "FILTERED", "BLOCKED", "PENDING"] satisfies AppApproval[], { error: "Choose a valid setting." });
+// Not PENDING, as the mobile PATCH: only a child's request makes an app wait (with its alert)
+const Approval = z.enum(["ALLOWED", "ALWAYS_ALLOWED", "FILTERED", "BLOCKED"] satisfies AppApproval[], { error: "Choose a valid setting." });
+const BaseApproval = z.enum(["ALLOWED", "ALWAYS_ALLOWED", "FILTERED", "BLOCKED", "PENDING"] satisfies AppApproval[]);
 const AppLimit = z.number({ error: "Enter the limit in minutes." }).finite().min(0).max(1440, "A daily limit can be up to 24 hours.").nullable();
 
-export async function setAppApproval(appId: string, approval: AppApproval): Promise<Result> {
+/** `base`: the approval the page showed, so an answer given against another parent's newer decision is refused. */
+export async function setAppApproval(appId: string, approval: AppApproval, base?: AppApproval): Promise<Result> {
   const u = await requireUser();
   return toResult(async () => {
-    const app = await family.setAppApproval(u, Id.parse(appId), Approval.parse(approval), "web");
+    const app = await family.setAppApproval(u, Id.parse(appId), Approval.parse(approval), "web", BaseApproval.optional().parse(base));
     revalidatePath(`/children/${app.childId}`);
     return {};
   });

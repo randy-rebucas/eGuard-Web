@@ -146,6 +146,8 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
     const pct = Math.round((used / Math.max(1, limit)) * 100);
     // As on the dashboard: the bar stops at 100%, so past the limit it turns red and the note says by how much
     const over = limit > 0 && used > limit, reached = limit > 0 && used === limit;
+    // Time the parent gave isn't the limit failing: say so instead of a red "Over by"
+    const extraUntil = c!.extraTimeUntil && c!.extraTimeUntil.getTime() > Date.now() ? c!.extraTimeUntil : null;
     const open = c!.health.checks.filter((x) => x.status !== "PASS" && x.status !== "UNSUPPORTED");
     const n = c!.devices.length, where = n === 1 ? "their device" : `all ${n} devices`;
     return (
@@ -176,9 +178,11 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
             <div className="usage-big num" style={{ marginTop: 0 }}>{fmtMinutesPadded(used)} <small>/ {fmtMinutes(limit)}</small></div>
             <div className={`bar ${over ? "over" : pct >= 85 ? "warn" : ""}`} role="progressbar" aria-label={`${c!.name}'s screen time today`} aria-valuenow={Math.min(100, pct)} aria-valuemin={0} aria-valuemax={100}
               aria-valuetext={over ? `Over the limit by ${fmtMinutes(used - limit)}` : `${Math.min(100, pct)}% of the daily limit`}><span style={{ width: `${Math.min(100, pct)}%` }} /></div>
-            {over ? <div className="limit-note crit"><Icon name="octagon-alert" size={14} />Over by {fmtMinutes(used - limit)}</div>
+            {extraUntil ? <div className="limit-note"><Icon name="hourglass" size={14} />Extra time until {dayTime(extraUntil, tz).replace("Today, ", "")}</div>
+              : over ? <div className="limit-note crit"><Icon name="octagon-alert" size={14} />Over by {fmtMinutes(used - limit)}</div>
               : reached ? <div className="limit-note warn"><Icon name="hourglass" size={14} />Limit reached</div> : null}
-            <div className="app-rows">{appRows.length ? appRows.map(([app, m]) => <div key={app}><span>{app}</span><span>{fmtMinutes(m)}</span></div>) : <div><span>No usage reported yet today</span><span /></div>}</div>
+            {/* An iPhone reports its total without app names: "no usage" beside a total read as a contradiction */}
+            <div className="app-rows">{appRows.length ? appRows.map(([app, m]) => <div key={app}><span>{app}</span><span>{fmtMinutes(m)}</span></div>) : <div><span>{used > 0 ? "No app breakdown reported" : "No usage reported yet today"}</span><span /></div>}</div>
             {appRows.length ? <Link className="link-btn" href={`/children/${c!.id}?tab=apps`} style={{ marginTop: 8 }}>Manage apps <Icon name="arrow-right" /></Link> : null}
           </section>
           <section className="card card-pad">
@@ -329,6 +333,14 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
     // Games always (it's what parents ask for), then any category the child has apps in or a limit for
     const shownCategories = APP_CATEGORIES.filter((k) => k.key === "GAMES" || limits.some((l) => l.category === k.key) || all.some((a) => categoryOf(a).category === k.key));
     const approval = c!.policies.find((p) => p.key === "APP_APPROVAL")?.config as { enabled?: boolean } | undefined;
+    const downloads = c!.policies.find((p) => p.key === "DOWNLOADS")?.config as { requireApproval?: boolean } | undefined;
+    // Devices hold new apps when either is on (events approvalRequired); saying "off" beside waiting apps was wrong
+    const holds = !!approval?.enabled || !!downloads?.requireApproval;
+    // iPhones enforce none of these per-app rules: apps are allowed or blocked on the phone in Parent settings
+    const iphone = c!.devices.some((d) => d.platform === "IOS"), others = c!.devices.some((d) => d.platform !== "IOS");
+    const appliesNote = iphone && !others ? "On an iPhone it isn't applied by eGuard: allow or block apps on the phone in eGuard › Parent settings."
+      : iphone ? "It applies on Android and computers at their next sync. On an iPhone, allow it on the phone in eGuard › Parent settings."
+      : "It applies on the device's next sync.";
     const label = { ALLOWED: "Allowed", ALWAYS_ALLOWED: "Always allowed", FILTERED: "Filtered (blocked)", BLOCKED: "Blocked", PENDING: "Waiting for your approval" };
     const pending = all.filter((a) => a.approval === "PENDING" || requested.has(a.name));
     const { apps, hidden } = visibleApps(all, entitlementsFor(family.plan).appMonitoringLimit, { requested, minutes: (n) => usage.find((x) => x.app === n)?.minutes ?? 0 });
@@ -336,7 +348,7 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
       <div className="dash-col">
       <section className="card card-pad">
         <div className="card-head">
-          <div><h2>Category limits</h2><div className="sub">One daily limit for every app of a kind together, like gaming time. Each app counts toward its category; change it on the app below. Always-allowed apps count but aren&apos;t paused. Applies on the device&apos;s next sync.</div></div>
+          <div><h2>Category limits</h2><div className="sub">One daily limit for every app of a kind together, like gaming time. Each device counts its own time toward it. Each app counts toward its category; change it on the app below. Always-allowed apps count but aren&apos;t paused. Applies on the device&apos;s next sync.</div></div>
         </div>
         {canLimit ? null : <div style={{ marginBottom: 12 }}><UpgradeNote compact icon="hourglass" title="Category limits" text={CATEGORY_UPGRADE} /></div>}
         {shownCategories.map((k) => {
@@ -357,8 +369,8 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
       </section>
       <section className="card card-pad">
         <div className="card-head">
-          <div><h2>Apps</h2><div className="sub">{approval?.enabled ? `New apps need your approval before ${c!.name} can install them.` : "App approval is off."} Changes apply on the device&apos;s next sync.</div></div>
-          {approval?.enabled ? <span className="pill tone-ok"><Icon name="badge-check" />App approval on</span> : <FlowButton protection="APP_APPROVAL" childId={c!.id}>Turn on approval</FlowButton>}
+          <div><h2>Apps</h2><div className="sub">{holds ? `New apps on ${c!.name}'s devices wait for your approval before they open.` : "App approval is off."} Changes apply on the device&apos;s next sync.{iphone ? " These rules don't apply on an iPhone: there, the App Store can't install apps while approval is on, and you allow or block apps on the phone in eGuard › Parent settings." : ""}</div></div>
+          {holds ? <span className="pill tone-ok"><Icon name="badge-check" />{approval?.enabled ? "App approval on" : "Downloads need approval"}</span> : <FlowButton protection="APP_APPROVAL" childId={c!.id}>Turn on approval</FlowButton>}
         </div>
         {pending.length ? <div className="form-warn" role="status" style={{ marginBottom: 12 }}><Icon name="inbox" />{pending.length} app{pending.length > 1 ? "s" : ""} waiting for your approval</div> : null}
         {apps.map((a) => {
@@ -366,8 +378,8 @@ export default async function ChildPage(props: PageProps<"/children/[id]">) {
           return (
             <div className="setting-row" key={a.id} style={{ flexWrap: "wrap" }}>
               <span className="ico-tile"><Icon name="app-window" /></span>
-              <div className="grow" style={{ minWidth: 160 }}><div className="t-title">{a.name}</div><div className="t-meta">{CATEGORY_BY_KEY[categoryOf(a).category].label}{a.source === "UNKNOWN_PUBLISHER" ? " · Unverified publisher" : a.source === "CATALOG" ? " · Popular game" : ""} · {label[a.approval]}{a.approval === "BLOCKED" && requested.has(a.name) ? " · Asked again" : ""}{m != null ? ` · ${fmtMinutes(m)} today` : ""}{a.dailyLimitMinutes ? ` · limit ${fmtMinutes(a.dailyLimitMinutes)}` : ""}</div></div>
-              <AppControls app={{ id: a.id, name: a.name, approval: a.approval, dailyLimitMinutes: a.dailyLimitMinutes, requested: requested.has(a.name), category: a.category, guess: guessCategory(a.name) }} />
+              <div className="grow" style={{ minWidth: 160 }}><div className="t-title">{a.name}</div><div className="t-meta">{CATEGORY_BY_KEY[categoryOf(a).category].label}{a.source === "UNKNOWN_PUBLISHER" ? " · Unverified publisher" : a.source === "CATALOG" ? " · Popular game" : ""} · {label[a.approval]}{(a.approval === "BLOCKED" || a.approval === "FILTERED") && requested.has(a.name) ? " · Asked again" : ""}{m != null ? ` · ${fmtMinutes(m)} today` : ""}{a.dailyLimitMinutes ? ` · limit ${fmtMinutes(a.dailyLimitMinutes)}` : ""}</div></div>
+              <AppControls app={{ id: a.id, name: a.name, approval: a.approval, dailyLimitMinutes: a.dailyLimitMinutes, requested: requested.has(a.name), category: a.category, guess: guessCategory(a.name) }} appliesNote={appliesNote} />
             </div>
           );
         })}

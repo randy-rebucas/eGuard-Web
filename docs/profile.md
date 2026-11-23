@@ -59,7 +59,7 @@ something changes.
 | Bedtime | Pauses the device overnight, every day or on school nights |
 | App Restrictions | Limits apps by age rating; per-app daily limits and blocking |
 | App Approval | The child asks for an app; the parent approves or declines |
-| Content Restrictions | Age ratings for movies, TV and books |
+| Content Restrictions | Age ratings for movies and TV |
 | Web Filtering | Blocks adult sites, or allows only the sites the parent chooses |
 | Downloads | Requires the parent's approval to install apps |
 | Location | Shows where the child's device is now |

@@ -59,10 +59,20 @@ export type HealthCheck = {
   fixChildId?: string;
 };
 
+/**
+ * The message on a PARENT_SET row the parent had set, after another device verified a newer setting (engine.ts
+ * parentSetOutdated). Its `reported` is still what they set in Google Play.
+ */
+export const PARENT_SET_OUTDATED = "Set in Google Play at an earlier setting. Do the steps again for your current one.";
+const isOutdated = (row: { message?: string | null } | null | undefined) => row?.message === PARENT_SET_OUTDATED;
+
 /** What one device has for a protection, in words (web dialogs, device page and the mobile API). */
-export function reportedLabel(cap: Capability, status: CheckStatus, row: { reported: unknown } | null | undefined) {
+export function reportedLabel(cap: Capability, status: CheckStatus, row: { reported: unknown; message?: string | null } | null | undefined) {
   if (cap === "UNSUPPORTED") return "Not supported";
-  if (cap === "PARENT_SET") return status === "UNSUPPORTED" ? `Set by you: ${describeConfig(row?.reported)}` : "Not set up yet";
+  if (cap === "PARENT_SET") {
+    if (status === "UNSUPPORTED") return `Set by you: ${describeConfig(row?.reported)}`;
+    return isOutdated(row) ? `Set by you earlier: ${describeConfig(row?.reported)}` : "Not set up yet";
+  }
   if (!row) return "Not reported";
   if (status === "NOT_CONFIGURED") return "Not configured";
   // Left out of a full report (engine.ts): the device isn't applying it
@@ -120,7 +130,8 @@ export function computeHealth(
     if (!devices.length) detail = "No devices yet";
     else if (failing.length) {
       const f = failing[0];
-      detail = f.cap === "PARENT_SET" ? `Not set up yet on ${label(f.d)}: select to see the steps`
+      detail = f.cap === "PARENT_SET"
+        ? isOutdated(f.row) ? `Set in Google Play at an earlier setting on ${label(f.d)}: select to see the steps` : `Not set up yet on ${label(f.d)}: select to see the steps`
         : f.row?.message ?? `${phrase[f.status]} on ${label(f.d)}`;
       if (failing.length > 1) detail += ` and ${failing.length - 1} more`;
     } else {
@@ -228,13 +239,15 @@ export function deviceState(d: DeviceLike, now = Date.now()): DeviceState {
 /**
  * Status of one protection on one device, from what it reported vs the child's policy. A protection the parent
  * turned off passes: the device does what was asked, so it mustn't read as something to fix. Only a child with no
- * policy for it at all is NOT_CONFIGURED (unless the device has it on anyway).
+ * policy for it at all is NOT_CONFIGURED (unless the device has it on anyway). A protection that's on, reported with
+ * the parent's values but an `error` beside it, isn't in force (an iPhone keeps its old schedule when no apps are
+ * chosen and says so): WARNING, so the error reaches the parent instead of "Pass".
  */
-export function evaluate(cap: Capability, policy: unknown, reported: unknown): CheckStatus {
+export function evaluate(cap: Capability, policy: unknown, reported: unknown, error?: string | null): CheckStatus {
   if (cap === "UNSUPPORTED") return "UNSUPPORTED";
   if (policy == null) return isConfigured(reported) ? "PASS" : "NOT_CONFIGURED";
   if (!isConfigured(policy)) return "PASS";
-  if (configMatches(policy, reported)) return "PASS";
+  if (configMatches(policy, reported)) return error ? "WARNING" : "PASS";
   const key = (policy as { key: ProtectionKey }).key;
   if ((key === "UNINSTALL_PROTECTION" || key === "APP_APPROVAL") && !isConfigured(reported)) return "ACTION_REQUIRED";
   return "WARNING";

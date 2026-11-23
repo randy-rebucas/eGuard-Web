@@ -29,6 +29,8 @@ export type FlowContext = {
   openBatch: string | null;
   /** Sent back with the change: refused if the setting changed since (config-service.configVersion) */
   version: string;
+  /** Notifications only: the child's Bedtime is off, so quiet hours have nothing to follow */
+  bedtimeOff?: boolean;
 };
 
 export async function getFlowChildren() {
@@ -49,10 +51,11 @@ async function flowContext(familyId: string, childId: string, key: ProtectionKey
   const child = await childFor(familyId, childId);
   const def = PROTECTION_BY_KEY[key];
   const age = new Date().getFullYear() - child.birthYear;
-  const [policyRow, devices, open] = await Promise.all([
+  const [policyRow, devices, open, bedtime] = await Promise.all([
     db.childPolicy.findUnique({ where: { childId_key: { childId, key } } }),
     db.device.findMany({ where: { childId }, orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }], include: { protections: { where: { key } } } }),
     db.configRequest.findFirst({ where: { childId, key, status: { in: ["PENDING", "DELIVERED", "AWAITING_PARENT"] } }, orderBy: { createdAt: "desc" } }),
+    key === "NOTIFICATIONS" ? db.childPolicy.findUnique({ where: { childId_key: { childId, key: "BEDTIME" } } }) : null,
   ]);
   const policy = (policyRow?.config as ProtectionConfig | undefined) ?? defaultConfig(key, age);
   return {
@@ -62,6 +65,8 @@ async function flowContext(familyId: string, childId: string, key: ProtectionKey
     policyLabel: describeConfig(policyRow?.config),
     openBatch: open?.batchId ?? null,
     version: versionOf(policyRow?.config ?? null, open?.batchId ?? null),
+    // No saved bedtime means the default, which is on
+    ...(key === "NOTIFICATIONS" ? { bedtimeOff: (bedtime?.config as { enabled?: unknown } | null)?.enabled === false } : {}),
     devices: devices.map((d) => {
       const p = d.protections[0];
       const cap = def.caps[d.platform];

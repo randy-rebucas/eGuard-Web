@@ -1,4 +1,4 @@
-import type { Platform } from "@prisma/client";
+import type { Platform, RequestStatus } from "@prisma/client";
 import { db } from "./db";
 import { isOffline } from "./health";
 import { isConfigured } from "./protections";
@@ -276,6 +276,22 @@ async function placeNotices(device: { id: string; childId: string; familyId: str
 }
 type VisitRow = { id: string; deviceId: string | null; lat: number; lng: number; placeLabel: string | null; placeId: string | null; lastSeenAt: Date };
 
+const OPEN_REQUEST: RequestStatus[] = ["PENDING", "DELIVERED", "AWAITING_PARENT"];
+
+/**
+ * The parent turned sharing off (saved, or a change still on its way to the phone): nothing more is kept from the
+ * moment they did, not only once the phone reports it.
+ */
+async function sharingTurnedOff(childId: string): Promise<boolean> {
+  const pending = await db.configRequest.findFirst({
+    where: { childId, key: "LOCATION", status: { in: OPEN_REQUEST } },
+    orderBy: { createdAt: "desc" }, select: { desired: true },
+  });
+  const saved = pending ? null : await db.childPolicy.findUnique({ where: { childId_key: { childId, key: "LOCATION" } }, select: { config: true } });
+  const wanted: unknown = pending ? pending.desired : saved?.config;
+  return wanted != null && typeof wanted === "object" && !isConfigured({ ...wanted, key: "LOCATION" });
+}
+
 /**
  * Stores the device's current location. When the family has turned on location history,
  * also records visits (arrive / still here) and prunes visits past the retention period.
@@ -290,6 +306,7 @@ export async function recordLocation(device: { id: string; childId: string; fami
     db.family.findUniqueOrThrow({ where: { id: device.familyId }, select: { plan: true, keepLocationHistory: true, retentionDays: true, timezone: true } }),
     db.place.findMany({ where: { familyId: device.familyId }, select: { id: true, name: true, lat: true, lng: true, radiusM: true, notifyArrive: true, notifyLeave: true } }),
   ]);
+  if (await sharingTurnedOff(device.childId)) return;
   if (current && !current.sharing) return;
   // Location sharing is a paid feature: on Free, fixes aren't kept at all
   if (!entitlementsFor(family.plan).locationSharing) return;

@@ -135,7 +135,12 @@ describe("app actions", () => {
     expect(await actions.setAppApproval("a1", "SUPERUSER" as never)).toEqual({ error: "Choose a valid setting." });
     svc.setAppApproval.mockResolvedValue({ childId: "c1" });
     expect(await actions.setAppApproval("a1", "BLOCKED")).toEqual({});
-    expect(svc.setAppApproval).toHaveBeenCalledWith(user, "a1", "BLOCKED", "web");
+    expect(svc.setAppApproval).toHaveBeenCalledWith(user, "a1", "BLOCKED", "web", undefined);
+    // The state the page showed goes along, so an answer against another parent's newer decision is refused
+    expect(await actions.setAppApproval("a1", "ALLOWED", "PENDING")).toEqual({});
+    expect(svc.setAppApproval).toHaveBeenLastCalledWith(user, "a1", "ALLOWED", "web", "PENDING");
+    // Only a child's request makes an app wait: a parent can't set PENDING
+    expect(await actions.setAppApproval("a1", "PENDING")).toEqual({ error: "Choose a valid setting." });
   });
   it("caps a daily limit at 24 hours", async () => {
     expect(await actions.setAppLimit("a1", 2000)).toEqual({ error: "A daily limit can be up to 24 hours." });

@@ -223,8 +223,13 @@ async function appFor(familyId: string, appId: string) {
  * Devices pick up app rules on their next sync. Resolves any open approval request for the app, even when
  * the approval doesn't change (declining a child's request for an app that is already blocked).
  */
-export async function setAppApproval(actor: Actor, appId: string, approval: AppApproval, via: string) {
+export async function setAppApproval(actor: Actor, appId: string, approval: AppApproval, via: string, baseApproval?: AppApproval) {
   const app = await appFor(actor.familyId, appId);
+  // Answered from a screen that showed another state (another parent decided meanwhile): say so rather than
+  // overwrite their decision. The same answer as theirs is no conflict.
+  if (baseApproval && app.approval !== baseApproval && app.approval !== approval) {
+    throw new ServiceError(409, `${app.name} was already changed to ${APPROVAL_LABEL[app.approval]} by another parent. Check it and try again.`, "stale");
+  }
   const resolveRequest = () =>
     db.alert.updateMany({ where: { familyId: actor.familyId, resolveKey: `APPREQ:${app.childId}:${app.name}`, resolvedAt: null }, data: { resolvedAt: new Date() } });
   if (app.approval === approval) {
@@ -232,7 +237,15 @@ export async function setAppApproval(actor: Actor, appId: string, approval: AppA
     await noteActivitySafely(actor, "app_decision");
     return app;
   }
-  const updated = await db.childApp.update({ where: { id: appId }, data: { approval } });
+  // Only from the state this answer was given against: two parents answering one request at once both "succeeded"
+  // and the last write won silently. The second now hears what the first decided.
+  const { count } = await db.childApp.updateMany({ where: { id: appId, approval: app.approval }, data: { approval } });
+  if (!count) {
+    const now = await appFor(actor.familyId, appId);
+    if (now.approval === approval) return now;
+    throw new ServiceError(409, `${app.name} was already changed to ${APPROVAL_LABEL[now.approval]} by another parent. Check it and try again.`, "stale");
+  }
+  const updated = { ...app, approval };
   await db.configChange.create({
     data: {
       familyId: actor.familyId, childId: app.childId, key: "APP_RESTRICTIONS", title: `${app.name} set to ${APPROVAL_LABEL[approval]}`,
@@ -819,6 +832,18 @@ export async function deleteAccount(actor: Actor, confirm: Confirm) {
     const quoted = await hasPublishedQuotes(members.map((m) => m.id));
     // What they wrote in Community is emptied; other parents' replies stay, under "Deleted member" (lib/forum)
     await eraseForUsers(members.map((m) => m.id));
+    // The children's devices outlive the family as removed devices (kept until they expire), so each still gets
+    // eGuard's signed uninstall: an iPhone otherwise can't delete apps for a week, and a computer keeps eGuard
+    const devices = await db.device.findMany({
+      where: { familyId: actor.familyId },
+      select: { id: true, name: true, kind: true, tokenHash: true, removalSecret: true, child: { select: { name: true } } },
+    });
+    for (const d of devices) {
+      const label = `${d.child.name}'s ${d.name}`;
+      const row = { id: d.id, familyId: actor.familyId, tokenHash: d.tokenHash };
+      await (d.kind === "COMPUTER" ? rememberRemovedComputer(db, { ...row, removalSecret: d.removalSecret }, label) : rememberRemovedPhone(db, row, label))
+        .catch((e) => console.error("[account] couldn't keep a removed device", e));
+    }
     await db.family.delete({ where: { id: actor.familyId } });
     // Their words go with them, off eguard.family at once (lib/testimonials)
     if (quoted) expireProof();

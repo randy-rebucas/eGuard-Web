@@ -67,6 +67,7 @@ export async function todayActivity(graph: FamilyGraph, tz: string, opts: { loca
       used: usage.find((u) => u.childId === c.id)?._sum.minutes ?? 0,
       limit: limitOn(c, todayKey),
       apps: rest > 0 ? [...top, ["Others", rest]] : top,
+      extraUntil: c.extraTimeUntil && c.extraTimeUntil.getTime() > Date.now() ? dayTime(c.extraTimeUntil, tz).replace("Today, ", "") : null,
       location: locationOf(c, opts.locationSharing, tz),
       devices: c.devices.map((d) => ({ id: d.id, name: d.name, state: graph.deviceStates[d.id].key, issues: graph.deviceStates[d.id].issues, firstCheck: graph.deviceStates[d.id].firstCheck })),
       browsers: browsers.map((b) => {

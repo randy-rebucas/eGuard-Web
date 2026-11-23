@@ -172,7 +172,7 @@ flow for a protection, the device page, the app or website request, or the plan 
 |---|---|
 | **Run Configuration Check** (or **Pair a Device** when nothing is paired) | Opens the check dialog: asks every device to report now, polls `/api/checks/[id]` every 0.9 s, shows per-device results, times out unreachable devices after 12 s, then refreshes the page |
 | **Set Screen Time Limits** | Opens the configuration flow on Screen Time; parent picks the child |
-| **Manage Apps** | Configuration flow on App Restrictions |
+| **Set App Age Ratings** | Configuration flow on App Restrictions |
 | **Set Bedtime Schedule** | Configuration flow on Bedtime |
 | **View Location** | `/location`; shows a plan badge (e.g. "eGuard Plus") when location isn't included |
 

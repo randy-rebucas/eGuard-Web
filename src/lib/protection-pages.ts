@@ -32,7 +32,7 @@ export const PROTECTION_PAGES: Record<ProtectionKey, ProtectionPage> = {
     title: "Daily screen time limits",
     summary: "Set how long your child can use their phone or tablet each day, with a separate limit for weekends.",
     what: [
-      "Choose a daily limit for school days and another for Saturday and Sunday. When the time is used up, apps are paused until the next day.",
+      "Choose a daily limit for weekdays and another for Saturday and Sunday. When the time is used up, apps are paused until the next day.",
       "You can also give single apps their own daily limit, like an hour of games, from the Apps tab.",
     ],
     childSees: "How much time is left today, right on the eGuard home screen. When the limit is reached, a screen explains that today's time is used up and who set the limit.",
@@ -40,7 +40,7 @@ export const PROTECTION_PAGES: Record<ProtectionKey, ProtectionPage> = {
     byAge: true,
     faqs: [
       ["Does the limit count every app?", "It counts time on the phone or tablet. Apps you've given their own limit also stop when that limit runs out, even if daily time is left."],
-      ["What counts as the weekend?", "Saturday and Sunday, in the device's own time zone."],
+      ["What counts as the weekend?", "Saturday and Sunday, in your family's time zone (set in Family settings). An iPhone follows its own time zone."],
       ["Can I see how the time was spent?", `Yes. The Screen Time view shows today or the last 7 days, with the top apps and the hours of the day they were used. ${plansWith((e) => e.advancedReports)} adds 30 days and CSV export.`],
     ],
   },
@@ -57,19 +57,19 @@ export const PROTECTION_PAGES: Record<ProtectionKey, ProtectionPage> = {
     byAge: true,
     faqs: [
       ["Can my child still make calls during bedtime?", "Bedtime locks apps. The phone's built-in emergency calling isn't affected."],
-      ["Does bedtime follow our time zone?", "It uses the device's local time, so it works the same when you travel."],
+      ["Does bedtime follow our time zone?", "Yes. Android phones and computers use your family's time zone (set in Family settings), so bedtime doesn't move when a phone's clock or time zone is changed. An iPhone uses its own local time."],
     ],
   },
   APP_RESTRICTIONS: {
     title: "Age ratings for apps",
     summary: "Allow only apps rated for your child's age, and block the rest automatically.",
     what: [
-      "Pick the highest app age rating you're comfortable with. Apps rated above it can't be installed or opened on the device.",
+      "Pick the highest app age rating you're comfortable with. On iPhone and iPad, apps rated above it are hidden and can't be installed or opened. On Android, Google Play stops them being installed; apps already on the phone stay, so check them in the Apps tab.",
       "It works alongside App Approval: ratings handle the obvious cases, and approval lets you look at each new app yourself.",
     ],
-    childSees: "Apps above their rating are hidden or can't be opened.",
+    childSees: "Apps above their rating don't show in the app store. On iPhone and iPad, ones already installed are hidden too.",
     check: "On iPhone and iPad, the device reports the rating it's applying. If it changes, you're told, and Configuration Health shows the difference until it's fixed.",
-    android: "Android doesn't let apps read an app's age rating, so eGuard shows you how to set it in Google Play's parental controls, protected by a PIN. eGuard can't check that setting, so it's marked as set by you rather than verified. App Approval still holds every new app until you say yes.",
+    android: "Android doesn't let apps read an app's age rating, so eGuard shows you how to set it in Google Play's parental controls, protected by a PIN. Google Play only stops new installs, so apps already on the phone above the rating stay until you block them in the Apps tab. eGuard can't check that setting, so it's marked as set by you rather than verified. App Approval still holds every new app until you say yes.",
     byAge: true,
     faqs: [
       ["Can I see which apps are blocked?", "Yes. The Apps tab lists installed, blocked and pending apps for each child."],
@@ -80,21 +80,23 @@ export const PROTECTION_PAGES: Record<ProtectionKey, ProtectionPage> = {
     summary: "New apps stay locked until you say yes. Your child can ask from their phone, and you answer from yours.",
     what: [
       "When App Approval is on, any newly installed app is blocked until you approve it.",
-      "Your child can tap Ask for an app, and the request lands in your Alerts and on the web dashboard. Approve it, decline it, or approve it with a daily time limit.",
+      "Your child can tap Ask for an app, and the request lands in your Alerts and on the web dashboard. Approve or decline it, and give it a daily time limit if you like.",
       "You can also add apps ahead of time, so the ones you already trust are ready to go.",
     ],
     childSees: "A “Waiting for your parent” screen on new apps, and an Ask for an app button on the eGuard home screen.",
     check: "The device reports whether approval is switched on. New apps and requests show up in your alerts, so nothing is installed quietly.",
+    ios: "Apple doesn't let apps hold a new app for approval. On iPhone and iPad, App Approval stops the App Store installing apps, and you block or limit apps already on the phone in eGuard › Parent settings with your parent PIN. Your child's requests still reach you.",
     faqs: [
       ["How quickly does my answer reach the phone?", "Usually within about 5 minutes, the next time the phone checks in."],
       ["What if I decline by mistake?", "Change it any time from the Apps tab. The new decision reaches the phone at its next check-in."],
+      ["Does it work the same on iPhone?", "No. Apple doesn't let apps hold a new app for approval. On iPhone and iPad, App Approval stops the App Store installing apps, and you block or limit apps already on the phone in eGuard › Parent settings, with your parent PIN. Approving a request on the Apps tab doesn't install anything on an iPhone."],
     ],
   },
   CONTENT: {
-    title: "Age ratings for movies, TV and books",
-    summary: "Limit movies, TV shows and books on the device to the age rating you choose.",
+    title: "Age ratings for movies and TV",
+    summary: "Limit movies and TV shows on the device to the age rating you choose.",
     what: [
-      "Choose the highest age rating for media on the device. Content rated above it isn't available in the device's media apps.",
+      "Choose the highest age rating for movies and TV on the device. Content rated above it isn't available in the device's media apps. On iPhone and iPad, explicit music, podcasts and books are hidden too, unless you choose 18+.",
       "Use it with App age ratings, so both apps and what's inside them fit your child's age.",
     ],
     childSees: "Content above the rating simply isn't offered, or shows as restricted.",
@@ -107,19 +109,21 @@ export const PROTECTION_PAGES: Record<ProtectionKey, ProtectionPage> = {
   },
   WEB: {
     title: "Web filtering",
-    summary: "Block harmful sites on your child's phone and in their computer's browser, or allow only the sites you choose.",
+    summary: "Block adult and unsafe sites on your child's phone and in their computer's browsers, and on computers choose exactly which sites open.",
     what: [
-      "Choose Filter to block harmful sites and any you add, or Allowed sites only for younger children, so only sites you've approved open.",
-      "On computers, the eGuard extension for Chrome, Edge and Firefox adds more: SafeSearch, blocked categories, focus hours, and a way for your child to ask for a blocked site.",
+      "Choose Filter to block adult and unsafe sites. On computers, the eGuard browser extension also blocks the sites and categories you pick, and Allowed sites only opens just the sites you've approved.",
+      "On computers, the extension for Chrome, Edge and Firefox adds more: SafeSearch, focus hours, and a way for your child to ask for a blocked site.",
     ],
-    childSees: "A clear “This site is blocked” page with an Ask a parent button, instead of a broken page.",
-    check: "Phones report the filter mode they're using. The browser extension keeps checking itself and alerts you if private windows aren't covered or protection was changed.",
-    android: "On Android, eGuard walks you through setting the phone's Private DNS to a family filter, which blocks adult and unsafe sites in every browser and app, then checks it's still set. Allowed sites only works in the browser extension on computers.",
+    childSees: "On a computer, a clear “This site is blocked” page with an Ask a parent button. On a phone, the browser can't open a blocked site (Android) or shows Apple's restricted-site message (iPhone).",
+    check: "Phones report the filter they're using. On a computer, eGuard checks its extension is in every browser and that a browser there is connected; the extension keeps checking itself and tells you if private windows aren't covered or protection was changed.",
+    android: "On Android, eGuard walks you through setting the phone's Private DNS to a family filter, which blocks adult and unsafe sites for most browsers and apps, then checks it's still set. A VPN app can get around it, so keep App Approval on. Needs Android 9 or later. Allowed sites only works in the browser extension on computers.",
     ios: "On iPhone and iPad, eGuard turns on Apple's adult-website filter through Screen Time and checks it's still on. Allowed sites only works in the browser extension on computers.",
     faqs: [
-      ["Does eGuard see which websites my child visits?", "No. The browser extension sends only a count of blocked pages per day, by category. The one address eGuard receives is a blocked site your child asks you to open, with the reason they type."],
-      ["What happens when my child asks for a site?", "You get the request and can allow it for 15 minutes, an hour, the rest of today or always. The site opens right away, and the rule returns when the time's up."],
-      ["Does it work in private or incognito windows?", "The extension checks this and tells you if private windows aren't protected, with the setting to change."],
+      ["Does eGuard see which websites my child visits?", "No. The browser extension sends only a count of blocked pages per day, by category or reason. The one address eGuard receives is a blocked site your child asks you to open, with the reason they type."],
+      ["What happens when my child asks for a site?", "On a computer, they ask from the blocked page. You get the request and can allow it for 15 minutes, an hour, the rest of today or always. The site opens right away, and the rule returns when the time's up."],
+      ["Does it work in private or incognito windows?", "On a computer with eGuard, private windows are turned off while web filtering is on. Otherwise the extension checks and tells you if private windows aren't protected, with the setting to change."],
+      ["Does it change my own account on the computer?", "eGuard sets up Chrome, Edge and Firefox for the whole computer: its extension is there in every account, and while web filtering is on, private windows are off and new browser extensions can't be added (another extension could get around the filter; ones already there keep working). On your own account the extension isn't connected to your child, so it filters nothing. To add an extension, turn web filtering off for a moment."],
+      ["What about other browsers?", "Browsers the extension can't run in, like Brave or Opera, stay blocked on the computer until you allow them. A few apps that work as browsers can't be recognised as one, so keep App Approval on to hear about new apps first."],
     ],
   },
   DOWNLOADS: {
@@ -132,9 +136,9 @@ export const PROTECTION_PAGES: Record<ProtectionKey, ProtectionPage> = {
     childSees: "The install waits for approval, and they can ask you from eGuard.",
     check: "The device reports whether installs need approval. If that changes, eGuard tells you.",
     android: "Android doesn't let apps stop the Play Store from downloading, so a newly installed app stays locked until you approve it, the same way App Approval works.",
-    ios: "On iPhone and iPad, eGuard turns off installing apps through Screen Time and checks it's still off. Your child asks for an app from eGuard.",
+    ios: "On iPhone and iPad, eGuard turns off installing apps through Screen Time and checks it's still off. Your child can ask for an app from eGuard; to let them install it, turn Downloads and App Approval off for a moment.",
     faqs: [
-      ["What's the difference from App Approval?", "Downloads stops installs at the app store. App Approval blocks any new app that does get installed until you allow it. Using both covers both paths."],
+      ["What's the difference from App Approval?", "On iPhone and iPad, both stop the App Store installing apps (they share one Screen Time switch). On Android and computers, both hold a newly installed app until you allow it: Android can't stop the Play Store downloading."],
     ],
   },
   LOCATION: {
@@ -142,12 +146,12 @@ export const PROTECTION_PAGES: Record<ProtectionKey, ProtectionPage> = {
     summary: "See where your child's phone is on a map, with sharing your child can see and you control.",
     what: [
       "When sharing is on, your child's current location appears on the family map in the app and on the web.",
-      "A history of places visited is kept only if your family turns on location history. Otherwise eGuard keeps just the latest location.",
+      "A history of places visited is kept only if your family turns on location history, for the time you choose in Privacy settings. Otherwise eGuard keeps just the latest location, and forgets it when sharing is turned off.",
       `Location sharing is included with ${plansWith((e) => e.locationSharing)}.`,
     ],
     childSees: "eGuard's home screen shows that location is shared with the family. It's never hidden.",
     check: "The device reports whether location permission and sharing are on. If location is switched off, you get “Location sharing turned off”.",
-    ios: "On iPhone and iPad, eGuard guides you through turning on location for eGuard in Settings, then checks it's on.",
+    ios: "On iPhone and iPad, your child allows location for eGuard and eGuard checks it's on. The location updates whenever eGuard is open on the phone, so arrive and leave alerts for saved places come only then.",
     faqs: [
       ["Who can see the location?", "Only the parents in your family account. eGuard fetches the map itself, so the map provider never learns who is looking."],
       ["Can I turn off the history?", "Yes. History is off unless an admin in your family turns it on in Settings > Privacy."],
@@ -158,26 +162,31 @@ export const PROTECTION_PAGES: Record<ProtectionKey, ProtectionPage> = {
     summary: "Silence notifications during bedtime, so the phone doesn't wake your child up.",
     what: [
       "Turns on Do Not Disturb automatically for the bedtime hours you've set.",
-      "It follows the Bedtime schedule, so there's nothing extra to keep in sync.",
+      "It follows the Bedtime schedule, so there's nothing extra to keep in sync. While Bedtime is off, there's nothing to quiet.",
+      "It works on Android phones. iPhones, iPads and computers don't let apps control notifications, so it never counts against Configuration Health there.",
     ],
     childSees: "A quiet phone overnight. Notifications arrive in the morning.",
     check: "The device reports whether quiet hours are set up. If the permission eGuard needs is removed, you're told.",
     ios: "Apple doesn't allow apps to control notifications, so this isn't available on iPhone or iPad. It never counts against your Configuration Health there.",
     faqs: [
       ["Does it block alarms?", "Do Not Disturb silences notifications. The phone's own alarms keep working."],
+      ["Can I still call my child at night?", "On Android 15 and later, calls from contacts starred on your child's phone ring, and so does anyone who calls twice within 15 minutes. Star your number on their phone. On older Android versions, the exceptions in the phone's own Do Not Disturb settings apply."],
+      ["What if I give extra time at bedtime?", "Notifications come back while the extra time lasts, then go quiet again until bedtime ends."],
     ],
   },
   UNINSTALL_PROTECTION: {
     title: "Uninstall protection",
     summary: "Stop eGuard from being removed from your child's phone without you, while it stays visible to your child the whole time.",
     what: [
-      "Keeps the eGuard app from being deleted, so the protections you set stay in place.",
+      "Keeps the eGuard app from being deleted, so the protections you set stay in place. To remove it, the protection has to be turned off first, and you're alerted when it is.",
       "eGuard stays visible on the device the whole time. This protection stops removal, not your child's view of what's on.",
     ],
-    childSees: "eGuard's icon and home screen as usual. Trying to remove it doesn't work.",
+    childSees: "eGuard's icon and home screen as usual. Deleting eGuard doesn't work while this is on.",
     check: "The device reports whether uninstall protection is active. If it's switched off, eGuard alerts you. A device that stops checking in shows as offline, so you'd notice either way.",
+    android: "On Android, eGuard becomes a device admin: your child taps Activate on the phone once. Android lets anyone turn a device admin off in Settings, so set a parent PIN in Settings › Family to make that need you. If it's turned off, you're alerted.",
+    ios: "On iPhone and iPad, eGuard uses Apple's Screen Time setting, which stops your child deleting any app while it's on, not just eGuard. To let them delete one, turn this off for a moment.",
     faqs: [
-      ["What if I want to remove eGuard myself?", "Remove the device from Devices in the app or on the web first. That releases the phone."],
+      ["What if I want to remove eGuard myself?", "Remove the device from Devices in the app or on the web first, then open eGuard on the device once. That releases it."],
     ],
   },
 };
@@ -188,6 +197,6 @@ export const SAMPLE_AGES = [7, 10, 12, 15] as const;
 /** One cell of the suggested-settings table. */
 export function describeSuggested(cfg: ProtectionConfig) {
   return cfg.key === "SCREEN_TIME"
-    ? `${fmtMinutes(cfg.dailyMinutes)} school days, ${fmtMinutes(cfg.weekendMinutes)} weekends`
+    ? `${fmtMinutes(cfg.dailyMinutes)} weekdays, ${fmtMinutes(cfg.weekendMinutes)} weekends`
     : describeConfig(cfg);
 }

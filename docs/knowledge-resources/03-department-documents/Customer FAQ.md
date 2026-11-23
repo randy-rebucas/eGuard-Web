@@ -50,7 +50,7 @@ Protection stays on when a child's phone is offline. The device keeps following 
 
 ## What can I control with eGuard?
 
-eGuard covers 10 protections: Screen Time (a daily limit, with a separate weekend limit), Bedtime, App Restrictions (age ratings, per-app limits and blocking), App Approval, Content Restrictions (age ratings for movies, TV and books), Web Filtering, Downloads, Location, Notification Controls and Uninstall Protection. eGuard Plus and eGuard Family add location sharing and category limits, such as one "gaming time" limit across all games.
+eGuard covers 10 protections: Screen Time (a daily limit, with a separate weekend limit), Bedtime, App Restrictions (age ratings, per-app limits and blocking), App Approval, Content Restrictions (age ratings for movies and TV), Web Filtering, Downloads, Location, Notification Controls and Uninstall Protection. eGuard Plus and eGuard Family add location sharing and category limits, such as one "gaming time" limit across all games.
 
 ## What does the eGuard browser extension do?
 

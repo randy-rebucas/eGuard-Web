@@ -3,7 +3,7 @@ import { getUser } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { simulateTick } from "@/lib/simulator";
 import { computeHealth, isOffline } from "@/lib/health";
-import { PROTECTION_BY_KEY, describeConfig } from "@/lib/protections";
+import { PROTECTION_BY_KEY, describeConfig, guideFor } from "@/lib/protections";
 
 export async function GET(_req: Request, ctx: RouteContext<"/api/flow/[batchId]">) {
   const u = await getUser();
@@ -25,6 +25,8 @@ export async function GET(_req: Request, ctx: RouteContext<"/api/flow/[batchId]"
       from: describeConfig(r.previous), to: describeConfig(r.desired),
       // VERIFIED then means the parent said they set it on the device, not that eGuard checked it
       parentSet: PROTECTION_BY_KEY[r.key].caps[r.device.platform] === "PARENT_SET",
+      // The steps for this change: turning a guided protection off has its own (Private DNS back to Automatic)
+      guide: r.mode === "GUIDED" ? guideFor(r.key, r.device.platform, r.desired) : null,
     })),
     score: health.score,
   });
