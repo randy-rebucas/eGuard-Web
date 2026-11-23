@@ -110,7 +110,7 @@ export function SiteFooter() {
           </div>
           <div>
             <h4>Product</h4>
-            <ul><li><Link href="/#features">Features</Link></li><li><Link href="/protections">Protections</Link></li><li><Link href="/how-it-works">How it works</Link></li><li><Link href="/#browsers">Browser extension</Link></li><li><Link href="/pricing">Pricing</Link></li><li><Link href="/for-schools">For schools &amp; organizations</Link></li></ul>
+            <ul><li><Link href="/#features">Features</Link></li><li><Link href="/protections">Protections</Link></li><li><Link href="/how-it-works">How it works</Link></li><li><Link href="/demo">Try the setup demo</Link></li><li><Link href="/#browsers">Browser extension</Link></li><li><Link href="/pricing">Pricing</Link></li><li><Link href="/for-schools">For schools &amp; organizations</Link></li></ul>
           </div>
           <div>
             <h4>Resources</h4>

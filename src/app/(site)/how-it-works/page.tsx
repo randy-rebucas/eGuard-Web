@@ -268,9 +268,12 @@ export default function HowItWorksPage() {
           </ol>
           <div className="hw-video">
             <div>
-              <h3>Prefer to watch?</h3>
-              <p>The whole Android setup from start to finish, so you know what to expect before you pick up your child&apos;s phone.</p>
-              <a className="lp-btn lp-btn-outline" href={SETUP_VIDEO.watchUrl} target="_blank" rel="noopener noreferrer">Watch on YouTube<ArrowRight /></a>
+              <h3>Prefer to watch, or to try it?</h3>
+              <p>The whole Android setup from start to finish, so you know what to expect before you pick up your child&apos;s phone. Or play the parent in the interactive demo and connect a phone, a PC and a browser yourself.</p>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                <a className="lp-btn lp-btn-outline" href={SETUP_VIDEO.watchUrl} target="_blank" rel="noopener noreferrer">Watch on YouTube<ArrowRight /></a>
+                <Link className="lp-btn lp-btn-soft" href="/demo">Try the setup demo<ArrowRight /></Link>
+              </div>
             </div>
             <div className="lp-video-frame">
               <iframe
